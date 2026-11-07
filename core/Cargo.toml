@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "wex-core",
+    "wex-cli",
+]
+resolver = "2"
