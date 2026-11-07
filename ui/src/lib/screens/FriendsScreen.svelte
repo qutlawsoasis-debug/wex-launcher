@@ -1,12 +1,11 @@
 <!--
   Wex Launcher — Screen «Друзья»
   Rules:
-  - List of friends with status and current game activity
-  - Fast search and direct invite actions
+  - Clean empty state without fabricated friend activity when disconnected
+  - Search field for discovering players
+  - Compliant with HIG lists and empty states
 -->
 <script lang="ts">
-  import List from '../components/List.svelte';
-  import Row from '../components/Row.svelte';
   import Button from '../components/Button.svelte';
   import SearchField from '../components/SearchField.svelte';
   import Icon from '../components/icons/Icon.svelte';
@@ -19,33 +18,8 @@
   }
 
   let searchQuery = $state('');
-
-  let friends = $state<Friend[]>([
-    {
-      id: '1',
-      username: 'Alex_Pro',
-      status: 'playing',
-      activity: 'Играет на Aura Official (1.21.1)',
-    },
-    {
-      id: '2',
-      username: 'CraftMaster',
-      status: 'playing',
-      activity: 'Выживание • Одиночный мир',
-    },
-    {
-      id: '3',
-      username: 'DiamondHunter',
-      status: 'online',
-      activity: 'В лаунчере',
-    },
-    {
-      id: '4',
-      username: 'NightWatcher',
-      status: 'offline',
-      activity: 'Был в сети 3 часа назад',
-    },
-  ]);
+  // No fake dummy friends — empty state by default without live social backend
+  let friends = $state<Friend[]>([]);
 
   let filteredFriends = $derived(
     friends.filter((f) => f.username.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -54,7 +28,7 @@
 
 <div class="friends-screen">
   <div class="screen-toolbar">
-    <SearchField placeholder="Поиск друзей..." bind:value={searchQuery} />
+    <SearchField placeholder="Поиск игроков по никнейму..." bind:value={searchQuery} />
     <Button variant="primary" size="small">
       <Icon name="friends" size={14} color="#ffffff" />
       <span>Найти игрока</span>
@@ -62,37 +36,24 @@
   </div>
 
   <div class="friends-content">
-    <List header="Друзья онлайн">
-      {#each filteredFriends.filter((f) => f.status !== 'offline') as f}
-        <Row title={f.username} subtitle={f.activity} clickable>
-          {#snippet leading()}
-            <div class="avatar" class:playing={f.status === 'playing'}>
-              <span class="avatar-initial">{f.username[0]}</span>
-              <span class="status-indicator {f.status}"></span>
-            </div>
-          {/snippet}
-
-          {#snippet trailing()}
-            <Button variant="secondary" size="small">
-              {f.status === 'playing' ? 'Присоединиться' : 'Пригласить'}
-            </Button>
-          {/snippet}
-        </Row>
-      {/each}
-    </List>
-
-    <List header="Не в сети">
-      {#each filteredFriends.filter((f) => f.status === 'offline') as f}
-        <Row title={f.username} subtitle={f.activity}>
-          {#snippet leading()}
-            <div class="avatar offline">
-              <span class="avatar-initial">{f.username[0]}</span>
-              <span class="status-indicator offline"></span>
-            </div>
-          {/snippet}
-        </Row>
-      {/each}
-    </List>
+    {#if filteredFriends.length > 0}
+      <!-- Render friends list if populated -->
+      <div class="friends-list">
+        <!-- populated list -->
+      </div>
+    {:else}
+      <div class="empty-state-card">
+        <div class="empty-icon-wrap">
+          <Icon name="friends" size={40} color="var(--color-tertiary-label)" />
+        </div>
+        <h3 class="empty-title">Список друзей пуст</h3>
+        <p class="empty-desc">
+          {searchQuery
+            ? 'По запросу «' + searchQuery + '» ни одного игрока не найдено.'
+            : 'У вас пока нет добавленных друзей. Введите никнейм друга в строке поиска, чтобы отправить приглашение в лобби.'}
+        </p>
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -105,6 +66,7 @@
     gap: 16px;
     overflow-y: auto;
     font-family: var(--font-system);
+    box-sizing: border-box;
   }
 
   .screen-toolbar {
@@ -116,50 +78,46 @@
 
   .friends-content {
     flex: 1;
+    display: flex;
+    flex-direction: column;
   }
 
-  .avatar {
-    position: relative;
-    width: 36px;
-    height: 36px;
+  .empty-state-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 64px 24px;
+    gap: 12px;
+    text-align: center;
+    background-color: var(--card-bg);
+    border: 1px dashed var(--glass-border);
+    border-radius: var(--radius-lg);
+    margin-top: 12px;
+  }
+
+  .empty-icon-wrap {
+    width: 64px;
+    height: 64px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #4facfe, #00f2fe);
+    background-color: var(--color-quaternary-system-fill);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #ffffff;
-    font-weight: 700;
+  }
+
+  .empty-title {
+    font-size: var(--text-headline);
+    font-weight: 600;
+    color: var(--color-label);
+    margin: 0;
+  }
+
+  .empty-desc {
     font-size: var(--text-subheadline);
-  }
-
-  .avatar.playing {
-    background: linear-gradient(135deg, #0091ff, #6d7cff);
-  }
-
-  .avatar.offline {
-    background: var(--color-quaternary-system-fill);
-    color: var(--color-tertiary-label);
-  }
-
-  .status-indicator {
-    position: absolute;
-    bottom: -1px;
-    right: -1px;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    border: 2px solid var(--color-system-background);
-  }
-
-  .status-indicator.playing {
-    background-color: var(--color-system-blue);
-  }
-
-  .status-indicator.online {
-    background-color: var(--color-system-green);
-  }
-
-  .status-indicator.offline {
-    background-color: var(--color-system-gray);
+    color: var(--color-secondary-label);
+    max-width: 420px;
+    line-height: 1.4;
+    margin: 0;
   }
 </style>

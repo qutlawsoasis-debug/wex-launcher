@@ -1,10 +1,12 @@
 <!--
   Wex Launcher — Screen «Играть»
   Rules:
-  - Version selection: 1.20.1 / 1.21.1
+  - Version selection: 1.20.1 / 1.21.1 (concise labels per HIG Segmented Controls)
   - Player nickname input
-  - Large prominent «Играть» button
-  - Real-time installation and sync progress indicator
+  - High contrast banner (title in label-color for dark surface, strict grid alignment)
+  - Large prominent «Играть» action button
+  - Real installation and sync progress indicator
+  - No fabricated server online counts
 -->
 <script lang="ts">
   import Button from '../components/Button.svelte';
@@ -36,9 +38,10 @@
     oncancel,
   }: Props = $props();
 
+  // Concise version labels per Apple HIG Segmented Controls
   const versions = [
-    { value: '1.21.1', label: 'Minecraft 1.21.1 (Aura Core)' },
-    { value: '1.20.1', label: 'Minecraft 1.20.1 (Aura Pack)' },
+    { value: '1.20.1', label: '1.20.1' },
+    { value: '1.21.1', label: '1.21.1' },
   ];
 </script>
 
@@ -49,7 +52,7 @@
     <div class="hero-content">
       <div class="hero-badge">
         <span class="status-dot"></span>
-        <span>Aura Pack Active</span>
+        <span>Aura Pack • 1.20.1 / 1.21.1</span>
       </div>
       <h2 class="hero-title">Aura Client</h2>
       <p class="hero-subtitle">
@@ -105,12 +108,12 @@
     <div class="launch-actions">
       <div class="status-summary">
         <div class="summary-item">
-          <Icon name="server" size={14} color="var(--color-system-green)" />
-          <span>Сервер: Онлайн (86/200)</span>
+          <Icon name="play" size={14} color="var(--color-system-green)" />
+          <span>Aura Client готов</span>
         </div>
         <div class="summary-item">
           <Icon name="cpu" size={14} color="var(--color-secondary-label)" />
-          <span>Java 21 • 4 ГБ RAM</span>
+          <span>Java 21 • 64-bit</span>
         </div>
       </div>
 
@@ -144,6 +147,7 @@
     gap: 20px;
     overflow-y: auto;
     font-family: var(--font-system);
+    box-sizing: border-box;
   }
 
   .hero-banner {
@@ -157,16 +161,17 @@
     align-items: flex-end;
     padding: 28px;
     border: 1px solid var(--glass-border);
+    box-sizing: border-box;
   }
 
   :global([data-theme="light"]) .hero-banner {
-    background: linear-gradient(135deg, #1a4f8f 0%, #2f7acc 50%, #4facfe 100%);
+    background: linear-gradient(135deg, #13396d 0%, #1e5ba3 50%, #2f7acc 100%);
   }
 
   .hero-gradient {
     position: absolute;
     inset: 0;
-    background: radial-gradient(circle at 80% 20%, rgba(0, 145, 255, 0.45), transparent 60%);
+    background: radial-gradient(circle at 80% 20%, rgba(0, 145, 255, 0.35), transparent 60%);
     pointer-events: none;
   }
 
@@ -175,8 +180,11 @@
     z-index: 2;
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
     gap: 8px;
     color: #ffffff;
+    width: 100%;
   }
 
   .hero-badge {
@@ -185,11 +193,13 @@
     gap: 6px;
     padding: 4px 10px;
     border-radius: var(--radius-pill);
-    background-color: rgba(255, 255, 255, 0.18);
+    background-color: rgba(255, 255, 255, 0.2);
     backdrop-filter: blur(10px);
     font-size: var(--text-caption-1);
     font-weight: 600;
+    color: #ffffff !important;
     width: fit-content;
+    margin: 0;
   }
 
   .status-dot {
@@ -205,15 +215,20 @@
     font-weight: 800;
     letter-spacing: var(--tracking-large-title);
     margin: 0;
+    padding: 0;
     line-height: var(--line-large-title);
+    color: #ffffff !important;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
   }
 
   .hero-subtitle {
     font-size: var(--text-subheadline);
-    color: rgba(255, 255, 255, 0.85);
-    max-width: 520px;
+    color: rgba(255, 255, 255, 0.9) !important;
+    max-width: 540px;
     line-height: 1.4;
     margin: 0;
+    padding: 0;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
   }
 
   .launch-card {
@@ -226,6 +241,7 @@
     flex-direction: column;
     gap: 20px;
     box-shadow: var(--glass-shadow);
+    box-sizing: border-box;
   }
 
   .launch-controls {

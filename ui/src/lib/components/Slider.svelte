@@ -6,6 +6,7 @@
   - Smooth round thumb with subtle shadow
   - Live value feedback display
   - Keyboard accessible (left/right arrows)
+  - Strict alignment: thumb position corresponds exactly to value
 -->
 <script lang="ts">
   interface Props {
@@ -64,7 +65,13 @@
 
   <div class="slider-track-area">
     <div class="track-bg"></div>
-    <div class="track-fill" style="width: {percentage}%"></div>
+    <div class="track-fill" style="width: {percentage}%;"></div>
+    <div
+      class="slider-thumb"
+      data-testid="slider-thumb"
+      data-percentage={percentage.toFixed(1)}
+      style="left: calc({percentage}% - {percentage * 0.2}px);"
+    ></div>
     <input
       type="range"
       {min}
@@ -143,6 +150,21 @@
     transition: width var(--motion-duration-short) ease;
   }
 
+  .slider-thumb {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: #ffffff;
+    box-shadow:
+      0 2px 6px rgba(0, 0, 0, 0.28),
+      0 0 1px rgba(0, 0, 0, 0.18);
+    pointer-events: none;
+    transition:
+      left var(--motion-duration-short) ease,
+      transform var(--motion-duration-short) ease;
+  }
+
   .range-input {
     position: absolute;
     width: 100%;
@@ -151,61 +173,8 @@
     opacity: 0;
     cursor: pointer;
     z-index: 2;
-  }
-
-  /* Custom Thumb styling on range */
-  .range-input {
     -webkit-appearance: none;
     appearance: none;
     background: transparent;
-  }
-
-  .range-input::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: #ffffff;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-    cursor: pointer;
-    transition: transform var(--motion-duration-short) ease;
-  }
-
-  .range-input::-moz-range-thumb {
-    width: 20px;
-    height: 20px;
-    border: none;
-    border-radius: 50%;
-    background: #ffffff;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-    cursor: pointer;
-    transition: transform var(--motion-duration-short) ease;
-  }
-
-  .range-input:active::-webkit-slider-thumb {
-    transform: scale(1.15);
-  }
-
-  .range-input:active::-moz-range-thumb {
-    transform: scale(1.15);
-  }
-
-  /* Visible track and thumb overlay */
-  .slider-track-area::after {
-    content: '';
-    position: absolute;
-    left: calc(var(--percentage, 0%) - 10px);
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background-color: #ffffff;
-    box-shadow:
-      0 2px 5px rgba(0, 0, 0, 0.26),
-      0 0 1px rgba(0, 0, 0, 0.15);
-    pointer-events: none;
-    transition:
-      left var(--motion-duration-short) ease,
-      transform var(--motion-duration-short) ease;
   }
 </style>

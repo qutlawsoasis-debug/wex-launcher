@@ -83,13 +83,59 @@ describe('Apple HIG Svelte 5 Components', () => {
     unmount(comp);
   });
 
+  it('slider thumb position corresponds strictly to value (min, middle, max, 65%)', () => {
+    // 1. Min (0%)
+    const compMin = mount(Slider, {
+      target,
+      props: { value: 0, min: 0, max: 100 },
+    });
+    const thumbMin = target.querySelector('[data-testid="slider-thumb"]') as HTMLElement;
+    expect(thumbMin).not.toBeNull();
+    expect(thumbMin.getAttribute('data-percentage')).toBe('0.0');
+    expect(thumbMin.style.left).toBe('calc(0% - 0px)');
+    unmount(compMin);
+
+    // 2. Middle (50%)
+    const compMid = mount(Slider, {
+      target,
+      props: { value: 50, min: 0, max: 100 },
+    });
+    const thumbMid = target.querySelector('[data-testid="slider-thumb"]') as HTMLElement;
+    expect(thumbMid).not.toBeNull();
+    expect(thumbMid.getAttribute('data-percentage')).toBe('50.0');
+    expect(thumbMid.style.left).toBe('calc(50% - 10px)');
+    unmount(compMid);
+
+    // 3. Max (100%)
+    const compMax = mount(Slider, {
+      target,
+      props: { value: 100, min: 0, max: 100 },
+    });
+    const thumbMax = target.querySelector('[data-testid="slider-thumb"]') as HTMLElement;
+    expect(thumbMax).not.toBeNull();
+    expect(thumbMax.getAttribute('data-percentage')).toBe('100.0');
+    expect(thumbMax.style.left).toBe('calc(100% - 20px)');
+    unmount(compMax);
+
+    // 4. Custom 65% (gallery value)
+    const comp65 = mount(Slider, {
+      target,
+      props: { value: 65, min: 0, max: 100 },
+    });
+    const thumb65 = target.querySelector('[data-testid="slider-thumb"]') as HTMLElement;
+    expect(thumb65).not.toBeNull();
+    expect(thumb65.getAttribute('data-percentage')).toBe('65.0');
+    expect(thumb65.style.left).toBe('calc(65% - 13px)');
+    unmount(comp65);
+  });
+
   it('renders SegmentedControl with options and active selection pill', () => {
     const comp = mount(SegmentedControl, {
       target,
       props: {
         options: [
-          { value: '1.21.1', label: '1.21.1' },
           { value: '1.20.1', label: '1.20.1' },
+          { value: '1.21.1', label: '1.21.1' },
         ],
         value: '1.21.1',
       },
@@ -97,8 +143,8 @@ describe('Apple HIG Svelte 5 Components', () => {
 
     const tabs = target.querySelectorAll('[role="tab"]');
     expect(tabs.length).toBe(2);
-    expect(tabs[0].classList.contains('selected')).toBe(true);
-    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    expect(tabs[1].classList.contains('selected')).toBe(true);
+    expect(tabs[1].getAttribute('aria-selected')).toBe('true');
 
     unmount(comp);
   });

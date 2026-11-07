@@ -5,7 +5,7 @@
   - Floats in Liquid Glass functional layer
   - Distinct navigation destinations with SF-style symbols
   - Active selection indicator with accent color or prominent fill
-  - Concise group labels and badges
+  - Clean layout without redundant category headers when items form a single primary list
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
@@ -48,14 +48,12 @@
       {#if !collapsed}
         <div class="brand-text">
           <span class="brand-title">Wex</span>
-          <span class="brand-subtitle">Launcher</span>
         </div>
       {/if}
     </div>
   </div>
 
   <nav class="sidebar-nav">
-    <div class="nav-section-title">{collapsed ? '•••' : 'Навигация'}</div>
     <ul class="nav-list">
       {#each items as item}
         {@const isActive = item.id === activeId}
@@ -142,23 +140,14 @@
 
   .brand-text {
     display: flex;
-    align-items: baseline;
-    gap: 4px;
+    align-items: center;
   }
 
   .brand-title {
-    font-size: var(--text-headline);
+    font-size: var(--text-title-3);
     font-weight: 700;
     color: var(--color-label);
     letter-spacing: -0.3px;
-  }
-
-  .brand-subtitle {
-    font-size: var(--text-caption-2);
-    font-weight: 500;
-    color: var(--color-secondary-label);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
   }
 
   .sidebar-nav {
@@ -168,20 +157,13 @@
     overflow-x: hidden;
   }
 
-  .nav-section-title {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--color-tertiary-label);
-    padding: 4px 8px 8px;
-  }
-
   .nav-list {
     list-style: none;
     display: flex;
     flex-direction: column;
     gap: 2px;
+    margin: 0;
+    padding: 0;
   }
 
   .nav-item {

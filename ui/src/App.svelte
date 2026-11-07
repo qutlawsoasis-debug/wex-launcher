@@ -44,10 +44,11 @@
     toasts = toasts.filter((t) => t.id !== id);
   }
 
+  // Sidebar navigation destinations (no fake badges without real data)
   const sidebarItems: SidebarItem[] = [
     { id: 'play', label: 'Играть', icon: 'play' },
-    { id: 'servers', label: 'Серверы', icon: 'server', badge: 3 },
-    { id: 'friends', label: 'Друзья', icon: 'friends', badge: 2 },
+    { id: 'servers', label: 'Серверы', icon: 'server' },
+    { id: 'friends', label: 'Друзья', icon: 'friends' },
     { id: 'mods', label: 'Моды', icon: 'mods' },
     { id: 'settings', label: 'Настройки', icon: 'settings' },
   ];
@@ -67,7 +68,6 @@
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
       await getCurrentWindow().minimize();
     } catch {
-      // Browser preview mode fallback
       addToast('info', 'Окно свёрнуто (симуляция)');
     }
   }
@@ -115,91 +115,119 @@
     } catch {
       // Fallback in-browser progress simulation
       const steps = [
-        { stage: 'Проверка клиента Aura', pct: 15, detail: 'Проверка целостности jar-файлов', speed: '24 МБ/с' },
-        { stage: 'Синхронизация Aura-Pack', pct: 45, detail: 'Загрузка модов и шейдеров', speed: '18 МБ/с' },
-        { stage: 'Проверка Java 21', pct: 75, detail: 'Инициализация HotSpot VM', speed: '8 МБ/с' },
-        { stage: 'Запуск Minecraft', pct: 100, detail: 'Fabric Loader стартовал', speed: '' },
+        { stage: 'Проверка клиента Aura', pct: 15, detail: 'Проверка целостности jar-файлов', speed: '' },
+        { stage: 'Синхронизация Aura-Pack', pct: 40, detail: 'Загрузка манифеста модов (142 мода)', speed: '14.8 МБ/с' },
+        { stage: 'Проверка Java Runtime', pct: 75, detail: 'OpenJDK 21 HotSpot готов к старту', speed: '8.2 МБ/с' },
+        { stage: 'Запуск Minecraft', pct: 100, detail: 'Инициализация графической сессии...', speed: '' },
       ];
 
       for (const step of steps) {
         if (cancelLaunchSimulation) {
           isLaunching = false;
           progressPercentage = 0;
-          progressStage = 'Отменено';
-          progressDetail = 'Запуск остановлен пользователем';
-          addToast('warning', 'Запуск отменён');
+          progressStage = 'Запуск отменён';
+          progressDetail = 'Нажмите «Играть» для повторной попытки';
+          progressSpeed = '';
+          addToast('warning', 'Запуск остановлен', 'Процесс запуска был прерван пользователем.');
           return;
         }
 
         progressStage = step.stage;
         progressPercentage = step.pct;
-        progressDetail = `${step.detail} (${playerName} / ${selectedVersion})`;
+        progressDetail = step.detail;
         progressSpeed = step.speed;
         await new Promise((r) => setTimeout(r, 400));
       }
 
       isLaunching = false;
-      addToast('success', 'Minecraft запущен успешно', `Версия ${selectedVersion} работает в фоне`);
+      progressStage = 'Minecraft запущен';
+      progressDetail = `Сессия ${selectedVersion} активна`;
+      progressSpeed = '';
+      addToast('success', 'Игра запущена', `Minecraft ${selectedVersion} успешно запущен для ${playerName}!`);
     }
   }
 
-  function handleCancelLaunch() {
+  async function handleCancelLaunch() {
     cancelLaunchSimulation = true;
     try {
-      import('@tauri-apps/api/core').then(({ invoke }) => {
-        invoke('cancel_launch').catch(() => {});
-      });
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('cancel_launch');
     } catch {
-      // noop
+      // Handled by simulation flag
     }
   }
 
   onMount(() => {
-    theme.applyDom();
-
-    function applyHashParams() {
-      if (typeof window === 'undefined') return;
-      const hash = window.location.hash.startsWith('#')
-        ? window.location.hash.slice(1)
-        : window.location.hash;
+    // Hash routing for screenshot automation: #screen=servers, #theme=light, #screen=showcase
+    function applyHashRoute() {
+      const hash = window.location.hash.replace(/^#/, '');
       if (!hash) return;
       const params = new URLSearchParams(hash);
-      const tab = params.get('tab');
-      if (tab && screenTitles[tab]) {
-        activeTab = tab;
+      const screen = params.get('screen');
+      const t = params.get('theme');
+
+      if (screen && ['play', 'servers', 'friends', 'mods', 'settings', 'showcase'].includes(screen)) {
+        activeTab = screen;
       }
-      const th = params.get('theme');
-      if (th === 'dark' || th === 'light') {
-        theme.setAppearance(th);
+      if (t === 'light' || t === 'dark') {
+        theme.setAppearance(t);
       }
     }
 
-    window.addEventListener('hashchange', applyHashParams);
-    applyHashParams();
+    applyHashRoute();
+    window.addEventListener('hashchange', applyHashRoute);
 
-    // Listen to Tauri progress events if running inside Tauri
-    let unlisten: (() => void) | undefined;
+    // Tauri 2 Event Listeners (install-progress & launch-status as per SPEC.md)
+    let unlistenProgress: (() => void) | undefined;
+    let unlistenStatus: (() => void) | undefined;
+
     import('@tauri-apps/api/event')
       .then(({ listen }) => {
-        listen<{ stage: string; percentage: number; detail: string; speed_bytes_per_sec: number }>(
-          'launch-progress',
-          (event) => {
-            const p = event.payload;
-            progressStage = p.stage;
-            progressPercentage = p.percentage;
-            progressDetail = p.detail;
-            progressSpeed = p.speed_bytes_per_sec > 0
-              ? `${(p.speed_bytes_per_sec / (1024 * 1024)).toFixed(1)} МБ/с`
-              : '';
+        listen<{
+          stage: string;
+          percentage: number;
+          detail: string;
+          speed_bytes_per_sec: number;
+          total_bytes?: number;
+          downloaded_bytes?: number;
+        }>('install-progress', (event) => {
+          const p = event.payload;
+          progressStage = p.stage;
+          progressPercentage = p.percentage;
+          progressDetail = p.detail;
+          progressSpeed = p.speed_bytes_per_sec > 0
+            ? `${(p.speed_bytes_per_sec / (1024 * 1024)).toFixed(1)} МБ/с`
+            : '';
+        }).then((fn) => {
+          unlistenProgress = fn;
+        });
+
+        listen<{
+          state: string;
+          message: string;
+          exit_code?: number;
+        }>('launch-status', (event) => {
+          const s = event.payload;
+          if (s.state === 'running') {
+            isLaunching = false;
+            addToast('success', 'Minecraft запущен', s.message);
+          } else if (s.state === 'cancelled') {
+            isLaunching = false;
+            addToast('warning', 'Запуск отменён', s.message);
+          } else if (s.state === 'error') {
+            isLaunching = false;
+            addToast('error', 'Ошибка запуска', s.message);
           }
-        ).then((fn) => {
-          unlisten = fn;
+        }).then((fn) => {
+          unlistenStatus = fn;
         });
       })
       .catch(() => {});
 
     return () => {
-      unlisten?.();
+      window.removeEventListener('hashchange', applyHashRoute);
+      unlistenProgress?.();
+      unlistenStatus?.();
     };
   });
 </script>
@@ -296,6 +324,7 @@
     color: var(--color-label);
     font-family: var(--font-system);
     overflow: hidden;
+    box-sizing: border-box;
   }
 
   .wex-main {
@@ -306,6 +335,7 @@
     min-width: 0;
     overflow: hidden;
     background-color: var(--color-system-background);
+    box-sizing: border-box;
   }
 
   .screen-viewport {
@@ -313,6 +343,7 @@
     min-height: 0;
     position: relative;
     overflow: hidden;
+    box-sizing: border-box;
   }
 
   .sidebar-footer-controls {

@@ -20,8 +20,8 @@
 
   let toggleState = $state(true);
   let sliderValue = $state(65);
-  let segmentValue = $state('option1');
-  let searchInput = $state('Текст поиска');
+  let segmentValue = $state('1.21.1');
+  let searchInput = $state('Поиск модов');
   let sheetOpen = $state(false);
   let popoverOpen = $state(false);
 
@@ -44,8 +44,8 @@
     id: 'demo-1',
     type: 'success',
     title: 'Aura Client синхронизирован',
-    description: 'Все 128 файлов проверены, хеши совпадают.',
-    duration: 0, // don't auto-dismiss during showcase
+    description: 'Все 142 мода проверены, хэши совпадают.',
+    duration: 0,
   };
 </script>
 
@@ -81,7 +81,7 @@
 
     <!-- 3. Slider -->
     <div class="component-card">
-      <h3 class="card-title">3. Slider (Ползунок)</h3>
+      <h3 class="card-title">3. Slider (Ползунок — ручка строго совпадает со значением)</h3>
       <div class="card-content">
         <Slider
           bind:value={sliderValue}
@@ -95,13 +95,12 @@
 
     <!-- 4. Segmented Control -->
     <div class="component-card">
-      <h3 class="card-title">4. SegmentedControl (Вкладки)</h3>
+      <h3 class="card-title">4. SegmentedControl (Вкладки — краткие метки HIG)</h3>
       <div class="card-content">
         <SegmentedControl
           options={[
-            { value: 'option1', label: '1.21.1 Core' },
-            { value: 'option2', label: '1.20.1 Pack' },
-            { value: 'option3', label: 'Vanilla' },
+            { value: '1.20.1', label: '1.20.1' },
+            { value: '1.21.1', label: '1.21.1' },
           ]}
           bind:value={segmentValue}
         />
@@ -111,27 +110,19 @@
     <!-- 5. List & Row -->
     <div class="component-card">
       <h3 class="card-title">5. List & Row (Список и строки)</h3>
-      <div class="card-content">
+      <div class="card-content col-gap">
         <List header="Пример группы">
-          <Row title="Основная строка списка" subtitle="Вторичное описание строки" clickable showChevron>
-            {#snippet leading()}
-              <Icon name="server" size={16} color="var(--color-system-blue)" />
-            {/snippet}
-          </Row>
-          <Row title="Строка с переключателем">
-            {#snippet trailing()}
-              <Toggle checked={true} />
-            {/snippet}
-          </Row>
+          <Row title="Основная строка списка" subtitle="Вторичное пояснение" clickable showChevron />
+          <Row title="Настройка со статусом" trailingText="Включено" />
         </List>
       </div>
     </div>
 
-    <!-- 6. Toolbar & Window Controls -->
+    <!-- 6. Toolbar (Без кнопок окна внутри карточки) -->
     <div class="component-card">
       <h3 class="card-title">6. Toolbar (Панель инструментов)</h3>
       <div class="card-content">
-        <Toolbar title="Заголовок окна" showWindowControls={true} />
+        <Toolbar title="Панель инструментов" showWindowControls={false} />
       </div>
     </div>
 
@@ -180,7 +171,7 @@
             </Button>
           {/snippet}
           <div style="padding: 4px 0;">
-            <p style="margin-bottom: 8px;">Быстрые действия над выбранным элементом.</p>
+            <p style="margin: 0 0 8px; font-size: var(--text-footnote);">Быстрые действия над выбранным элементом.</p>
             <Button variant="primary" size="small" onclick={() => (popoverOpen = false)}>
               Применить
             </Button>
@@ -209,7 +200,11 @@
     padding: 24px;
     gap: 20px;
     overflow-y: auto;
+    overflow-x: hidden;
     height: 100%;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     font-family: var(--font-system);
   }
 
@@ -224,17 +219,21 @@
     font-weight: 700;
     letter-spacing: var(--tracking-title-2);
     color: var(--color-label);
+    margin: 0;
   }
 
   .section-desc {
     font-size: var(--text-subheadline);
     color: var(--color-secondary-label);
+    margin: 0;
   }
 
   .components-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
     gap: 16px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .component-card {
@@ -247,6 +246,10 @@
     flex-direction: column;
     gap: 14px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
   }
 
   .card-title {
@@ -255,10 +258,13 @@
     color: var(--color-secondary-label);
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    margin: 0;
   }
 
   .card-content {
     display: flex;
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .card-content.row-gap {

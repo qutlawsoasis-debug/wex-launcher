@@ -1,9 +1,10 @@
 <!--
   Wex Launcher — Screen «Серверы»
   Rules:
-  - List of servers with live ping and online player metrics
+  - List of servers without fabricated metrics when offline
   - Connect and add server flows
   - Inset grouped List and Row components
+  - Clear empty states when no servers are configured
 -->
 <script lang="ts">
   import List from '../components/List.svelte';
@@ -18,9 +19,6 @@
     name: string;
     address: string;
     version: string;
-    online: number;
-    maxPlayers: number;
-    ping: number;
   }
 
   let searchQuery = $state('');
@@ -28,33 +26,13 @@
   let newServerName = $state('');
   let newServerAddress = $state('');
 
+  // Default server list without fake online/ping metrics
   let servers = $state<ServerEntry[]>([
     {
       id: 'aura-main',
       name: 'Aura Official — Survival & PvP',
       address: 'mc.auramc.net',
-      version: '1.21.1',
-      online: 142,
-      maxPlayers: 250,
-      ping: 28,
-    },
-    {
-      id: 'aura-fabric',
-      name: 'Aura Modded — Fabric Pack',
-      address: 'pack.auramc.net',
-      version: '1.20.1',
-      online: 76,
-      maxPlayers: 150,
-      ping: 35,
-    },
-    {
-      id: 'aura-test',
-      name: 'Dev & Creative Sandbox',
-      address: 'dev.auramc.net',
-      version: '1.21.1',
-      online: 18,
-      maxPlayers: 50,
-      ping: 42,
+      version: '1.21.1 / 1.20.1',
     },
   ]);
 
@@ -73,9 +51,6 @@
       name: newServerName.trim(),
       address: newServerAddress.trim(),
       version: '1.21.1',
-      online: 1,
-      maxPlayers: 20,
-      ping: 45,
     });
     newServerName = '';
     newServerAddress = '';
@@ -93,40 +68,39 @@
   </div>
 
   <div class="servers-content">
-    <List header="Избранные серверы Aura">
-      {#each filteredServers as s}
-        <Row
-          title={s.name}
-          subtitle="{s.address} • {s.version}"
-          clickable
-        >
-          {#snippet leading()}
-            <div class="server-avatar">
-              <Icon name="server" size={18} color="var(--color-system-blue)" />
-            </div>
-          {/snippet}
+    {#if filteredServers.length > 0}
+      <List header="Серверы Aura">
+        {#each filteredServers as s}
+          <Row
+            title={s.name}
+            subtitle="{s.address} • {s.version}"
+            clickable
+          >
+            {#snippet leading()}
+              <div class="server-avatar">
+                <Icon name="server" size={18} color="var(--color-system-blue)" />
+              </div>
+            {/snippet}
 
-          {#snippet trailing()}
-            <div class="server-metrics">
-              <span class="online-pill">
-                <span class="dot"></span>
-                {s.online}/{s.maxPlayers}
-              </span>
-              <span class="ping-pill" class:fast={s.ping < 50}>
-                {s.ping} ms
-              </span>
-              <Button variant="secondary" size="small">
-                Подключиться
-              </Button>
-            </div>
-          {/snippet}
-        </Row>
-      {:else}
-        <div class="empty-state">
-          <span>Серверы не найдены</span>
-        </div>
-      {/each}
-    </List>
+            {#snippet trailing()}
+              <div class="server-actions">
+                <Button variant="secondary" size="small">
+                  Подключиться
+                </Button>
+              </div>
+            {/snippet}
+          </Row>
+        {/each}
+      </List>
+    {:else}
+      <div class="empty-state-card">
+        <Icon name="server" size={36} color="var(--color-tertiary-label)" />
+        <h3 class="empty-title">Серверы не найдены</h3>
+        <p class="empty-desc">
+          {searchQuery ? 'По запросу ничего не найдено.' : 'Список серверов пуст. Нажмите «Добавить сервер», чтобы сохранить адрес мира.'}
+        </p>
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -143,7 +117,7 @@
         id="srv-name"
         type="text"
         bind:value={newServerName}
-        placeholder="Например: Мой любимый сервер"
+        placeholder="Например: Мой сервер"
         class="form-input"
       />
     </div>
@@ -154,7 +128,7 @@
         id="srv-addr"
         type="text"
         bind:value={newServerAddress}
-        placeholder="play.example.com"
+        placeholder="mc.example.com"
         class="form-input"
       />
     </div>
@@ -170,6 +144,7 @@
     gap: 16px;
     overflow-y: auto;
     font-family: var(--font-system);
+    box-sizing: border-box;
   }
 
   .screen-toolbar {
@@ -193,47 +168,37 @@
     justify-content: center;
   }
 
-  .server-metrics {
+  .server-actions {
     display: flex;
     align-items: center;
+    gap: 8px;
+  }
+
+  .empty-state-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 64px 24px;
     gap: 12px;
-  }
-
-  .online-pill {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: var(--text-footnote);
-    color: var(--color-secondary-label);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background-color: var(--color-system-green);
-  }
-
-  .ping-pill {
-    font-size: var(--text-footnote);
-    font-variant-numeric: tabular-nums;
-    font-weight: 500;
-    color: var(--color-secondary-label);
-    padding: 2px 8px;
-    background-color: var(--color-quaternary-system-fill);
-    border-radius: var(--radius-pill);
-  }
-
-  .ping-pill.fast {
-    color: var(--color-system-green);
-  }
-
-  .empty-state {
-    padding: 32px;
     text-align: center;
-    color: var(--color-tertiary-label);
+    background-color: var(--card-bg);
+    border: 1px dashed var(--glass-border);
+    border-radius: var(--radius-lg);
+  }
+
+  .empty-title {
+    font-size: var(--text-headline);
+    font-weight: 600;
+    color: var(--color-label);
+    margin: 0;
+  }
+
+  .empty-desc {
     font-size: var(--text-subheadline);
+    color: var(--color-secondary-label);
+    max-width: 360px;
+    margin: 0;
   }
 
   .sheet-form {

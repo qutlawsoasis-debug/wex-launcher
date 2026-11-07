@@ -70,10 +70,10 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders FriendsScreen with player statuses', () => {
+  it('renders FriendsScreen with clean empty state and search action', () => {
     const comp = mount(FriendsScreen, { target });
-    expect(target.textContent).toContain('Alex_Pro');
-    expect(target.textContent).toContain('Друзья онлайн');
+    expect(target.textContent).toContain('Список друзей пуст');
+    expect(target.querySelector('input')).not.toBeNull();
     unmount(comp);
   });
 
