@@ -1,0 +1,14 @@
+{
+  "name": "wex-launcher",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "ui"
+  ],
+  "scripts": {
+    "test": "npm --prefix ui test",
+    "check": "npm --prefix ui run check",
+    "build": "npm --prefix ui run build",
+    "dev": "npm --prefix ui run dev"
+  }
+}

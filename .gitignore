@@ -1,6 +1,17 @@
 target/
+**/target/
 node_modules/
+**/node_modules/
 dist/
+**/dist/
 .svelte-kit/
 *.log
 .env
+.vscode/
+**/.vscode/
+.idea/
+**/.idea/
+.DS_Store
+**/.DS_Store
+*.suo
+*.user
