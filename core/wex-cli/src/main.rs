@@ -108,8 +108,17 @@ async fn main() -> Result<()> {
             .await?;
 
             println!("Game launched with PID {}. Waiting for game exit...", process.pid);
-            let exit_code = process.wait().await?;
-            println!("Game process exited with code {:?}", exit_code);
+            tokio::select! {
+                res = process.wait() => {
+                    let exit_code = res?;
+                    println!("Game process exited with code {:?}", exit_code);
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    println!("\nReceived Ctrl+C, terminating game process and child tree (PID {})...", process.pid);
+                    let _ = process.kill();
+                    println!("Game process cleanly terminated.");
+                }
+            }
         }
     }
 

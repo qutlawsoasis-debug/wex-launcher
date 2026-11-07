@@ -42,6 +42,14 @@ impl GameProcess {
 
     pub fn kill(&mut self) -> Result<()> {
         let _ = self.child.start_kill();
+        #[cfg(windows)]
+        {
+            if self.pid > 0 {
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/F", "/PID", &self.pid.to_string(), "/T"])
+                    .output();
+            }
+        }
         Ok(())
     }
 }

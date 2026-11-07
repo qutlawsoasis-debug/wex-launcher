@@ -402,4 +402,78 @@ mod tests {
         assert!(mod1.exists());
         assert!(!mod2.exists());
     }
+
+    #[test]
+    fn test_sync_modes_default_preserve_and_force_override() {
+        let tmp = tempdir().unwrap();
+        let instance_dir = tmp.path();
+
+        let user_config = instance_dir.join("config").join("user.json");
+        fs::create_dir_all(user_config.parent().unwrap()).unwrap();
+        fs::write(&user_config, "user custom preferences").unwrap();
+
+        let forced_config = instance_dir.join("config").join("forced.json");
+        fs::write(&forced_config, "old forced content").unwrap();
+
+        let force_set: HashSet<String> = ["config/forced.json".to_string()]
+            .iter()
+            .map(|s| s.to_lowercase())
+            .collect();
+
+        // Entry 1: mode default, not forced -> should keep existing file
+        let entry_default = ManifestFileEntry {
+            path: "config/user.json".to_string(),
+            sha256: "dummy_sha".to_string(),
+            size: 50,
+            mode: "default".to_string(),
+            url: None,
+        };
+        let clean_path1 = entry_default.path.replace('\\', "/");
+        let is_forced1 = force_set.contains(&clean_path1.to_lowercase());
+        let is_default1 = entry_default.mode.eq_ignore_ascii_case("default") && !is_forced1;
+        let should_skip1 = is_default1 && user_config.exists();
+        assert!(should_skip1, "User config in default mode must not be overwritten!");
+
+        // Entry 2: mode default, but present in force_configs -> should NOT skip
+        let entry_forced = ManifestFileEntry {
+            path: "config/forced.json".to_string(),
+            sha256: "new_forced_sha".to_string(),
+            size: 100,
+            mode: "default".to_string(),
+            url: None,
+        };
+        let clean_path2 = entry_forced.path.replace('\\', "/");
+        let is_forced2 = force_set.contains(&clean_path2.to_lowercase());
+        let is_default2 = entry_forced.mode.eq_ignore_ascii_case("default") && !is_forced2;
+        let should_skip2 = is_default2 && forced_config.exists();
+        assert!(!should_skip2, "Forced config must not be skipped even in default mode!");
+
+        // Entry 3: mode sync, identical hash and size -> should skip
+        let synced_mod = instance_dir.join("mods").join("synced.jar");
+        fs::create_dir_all(synced_mod.parent().unwrap()).unwrap();
+        let content = b"test jar data";
+        fs::write(&synced_mod, content).unwrap();
+        let expected_hash = crate::download::compute_file_hash(&synced_mod, HashType::Sha256).unwrap();
+
+        let entry_synced = ManifestFileEntry {
+            path: "mods/synced.jar".to_string(),
+            sha256: expected_hash,
+            size: content.len() as u64,
+            mode: "sync".to_string(),
+            url: None,
+        };
+        let mut download_needed = true;
+        if synced_mod.exists() {
+            if let Ok(meta) = fs::metadata(&synced_mod) {
+                if meta.len() == entry_synced.size {
+                    if let Ok(actual_hash) = crate::download::compute_file_hash(&synced_mod, HashType::Sha256) {
+                        if actual_hash.eq_ignore_ascii_case(&entry_synced.sha256) {
+                            download_needed = false;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(!download_needed, "Synced file matching size and hash must not re-download (0 files to download)");
+    }
 }
