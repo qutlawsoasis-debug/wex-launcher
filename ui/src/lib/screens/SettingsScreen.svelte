@@ -1,30 +1,46 @@
 <!--
   Wex Launcher — Screen «Настройки»
+  Specification: tasks/apple/hig/settings.md, tasks/apple/hig/sliders.md, tasks/apple/hig/toggles.md
   Rules:
-  - Appearance: Dark / Light / Auto (SegmentedControl)
-  - Accent Color picker with WCAG contrast verification
-  - RAM allocation (Slider)
+  - RAM allocation: slider with 512 MB step, upper bound based on system memory
+  - Game data directory selector
+  - Graphics preset: Low / Medium / High / Ultra
+  - Appearance: Dark / Light / Auto & Accent picker
   - Accessibility: Reduce Motion and Reduce Transparency toggles
-  - Settings mapped directly to theme state
+  - About Wex section
+  - Bidirectional sync via get_launcher_config / save_launcher_config
 -->
 <script lang="ts">
+  import { onMount } from 'svelte';
   import List from '../components/List.svelte';
   import Row from '../components/Row.svelte';
   import Toggle from '../components/Toggle.svelte';
   import Slider from '../components/Slider.svelte';
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Button from '../components/Button.svelte';
+  import Icon from '../components/icons/Icon.svelte';
   import { theme } from '../design/theme.svelte';
   import { AccentPresets, type AccentColor } from '../design/colors';
 
-  let ramAllocation = $state(4);
-  let fullscreenOnLaunch = $state(false);
-  let jvmArguments = $state('-XX:+UseG1GC -XX:+ParallelRefProcEnabled');
+  // System & configuration state
+  let totalMemoryMb = $state(16384);
+  let ramMb = $state(4096);
+  let gameDir = $state('C:\\Users\\Player\\AppData\\Roaming\\.minecraft');
+  let graphicsPreset = $state('High');
+  let launcherVersion = $state('1.0.0');
+  let osName = $state('windows');
+
+  const graphicsOptions = [
+    { value: 'Low', label: 'Низкий' },
+    { value: 'Medium', label: 'Средний' },
+    { value: 'High', label: 'Высокий' },
+    { value: 'Ultra', label: 'Ультра' },
+  ];
 
   const appearanceOptions = [
     { value: 'dark', label: 'Тёмная' },
     { value: 'light', label: 'Светлая' },
-    { value: 'auto', label: 'Авто (Системная)' },
+    { value: 'auto', label: 'Авто' },
   ];
 
   const accents: { key: AccentColor; title: string; color: string }[] = Object.entries(
@@ -34,25 +50,158 @@
     title: val.title,
     color: theme.isDark ? val.dark : val.light,
   }));
+
+  function formatRam(val: number): string {
+    const gb = (val / 1024).toFixed(1);
+    return `${gb} ГБ (${val} МБ)`;
+  }
+
+  async function loadConfig() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const sys = await invoke<{ total_memory_mb: number; os_name: string; launcher_version: string }>('get_system_info');
+      if (sys && sys.total_memory_mb) {
+        totalMemoryMb = sys.total_memory_mb;
+        osName = sys.os_name;
+        launcherVersion = sys.launcher_version;
+      }
+
+      const cfg = await invoke<{
+        ram_mb: number;
+        game_dir: string;
+        graphics_preset: string;
+        appearance: string;
+        accent: string;
+        reduce_motion: boolean;
+        reduce_transparency: boolean;
+      }>('get_launcher_config');
+
+      if (cfg) {
+        ramMb = cfg.ram_mb || 4096;
+        if (cfg.game_dir) gameDir = cfg.game_dir;
+        if (cfg.graphics_preset) graphicsPreset = cfg.graphics_preset;
+        if (cfg.appearance) theme.setAppearance(cfg.appearance as 'dark' | 'light' | 'auto');
+        if (cfg.accent) theme.setAccent(cfg.accent as AccentColor);
+        theme.setReduceMotion(cfg.reduce_motion ?? false);
+        theme.setReduceTransparency(cfg.reduce_transparency ?? false);
+      }
+    } catch {
+      // In-browser mock fallback
+    }
+  }
+
+  async function saveConfig() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('save_launcher_config', {
+        newConfig: {
+          selected_version: '1.21.1',
+          player_name: 'Player',
+          ram_mb: ramMb,
+          game_dir: gameDir,
+          graphics_preset: graphicsPreset,
+          appearance: theme.appearance,
+          accent: theme.accent,
+          reduce_motion: theme.reduceMotion,
+          reduce_transparency: theme.reduceTransparency,
+        },
+      });
+    } catch {
+      // Ignored
+    }
+  }
+
+  function handleRamChange(newVal: number) {
+    ramMb = newVal;
+    saveConfig();
+  }
+
+  function handlePresetChange(val: string) {
+    graphicsPreset = val;
+    saveConfig();
+  }
+
+  onMount(() => {
+    loadConfig();
+  });
 </script>
 
 <div class="settings-screen">
   <div class="settings-content">
+    <!-- Performance & Memory -->
+    <List header="Производительность и память">
+      <Row
+        title="Выделение оперативной памяти (RAM)"
+        subtitle="Шаг 512 МБ • Верхняя граница ограничена памятью системы ({Math.round(totalMemoryMb / 1024)} ГБ)"
+      >
+        <div class="slider-wrapper">
+          <Slider
+            value={ramMb}
+            min={1024}
+            max={totalMemoryMb}
+            step={512}
+            formatValue={formatRam}
+            onchange={handleRamChange}
+            label="ОЗУ для Minecraft"
+          />
+        </div>
+      </Row>
+
+      <Row
+        title="Графический пресет"
+        subtitle="Настройки шейдеров Iris и оптимизатора Sodium"
+      >
+        {#snippet trailing()}
+          <div style="width: 320px;">
+            <SegmentedControl
+              options={graphicsOptions}
+              value={graphicsPreset}
+              onchange={handlePresetChange}
+            />
+          </div>
+        {/snippet}
+      </Row>
+    </List>
+
+    <!-- Data Directory -->
+    <List header="Папки и файлы данных">
+      <Row
+        title="Рабочая папка игры"
+        subtitle={gameDir}
+      >
+        {#snippet trailing()}
+          <div class="dir-actions">
+            <Button
+              variant="secondary"
+              size="small"
+              title="Открыть папку данных в Проводнике"
+            >
+              <Icon name="restore" size={13} color="var(--color-secondary-label)" />
+              <span>Открыть</span>
+            </Button>
+          </div>
+        {/snippet}
+      </Row>
+    </List>
+
     <!-- Appearance & Theme Section -->
     <List header="Внешний вид и стиль Apple">
-      <Row title="Тема оформления" subtitle="Выбор системного режима (Dark Mode / Light Mode)">
+      <Row title="Тема оформления" subtitle="Системный режим (Dark Mode / Light Mode)">
         {#snippet trailing()}
           <div style="width: 280px;">
             <SegmentedControl
               options={appearanceOptions}
               value={theme.appearance}
-              onchange={(v) => theme.setAppearance(v as 'dark' | 'light' | 'auto')}
+              onchange={(v) => {
+                theme.setAppearance(v as 'dark' | 'light' | 'auto');
+                saveConfig();
+              }}
             />
           </div>
         {/snippet}
       </Row>
 
-      <Row title="Цветовой акцент" subtitle="Основной цвет кнопок, ползунков и индикаторов">
+      <Row title="Цветовой акцент" subtitle="Основной цвет элементов интерфейса">
         {#snippet trailing()}
           <div class="accent-picker">
             {#each accents as acc}
@@ -62,7 +211,10 @@
                 class:active={theme.accent === acc.key}
                 style="background-color: {acc.color};"
                 title={acc.title}
-                onclick={() => theme.setAccent(acc.key)}
+                onclick={() => {
+                  theme.setAccent(acc.key);
+                  saveConfig();
+                }}
                 aria-label={acc.title}
               >
                 {#if theme.accent === acc.key}
@@ -76,63 +228,50 @@
     </List>
 
     <!-- Accessibility / Универсальный доступ -->
-    <List header="Универсальный доступ (Accessibility)">
+    <List header="Универсальный доступ">
       <Row
-        title="Уменьшение движения (Reduce Motion)"
-        subtitle="Отключение физики пружин и плавных сдвигов, мгновенные переходы"
+        title="Уменьшение движения"
+        subtitle="Отключение пружинных анимаций и динамических сдвигов"
       >
         {#snippet trailing()}
           <Toggle
             checked={theme.reduceMotion}
-            onchange={(checked) => theme.setReduceMotion(checked)}
+            onchange={(checked) => {
+              theme.setReduceMotion(checked);
+              saveConfig();
+            }}
           />
         {/snippet}
       </Row>
 
       <Row
-        title="Уменьшение прозрачности (Reduce Transparency)"
-        subtitle="Замена эффектов размытия Liquid Glass на плотные системные заливки"
+        title="Уменьшение прозрачности"
+        subtitle="Замена эффектов размытия фона на контрастные непрозрачные заливки"
       >
         {#snippet trailing()}
           <Toggle
             checked={theme.reduceTransparency}
-            onchange={(checked) => theme.setReduceTransparency(checked)}
+            onchange={(checked) => {
+              theme.setReduceTransparency(checked);
+              saveConfig();
+            }}
           />
         {/snippet}
       </Row>
     </List>
 
-    <!-- Java & Game Performance -->
-    <List header="Производительность и память">
-      <Row title="Выделение оперативной памяти" subtitle="Рекомендуется от 4 до 8 ГБ для Aura-Pack">
-        <div style="width: 100%; padding-top: 10px;">
-          <Slider
-            bind:value={ramAllocation}
-            min={2}
-            max={16}
-            step={1}
-            unit="ГБ"
-            label="Оперативная память (RAM)"
-          />
-        </div>
-      </Row>
-
-      <Row title="Полноэкранный режим" subtitle="Запускать Minecraft сразу на весь экран">
-        {#snippet trailing()}
-          <Toggle bind:checked={fullscreenOnLaunch} />
-        {/snippet}
-      </Row>
-
-      <Row title="Параметры запуска JVM">
-        <div style="width: 100%; padding-top: 8px;">
-          <input
-            type="text"
-            bind:value={jvmArguments}
-            class="jvm-input"
-            placeholder="-XX:+UseG1GC"
-          />
-        </div>
-      </Row>
+    <!-- About Section -->
+    <List header="О программе">
+      <Row
+        title="Лаунчер Wex"
+        subtitle="Версия {launcherVersion} • ОС: {osName} (64-bit)"
+        trailingText="Aura Project"
+      />
+      <Row
+        title="Технологический стек"
+        subtitle="Tauri 2 • Svelte 5 • TypeScript 5.8 • Rust (core/wex-net)"
+        trailingText="v1.0.0"
+      />
     </List>
 
     <!-- Reset to defaults -->
@@ -144,7 +283,9 @@
           theme.setAccent('blue');
           theme.setReduceMotion(false);
           theme.setReduceTransparency(false);
-          ramAllocation = 4;
+          ramMb = 4096;
+          graphicsPreset = 'High';
+          saveConfig();
         }}
       >
         Сбросить настройки по умолчанию
@@ -162,13 +303,26 @@
     gap: 16px;
     overflow-y: auto;
     font-family: var(--font-system);
+    box-sizing: border-box;
   }
 
   .settings-content {
     display: flex;
     flex-direction: column;
-    max-width: 800px;
+    max-width: 860px;
     width: 100%;
+    gap: 8px;
+  }
+
+  .slider-wrapper {
+    width: 100%;
+    padding: 10px 0 4px;
+  }
+
+  .dir-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
   .accent-picker {
@@ -204,24 +358,6 @@
     font-weight: 800;
     color: #ffffff;
     line-height: 1;
-  }
-
-  .jvm-input {
-    width: 100%;
-    height: 36px;
-    padding: 0 12px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--glass-border);
-    background-color: var(--color-quaternary-system-fill);
-    color: var(--color-label);
-    font-family: var(--font-mono);
-    font-size: var(--text-footnote);
-    outline: none;
-  }
-
-  .jvm-input:focus {
-    border-color: var(--color-system-blue);
-    background-color: var(--card-bg);
   }
 
   .actions-section {

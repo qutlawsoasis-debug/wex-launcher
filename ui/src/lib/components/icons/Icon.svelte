@@ -4,6 +4,7 @@
       | 'play'
       | 'pause'
       | 'server'
+      | 'lobby'
       | 'friends'
       | 'mods'
       | 'settings'
@@ -55,6 +56,12 @@
     <rect x="2" y="14" width="20" height="6" rx="2"></rect>
     <line x1="6" y1="7" x2="6.01" y2="7"></line>
     <line x1="6" y1="17" x2="6.01" y2="17"></line>
+  {:else if name === 'lobby'}
+    <circle cx="18" cy="5" r="3"></circle>
+    <circle cx="6" cy="12" r="3"></circle>
+    <circle cx="18" cy="19" r="3"></circle>
+    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
   {:else if name === 'friends'}
     <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
     <circle cx="9" cy="7" r="4"></circle>

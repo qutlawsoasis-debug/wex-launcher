@@ -14,6 +14,7 @@
 
   import PlayScreen from './lib/screens/PlayScreen.svelte';
   import ServersScreen from './lib/screens/ServersScreen.svelte';
+  import LobbyScreen from './lib/screens/LobbyScreen.svelte';
   import FriendsScreen from './lib/screens/FriendsScreen.svelte';
   import ModsScreen from './lib/screens/ModsScreen.svelte';
   import SettingsScreen from './lib/screens/SettingsScreen.svelte';
@@ -26,6 +27,7 @@
   // Launch state
   let selectedVersion = $state('1.21.1');
   let playerName = $state('Player');
+  let clientStatus = $state('Aura Client готов');
   let isLaunching = $state(false);
   let progressPercentage = $state(0);
   let progressStage = $state('Готов к запуску');
@@ -44,10 +46,11 @@
     toasts = toasts.filter((t) => t.id !== id);
   }
 
-  // Sidebar navigation destinations (no fake badges without real data)
+  // Sidebar navigation destinations per SPEC.md 1.2
   const sidebarItems: SidebarItem[] = [
     { id: 'play', label: 'Играть', icon: 'play' },
     { id: 'servers', label: 'Серверы', icon: 'server' },
+    { id: 'lobby', label: 'Лобби', icon: 'lobby' },
     { id: 'friends', label: 'Друзья', icon: 'friends' },
     { id: 'mods', label: 'Моды', icon: 'mods' },
     { id: 'settings', label: 'Настройки', icon: 'settings' },
@@ -56,6 +59,7 @@
   const screenTitles: Record<string, string> = {
     play: 'Играть',
     servers: 'Серверы',
+    lobby: 'Кооператив и Лобби',
     friends: 'Друзья',
     mods: 'Моды и шейдеры',
     settings: 'Настройки',
@@ -166,7 +170,7 @@
       const screen = params.get('screen');
       const t = params.get('theme');
 
-      if (screen && ['play', 'servers', 'friends', 'mods', 'settings', 'showcase'].includes(screen)) {
+      if (screen && ['play', 'servers', 'lobby', 'friends', 'mods', 'settings', 'showcase'].includes(screen)) {
         activeTab = screen;
       }
       if (t === 'light' || t === 'dark') {
@@ -208,6 +212,7 @@
           exit_code?: number;
         }>('launch-status', (event) => {
           const s = event.payload;
+          clientStatus = s.message;
           if (s.state === 'running') {
             isLaunching = false;
             addToast('success', 'Minecraft запущен', s.message);
@@ -240,16 +245,6 @@
   >
     {#snippet footer()}
       <div class="sidebar-footer-controls">
-        <button
-          type="button"
-          class="showcase-nav-btn"
-          class:active={activeTab === 'showcase'}
-          onclick={() => (activeTab = 'showcase')}
-        >
-          <Icon name="cpu" size={16} color="var(--color-secondary-label)" />
-          <span>Компоненты HIG</span>
-        </button>
-
         <div class="theme-quick-toggle">
           <Button
             variant="ghost"
@@ -282,6 +277,7 @@
         <PlayScreen
           bind:selectedVersion
           bind:playerName
+          {clientStatus}
           {isLaunching}
           {progressPercentage}
           {progressStage}
@@ -292,6 +288,8 @@
         />
       {:else if activeTab === 'servers'}
         <ServersScreen />
+      {:else if activeTab === 'lobby'}
+        <LobbyScreen />
       {:else if activeTab === 'friends'}
         <FriendsScreen />
       {:else if activeTab === 'mods'}
@@ -350,32 +348,6 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-  }
-
-  .showcase-nav-btn {
-    width: 100%;
-    height: 32px;
-    padding: 0 10px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border: none;
-    border-radius: var(--radius-sm);
-    background-color: transparent;
-    cursor: pointer;
-    font-size: var(--text-footnote);
-    color: var(--color-secondary-label);
-    transition: background-color var(--motion-duration-short) ease;
-  }
-
-  .showcase-nav-btn:hover {
-    background-color: var(--color-quaternary-system-fill);
-  }
-
-  .showcase-nav-btn.active {
-    background-color: var(--color-system-fill);
-    color: var(--color-system-blue);
-    font-weight: 600;
   }
 
   .theme-quick-toggle {
