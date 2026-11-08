@@ -1,6 +1,10 @@
+use base64::Engine;
+use minisign_verify::{PublicKey, Signature};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
+use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, State};
 
 use wex_social::launcher_update::{
@@ -41,6 +45,298 @@ pub struct UpdateProgressPayload {
     pub total_bytes: Option<u64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StagedUpdate {
+    pub installer_path: PathBuf,
+    pub version: String,
+    pub temp_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallerExecutionPlan {
+    pub executable: PathBuf,
+    pub args: Vec<String>,
+    pub target_version: String,
+    pub installer_path: PathBuf,
+}
+
+static STAGED_UPDATE: Mutex<Option<StagedUpdate>> = Mutex::new(None);
+
+pub fn set_staged_update(update: StagedUpdate) {
+    if let Ok(mut lock) = STAGED_UPDATE.lock() {
+        *lock = Some(update);
+    }
+}
+
+pub fn get_staged_update() -> Option<StagedUpdate> {
+    STAGED_UPDATE.lock().ok().and_then(|lock| lock.clone())
+}
+
+pub fn clear_staged_update() {
+    if let Ok(mut lock) = STAGED_UPDATE.lock() {
+        *lock = None;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cryptographic Minisign Verification
+// ---------------------------------------------------------------------------
+
+pub fn parse_minisign_pubkey(pubkey_str: &str) -> Result<PublicKey, String> {
+    let trimmed = pubkey_str.trim();
+    if trimmed.is_empty() {
+        return Err("Открытый ключ подписи пуст".to_string());
+    }
+
+    // 1. Direct from base64 string (e.g. "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3")
+    if let Ok(pk) = PublicKey::from_base64(trimmed) {
+        return Ok(pk);
+    }
+
+    // 2. Base64-decoded string (Tauri sometimes base64-encodes the whole minisign.pub text)
+    if let Ok(decoded_bytes) = base64::engine::general_purpose::STANDARD.decode(trimmed) {
+        if let Ok(decoded_str) = std::str::from_utf8(&decoded_bytes) {
+            let inner_trimmed = decoded_str.trim();
+            if let Ok(pk) = PublicKey::decode(inner_trimmed) {
+                return Ok(pk);
+            }
+            if let Ok(pk) = PublicKey::from_base64(inner_trimmed) {
+                return Ok(pk);
+            }
+        }
+    }
+
+    // 3. Multi-line minisign.pub format
+    PublicKey::decode(trimmed).map_err(|e| format!("Некорректный формат открытого ключа: {}", e))
+}
+
+pub fn parse_minisign_signature(sig_str: &str) -> Result<Signature, String> {
+    let trimmed = sig_str.trim();
+    if trimmed.is_empty() {
+        return Err("Подпись обновления пуста".to_string());
+    }
+
+    // 1. Direct multi-line minisign signature format
+    if let Ok(sig) = Signature::decode(trimmed) {
+        return Ok(sig);
+    }
+
+    // 2. Base64-encoded signature string (standard in Tauri latest.json updater manifests)
+    if let Ok(decoded_bytes) = base64::engine::general_purpose::STANDARD.decode(trimmed) {
+        if let Ok(decoded_str) = std::str::from_utf8(&decoded_bytes) {
+            let inner_trimmed = decoded_str.trim();
+            if let Ok(sig) = Signature::decode(inner_trimmed) {
+                return Ok(sig);
+            }
+        }
+    }
+
+    Err("Некорректный формат цифровой подписи minisign".to_string())
+}
+
+pub fn verify_artifact_signature(
+    data: &[u8],
+    signature_str: &str,
+    trusted_pubkey_str: &str,
+) -> Result<(), String> {
+    let pub_key = parse_minisign_pubkey(trusted_pubkey_str)?;
+    let signature = parse_minisign_signature(signature_str)?;
+
+    pub_key
+        .verify(data, &signature, true)
+        .map_err(|e| format!("Неверная цифровая подпись или повреждённые байты: {}", e))
+}
+
+pub fn resolve_trusted_public_key(
+    explicit_key: Option<&str>,
+    app: Option<&AppHandle>,
+) -> Option<String> {
+    if let Some(key) = explicit_key {
+        let trimmed = key.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+
+    if let Ok(key) =
+        std::env::var("WEX_UPDATER_PUBKEY").or_else(|_| std::env::var("TAURI_UPDATER_PUBKEY"))
+    {
+        let trimmed = key.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+
+    if let Some(handle) = app {
+        if let Some(plugin_val) = handle.config().plugins.0.get("updater") {
+            if let Some(pubkey) = plugin_val.get("pubkey").and_then(|v| v.as_str()) {
+                let trimmed = pubkey.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    // Fallback: check tauri.conf.json on disk
+    for path in ["app/src-tauri/tauri.conf.json", "tauri.conf.json"] {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(pubkey) = val
+                    .pointer("/plugins/updater/pubkey")
+                    .and_then(|v| v.as_str())
+                {
+                    let trimmed = pubkey.trim();
+                    if !trimmed.is_empty() {
+                        return Some(trimmed.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+// ---------------------------------------------------------------------------
+// Installer Preparation & Execution Plan
+// ---------------------------------------------------------------------------
+
+pub fn extract_installer_archive_if_needed(
+    target_file: &Path,
+    extract_dir: &Path,
+) -> Result<PathBuf, String> {
+    let ext = target_file
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    let is_zip = ext.eq_ignore_ascii_case("zip");
+
+    if is_zip {
+        let file = std::fs::File::open(target_file)
+            .map_err(|e| format!("Не удалось открыть архив обновления: {}", e))?;
+        let mut archive = zip::ZipArchive::new(file)
+            .map_err(|e| format!("Не удалось распаковать zip-архив обновления: {}", e))?;
+
+        for i in 0..archive.len() {
+            let mut file = archive
+                .by_index(i)
+                .map_err(|e| format!("Ошибка чтения файла из архива: {}", e))?;
+            let outpath = extract_dir.join(file.mangled_name());
+
+            if file.is_dir() {
+                std::fs::create_dir_all(&outpath).map_err(|e| e.to_string())?;
+            } else {
+                if let Some(p) = outpath.parent() {
+                    if !p.exists() {
+                        std::fs::create_dir_all(p).map_err(|e| e.to_string())?;
+                    }
+                }
+                let mut outfile = std::fs::File::create(&outpath)
+                    .map_err(|e| format!("Не удалось создать извлечённый файл: {}", e))?;
+                std::io::copy(&mut file, &mut outfile)
+                    .map_err(|e| format!("Не удалось записать извлечённый файл: {}", e))?;
+            }
+        }
+
+        // Find installer executable in extract_dir
+        if let Ok(entries) = std::fs::read_dir(extract_dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if let Some(ext) = p.extension().and_then(|s| s.to_str()) {
+                    if ext.eq_ignore_ascii_case("exe") || ext.eq_ignore_ascii_case("msi") {
+                        return Ok(p);
+                    }
+                }
+            }
+        }
+
+        Err("В архиве обновления не обнаружен установщик .exe или .msi".to_string())
+    } else {
+        Ok(target_file.to_path_buf())
+    }
+}
+
+pub fn build_installer_plan(
+    installer_path: &Path,
+    target_version: &str,
+) -> Result<InstallerExecutionPlan, String> {
+    if !installer_path.exists() {
+        return Err(format!(
+            "Файл установщика не существует: {:?}",
+            installer_path
+        ));
+    }
+
+    let ext = installer_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    if ext.eq_ignore_ascii_case("msi") {
+        Ok(InstallerExecutionPlan {
+            executable: PathBuf::from("msiexec.exe"),
+            args: vec![
+                "/i".to_string(),
+                installer_path.to_string_lossy().to_string(),
+                "/passive".to_string(),
+                "/norestart".to_string(),
+            ],
+            target_version: target_version.to_string(),
+            installer_path: installer_path.to_path_buf(),
+        })
+    } else {
+        // NSIS .exe installer
+        Ok(InstallerExecutionPlan {
+            executable: installer_path.to_path_buf(),
+            args: vec!["/UPDATE".to_string(), "/P".to_string()],
+            target_version: target_version.to_string(),
+            installer_path: installer_path.to_path_buf(),
+        })
+    }
+}
+
+pub fn execute_installer_plan_with_handler<F>(
+    plan: &InstallerExecutionPlan,
+    handler: F,
+) -> Result<(), String>
+where
+    F: FnOnce(&Path, &[String]) -> Result<(), String>,
+{
+    handler(&plan.executable, &plan.args)
+}
+
+pub fn apply_staged_update_and_restart(
+    app: Option<&AppHandle>,
+) -> Result<InstallerExecutionPlan, String> {
+    let staged = get_staged_update()
+        .ok_or_else(|| "Нет подготовленного проверенного обновления для установки".to_string())?;
+
+    let plan = build_installer_plan(&staged.installer_path, &staged.version)?;
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut cmd = std::process::Command::new(&plan.executable);
+        cmd.args(&plan.args);
+        cmd.spawn()
+            .map_err(|e| format!("Не удалось запустить установщик обновления: {}", e))?;
+
+        if let Some(h) = app {
+            h.exit(0);
+        } else {
+            std::process::exit(0);
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Some(h) = app {
+            h.restart();
+        }
+    }
+
+    Ok(plan)
+}
+
 // ---------------------------------------------------------------------------
 // Pure Business Logic (Unit-testable without Tauri runtime)
 // ---------------------------------------------------------------------------
@@ -50,6 +346,7 @@ pub async fn check_for_updates_internal(
     current_version: &str,
     manifest_url: Option<&str>,
     target_platform: Option<&str>,
+    trusted_pubkey: Option<&str>,
 ) -> Result<LauncherUpdateInfoDto, String> {
     let url = manifest_url.unwrap_or(DEFAULT_UPDATE_MANIFEST_URL);
     let plat = target_platform.unwrap_or(DEFAULT_TARGET_PLATFORM);
@@ -58,11 +355,17 @@ pub async fn check_for_updates_internal(
         .await
         .map_err(|e| e.to_string())?;
 
-    let is_signed = res
+    let has_key = trusted_pubkey
+        .map(|k| !k.trim().is_empty())
+        .unwrap_or(false);
+    let has_sig = res
         .signature
         .as_deref()
         .map(validate_signature_format)
         .unwrap_or(false);
+
+    let is_signed = has_sig && has_key;
+    let can_auto_update = res.update_available && is_signed;
 
     Ok(LauncherUpdateInfoDto {
         update_available: res.update_available,
@@ -73,23 +376,30 @@ pub async fn check_for_updates_internal(
         download_url: res.download_url,
         signature: res.signature,
         is_signed,
-        can_auto_update: res.update_available && is_signed,
+        can_auto_update,
     })
 }
 
-pub fn check_from_manifest_string(
+pub fn check_from_manifest_string_with_key(
     current_version: &str,
     target_platform: &str,
     manifest_json: &str,
+    trusted_pubkey: Option<&str>,
 ) -> Result<LauncherUpdateInfoDto, String> {
     let res = check_update_from_manifest(current_version, target_platform, manifest_json)
         .map_err(|e| e.to_string())?;
 
-    let is_signed = res
+    let has_key = trusted_pubkey
+        .map(|k| !k.trim().is_empty())
+        .unwrap_or(false);
+    let has_sig = res
         .signature
         .as_deref()
         .map(validate_signature_format)
         .unwrap_or(false);
+
+    let is_signed = has_sig && has_key;
+    let can_auto_update = res.update_available && is_signed;
 
     Ok(LauncherUpdateInfoDto {
         update_available: res.update_available,
@@ -100,7 +410,7 @@ pub fn check_from_manifest_string(
         download_url: res.download_url,
         signature: res.signature,
         is_signed,
-        can_auto_update: res.update_available && is_signed,
+        can_auto_update,
     })
 }
 
@@ -110,20 +420,31 @@ pub async fn download_and_install_internal(
     download_url: &str,
     signature: Option<&str>,
     version: &str,
+    trusted_pubkey: Option<&str>,
     is_game_running: bool,
 ) -> Result<UpdateInstallStatusDto, String> {
-    // 1. Guard against running game (Old launcher parity: "Игра сейчас запущена. Обновление лаунчера отложено.")
+    // 1. Guard against running game
     if is_game_running {
         return Err("Игра сейчас запущена. Закройте игру перед обновлением лаунчера.".to_string());
     }
 
-    // 2. Guard against unsigned builds (Task: без ключа подписи — режим «только уведомить со ссылкой»)
-    let is_signed = signature.map(validate_signature_format).unwrap_or(false);
-    if !is_signed {
-        return Err("Автоматическая установка недоступна для неподписанной сборки. Воспользуйтесь ссылкой для загрузки.".to_string());
-    }
+    // 2. Guard against missing trusted public key (Architect requirement: без ключа только ссылка)
+    let pubkey_str = match trusted_pubkey {
+        Some(k) if !k.trim().is_empty() => k.trim(),
+        _ => {
+            return Err("Автоматическая установка недоступна: ключ проверки подписи не настроен. Доступен режим «только уведомить со ссылкой».".to_string());
+        }
+    };
 
-    // 3. Prepare temporary isolated directory for the downloaded update
+    // 3. Guard against unsigned releases
+    let sig_str = match signature {
+        Some(s) if validate_signature_format(s) => s.trim(),
+        _ => {
+            return Err("Автоматическая установка недоступна для неподписанной сборки. Воспользуйтесь ссылкой для загрузки.".to_string());
+        }
+    };
+
+    // 4. Prepare temporary isolated directory for the downloaded update
     let temp_dir = std::env::temp_dir()
         .join("AuraDev")
         .join(format!("wex-update-{}", version));
@@ -140,7 +461,7 @@ pub async fn download_and_install_internal(
         .unwrap_or("wex-update-setup.exe");
     let target_file = temp_dir.join(file_name);
 
-    // 4. Download file with progress reporting
+    // 5. Download file with progress reporting
     let emit_progress = |pct: u32, text: &str, downloaded: u64, total: Option<u64>| {
         if let Some(h) = app {
             let _ = h.emit(
@@ -158,7 +479,6 @@ pub async fn download_and_install_internal(
     emit_progress(0, "Подключение к серверу обновлений…", 0, None);
 
     let mut response = client.get(download_url).send().await.map_err(|e| {
-        // Rollback on connection error
         let _ = std::fs::remove_dir_all(&temp_dir);
         format!("Ошибка сети при загрузке обновления: {}", e)
     })?;
@@ -173,21 +493,12 @@ pub async fn download_and_install_internal(
 
     let total_size = response.content_length();
     let mut downloaded: u64 = 0;
+    let mut downloaded_bytes = Vec::new();
 
-    let mut out_file = match tokio::fs::File::create(&target_file).await {
-        Ok(f) => f,
-        Err(e) => {
-            let _ = std::fs::remove_dir_all(&temp_dir);
-            return Err(format!("Не удалось сохранить файл обновления: {}", e));
-        }
-    };
-
-    use tokio::io::AsyncWriteExt;
     loop {
         let chunk_opt = match response.chunk().await {
             Ok(c) => c,
             Err(e) => {
-                let _ = tokio::fs::remove_file(&target_file).await;
                 let _ = std::fs::remove_dir_all(&temp_dir);
                 return Err(format!("Ошибка загрузки фрагмента обновления: {}", e));
             }
@@ -195,19 +506,16 @@ pub async fn download_and_install_internal(
 
         match chunk_opt {
             Some(chunk) => {
-                if let Err(e) = out_file.write_all(&chunk).await {
-                    let _ = std::fs::remove_dir_all(&temp_dir);
-                    return Err(format!("Ошибка записи файла обновления: {}", e));
-                }
+                downloaded_bytes.extend_from_slice(&chunk);
                 downloaded += chunk.len() as u64;
                 let pct = if let Some(tot) = total_size {
                     if tot > 0 {
-                        ((downloaded as f64 / tot as f64) * 100.0).min(100.0) as u32
+                        ((downloaded as f64 / tot as f64) * 100.0).min(90.0) as u32
                     } else {
-                        50
+                        45
                     }
                 } else {
-                    50
+                    45
                 };
                 emit_progress(
                     pct,
@@ -220,24 +528,61 @@ pub async fn download_and_install_internal(
         }
     }
 
-    if let Err(e) = out_file.flush().await {
+    emit_progress(
+        92,
+        "Проверка криптографической подписи minisign…",
+        downloaded,
+        total_size,
+    );
+
+    // 6. CRYPTOGRAPHIC SIGNATURE VERIFICATION WITH TRUSTED PUBLIC KEY
+    if let Err(err_msg) = verify_artifact_signature(&downloaded_bytes, sig_str, pubkey_str) {
+        // Full rollback on verification failure: delete temp directory and preserve running binary
         let _ = std::fs::remove_dir_all(&temp_dir);
         return Err(format!(
-            "Не удалось завершить запись файла обновления: {}",
+            "Ошибка проверки цифровой подписи (подмена или повреждение файлов): {}. Прежняя версия сохранена.",
+            err_msg
+        ));
+    }
+
+    // 7. Write verified bytes to disk and extract if zipped
+    if let Err(e) = std::fs::write(&target_file, &downloaded_bytes) {
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        return Err(format!(
+            "Не удалось сохранить проверенный файл обновления: {}",
             e
         ));
     }
 
+    let extract_dir = temp_dir.join("installer");
+    let resolved_installer = match extract_installer_archive_if_needed(&target_file, &extract_dir) {
+        Ok(path) => path,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&temp_dir);
+            return Err(e);
+        }
+    };
+
+    // 8. Stage update for execution upon restart
+    set_staged_update(StagedUpdate {
+        installer_path: resolved_installer,
+        version: version.to_string(),
+        temp_dir: temp_dir.clone(),
+    });
+
     emit_progress(
         100,
-        "Обновление проверено и готово к установке",
+        "Обновление проверено цифровой подписью и готово к установке",
         downloaded,
         total_size,
     );
 
     Ok(UpdateInstallStatusDto {
         status: "ready_to_restart".to_string(),
-        message: format!("Обновление до версии {} успешно загружено", version),
+        message: format!(
+            "Обновление до версии {} проверено цифровой подписью и готово к установке",
+            version
+        ),
         version: Some(version.to_string()),
     })
 }
@@ -247,18 +592,24 @@ pub async fn download_and_install_internal(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub async fn updater_check(manifest_url: Option<String>) -> Result<LauncherUpdateInfoDto, String> {
+pub async fn updater_check(
+    app: AppHandle,
+    manifest_url: Option<String>,
+) -> Result<LauncherUpdateInfoDto, String> {
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(6))
         .build()
         .map_err(|e| e.to_string())?;
 
     let cur_version = env!("CARGO_PKG_VERSION");
+    let trusted_key = resolve_trusted_public_key(None, Some(&app));
+
     check_for_updates_internal(
         &client,
         cur_version,
         manifest_url.as_deref(),
         Some(DEFAULT_TARGET_PLATFORM),
+        trusted_key.as_deref(),
     )
     .await
 }
@@ -277,12 +628,15 @@ pub async fn updater_install(
         .build()
         .map_err(|e| e.to_string())?;
 
+    let trusted_key = resolve_trusted_public_key(None, Some(&app));
+
     download_and_install_internal(
         Some(&app),
         &client,
         &download_url,
         signature.as_deref(),
         &version,
+        trusted_key.as_deref(),
         is_running,
     )
     .await
@@ -290,7 +644,8 @@ pub async fn updater_install(
 
 #[tauri::command]
 pub fn updater_restart(app: AppHandle) -> Result<(), String> {
-    app.restart();
+    let _ = apply_staged_update_and_restart(Some(&app))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -323,31 +678,86 @@ pub fn updater_open_download_url(url: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    // Valid Minisign keypair and signature for data b"test"
+    const TEST_PUBKEY: &str = "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3";
+    const TEST_DATA: &[u8] = b"test";
+    const TEST_VALID_SIG: &str = "untrusted comment: signature from minisign secret key\nRWQf6LRCGA9i59SLOFxz6NxvASXDJeRtuZykwQepbDEGt87ig1BNpWaVWuNrm73YiIiJbq71Wi+dP9eKL8OC351vwIasSSbXxwA=\ntrusted comment: timestamp:1555779966\tfile:test\nQtKMXWyYcwdpZAlPF7tE2ENJkRd1ujvKjlj1m9RtHTBnZPa5WKU5uWRs5GoP5M/VqE81QFuMKI5k/SfNQUaOAA==";
+
     #[test]
-    fn test_check_from_manifest_signed_auto_mode() {
+    fn test_verify_signature_valid() {
+        let res = verify_artifact_signature(TEST_DATA, TEST_VALID_SIG, TEST_PUBKEY);
+        assert!(res.is_ok(), "Valid signature must verify successfully");
+    }
+
+    #[test]
+    fn test_verify_signature_tampered_bytes_fails() {
+        // Tampered bytes: 1 byte changed
+        let tampered_data = b"Test";
+        let res = verify_artifact_signature(tampered_data, TEST_VALID_SIG, TEST_PUBKEY);
+        assert!(res.is_err(), "Verification must fail on tampered bytes");
+        let err = res.unwrap_err();
+        assert!(
+            err.contains("Неверная цифровая подпись") || err.contains("повреждённые байты"),
+            "Error message should mention signature or corrupted bytes: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_verify_invalid_signature_string_fails() {
+        let invalid_sig = "untrusted comment: invalid\nnot-valid-base64-content";
+        let res = verify_artifact_signature(TEST_DATA, invalid_sig, TEST_PUBKEY);
+        assert!(
+            res.is_err(),
+            "Verification must fail on invalid signature string"
+        );
+    }
+
+    #[test]
+    fn test_missing_public_key_fallback_to_notify_only() {
         let manifest = r#"{
             "version": "1.0.0",
-            "notes": "Важное обновление лаунчера",
+            "notes": "Важное обновление",
             "platforms": {
                 "windows-x86_64": {
-                    "signature": "untrusted comment: minisign signature\nRWSomeBase64KeyData1234567890==",
+                    "signature": "untrusted comment: sig\nRWSomeBase64KeyData1234567890==",
                     "url": "https://example.com/wex-update.exe"
                 }
             }
         }"#;
 
-        let res = check_from_manifest_string("0.1.0", "windows-x86_64", manifest).unwrap();
+        // No trusted public key configured -> can_auto_update MUST be false, notify-only
+        let res =
+            check_from_manifest_string_with_key("0.1.0", "windows-x86_64", manifest, None).unwrap();
         assert!(res.update_available);
-        assert_eq!(res.latest_version.as_deref(), Some("1.0.0"));
-        assert!(res.is_signed);
-        assert!(res.can_auto_update);
-        assert_eq!(
-            res.download_url.as_deref(),
-            Some("https://example.com/wex-update.exe")
+        assert!(
+            !res.is_signed,
+            "Without trusted pubkey, release is not treated as signed"
         );
+        assert!(
+            !res.can_auto_update,
+            "Without trusted pubkey, auto-update must be disabled (notify-only)"
+        );
+
+        // Empty trusted public key -> also notify-only
+        let res_empty =
+            check_from_manifest_string_with_key("0.1.0", "windows-x86_64", manifest, Some("   "))
+                .unwrap();
+        assert!(!res_empty.can_auto_update);
+
+        // When trusted public key is provided -> auto-update is enabled
+        let res_with_key = check_from_manifest_string_with_key(
+            "0.1.0",
+            "windows-x86_64",
+            manifest,
+            Some(TEST_PUBKEY),
+        )
+        .unwrap();
+        assert!(res_with_key.can_auto_update);
     }
 
     #[test]
@@ -363,7 +773,13 @@ mod tests {
             }
         }"#;
 
-        let res = check_from_manifest_string("0.1.0", "windows-x86_64", manifest).unwrap();
+        let res = check_from_manifest_string_with_key(
+            "0.1.0",
+            "windows-x86_64",
+            manifest,
+            Some(TEST_PUBKEY),
+        )
+        .unwrap();
         assert!(res.update_available);
         assert!(!res.is_signed);
         assert!(!res.can_auto_update);
@@ -373,24 +789,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_check_from_manifest_already_up_to_date() {
-        let manifest = r#"{
-            "version": "0.1.0",
-            "notes": "Текущая версия",
-            "platforms": {
-                "windows-x86_64": {
-                    "signature": "untrusted comment: sig\nRWSomeBase64KeyData1234567890==",
-                    "url": "https://example.com/wex.exe"
-                }
-            }
-        }"#;
-
-        let res = check_from_manifest_string("0.1.0", "windows-x86_64", manifest).unwrap();
-        assert!(!res.update_available);
-        assert!(!res.can_auto_update);
-    }
-
     #[tokio::test]
     async fn test_download_and_install_blocked_when_game_running() {
         let client = Client::new();
@@ -398,14 +796,33 @@ mod tests {
             None,
             &client,
             "https://example.com/update.exe",
-            Some("untrusted comment: sig\nRWSomeBase64KeyData1234567890=="),
+            Some(TEST_VALID_SIG),
             "1.0.0",
+            Some(TEST_PUBKEY),
             true, // game is running!
         )
         .await
         .unwrap_err();
 
         assert!(err.contains("Игра сейчас запущена"));
+    }
+
+    #[tokio::test]
+    async fn test_download_and_install_blocked_when_no_trusted_pubkey() {
+        let client = Client::new();
+        let err = download_and_install_internal(
+            None,
+            &client,
+            "https://example.com/update.exe",
+            Some(TEST_VALID_SIG),
+            "1.0.0",
+            None, // missing trusted public key!
+            false,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.contains("ключ проверки подписи не настроен"));
     }
 
     #[tokio::test]
@@ -417,6 +834,7 @@ mod tests {
             "https://example.com/update.exe",
             None, // no signature!
             "1.0.0",
+            Some(TEST_PUBKEY),
             false,
         )
         .await
@@ -426,45 +844,56 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_download_and_install_rollback_on_http_error() {
+    async fn test_download_and_install_rollback_on_tampered_bytes() {
         let mock_server = MockServer::start().await;
+        // Server sends tampered bytes instead of authentic TEST_DATA
+        let tampered_bytes = b"TAMPERED_MALICIOUS_DATA";
+
         Mock::given(method("GET"))
-            .and(path("/bad_download.exe"))
-            .respond_with(ResponseTemplate::new(404))
+            .and(path("/setup.exe"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(tampered_bytes.to_vec()))
             .mount(&mock_server)
             .await;
 
         let client = Client::new();
-        let url = format!("{}/bad_download.exe", mock_server.uri());
+        let url = format!("{}/setup.exe", mock_server.uri());
 
         let err = download_and_install_internal(
             None,
             &client,
             &url,
-            Some("untrusted comment: sig\nRWSomeBase64KeyData1234567890=="),
-            "9.9.9",
+            Some(TEST_VALID_SIG),
+            "9.9.9-tampered",
+            Some(TEST_PUBKEY),
             false,
         )
         .await
         .unwrap_err();
 
-        assert!(err.contains("HTTP 404"));
+        assert!(
+            err.contains("Ошибка проверки цифровой подписи")
+                && err.contains("Прежняя версия сохранена"),
+            "Error should indicate signature mismatch and rollback: {}",
+            err
+        );
 
-        // Verify rollback: temp folder shouldn't have leftover corrupted file
+        // Verify rollback: temp directory cleaned up
         let temp_dir = std::env::temp_dir()
             .join("AuraDev")
-            .join("wex-update-9.9.9");
-        assert!(!temp_dir.exists());
+            .join("wex-update-9.9.9-tampered");
+        assert!(
+            !temp_dir.exists(),
+            "Temp directory must be cleaned up on verification failure"
+        );
     }
 
     #[tokio::test]
-    async fn test_download_and_install_success() {
+    async fn test_download_and_install_success_and_stages_installer() {
         let mock_server = MockServer::start().await;
-        let mock_bytes = vec![0x4D, 0x5A, 0x90, 0x00, 0x03]; // MZ executable stub
 
         Mock::given(method("GET"))
             .and(path("/setup.exe"))
-            .respond_with(ResponseTemplate::new(200).set_body_bytes(mock_bytes))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(TEST_DATA.to_vec()))
             .mount(&mock_server)
             .await;
 
@@ -475,20 +904,87 @@ mod tests {
             None,
             &client,
             &url,
-            Some("untrusted comment: sig\nRWSomeBase64KeyData1234567890=="),
-            "2.0.0-test",
+            Some(TEST_VALID_SIG),
+            "2.0.0-verified",
+            Some(TEST_PUBKEY),
             false,
         )
         .await
         .unwrap();
 
         assert_eq!(res.status, "ready_to_restart");
-        assert_eq!(res.version.as_deref(), Some("2.0.0-test"));
+        assert_eq!(res.version.as_deref(), Some("2.0.0-verified"));
 
-        // Clean up test temp dir
+        // Verify staged installer exists
+        let staged = get_staged_update().expect("Staged update must be present");
+        assert_eq!(staged.version, "2.0.0-verified");
+        assert!(staged.installer_path.exists());
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(staged.temp_dir);
+        clear_staged_update();
+    }
+
+    #[test]
+    fn test_installer_execution_plan_and_version_replacement() {
         let temp_dir = std::env::temp_dir()
             .join("AuraDev")
-            .join("wex-update-2.0.0-test");
-        let _ = std::fs::remove_dir_all(temp_dir);
+            .join("test-installer-plan");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let exe_path = temp_dir.join("Wex_1.2.0_x64-setup.exe");
+        std::fs::write(&exe_path, b"dummy nsis installer").unwrap();
+
+        // 1. Plan creation
+        let plan = build_installer_plan(&exe_path, "1.2.0").expect("Plan must be built");
+        assert_eq!(plan.executable, exe_path);
+        assert_eq!(plan.args, vec!["/UPDATE", "/P"]);
+        assert_eq!(plan.target_version, "1.2.0");
+
+        // 2. Execution through mock handler to verify command formation and version replacement
+        let mut executed_cmd = None;
+        let res = execute_installer_plan_with_handler(&plan, |exe, args| {
+            executed_cmd = Some((exe.to_path_buf(), args.to_vec()));
+            Ok(())
+        });
+
+        assert!(res.is_ok());
+        let (executed_exe, executed_args) = executed_cmd.unwrap();
+        assert_eq!(executed_exe, exe_path);
+        assert!(executed_args.contains(&"/UPDATE".to_string()));
+        assert!(executed_args.contains(&"/P".to_string()));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_zip_installer_extraction() {
+        let temp_dir = std::env::temp_dir()
+            .join("AuraDev")
+            .join("test-zip-extract");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let zip_path = temp_dir.join("update.zip");
+
+        // Create zip with Wex_1.5.0_x64-setup.exe inside
+        {
+            let zip_file = std::fs::File::create(&zip_path).unwrap();
+            let mut zip = zip::ZipWriter::new(zip_file);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            zip.start_file("Wex_1.5.0_x64-setup.exe", options).unwrap();
+            zip.write_all(b"fake installer binary content").unwrap();
+            zip.finish().unwrap();
+        }
+
+        let extract_dir = temp_dir.join("extracted");
+        let extracted_installer = extract_installer_archive_if_needed(&zip_path, &extract_dir)
+            .expect("Zip extraction must succeed and locate .exe");
+
+        assert!(extracted_installer.exists());
+        assert_eq!(
+            extracted_installer.file_name().and_then(|n| n.to_str()),
+            Some("Wex_1.5.0_x64-setup.exe")
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

@@ -41,5 +41,13 @@
         "installerHooks": "installer-hooks.nsh"
       }
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": [
+        "https://raw.githubusercontent.com/qutlawsoasis-debug/wex-launcher/main/latest.json"
+      ]
+    }
   }
 }
