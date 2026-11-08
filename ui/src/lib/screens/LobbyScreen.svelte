@@ -14,14 +14,14 @@
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Icon from '../components/icons/Icon.svelte';
 
-  export interface LobbyPlayer {
+  interface LobbyPlayer {
     name: string;
     is_host: boolean;
     ping_ms: number;
     mods_synced: boolean;
   }
 
-  export interface LobbyRoom {
+  interface LobbyRoom {
     code: string;
     host_name: string;
     world_name: string;

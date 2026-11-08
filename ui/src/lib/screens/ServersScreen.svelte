@@ -17,7 +17,7 @@
   import Sheet from '../components/Sheet.svelte';
   import Icon from '../components/icons/Icon.svelte';
 
-  export interface ServerEntry {
+  interface ServerEntry {
     id: string;
     name: string;
     address: string;

@@ -109,7 +109,7 @@
             height={8}
           />
           <div class="dock-cancel">
-            <Button variant="secondary" size="medium" onclick={oncancel}>
+            <Button variant="secondary" size="regular" onclick={oncancel}>
               Отмена
             </Button>
           </div>
