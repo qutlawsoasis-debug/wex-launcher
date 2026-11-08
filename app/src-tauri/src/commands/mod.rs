@@ -6,5 +6,6 @@ pub mod network;
 pub mod overview;
 pub mod settings;
 pub mod wardrobe;
+pub mod shell;
 pub mod workshop;
 pub mod workshop_packs;

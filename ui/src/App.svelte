@@ -6,8 +6,10 @@
   import { onMount } from 'svelte';
   import './lib/design/tokens.css';
   import { theme } from './lib/design/theme.svelte';
+  import { network } from './lib/design/network.svelte';
   import Sidebar, { type SidebarItem } from './lib/components/Sidebar.svelte';
   import Toolbar from './lib/components/Toolbar.svelte';
+  import ProfileBadge from './lib/components/ProfileBadge.svelte';
   import Toast, { type ToastMessage } from './lib/components/Toast.svelte';
   import Button from './lib/components/Button.svelte';
   import Icon from './lib/components/icons/Icon.svelte';
@@ -46,6 +48,8 @@
   let clientStatus = $state('Клиент Wex готов');
   let isLaunching = $state(false);
   let isGameRunning = $state(false);
+  let isOnline = $state(true);
+  let skinHeadUrl = $state<string | undefined>(undefined);
   let progressPercentage = $state(0);
   let progressStage = $state('Готов к запуску');
   let progressDetail = $state('Нажмите «Играть» для старта');
@@ -130,6 +134,29 @@
     }
   }
 
+  // Real Network & Profile state management
+  async function checkNetwork() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<{ is_online: boolean; latency_ms?: number; status_text: string }>('shell_check_network');
+      isOnline = res.is_online;
+    } catch {
+      isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    }
+  }
+
+  async function loadProfile() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const prof = await invoke<{ nickname: string; initials: string; is_online: boolean; skin_head_url?: string }>('shell_get_profile', { nickname: playerName });
+      if (prof.skin_head_url) {
+        skinHeadUrl = prof.skin_head_url;
+      }
+    } catch {
+      skinHeadUrl = undefined;
+    }
+  }
+
   // Launch Game Action
   let cancelLaunchSimulation = false;
 
@@ -150,6 +177,8 @@
         nickname: playerName,
       });
       isLaunching = false;
+      isGameRunning = true;
+      clientStatus = 'Minecraft запущен';
       addToast('success', 'Minecraft запущен', result);
     } catch {
       // Fallback in-browser progress simulation
@@ -194,6 +223,19 @@
       await invoke('cancel_launch');
     } catch {
       // Handled by simulation flag
+    }
+  }
+
+  async function handleStopGame() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('shell_stop_game', { version: selectedVersion });
+      isGameRunning = false;
+      isLaunching = false;
+      clientStatus = 'Игра остановлена';
+      addToast('info', 'Minecraft остановлен');
+    } catch (e) {
+      addToast('error', 'Ошибка остановки игры', String(e));
     }
   }
 
@@ -244,6 +286,33 @@
 
     applyHashRoute();
     window.addEventListener('hashchange', applyHashRoute);
+
+    // Initial checks: network, profile, and active running game state
+    checkNetwork();
+    loadProfile();
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', checkNetwork);
+      window.addEventListener('offline', () => {
+        isOnline = false;
+      });
+    }
+
+    const netInterval = setInterval(checkNetwork, 30000);
+
+    // Synchronize initial running state
+    import('@tauri-apps/api/core')
+      .then(({ invoke }) => {
+        invoke<boolean>('is_game_running')
+          .then((running) => {
+            isGameRunning = running;
+            if (running) {
+              clientStatus = 'Minecraft запущен';
+            }
+          })
+          .catch(() => {});
+      })
+      .catch(() => {});
 
     // Tauri 2 Event Listeners (install-progress & launch-status as per SPEC.md)
     let unlistenProgress: (() => void) | undefined;
@@ -331,6 +400,10 @@
 
     return () => {
       window.removeEventListener('hashchange', applyHashRoute);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', checkNetwork);
+      }
+      clearInterval(netInterval);
       unlistenProgress?.();
       unlistenStatus?.();
       unlistenAchievement?.();
@@ -369,14 +442,22 @@
 
   <!-- Main View Area -->
   <main class="wex-main">
-    <!-- Window Toolbar -->
+    <!-- Window Toolbar with Apple Profile Badge & Window Controls -->
     <Toolbar
       title={screenTitles[activeTab] || 'Wex'}
       {isMaximized}
       onminimize={minimizeWindow}
       onmaximize={toggleMaximizeWindow}
       onclose={closeWindow}
-    />
+    >
+      {#snippet trailing()}
+        <ProfileBadge
+          {playerName}
+          isOnline={network.isOnline}
+          {skinHeadUrl}
+        />
+      {/snippet}
+    </Toolbar>
 
     <!-- Active Screen -->
     <div class="screen-viewport">
@@ -393,6 +474,7 @@
           {progressSpeed}
           onlaunch={handleLaunch}
           oncancel={handleCancelLaunch}
+          onstop={handleStopGame}
         />
       {:else if activeTab === 'servers'}
         <ServersScreen />

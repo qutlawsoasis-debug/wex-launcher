@@ -299,6 +299,14 @@ pub fn run() {
             commands::workshop_packs::workshop_add_pack_file,
             commands::workshop_packs::workshop_delete_pack_file,
             commands::workshop_packs::workshop_open_packs_folder,
+            // Shell commands (SPEC 1.2)
+            commands::shell::shell_check_network,
+            commands::shell::shell_get_profile,
+            commands::shell::shell_get_launch_state,
+            commands::shell::shell_stop_game,
+            commands::shell::shell_minimize_window,
+            commands::shell::shell_toggle_maximize_window,
+            commands::shell::shell_close_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
