@@ -34,6 +34,20 @@
   let progressDetail = $state('Нажмите «Играть» для старта');
   let progressSpeed = $state('');
 
+  // Dynamic background based on theme and time of day
+  let currentHour = new Date().getHours();
+  let bgImage = $derived.by(() => {
+    if (theme.isDark) {
+      return currentHour >= 22 || currentHour < 5
+        ? '/backgrounds/night.jpg'
+        : '/backgrounds/sunset.jpg';
+    } else {
+      return currentHour >= 6 && currentHour < 12
+        ? '/backgrounds/morning.jpg'
+        : '/backgrounds/day.jpg';
+    }
+  });
+
   // Toast stack
   let toasts = $state<ToastMessage[]>([]);
 
@@ -167,7 +181,7 @@
       const hash = window.location.hash.replace(/^#/, '');
       if (!hash) return;
       const params = new URLSearchParams(hash);
-      const screen = params.get('screen');
+      const screen = params.get('screen') || params.get('tab');
       const t = params.get('theme');
 
       if (screen && ['play', 'servers', 'lobby', 'friends', 'mods', 'settings', 'showcase'].includes(screen)) {
@@ -238,6 +252,11 @@
 </script>
 
 <div class="wex-shell" data-theme={theme.isDark ? 'dark' : 'light'}>
+  <!-- Real Game Scenery Backdrop under entire app shell -->
+  <div class="scenery-canvas" style="background-image: url('{bgImage}');">
+    <div class="scenery-vignette"></div>
+  </div>
+
   <!-- Liquid Glass Sidebar -->
   <Sidebar
     items={sidebarItems}
@@ -325,6 +344,38 @@
     box-sizing: border-box;
   }
 
+  .scenery-canvas {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center 30%;
+    transition: background-image 0.5s ease;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .scenery-vignette {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.40) 0%,
+      rgba(0, 0, 0, 0.15) 35%,
+      rgba(0, 0, 0, 0.50) 75%,
+      rgba(0, 0, 0, 0.82) 100%
+    );
+  }
+
+  :global([data-theme='light']) .scenery-vignette {
+    background: linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.65) 0%,
+      rgba(255, 255, 255, 0.30) 35%,
+      rgba(255, 255, 255, 0.65) 75%,
+      rgba(255, 255, 255, 0.88) 100%
+    );
+  }
+
   .wex-main {
     flex: 1;
     display: flex;
@@ -332,8 +383,9 @@
     height: 100%;
     min-width: 0;
     overflow: hidden;
-    background-color: var(--color-system-background);
+    background-color: transparent;
     box-sizing: border-box;
+    z-index: 1;
   }
 
   .screen-viewport {
@@ -342,6 +394,7 @@
     position: relative;
     overflow: hidden;
     box-sizing: border-box;
+    z-index: 1;
   }
 
   .sidebar-footer-controls {

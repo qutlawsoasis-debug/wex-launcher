@@ -161,7 +161,7 @@
       <div class="room-session-header">
         <div class="room-info">
           <div class="room-code-badge">
-            <span class="code-label">КОД КОМНАТЫ</span>
+            <span class="code-label">Код комнаты</span>
             <span class="code-value">{activeRoom.code}</span>
           </div>
 
@@ -463,11 +463,9 @@
   }
 
   .picker-label {
-    font-size: var(--text-caption-1);
+    font-size: var(--text-footnote);
     font-weight: 600;
     color: var(--color-secondary-label);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
   }
 
   .world-options {

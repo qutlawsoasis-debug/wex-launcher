@@ -42,12 +42,11 @@
   }
 
   .list-header {
-    font-size: var(--text-caption-1);
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    font-size: var(--text-footnote);
+    font-weight: 600;
     color: var(--color-secondary-label);
-    padding: 0 16px 6px;
+    padding: 0 16px 8px;
+    letter-spacing: normal;
   }
 
   .list-footer {
@@ -59,6 +58,8 @@
 
   .list-container {
     background-color: var(--card-bg);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
     border: 1px solid var(--glass-border);
     overflow: hidden;
   }

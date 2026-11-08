@@ -168,7 +168,7 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Цветовой акцент');
     expect(target.textContent).toContain('Уменьшение движения');
     expect(target.textContent).toContain('Уменьшение прозрачности');
-    expect(target.textContent).toContain('Выделение оперативной памяти (RAM)');
+    expect(target.textContent).toContain('Выделение оперативной памяти');
     expect(target.textContent).toContain('Графический пресет');
     expect(target.textContent).toContain('О программе');
     expect(target.textContent).toContain('Tauri 2');

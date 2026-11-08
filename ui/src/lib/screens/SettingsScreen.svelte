@@ -131,7 +131,7 @@
     <!-- Performance & Memory -->
     <List header="Производительность и память">
       <Row
-        title="Выделение оперативной памяти (RAM)"
+        title="Выделение оперативной памяти"
         subtitle="Шаг 512 МБ • Верхняя граница ограничена памятью системы ({Math.round(totalMemoryMb / 1024)} ГБ)"
       >
         <div class="slider-wrapper">
@@ -185,8 +185,8 @@
     </List>
 
     <!-- Appearance & Theme Section -->
-    <List header="Внешний вид и стиль Apple">
-      <Row title="Тема оформления" subtitle="Системный режим (Dark Mode / Light Mode)">
+    <List header="Оформление">
+      <Row title="Тема оформления" subtitle="Тёмная, светлая или системная тема">
         {#snippet trailing()}
           <div style="width: 280px;">
             <SegmentedControl

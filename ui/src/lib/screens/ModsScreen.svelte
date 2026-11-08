@@ -174,13 +174,11 @@
 
   .core-badge {
     font-size: var(--text-caption-2);
-    font-weight: 600;
+    font-weight: 500;
     color: var(--color-secondary-label);
     background-color: var(--color-tertiary-system-fill);
-    padding: 3px 8px;
+    padding: 2px 8px;
     border-radius: var(--radius-pill);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
   }
 
   .empty-state {
