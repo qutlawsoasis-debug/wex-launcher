@@ -6,6 +6,7 @@
       | 'server'
       | 'lobby'
       | 'friends'
+      | 'wardrobe'
       | 'mods'
       | 'settings'
       | 'search'
@@ -67,6 +68,8 @@
     <circle cx="9" cy="7" r="4"></circle>
     <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
     <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+  {:else if name === 'wardrobe'}
+    <path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.5a2 2 0 0 0 1.55 1.63L7 11.5V20a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-8.5l2.59-.68a2 2 0 0 0 1.55-1.63l.58-3.5a2 2 0 0 0-1.34-2.23Z"></path>
   {:else if name === 'mods'}
     <path d="m7.5 4.27 9 5.15"></path>
     <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path>

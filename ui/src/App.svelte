@@ -16,6 +16,7 @@
   import ServersScreen from './lib/screens/ServersScreen.svelte';
   import LobbyScreen from './lib/screens/LobbyScreen.svelte';
   import FriendsScreen from './lib/screens/FriendsScreen.svelte';
+  import WardrobeScreen from './lib/screens/WardrobeScreen.svelte';
   import ModsScreen from './lib/screens/ModsScreen.svelte';
   import SettingsScreen from './lib/screens/SettingsScreen.svelte';
   import ShowcaseScreen from './lib/screens/ShowcaseScreen.svelte';
@@ -66,6 +67,7 @@
     { id: 'servers', label: 'Серверы', icon: 'server' },
     { id: 'lobby', label: 'Лобби', icon: 'lobby' },
     { id: 'friends', label: 'Друзья', icon: 'friends' },
+    { id: 'wardrobe', label: 'Гардероб', icon: 'wardrobe' },
     { id: 'mods', label: 'Моды', icon: 'mods' },
     { id: 'settings', label: 'Настройки', icon: 'settings' },
   ];
@@ -75,6 +77,7 @@
     servers: 'Серверы',
     lobby: 'Кооператив и Лобби',
     friends: 'Друзья',
+    wardrobe: 'Гардероб',
     mods: 'Моды и шейдеры',
     settings: 'Настройки',
     showcase: 'Компоненты Apple HIG',
@@ -311,6 +314,8 @@
         <LobbyScreen />
       {:else if activeTab === 'friends'}
         <FriendsScreen />
+      {:else if activeTab === 'wardrobe'}
+        <WardrobeScreen {playerName} ontoast={addToast} />
       {:else if activeTab === 'mods'}
         <ModsScreen />
       {:else if activeTab === 'settings'}

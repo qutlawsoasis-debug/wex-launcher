@@ -19,6 +19,7 @@
       | 'server'
       | 'lobby'
       | 'friends'
+      | 'wardrobe'
       | 'mods'
       | 'settings';
     badge?: string | number;
