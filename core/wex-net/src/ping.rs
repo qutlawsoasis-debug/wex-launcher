@@ -1,7 +1,7 @@
 use std::io;
 use std::time::{Duration, Instant};
 
-use hickory_resolver::TokioAsyncResolver;
+use hickory_resolver::TokioResolver;
 use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -159,7 +159,7 @@ pub async fn resolve_minecraft_address(address: &str) -> (String, u16) {
 
     // Try resolving SRV record: _minecraft._tcp.<address>
     let srv_domain = format!("_minecraft._tcp.{}.", address.trim_end_matches('.'));
-    if let Ok(resolver) = TokioAsyncResolver::tokio_from_system_conf() {
+    if let Ok(resolver) = TokioResolver::builder_tokio().and_then(|builder| builder.build()) {
         if let Ok(response) = resolver.srv_lookup(&srv_domain).await {
             if let Some(record) = response.iter().next() {
                 let target = record.target().to_string();
