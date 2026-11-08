@@ -17,6 +17,7 @@
   import LobbyScreen from './lib/screens/LobbyScreen.svelte';
   import FriendsScreen from './lib/screens/FriendsScreen.svelte';
   import ModsScreen from './lib/screens/ModsScreen.svelte';
+  import WorkshopScreen from './lib/screens/WorkshopScreen.svelte';
   import SettingsScreen from './lib/screens/SettingsScreen.svelte';
   import ShowcaseScreen from './lib/screens/ShowcaseScreen.svelte';
 
@@ -66,6 +67,7 @@
     { id: 'servers', label: 'Серверы', icon: 'server' },
     { id: 'lobby', label: 'Лобби', icon: 'lobby' },
     { id: 'friends', label: 'Друзья', icon: 'friends' },
+    { id: 'workshop', label: 'Мастерская', icon: 'workshop' },
     { id: 'mods', label: 'Моды', icon: 'mods' },
     { id: 'settings', label: 'Настройки', icon: 'settings' },
   ];
@@ -75,6 +77,7 @@
     servers: 'Серверы',
     lobby: 'Кооператив и Лобби',
     friends: 'Друзья',
+    workshop: 'Мастерская',
     mods: 'Моды и шейдеры',
     settings: 'Настройки',
     showcase: 'Компоненты Apple HIG',
@@ -340,6 +343,8 @@
         <LobbyScreen />
       {:else if activeTab === 'friends'}
         <FriendsScreen />
+      {:else if activeTab === 'workshop'}
+        <WorkshopScreen {selectedVersion} ontoast={addToast} />
       {:else if activeTab === 'mods'}
         <ModsScreen />
       {:else if activeTab === 'settings'}

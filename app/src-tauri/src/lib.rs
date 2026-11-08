@@ -409,6 +409,19 @@ pub fn run() {
             commands::friends::social_set_presence,
             commands::friends::social_list_achievements,
             commands::friends::social_report_achievement_progress,
+            // Workshop commands (SPEC 1.7)
+            commands::workshop::workshop_list_worlds,
+            commands::workshop::social_list_worlds,
+            commands::workshop::workshop_create_world_backup,
+            commands::workshop::social_create_world_backup,
+            commands::workshop::workshop_list_world_backups,
+            commands::workshop::social_list_world_backups,
+            commands::workshop::workshop_restore_world_backup,
+            commands::workshop::social_restore_world_backup,
+            commands::workshop::workshop_delete_world,
+            commands::workshop::workshop_list_screenshots,
+            commands::workshop::social_list_screenshots,
+            commands::workshop::workshop_open_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -9,6 +9,7 @@ import LobbyScreen from './LobbyScreen.svelte';
 import FriendsScreen from './FriendsScreen.svelte';
 import ModsScreen from './ModsScreen.svelte';
 import SettingsScreen from './SettingsScreen.svelte';
+import WorkshopScreen from './WorkshopScreen.svelte';
 
 describe('Wex Launcher Screens', () => {
   let target: HTMLElement;
@@ -236,6 +237,52 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Tauri 2');
     expect(target.textContent).not.toContain('.minecraft');
     expect(target.textContent).toContain('Wex');
+    unmount(comp);
+  });
+
+  it('renders WorkshopScreen with tabs, version selector, and authentic empty states', () => {
+    const comp = mount(WorkshopScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+      },
+    });
+
+    // Check tabs
+    expect(target.textContent).toContain('Миры');
+    expect(target.textContent).toContain('Скриншоты');
+    expect(target.textContent).toContain('1.21.1');
+    expect(target.textContent).toContain('1.20.1');
+
+    // Without IPC data, must show authentic empty state: «Сохранённых миров нет»
+    expect(target.textContent).toContain('Сохранённых миров нет');
+    expect(target.textContent).toContain('Создайте одиночный мир в игре Minecraft 1.21.1');
+
+    // No fake/fabricated worlds
+    expect(target.textContent).not.toContain('Demo World');
+    expect(target.textContent).not.toContain('Hardcore Kingdom');
+
+    unmount(comp);
+  });
+
+  it('renders WorkshopScreen with screenshots empty state when switched to screenshots tab', async () => {
+    const comp = mount(WorkshopScreen, {
+      target,
+      props: {
+        selectedVersion: '1.20.1',
+      },
+    });
+
+    const buttons = Array.from(target.querySelectorAll('button'));
+    const screenshotsBtn = buttons.find((b) => b.textContent?.includes('Скриншоты'));
+    expect(screenshotsBtn).toBeDefined();
+
+    screenshotsBtn?.click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(target.textContent).toContain('Снимков экрана пока нет');
+    expect(target.textContent).toContain('Нажмите клавишу F2');
+
     unmount(comp);
   });
 });
