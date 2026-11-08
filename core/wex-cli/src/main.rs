@@ -51,6 +51,11 @@ enum Commands {
         #[arg(long = "jvm-arg")]
         jvm_args: Vec<String>,
     },
+    /// Import settings, skins, and servers from old launcher directory (.aura)
+    Import {
+        /// Directory of the old launcher (.aura)
+        dir: PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -123,6 +128,64 @@ async fn main() -> Result<()> {
                     println!("Game process cleanly terminated.");
                 }
             }
+        }
+        Commands::Import { dir } => {
+            println!("Importing data from old launcher directory: {:?}", dir);
+            let old_data = wex_extras::import::import_from_dir(&dir)?;
+            println!("Found old profile for nickname: '{}', RAM: {} MB, version: '{}'", old_data.nickname, old_data.ram_mb, old_data.selected_version);
+
+            config.nickname = old_data.nickname.clone();
+            config.max_memory_mb = old_data.ram_mb;
+            config.selected_version = old_data.selected_version.clone();
+            config.save(&config_path)?;
+            println!("Configuration updated and saved to {:?}", config_path);
+
+            if !old_data.skins.is_empty() {
+                let target_skins = paths.root.join("skins");
+                std::fs::create_dir_all(&target_skins)?;
+                let mut copied = 0;
+                for s in &old_data.skins {
+                    let dest = target_skins.join(&s.file_name);
+                    if std::fs::copy(&s.path, &dest).is_ok() {
+                        copied += 1;
+                    }
+                }
+                println!("Imported {} skin(s) into {:?}", copied, target_skins);
+            }
+
+            if !old_data.servers.is_empty() {
+                let servers_dat_path = paths.root.join("servers.dat");
+                if let Some(parent) = servers_dat_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let pack_entries: Vec<wex_net::PackServerEntry> = old_data
+                    .servers
+                    .iter()
+                    .map(|s| wex_net::PackServerEntry {
+                        id: None,
+                        name: s.name.clone(),
+                        ip: s.ip.clone(),
+                        icon: s.icon.clone(),
+                    })
+                    .collect();
+
+                let mut root = wex_net::load_servers_dat(&servers_dat_path).unwrap_or_else(|_| {
+                    wex_net::NbtTag::Compound(vec![(
+                        "servers".to_string(),
+                        wex_net::NbtTag::List {
+                            tag_id: 10,
+                            elements: Vec::new(),
+                        },
+                    )])
+                });
+
+                wex_net::merge_pack_servers(&mut root, &pack_entries);
+                if wex_net::save_servers_dat(&servers_dat_path, &root).is_ok() {
+                    println!("Imported {} server(s) into {:?}", pack_entries.len(), servers_dat_path);
+                }
+            }
+
+            println!("Old launcher data import finished successfully!");
         }
     }
 

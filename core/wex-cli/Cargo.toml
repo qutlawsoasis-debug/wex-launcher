@@ -7,6 +7,8 @@ description = "Command line interface for Wex launcher"
 
 [dependencies]
 wex-core = { path = "../wex-core" }
+wex-extras = { path = "../wex-extras" }
+wex-net = { path = "../wex-net" }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
 anyhow = "1.0"
