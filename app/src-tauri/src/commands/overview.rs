@@ -57,6 +57,8 @@ pub struct ApplyImportResponse {
     pub imported_skins_count: usize,
     pub imported_worlds_count: usize,
     pub message: String,
+    #[serde(default)]
+    pub errors: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -141,6 +143,89 @@ pub fn import_old_launcher_internal(old_dir: &str) -> Result<OldLauncherDataDto,
     }
 }
 
+fn validate_safe_component(name: &str, field_label: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{}: имя не может быть пустым", field_label));
+    }
+    if trimmed.contains('\0') || trimmed.contains('/') || trimmed.contains('\\') {
+        return Err(format!(
+            "{}: обнаружена попытка path traversal или недопустимые разделители пути в '{}'",
+            field_label, name
+        ));
+    }
+    if trimmed == "." || trimmed == ".." {
+        return Err(format!(
+            "{}: недопустимое относительное имя '{}'",
+            field_label, name
+        ));
+    }
+    let p = Path::new(trimmed);
+    let mut comps = p.components();
+    match (comps.next(), comps.next()) {
+        (Some(std::path::Component::Normal(c)), None) => {
+            let s = c
+                .to_str()
+                .ok_or_else(|| format!("{}: имя содержит невалидный UTF-8", field_label))?;
+            Ok(s.to_string())
+        }
+        _ => Err(format!(
+            "{}: недопустимый компонент пути '{}'",
+            field_label, name
+        )),
+    }
+}
+
+fn validate_supported_version(version: &str) -> Result<String, String> {
+    let safe = validate_safe_component(version, "Версия игры")?;
+    if !safe
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+    {
+        return Err(format!("Неподдерживаемая версия игры: '{}'", version));
+    }
+    Ok(safe)
+}
+
+fn generate_unique_world_dest(base_dir: &Path, folder_name: &str) -> PathBuf {
+    let initial = base_dir.join(folder_name);
+    if !initial.exists() {
+        return initial;
+    }
+    let mut index = 1;
+    loop {
+        let candidate_name = format!("{}-imported-{}", folder_name, index);
+        let candidate_path = base_dir.join(&candidate_name);
+        if !candidate_path.exists() {
+            return candidate_path;
+        }
+        index += 1;
+    }
+}
+
+fn generate_unique_file_dest(base_dir: &Path, file_name: &str) -> PathBuf {
+    let initial = base_dir.join(file_name);
+    if !initial.exists() {
+        return initial;
+    }
+    let p = Path::new(file_name);
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let mut index = 1;
+    loop {
+        let candidate_name = if ext.is_empty() {
+            format!("{}-imported-{}", stem, index)
+        } else {
+            format!("{}-imported-{}.{}", stem, index, ext)
+        };
+        let candidate_path = base_dir.join(&candidate_name);
+        if !candidate_path.exists() {
+            return candidate_path;
+        }
+        index += 1;
+    }
+}
+
 fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
@@ -167,6 +252,7 @@ pub async fn apply_import_internal(
     let mut imported_servers_count = 0;
     let mut imported_skins_count = 0;
     let mut imported_worlds_count = 0;
+    let mut errors: Vec<String> = Vec::new();
 
     // 1. Update Wex launcher configuration if requested
     let mut cfg = core.get_config().await.map_err(|e| e.to_string())?;
@@ -196,8 +282,15 @@ pub async fn apply_import_internal(
             .as_ref()
             .filter(|v| !v.trim().is_empty())
         {
-            cfg.selected_version = ver.trim().to_string();
-            cfg_modified = true;
+            match validate_supported_version(ver) {
+                Ok(safe_ver) => {
+                    cfg.selected_version = safe_ver;
+                    cfg_modified = true;
+                }
+                Err(err) => {
+                    errors.push(err);
+                }
+            }
         }
     }
 
@@ -226,8 +319,10 @@ pub async fn apply_import_internal(
             .as_ref()
             .filter(|v| !v.trim().is_empty())
         {
-            core_cfg.selected_version = ver.trim().to_string();
-            core_modified = true;
+            if let Ok(safe_ver) = validate_supported_version(ver) {
+                core_cfg.selected_version = safe_ver;
+                core_modified = true;
+            }
         }
     }
     if let Some(preset) = req
@@ -283,15 +378,51 @@ pub async fn apply_import_internal(
     // 3. Safe non-destructive skins import: copy PNGs into Wex skins/
     if req.import_skins && !req.skins.is_empty() {
         let target_skins_dir = paths.root.join("skins");
-        let _ = fs::create_dir_all(&target_skins_dir);
+        if let Err(e) = fs::create_dir_all(&target_skins_dir) {
+            errors.push(format!("Не удалось создать папку скинов: {}", e));
+        } else {
+            for skin in &req.skins {
+                let file_name = match validate_safe_component(&skin.file_name, "Имя файла скина")
+                {
+                    Ok(f) => f,
+                    Err(err) => {
+                        errors.push(err);
+                        continue;
+                    }
+                };
+                let src = PathBuf::from(&skin.path);
+                if !src.is_file() {
+                    errors.push(format!("Файл скина не найден: '{}'", skin.path));
+                    continue;
+                }
 
-        for skin in &req.skins {
-            let src = PathBuf::from(&skin.path);
-            if src.is_file() {
-                let dest = target_skins_dir.join(&skin.file_name);
-                // Safe read and copy without touching or deleting original
-                if fs::copy(&src, &dest).is_ok() {
-                    imported_skins_count += 1;
+                let initial_dest = target_skins_dir.join(&file_name);
+                let dest = if initial_dest.exists() {
+                    if let (Ok(s_bytes), Ok(d_bytes)) = (fs::read(&src), fs::read(&initial_dest)) {
+                        if s_bytes == d_bytes {
+                            imported_skins_count += 1;
+                            continue;
+                        }
+                    }
+                    generate_unique_file_dest(&target_skins_dir, &file_name)
+                } else {
+                    initial_dest
+                };
+
+                if !dest.starts_with(&target_skins_dir) {
+                    errors.push(format!(
+                        "Целевой путь скина выходит за пределы каталога: {:?}",
+                        dest
+                    ));
+                    continue;
+                }
+
+                match fs::copy(&src, &dest) {
+                    Ok(_) => imported_skins_count += 1,
+                    Err(e) => errors.push(format!(
+                        "Ошибка копирования скина '{}': {}",
+                        skin.file_name, e
+                    )),
                 }
             }
         }
@@ -300,13 +431,50 @@ pub async fn apply_import_internal(
     // 3b. Safe non-destructive capes import: copy PNGs into Wex capes/
     if req.import_skins && !req.capes.is_empty() {
         let target_capes_dir = paths.root.join("capes");
-        let _ = fs::create_dir_all(&target_capes_dir);
+        if let Err(e) = fs::create_dir_all(&target_capes_dir) {
+            errors.push(format!("Не удалось создать папку плащей: {}", e));
+        } else {
+            for cape in &req.capes {
+                let file_name = match validate_safe_component(&cape.file_name, "Имя файла плаща")
+                {
+                    Ok(f) => f,
+                    Err(err) => {
+                        errors.push(err);
+                        continue;
+                    }
+                };
+                let src = PathBuf::from(&cape.path);
+                if !src.is_file() {
+                    errors.push(format!("Файл плаща не найден: '{}'", cape.path));
+                    continue;
+                }
 
-        for cape in &req.capes {
-            let src = PathBuf::from(&cape.path);
-            if src.is_file() {
-                let dest = target_capes_dir.join(&cape.file_name);
-                let _ = fs::copy(&src, &dest);
+                let initial_dest = target_capes_dir.join(&file_name);
+                let dest = if initial_dest.exists() {
+                    if let (Ok(s_bytes), Ok(d_bytes)) = (fs::read(&src), fs::read(&initial_dest)) {
+                        if s_bytes == d_bytes {
+                            continue;
+                        }
+                    }
+                    generate_unique_file_dest(&target_capes_dir, &file_name)
+                } else {
+                    initial_dest
+                };
+
+                if !dest.starts_with(&target_capes_dir) {
+                    errors.push(format!(
+                        "Целевой путь плаща выходит за пределы каталога: {:?}",
+                        dest
+                    ));
+                    continue;
+                }
+
+                if let Err(e) = fs::copy(&src, &dest) {
+                    errors.push(format!(
+                        "Ошибка копирования плаща '{}': {}",
+                        cape.file_name, e
+                    ));
+                }
             }
         }
     }
@@ -314,31 +482,80 @@ pub async fn apply_import_internal(
     // 4. Safe non-destructive worlds import: copy world saves into Wex instance saves
     if req.import_worlds && !req.worlds.is_empty() {
         for world in &req.worlds {
-            let src = PathBuf::from(&world.source_path);
-            if src.is_dir() {
-                let target_ver = world
-                    .version
-                    .as_deref()
-                    .or(req.selected_version.as_deref())
-                    .unwrap_or("1.21.1");
-                let target_saves_dir = paths.instance_dir(target_ver).join("saves");
-                let dest = target_saves_dir.join(&world.folder_name);
-                if copy_dir_all(&src, &dest).is_ok() {
-                    imported_worlds_count += 1;
+            let folder_name = match validate_safe_component(&world.folder_name, "Папка мира")
+            {
+                Ok(f) => f,
+                Err(err) => {
+                    errors.push(err);
+                    continue;
                 }
+            };
+
+            let raw_ver = world
+                .version
+                .as_deref()
+                .or(req.selected_version.as_deref())
+                .unwrap_or("1.21.1");
+            let target_ver = match validate_supported_version(raw_ver) {
+                Ok(v) => v,
+                Err(err) => {
+                    errors.push(err);
+                    continue;
+                }
+            };
+
+            let src = PathBuf::from(&world.source_path);
+            if !src.is_dir() {
+                errors.push(format!("Каталог мира не найден: '{}'", world.source_path));
+                continue;
+            }
+
+            let target_saves_dir = paths.instance_dir(&target_ver).join("saves");
+            if let Err(e) = fs::create_dir_all(&target_saves_dir) {
+                errors.push(format!("Не удалось создать каталог сохранений: {}", e));
+                continue;
+            }
+
+            let dest = generate_unique_world_dest(&target_saves_dir, &folder_name);
+            if !dest.starts_with(&target_saves_dir) {
+                errors.push(format!(
+                    "Целевой путь сохранения мира выходит за пределы каталога: {:?}",
+                    dest
+                ));
+                continue;
+            }
+
+            match copy_dir_all(&src, &dest) {
+                Ok(_) => imported_worlds_count += 1,
+                Err(err) => errors.push(format!(
+                    "Ошибка копирования файлов мира '{}': {}",
+                    world.folder_name, err
+                )),
             }
         }
     }
 
+    let success = errors.is_empty();
+    let message = if success {
+        "Данные успешно перенесены в Wex без изменения файлов старого лаунчера".to_string()
+    } else {
+        format!(
+            "Импорт завершён с ошибками ({}/{} операций не выполнено): {}",
+            errors.len(),
+            req.worlds.len() + req.skins.len() + req.capes.len(),
+            errors.join("; ")
+        )
+    };
+
     Ok(ApplyImportResponse {
-        success: true,
+        success,
         imported_nickname,
         imported_ram_gb,
         imported_servers_count,
         imported_skins_count,
         imported_worlds_count,
-        message: "Данные успешно перенесены в Wex без изменения файлов старого лаунчера"
-            .to_string(),
+        message,
+        errors,
     })
 }
 
@@ -706,5 +923,290 @@ mod tests {
         assert!(aura_cape.is_file());
         assert!(world_a.join("level.dat").is_file());
         assert!(world_b.join("level.dat").is_file());
+    }
+
+    #[tokio::test]
+    async fn test_apply_import_repeat_is_idempotent_and_safe() {
+        let tmp = tempdir().unwrap();
+        let wex_root = tmp.path().join("Wex");
+        let paths = WexPaths::new(Some(wex_root.clone()));
+        let core = MockLauncherCore::new();
+
+        let old_aura_dir = tmp.path().join(".aura");
+        let old_skins = old_aura_dir.join("skins");
+        fs::create_dir_all(&old_skins).unwrap();
+        let skin_path = old_skins.join("player.png");
+        fs::write(&skin_path, b"ORIGINAL_SKIN").unwrap();
+
+        let req = ApplyImportRequest {
+            old_launcher_dir: old_aura_dir.to_string_lossy().to_string(),
+            import_nickname: true,
+            nickname: Some("Player1".to_string()),
+            import_ram: true,
+            ram_mb: Some(4096),
+            import_version: true,
+            selected_version: Some("1.21.1".to_string()),
+            graphics_preset: None,
+            import_servers: false,
+            servers: Vec::new(),
+            import_skins: true,
+            skins: vec![ImportedSkinDto {
+                file_name: "player.png".to_string(),
+                path: skin_path.to_string_lossy().to_string(),
+                hash: "h1".to_string(),
+                is_slim: false,
+            }],
+            capes: Vec::new(),
+            import_worlds: false,
+            worlds: Vec::new(),
+        };
+
+        // First import
+        let res1 = apply_import_internal(&paths, &core, req.clone())
+            .await
+            .unwrap();
+        assert!(res1.success);
+        assert_eq!(res1.imported_skins_count, 1);
+        assert!(res1.errors.is_empty());
+
+        // Second (repeat) import of identical content
+        let res2 = apply_import_internal(&paths, &core, req).await.unwrap();
+        assert!(res2.success);
+        assert_eq!(res2.imported_skins_count, 1);
+        assert!(res2.errors.is_empty());
+        assert_eq!(
+            fs::read(wex_root.join("skins").join("player.png")).unwrap(),
+            b"ORIGINAL_SKIN"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_apply_import_world_collision_preserves_existing_world() {
+        let tmp = tempdir().unwrap();
+        let wex_root = tmp.path().join("Wex");
+        let paths = WexPaths::new(Some(wex_root.clone()));
+        let core = MockLauncherCore::new();
+
+        // Pre-create existing world in Wex instance
+        let target_saves_dir = paths.instance_dir("1.21.1").join("saves");
+        let existing_world = target_saves_dir.join("MyWorld");
+        fs::create_dir_all(&existing_world).unwrap();
+        fs::write(existing_world.join("level.dat"), b"EXISTING_ORIGINAL_DATA").unwrap();
+
+        // Source world with same folder_name but different data
+        let old_aura_dir = tmp.path().join(".aura");
+        let src_world = old_aura_dir.join("saves").join("MyWorld");
+        fs::create_dir_all(&src_world).unwrap();
+        fs::write(src_world.join("level.dat"), b"IMPORTED_NEW_DATA").unwrap();
+
+        let req = ApplyImportRequest {
+            old_launcher_dir: old_aura_dir.to_string_lossy().to_string(),
+            import_nickname: false,
+            nickname: None,
+            import_ram: false,
+            ram_mb: None,
+            import_version: false,
+            selected_version: Some("1.21.1".to_string()),
+            graphics_preset: None,
+            import_servers: false,
+            servers: Vec::new(),
+            import_skins: false,
+            skins: Vec::new(),
+            capes: Vec::new(),
+            import_worlds: true,
+            worlds: vec![ImportedWorldDto {
+                folder_name: "MyWorld".to_string(),
+                display_name: "My World".to_string(),
+                version: Some("1.21.1".to_string()),
+                size_bytes: 100,
+                source_path: src_world.to_string_lossy().to_string(),
+            }],
+        };
+
+        let res = apply_import_internal(&paths, &core, req).await.unwrap();
+        assert!(res.success);
+        assert_eq!(res.imported_worlds_count, 1);
+        assert!(res.errors.is_empty());
+
+        // Verify existing world is 100% UNTOUCHED
+        assert_eq!(
+            fs::read(existing_world.join("level.dat")).unwrap(),
+            b"EXISTING_ORIGINAL_DATA",
+            "Existing world MUST NOT be overwritten on collision"
+        );
+
+        // Verify imported world was written to unique imported path
+        let imported_dest = target_saves_dir.join("MyWorld-imported-1");
+        assert!(imported_dest.is_dir());
+        assert_eq!(
+            fs::read(imported_dest.join("level.dat")).unwrap(),
+            b"IMPORTED_NEW_DATA"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_apply_import_path_traversal_prevention() {
+        let tmp = tempdir().unwrap();
+        let wex_root = tmp.path().join("Wex");
+        let paths = WexPaths::new(Some(wex_root.clone()));
+        let core = MockLauncherCore::new();
+
+        let old_aura_dir = tmp.path().join(".aura");
+        let dummy_src = old_aura_dir.join("dummy");
+        fs::create_dir_all(&dummy_src).unwrap();
+        fs::write(dummy_src.join("level.dat"), b"EVIL").unwrap();
+
+        // 1. World folder traversal
+        let req1 = ApplyImportRequest {
+            old_launcher_dir: old_aura_dir.to_string_lossy().to_string(),
+            import_nickname: false,
+            nickname: None,
+            import_ram: false,
+            ram_mb: None,
+            import_version: false,
+            selected_version: Some("1.21.1".to_string()),
+            graphics_preset: None,
+            import_servers: false,
+            servers: Vec::new(),
+            import_skins: false,
+            skins: Vec::new(),
+            capes: Vec::new(),
+            import_worlds: true,
+            worlds: vec![ImportedWorldDto {
+                folder_name: "../../escape".to_string(),
+                display_name: "Evil World".to_string(),
+                version: Some("1.21.1".to_string()),
+                size_bytes: 10,
+                source_path: dummy_src.to_string_lossy().to_string(),
+            }],
+        };
+
+        let res1 = apply_import_internal(&paths, &core, req1).await.unwrap();
+        assert!(!res1.success);
+        assert_eq!(res1.imported_worlds_count, 0);
+        assert!(res1.errors.iter().any(|e| e.contains("path traversal")));
+        assert!(!wex_root.parent().unwrap().join("escape").exists());
+
+        // 2. Skin file traversal
+        let req2 = ApplyImportRequest {
+            old_launcher_dir: old_aura_dir.to_string_lossy().to_string(),
+            import_nickname: false,
+            nickname: None,
+            import_ram: false,
+            ram_mb: None,
+            import_version: false,
+            selected_version: Some("1.21.1".to_string()),
+            graphics_preset: None,
+            import_servers: false,
+            servers: Vec::new(),
+            import_skins: true,
+            skins: vec![ImportedSkinDto {
+                file_name: "../evil_skin.png".to_string(),
+                path: dummy_src.join("level.dat").to_string_lossy().to_string(),
+                hash: "h".to_string(),
+                is_slim: false,
+            }],
+            capes: Vec::new(),
+            import_worlds: false,
+            worlds: Vec::new(),
+        };
+
+        let res2 = apply_import_internal(&paths, &core, req2).await.unwrap();
+        assert!(!res2.success);
+        assert_eq!(res2.imported_skins_count, 0);
+        assert!(res2.errors.iter().any(|e| e.contains("path traversal")));
+
+        // 3. Version traversal
+        let req3 = ApplyImportRequest {
+            old_launcher_dir: old_aura_dir.to_string_lossy().to_string(),
+            import_nickname: false,
+            nickname: None,
+            import_ram: false,
+            ram_mb: None,
+            import_version: false,
+            selected_version: Some("../../evil_ver".to_string()),
+            graphics_preset: None,
+            import_servers: false,
+            servers: Vec::new(),
+            import_skins: false,
+            skins: Vec::new(),
+            capes: Vec::new(),
+            import_worlds: true,
+            worlds: vec![ImportedWorldDto {
+                folder_name: "World1".to_string(),
+                display_name: "World".to_string(),
+                version: Some("../../evil_ver".to_string()),
+                size_bytes: 10,
+                source_path: dummy_src.to_string_lossy().to_string(),
+            }],
+        };
+
+        let res3 = apply_import_internal(&paths, &core, req3).await.unwrap();
+        assert!(!res3.success);
+        assert_eq!(res3.imported_worlds_count, 0);
+        assert!(res3
+            .errors
+            .iter()
+            .any(|e| e.contains("path traversal") || e.contains("Неподдерживаемая версия")));
+    }
+
+    #[tokio::test]
+    async fn test_apply_import_copy_error_handling() {
+        let tmp = tempdir().unwrap();
+        let wex_root = tmp.path().join("Wex");
+        let paths = WexPaths::new(Some(wex_root.clone()));
+        let core = MockLauncherCore::new();
+
+        let non_existent = tmp.path().join("does_not_exist");
+
+        let req = ApplyImportRequest {
+            old_launcher_dir: tmp.path().to_string_lossy().to_string(),
+            import_nickname: false,
+            nickname: None,
+            import_ram: false,
+            ram_mb: None,
+            import_version: false,
+            selected_version: Some("1.21.1".to_string()),
+            graphics_preset: None,
+            import_servers: false,
+            servers: Vec::new(),
+            import_skins: true,
+            skins: vec![ImportedSkinDto {
+                file_name: "missing.png".to_string(),
+                path: non_existent
+                    .join("missing.png")
+                    .to_string_lossy()
+                    .to_string(),
+                hash: "h".to_string(),
+                is_slim: false,
+            }],
+            capes: Vec::new(),
+            import_worlds: true,
+            worlds: vec![ImportedWorldDto {
+                folder_name: "MissingWorld".to_string(),
+                display_name: "Missing World".to_string(),
+                version: Some("1.21.1".to_string()),
+                size_bytes: 10,
+                source_path: non_existent
+                    .join("MissingWorld")
+                    .to_string_lossy()
+                    .to_string(),
+            }],
+        };
+
+        let res = apply_import_internal(&paths, &core, req).await.unwrap();
+        assert!(
+            !res.success,
+            "Must report success=false when copy errors occur"
+        );
+        assert_eq!(res.imported_skins_count, 0);
+        assert_eq!(res.imported_worlds_count, 0);
+        assert_eq!(
+            res.errors.len(),
+            2,
+            "Both skin and world copy failures must be recorded explicitly"
+        );
+        assert!(res.errors.iter().any(|e| e.contains("не найден")));
+        assert!(res.message.contains("ошибками"));
     }
 }
