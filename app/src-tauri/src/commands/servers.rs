@@ -8,7 +8,9 @@ use wex_ipc::commands::{
     NetPingRequest, NetResolveRequest, NetResolveResponse, NetSaveServersRequest,
 };
 use wex_ipc::models::{PackServerEntryDto, PlayerSampleDto, ServerPingResponseDto};
-use wex_net::servers::{load_servers_dat, normalize_address, save_servers_dat, NbtTag, PackServerEntry};
+use wex_net::servers::{
+    load_servers_dat, normalize_address, save_servers_dat, NbtTag, PackServerEntry,
+};
 use wex_net::ServerPinger;
 
 /// Returns the path to `servers.dat` for the specified version.
@@ -178,7 +180,13 @@ pub async fn add_server(
     save_servers_dat(&servers_dat_path, &root).map_err(|e| e.to_string())?;
 
     Ok(ServerEntryModel {
-        id: format!("srv-{}", std::time::SystemTime::now().elapsed().unwrap_or_default().as_millis()),
+        id: format!(
+            "srv-{}",
+            std::time::SystemTime::now()
+                .elapsed()
+                .unwrap_or_default()
+                .as_millis()
+        ),
         name: name_trimmed,
         address: addr_trimmed,
         icon: None,
@@ -236,7 +244,13 @@ pub async fn edit_server(
     save_servers_dat(&servers_dat_path, &root).map_err(|e| e.to_string())?;
 
     Ok(ServerEntryModel {
-        id: format!("srv-{}", std::time::SystemTime::now().elapsed().unwrap_or_default().as_millis()),
+        id: format!(
+            "srv-{}",
+            std::time::SystemTime::now()
+                .elapsed()
+                .unwrap_or_default()
+                .as_millis()
+        ),
         name: name_trimmed,
         address: new_addr_trimmed,
         icon: existing_icon,
@@ -301,7 +315,9 @@ pub async fn ping_server(
 // ============================================================================
 
 #[tauri::command]
-pub async fn net_load_servers(request: NetLoadServersRequest) -> Result<NetLoadServersResponse, String> {
+pub async fn net_load_servers(
+    request: NetLoadServersRequest,
+) -> Result<NetLoadServersResponse, String> {
     let root = load_servers_dat(&request.path).map_err(|e| e.to_string())?;
     let mut dtos = Vec::new();
 
@@ -448,12 +464,21 @@ mod tests {
                 elements: vec![
                     NbtTag::Compound(vec![
                         ("name".to_string(), NbtTag::String("Server 1".to_string())),
-                        ("ip".to_string(), NbtTag::String("play.example.com".to_string())),
+                        (
+                            "ip".to_string(),
+                            NbtTag::String("play.example.com".to_string()),
+                        ),
                     ]),
                     NbtTag::Compound(vec![
                         ("name".to_string(), NbtTag::String("Server 2".to_string())),
-                        ("ip".to_string(), NbtTag::String("mc.test.org:25565".to_string())),
-                        ("icon".to_string(), NbtTag::String("data:image/png;base64,...".to_string())),
+                        (
+                            "ip".to_string(),
+                            NbtTag::String("mc.test.org:25565".to_string()),
+                        ),
+                        (
+                            "icon".to_string(),
+                            NbtTag::String("data:image/png;base64,...".to_string()),
+                        ),
                     ]),
                 ],
             },
@@ -488,7 +513,10 @@ mod tests {
 
         // 2. Add server
         let elem = NbtTag::Compound(vec![
-            ("name".to_string(), NbtTag::String("Survival Realm".to_string())),
+            (
+                "name".to_string(),
+                NbtTag::String("Survival Realm".to_string()),
+            ),
             ("ip".to_string(), NbtTag::String("realm.mc.net".to_string())),
         ]);
         if let Some(NbtTag::List { elements, .. }) = root.get_mut("servers") {
