@@ -490,7 +490,7 @@
   });
 </script>
 
-<div class="wex-shell" data-theme={theme.isDark ? 'dark' : 'light'}>
+<div class="wex-shell" class:game-active={isGameRunning} data-theme={theme.isDark ? 'dark' : 'light'}>
   <!-- Real Game Scenery Backdrop under entire app shell -->
   <div class="scenery-canvas" style="background-image: url('{bgImage}');">
     <div class="scenery-vignette"></div>
@@ -686,5 +686,18 @@
     gap: 10px;
     z-index: 2000;
     pointer-events: auto;
+  }
+
+  /* Weak PC / Active Game Optimization: pause animations and disable backdrop filters to reduce CPU/GPU load to 0% */
+  :global(.wex-shell.game-active *),
+  :global(.wex-shell.game-active) {
+    animation-play-state: paused !important;
+  }
+
+  :global(.wex-shell.game-active) [class*="glass"],
+  :global(.wex-shell.game-active) .scenery-canvas,
+  :global(.wex-shell.game-active) {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
 </style>

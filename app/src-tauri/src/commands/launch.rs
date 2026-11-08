@@ -275,7 +275,12 @@ pub async fn start_game<R: tauri::Runtime>(
     // Apply graphics preset before launch
     let pool_dirs = vec![state.paths.root.join("shaderpacks_pool")];
     let inst_dir = state.paths.instance_dir(&version);
-    let _ = wex_extras::presets::apply_preset(&inst_dir, &cfg.graphics_preset, &pool_dirs);
+    let preset_to_apply = if wex_core::config::is_weak_hardware() && cfg.graphics_preset == "High" {
+        "Low"
+    } else {
+        &cfg.graphics_preset
+    };
+    let _ = wex_extras::presets::apply_preset(&inst_dir, preset_to_apply, &pool_dirs);
 
     // 3. Offline launch check
     let is_online = if let Some(ref net) = state.network {
@@ -331,6 +336,7 @@ pub async fn start_game<R: tauri::Runtime>(
             );
         }
         Err(e) => {
+            wex_core::set_current_process_priority_normal();
             state.is_launching.store(false, Ordering::SeqCst);
             return Err(e);
         }
@@ -385,6 +391,12 @@ pub async fn start_game<R: tauri::Runtime>(
                 },
             );
 
+            // Throttle launcher priority to minimize CPU usage while the game is running
+            wex_core::set_current_process_priority_low();
+            if wex_core::config::is_weak_hardware() {
+                wex_core::apply_current_process_affinity(0x3);
+            }
+
             // Spawn background supervisor to monitor running process and detect crashes
             let app_clone = app.clone();
             let core_clone = state.core.clone();
@@ -402,6 +414,9 @@ pub async fn start_game<R: tauri::Runtime>(
                         _ => break,
                     }
                 }
+
+                // Restore launcher normal process priority
+                wex_core::set_current_process_priority_normal();
 
                 is_running_clone.store(false, Ordering::SeqCst);
                 {
@@ -454,6 +469,7 @@ pub async fn start_game<R: tauri::Runtime>(
             Ok(resp)
         }
         Err(e) => {
+            wex_core::set_current_process_priority_normal();
             state.is_launching.store(false, Ordering::SeqCst);
 
             // Switch Discord RPC back to InLauncher

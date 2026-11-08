@@ -374,6 +374,46 @@ pub async fn launch_game_process(
         }
     };
 
+    #[cfg(windows)]
+    if let Some(raw_handle) = child.raw_handle() {
+        unsafe {
+            use windows_sys::Win32::System::Threading::{
+                SetPriorityClass, SetProcessAffinityMask, ABOVE_NORMAL_PRIORITY_CLASS,
+            };
+
+            let affinity_mask: Option<usize> = if let Ok(val) = std::env::var("WEX_CPU_AFFINITY") {
+                if let Ok(cores) = val.parse::<u32>() {
+                    if cores > 0 && cores <= 64 {
+                        Some((1usize << cores) - 1)
+                    } else {
+                        None
+                    }
+                } else if val.starts_with("0x") || val.starts_with("0X") {
+                    usize::from_str_radix(val.trim_start_matches("0x").trim_start_matches("0X"), 16)
+                        .ok()
+                } else {
+                    None
+                }
+            } else if crate::config::is_weak_hardware() {
+                Some(0x3) // 2 CPU cores (mask 0x3)
+            } else {
+                None
+            };
+
+            if let Some(mask) = affinity_mask {
+                let ok = SetProcessAffinityMask(raw_handle as _, mask);
+                if ok != 0 {
+                    events.on_event(&Event::Log {
+                        level: LogLevel::Info,
+                        message: format!("Game process affinity pinned to mask 0x{:X}", mask),
+                    });
+                }
+            }
+
+            let _ = SetPriorityClass(raw_handle as _, ABOVE_NORMAL_PRIORITY_CLASS);
+        }
+    }
+
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
 
@@ -616,6 +656,45 @@ pub async fn prepare_and_launch(
     };
 
     launch_game_process(launch_opts, events).await
+}
+
+#[cfg(windows)]
+pub fn set_current_process_priority_low() {
+    unsafe {
+        use windows_sys::Win32::System::Threading::{
+            GetCurrentProcess, SetPriorityClass, BELOW_NORMAL_PRIORITY_CLASS,
+        };
+        SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
+    }
+}
+
+#[cfg(not(windows))]
+pub fn set_current_process_priority_low() {}
+
+#[cfg(windows)]
+pub fn set_current_process_priority_normal() {
+    unsafe {
+        use windows_sys::Win32::System::Threading::{
+            GetCurrentProcess, SetPriorityClass, NORMAL_PRIORITY_CLASS,
+        };
+        SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS);
+    }
+}
+
+#[cfg(not(windows))]
+pub fn set_current_process_priority_normal() {}
+
+#[cfg(windows)]
+pub fn apply_current_process_affinity(mask: usize) -> bool {
+    unsafe {
+        use windows_sys::Win32::System::Threading::{GetCurrentProcess, SetProcessAffinityMask};
+        SetProcessAffinityMask(GetCurrentProcess(), mask) != 0
+    }
+}
+
+#[cfg(not(windows))]
+pub fn apply_current_process_affinity(_mask: usize) -> bool {
+    false
 }
 
 #[cfg(test)]
