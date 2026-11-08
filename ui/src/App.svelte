@@ -25,6 +25,20 @@
   let activeTab = $state('play');
   let isMaximized = $state(false);
 
+  $effect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      if (tabParam && sidebarItems.some((i) => i.id === tabParam)) {
+        activeTab = tabParam;
+      }
+      const themeParam = params.get('theme');
+      if (themeParam === 'light' || themeParam === 'dark') {
+        theme.setAppearance(themeParam);
+      }
+    }
+  });
+
   // Launch state
   let selectedVersion = $state('1.21.1');
   let playerName = $state('Player');
