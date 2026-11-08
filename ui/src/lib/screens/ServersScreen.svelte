@@ -197,7 +197,7 @@
                 {:else if s.ping_ms !== null && s.ping_ms !== undefined}
                   <span class="ping-pill" class:fast={s.ping_ms < 60} class:medium={s.ping_ms >= 60 && s.ping_ms < 150} class:slow={s.ping_ms >= 150}>
                     <span class="dot"></span>
-                    {s.ping_ms} ms
+                    {s.ping_ms} мс
                   </span>
 
                   {#if s.online !== null && s.online !== undefined}
@@ -230,7 +230,7 @@
     {:else}
       <div class="empty-state-card">
         <Icon name="server" size={44} color="var(--color-tertiary-label)" />
-        <h3 class="empty-title">Серверы не найдены</h3>
+        <h2 class="empty-title">Серверы не найдены</h2>
         <p class="empty-desc">
           {searchQuery
             ? 'По запросу «' + searchQuery + '» ничего не найдено.'
