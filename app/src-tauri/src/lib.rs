@@ -1,9 +1,9 @@
 pub mod commands;
 pub mod ipc;
 
+use commands::launch::PlayState;
 use tauri::Manager;
 use wex_core::config::WexPaths;
-use commands::launch::PlayState;
 
 pub fn run() {
     tauri::Builder::default()

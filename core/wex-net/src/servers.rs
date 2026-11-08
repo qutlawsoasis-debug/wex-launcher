@@ -71,10 +71,7 @@ impl NbtTag {
 
     pub fn get(&self, key: &str) -> Option<&NbtTag> {
         match self {
-            NbtTag::Compound(entries) => entries
-                .iter()
-                .find(|(k, _)| k == key)
-                .map(|(_, tag)| tag),
+            NbtTag::Compound(entries) => entries.iter().find(|(k, _)| k == key).map(|(_, tag)| tag),
             _ => None,
         }
     }
@@ -172,7 +169,9 @@ impl<R: Read> NbtReader<R> {
                 self.reader.read_exact(&mut len_b)?;
                 let len = i32::from_be_bytes(len_b);
                 if len < 0 {
-                    return Err(ServerListError::Nbt(format!("Negative ByteArray len: {len}")));
+                    return Err(ServerListError::Nbt(format!(
+                        "Negative ByteArray len: {len}"
+                    )));
                 }
                 let mut bytes = vec![0u8; len as usize];
                 self.reader.read_exact(&mut bytes)?;
@@ -210,7 +209,9 @@ impl<R: Read> NbtReader<R> {
                 self.reader.read_exact(&mut len_b)?;
                 let len = i32::from_be_bytes(len_b);
                 if len < 0 {
-                    return Err(ServerListError::Nbt(format!("Negative IntArray len: {len}")));
+                    return Err(ServerListError::Nbt(format!(
+                        "Negative IntArray len: {len}"
+                    )));
                 }
                 let mut elements = Vec::with_capacity(len as usize);
                 for _ in 0..len {
@@ -225,7 +226,9 @@ impl<R: Read> NbtReader<R> {
                 self.reader.read_exact(&mut len_b)?;
                 let len = i32::from_be_bytes(len_b);
                 if len < 0 {
-                    return Err(ServerListError::Nbt(format!("Negative LongArray len: {len}")));
+                    return Err(ServerListError::Nbt(format!(
+                        "Negative LongArray len: {len}"
+                    )));
                 }
                 let mut elements = Vec::with_capacity(len as usize);
                 for _ in 0..len {
@@ -235,7 +238,9 @@ impl<R: Read> NbtReader<R> {
                 }
                 Ok(NbtTag::LongArray(elements))
             }
-            other => Err(ServerListError::Nbt(format!("Unknown NBT tag type: {other}"))),
+            other => Err(ServerListError::Nbt(format!(
+                "Unknown NBT tag type: {other}"
+            ))),
         }
     }
 
@@ -276,7 +281,9 @@ impl<W: Write> NbtWriter<W> {
 
     pub fn write_root(&mut self, root_name: &str, tag: &NbtTag) -> Result<(), ServerListError> {
         if tag.type_id() != 10 {
-            return Err(ServerListError::Nbt("Root tag must be Compound (10)".to_string()));
+            return Err(ServerListError::Nbt(
+                "Root tag must be Compound (10)".to_string(),
+            ));
         }
         self.writer.write_all(&[10])?;
         self.write_string(root_name)?;
@@ -301,7 +308,8 @@ impl<W: Write> NbtWriter<W> {
             NbtTag::String(s) => self.write_string(s),
             NbtTag::List { tag_id, elements } => {
                 self.writer.write_all(&[*tag_id])?;
-                self.writer.write_all(&(elements.len() as i32).to_be_bytes())?;
+                self.writer
+                    .write_all(&(elements.len() as i32).to_be_bytes())?;
                 for el in elements {
                     self.write_tag_payload(el)?;
                 }
@@ -379,7 +387,10 @@ pub fn load_servers_dat<P: AsRef<Path>>(path: P) -> Result<NbtTag, ServerListErr
 }
 
 /// Saves NBT compound to `servers.dat` atomically with backup.
-pub fn save_servers_dat<P: AsRef<Path>>(path: P, root_compound: &NbtTag) -> Result<(), ServerListError> {
+pub fn save_servers_dat<P: AsRef<Path>>(
+    path: P,
+    root_compound: &NbtTag,
+) -> Result<(), ServerListError> {
     let target_path = path.as_ref();
     if let Some(parent) = target_path.parent() {
         fs::create_dir_all(parent)?;
@@ -475,20 +486,25 @@ mod tests {
                 "servers".to_string(),
                 NbtTag::List {
                     tag_id: 10,
-                    elements: vec![
-                        NbtTag::Compound(vec![
-                            ("name".to_string(), NbtTag::String("My Vanilla Server".to_string())),
-                            ("ip".to_string(), NbtTag::String("vanilla.example.com".to_string())),
-                            ("acceptTextures".to_string(), NbtTag::Byte(1)),
-                            ("customModdedTag".to_string(), NbtTag::Int(42)),
-                            (
-                                "nestedTag".to_string(),
-                                NbtTag::Compound(vec![
-                                    ("foo".to_string(), NbtTag::String("bar".to_string())),
-                                ]),
-                            ),
-                        ]),
-                    ],
+                    elements: vec![NbtTag::Compound(vec![
+                        (
+                            "name".to_string(),
+                            NbtTag::String("My Vanilla Server".to_string()),
+                        ),
+                        (
+                            "ip".to_string(),
+                            NbtTag::String("vanilla.example.com".to_string()),
+                        ),
+                        ("acceptTextures".to_string(), NbtTag::Byte(1)),
+                        ("customModdedTag".to_string(), NbtTag::Int(42)),
+                        (
+                            "nestedTag".to_string(),
+                            NbtTag::Compound(vec![(
+                                "foo".to_string(),
+                                NbtTag::String("bar".to_string()),
+                            )]),
+                        ),
+                    ])],
                 },
             ),
             ("unknownRootTag".to_string(), NbtTag::Long(123456789)),
@@ -512,13 +528,22 @@ mod tests {
                 tag_id: 10,
                 elements: vec![
                     NbtTag::Compound(vec![
-                        ("name".to_string(), NbtTag::String("User Existing Server".to_string())),
-                        ("ip".to_string(), NbtTag::String("play.auraclient.ru:25565".to_string())),
+                        (
+                            "name".to_string(),
+                            NbtTag::String("User Existing Server".to_string()),
+                        ),
+                        (
+                            "ip".to_string(),
+                            NbtTag::String("play.auraclient.ru:25565".to_string()),
+                        ),
                         ("acceptTextures".to_string(), NbtTag::Byte(1)),
                     ]),
                     NbtTag::Compound(vec![
                         ("name".to_string(), NbtTag::String("Hypixel".to_string())),
-                        ("ip".to_string(), NbtTag::String("mc.hypixel.net".to_string())),
+                        (
+                            "ip".to_string(),
+                            NbtTag::String("mc.hypixel.net".to_string()),
+                        ),
                     ]),
                 ],
             },

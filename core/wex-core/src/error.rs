@@ -32,10 +32,7 @@ pub enum WexError {
     },
 
     #[error("Download error for {url}: {message}")]
-    DownloadError {
-        url: String,
-        message: String,
-    },
+    DownloadError { url: String, message: String },
 
     #[error("Manifest error: {0}")]
     ManifestError(String),

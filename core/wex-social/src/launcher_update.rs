@@ -102,9 +102,10 @@ pub fn check_update_from_manifest(
         });
     }
 
-    let plat = manifest.platforms.get(target_platform).ok_or_else(|| {
-        UpdateError::PlatformNotFound(target_platform.to_string())
-    })?;
+    let plat = manifest
+        .platforms
+        .get(target_platform)
+        .ok_or_else(|| UpdateError::PlatformNotFound(target_platform.to_string()))?;
 
     if !validate_signature_format(&plat.signature) {
         return Err(UpdateError::InvalidSignature(

@@ -1,7 +1,7 @@
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
 use wex_ipc::commands::*;
@@ -78,7 +78,15 @@ impl LauncherCore for WexLauncherCore {
         request: InstallInstanceRequest,
     ) -> IpcResult<InstallInstanceResponse> {
         let events = self.event_handler.clone();
-        match install_full_environment(&self.paths, &request.version, &self.client, events.as_ref(), 8).await {
+        match install_full_environment(
+            &self.paths,
+            &request.version,
+            &self.client,
+            events.as_ref(),
+            8,
+        )
+        .await
+        {
             Ok(_) => Ok(InstallInstanceResponse {
                 success: true,
                 version: request.version,

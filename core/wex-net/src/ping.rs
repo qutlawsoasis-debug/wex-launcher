@@ -209,16 +209,17 @@ impl ServerPinger {
     }
 
     /// Pings an already resolved (host, port) pair
-    pub async fn ping_resolved(&self, host: &str, port: u16) -> Result<ServerPingResponse, PingError> {
+    pub async fn ping_resolved(
+        &self,
+        host: &str,
+        port: u16,
+    ) -> Result<ServerPingResponse, PingError> {
         let start = Instant::now();
 
-        let mut stream = timeout(
-            self.connect_timeout,
-            TcpStream::connect((host, port)),
-        )
-        .await
-        .map_err(|_| PingError::Timeout)?
-        .map_err(PingError::Io)?;
+        let mut stream = timeout(self.connect_timeout, TcpStream::connect((host, port)))
+            .await
+            .map_err(|_| PingError::Timeout)?
+            .map_err(PingError::Io)?;
 
         // Perform handshake and read status
         let (raw_response, latency_ms) = timeout(
@@ -364,7 +365,9 @@ mod tests {
             let sample_json = r#"{"version":{"name":"1.20.1","protocol":763},"players":{"max":100,"online":5},"description":"Welcome to Aura Server"}"#;
             let mut body = Vec::new();
             write_varint(&mut body, 0x00).await.unwrap();
-            write_varint(&mut body, sample_json.len() as i32).await.unwrap();
+            write_varint(&mut body, sample_json.len() as i32)
+                .await
+                .unwrap();
             body.extend_from_slice(sample_json.as_bytes());
 
             write_varint(&mut server, body.len() as i32).await.unwrap();
@@ -412,7 +415,10 @@ mod tests {
                 println!("=== Hypixel Ping Success ===");
                 println!("Host: {}:{}", resp.host, resp.port);
                 println!("Latency: {} ms", resp.latency_ms);
-                println!("Version: {} (protocol {})", resp.version.name, resp.version.protocol);
+                println!(
+                    "Version: {} (protocol {})",
+                    resp.version.name, resp.version.protocol
+                );
                 println!("Players: {}/{}", resp.players.online, resp.players.max);
                 println!("MOTD: {}", resp.description);
                 assert!(resp.players.max > 0);

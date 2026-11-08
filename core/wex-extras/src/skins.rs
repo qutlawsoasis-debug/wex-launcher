@@ -141,7 +141,10 @@ pub fn detect_skin_model(img: &RgbaImage) -> SkinModel {
 pub fn convert_64x32_to_64x64(img_32: &RgbaImage) -> Result<RgbaImage, SkinError> {
     let (w, h) = img_32.dimensions();
     if w != 64 || h != 32 {
-        return Err(SkinError::UnsupportedDimensions { width: w, height: h });
+        return Err(SkinError::UnsupportedDimensions {
+            width: w,
+            height: h,
+        });
     }
 
     let mut img_64 = RgbaImage::from_pixel(64, 64, Rgba([0, 0, 0, 0]));
@@ -335,10 +338,7 @@ pub fn generate_csl_config(
     });
 
     let config_path = csl_dir.join("CustomSkinLoader.json");
-    fs::write(
-        config_path,
-        serde_json::to_string_pretty(&config_json)?,
-    )?;
+    fs::write(config_path, serde_json::to_string_pretty(&config_json)?)?;
 
     if let Some(bytes) = skin_png_bytes {
         let skin_path = local_skins_dir.join(format!("{}.png", nickname));
@@ -458,7 +458,9 @@ mod tests {
 
         generate_csl_config(game_dir, "TestPlayer", Some(&skin_bytes), None).unwrap();
 
-        let csl_json = game_dir.join("CustomSkinLoader").join("CustomSkinLoader.json");
+        let csl_json = game_dir
+            .join("CustomSkinLoader")
+            .join("CustomSkinLoader.json");
         assert!(csl_json.is_file());
 
         let player_skin = game_dir

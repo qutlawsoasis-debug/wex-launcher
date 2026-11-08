@@ -1,13 +1,13 @@
+use crate::error::{Result, WexError};
+use crate::event::{Event, EventHandler};
+use futures_util::StreamExt;
+use reqwest::header::RANGE;
+use sha1::Digest as _;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use futures_util::StreamExt;
-use reqwest::header::RANGE;
-use sha1::Digest as _;
 use tokio::sync::Semaphore;
-use crate::error::{Result, WexError};
-use crate::event::{Event, EventHandler};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HashType {
@@ -45,7 +45,11 @@ pub fn compute_file_hash(path: &Path, hash_type: HashType) -> Result<String> {
     }
 }
 
-pub fn verify_file(path: &Path, expected_size: Option<u64>, expected_hash: Option<(&str, HashType)>) -> bool {
+pub fn verify_file(
+    path: &Path,
+    expected_size: Option<u64>,
+    expected_hash: Option<(&str, HashType)>,
+) -> bool {
     if !path.exists() {
         return false;
     }
@@ -169,7 +173,10 @@ pub async fn download_file_resumable_cancellable(
 
         let is_partial = status == reqwest::StatusCode::PARTIAL_CONTENT;
         let mut file = if is_partial && resuming {
-            OpenOptions::new().create(true).append(true).open(&part_path)?
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&part_path)?
         } else {
             existing_len = 0;
             File::create(&part_path)?
@@ -381,8 +388,16 @@ mod tests {
 
         assert!(!sha1.is_empty());
         assert!(!sha256.is_empty());
-        assert!(verify_file(&file_path, Some(11), Some((&sha1, HashType::Sha1))));
-        assert!(verify_file(&file_path, Some(11), Some((&sha256, HashType::Sha256))));
+        assert!(verify_file(
+            &file_path,
+            Some(11),
+            Some((&sha1, HashType::Sha1))
+        ));
+        assert!(verify_file(
+            &file_path,
+            Some(11),
+            Some((&sha256, HashType::Sha256))
+        ));
     }
 
     #[tokio::test]

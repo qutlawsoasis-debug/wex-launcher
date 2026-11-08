@@ -1,7 +1,7 @@
+use crate::error::Result;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
-use crate::error::Result;
 
 #[derive(Debug, Clone)]
 pub struct WexPaths {
@@ -56,7 +56,9 @@ impl WexPaths {
     }
 
     pub fn client_jar(&self, version: &str) -> PathBuf {
-        self.versions_dir.join(version).join(format!("{}.jar", version))
+        self.versions_dir
+            .join(version)
+            .join(format!("{}.jar", version))
     }
 
     pub fn assets_indexes_dir(&self) -> PathBuf {
@@ -96,10 +98,20 @@ pub struct LauncherConfig {
     #[serde(default = "default_version")]
     pub selected_version: String,
 
-    #[serde(default = "default_nickname", alias = "player_name", alias = "playerName")]
+    #[serde(
+        default = "default_nickname",
+        alias = "player_name",
+        alias = "playerName"
+    )]
     pub nickname: String,
 
-    #[serde(default = "default_memory", alias = "max_memory_mb", alias = "ramMb", alias = "ram_gb", deserialize_with = "deserialize_ram")]
+    #[serde(
+        default = "default_memory",
+        alias = "max_memory_mb",
+        alias = "ramMb",
+        alias = "ram_gb",
+        deserialize_with = "deserialize_ram"
+    )]
     pub max_memory_mb: u32,
 
     #[serde(default, alias = "custom_java_path", alias = "javaPath")]
@@ -174,7 +186,11 @@ impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
         Self {
             selected_version: ipc.selected_version,
             nickname: ipc.player_name,
-            max_memory_mb: if ipc.ram_gb <= 64 { ipc.ram_gb * 1024 } else { ipc.ram_gb },
+            max_memory_mb: if ipc.ram_gb <= 64 {
+                ipc.ram_gb * 1024
+            } else {
+                ipc.ram_gb
+            },
             custom_java_path: None,
             jvm_args: Vec::new(),
             reduce_motion: ipc.reduce_motion,

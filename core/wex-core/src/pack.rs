@@ -1,11 +1,11 @@
-use std::collections::HashSet;
-use std::fs;
-use std::path::Path;
-use serde::{Deserialize, Serialize};
 use crate::config::WexPaths;
 use crate::download::{download_pool, DownloadTask, HashType};
 use crate::error::Result;
 use crate::event::{Event, EventHandler, LogLevel};
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::fs;
+use std::path::Path;
 
 pub const DEFAULT_PACK_REPO: &str = "qutlawsoasis-debug/Aura-Pack";
 pub const DEFAULT_PACK_BRANCH: &str = "main";
@@ -199,7 +199,9 @@ pub async fn sync_aura_pack(
         if target_path.exists() {
             if let Ok(meta) = fs::metadata(&target_path) {
                 if meta.len() == file.size {
-                    if let Ok(actual_hash) = crate::download::compute_file_hash(&target_path, HashType::Sha256) {
+                    if let Ok(actual_hash) =
+                        crate::download::compute_file_hash(&target_path, HashType::Sha256)
+                    {
                         if actual_hash.eq_ignore_ascii_case(&file.sha256) {
                             continue;
                         }
@@ -211,10 +213,8 @@ pub async fn sync_aura_pack(
         let download_url = if let Some(custom_url) = &file.url {
             custom_url.clone()
         } else {
-            let escaped_segments: Vec<String> = clean_path
-                .split('/')
-                .map(urlencoding_encode)
-                .collect();
+            let escaped_segments: Vec<String> =
+                clean_path.split('/').map(urlencoding_encode).collect();
             let escaped_path = escaped_segments.join("/");
             format!(
                 "https://raw.githubusercontent.com/{}/{}/{}{}",
@@ -259,7 +259,12 @@ pub async fn sync_aura_pack(
         fs::read_to_string(&state_path)
             .ok()
             .and_then(|content| serde_json::from_str::<PackState>(&content).ok())
-            .map(|s| s.installed_mods.into_iter().map(|m| m.to_lowercase()).collect())
+            .map(|s| {
+                s.installed_mods
+                    .into_iter()
+                    .map(|m| m.to_lowercase())
+                    .collect()
+            })
             .unwrap_or_default()
     } else {
         HashSet::new()
@@ -270,7 +275,12 @@ pub async fn sync_aura_pack(
             .files
             .iter()
             .filter(|f| f.path.starts_with("mods/") && f.path.ends_with(".jar"))
-            .filter_map(|f| Path::new(&f.path).file_name().and_then(|n| n.to_str()).map(|s| s.to_lowercase()))
+            .filter_map(|f| {
+                Path::new(&f.path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.to_lowercase())
+            })
             .collect();
 
         if let Ok(entries) = fs::read_dir(&mods_dir) {
@@ -280,7 +290,9 @@ pub async fn sync_aura_pack(
                     let lower = file_name.to_lowercase();
                     if lower.ends_with(".jar") {
                         // Only delete if Wex installed it previously AND it's removed from manifest!
-                        if previous_installed_mods.contains(&lower) && !manifest_mod_names.contains(&lower) {
+                        if previous_installed_mods.contains(&lower)
+                            && !manifest_mod_names.contains(&lower)
+                        {
                             events.on_event(&Event::Log {
                                 level: LogLevel::Info,
                                 message: format!("Deleting removed pack mod: {}", file_name),
@@ -290,10 +302,15 @@ pub async fn sync_aura_pack(
                         }
                     } else if lower.ends_with(".jar.disabled") {
                         let active_name = lower.trim_end_matches(".disabled");
-                        if previous_installed_mods.contains(active_name) && !manifest_mod_names.contains(active_name) {
+                        if previous_installed_mods.contains(active_name)
+                            && !manifest_mod_names.contains(active_name)
+                        {
                             events.on_event(&Event::Log {
                                 level: LogLevel::Info,
-                                message: format!("Deleting removed disabled pack mod: {}", file_name),
+                                message: format!(
+                                    "Deleting removed disabled pack mod: {}",
+                                    file_name
+                                ),
                             });
                             let _ = fs::remove_file(&p);
                             mods_deleted += 1;
@@ -309,7 +326,12 @@ pub async fn sync_aura_pack(
         .files
         .iter()
         .filter(|f| f.path.starts_with("mods/") && f.path.ends_with(".jar"))
-        .filter_map(|f| Path::new(&f.path).file_name().and_then(|n| n.to_str()).map(|s| s.to_string()))
+        .filter_map(|f| {
+            Path::new(&f.path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|s| s.to_string())
+        })
         .collect();
 
     let state = PackState {
@@ -411,9 +433,8 @@ mod tests {
         .collect();
 
         // New manifest only has valid-pack-mod.jar
-        let manifest_mod_names: HashSet<String> = ["valid-pack-mod.jar".to_string()]
-            .into_iter()
-            .collect();
+        let manifest_mod_names: HashSet<String> =
+            ["valid-pack-mod.jar".to_string()].into_iter().collect();
 
         for entry in fs::read_dir(&mods_dir).unwrap().flatten() {
             let p = entry.path();
@@ -429,7 +450,10 @@ mod tests {
         // Old pack mod no longer in manifest is removed
         assert!(!old_pack_mod.exists());
         // User's custom mod was NEVER in previous_installed_mods, so it MUST BE PRESERVED!
-        assert!(user_mod.exists(), "User custom mod must NEVER be deleted by pack sync!");
+        assert!(
+            user_mod.exists(),
+            "User custom mod must NEVER be deleted by pack sync!"
+        );
     }
 
     #[test]
@@ -461,7 +485,10 @@ mod tests {
             }
         }
 
-        assert!(!should_download, "Disabled mod with matching size must NOT be queued for re-download!");
+        assert!(
+            !should_download,
+            "Disabled mod with matching size must NOT be queued for re-download!"
+        );
     }
 
     #[test]
@@ -493,7 +520,10 @@ mod tests {
         let is_forced1 = force_set.contains(&clean_path1.to_lowercase());
         let is_default1 = entry_default.mode.eq_ignore_ascii_case("default") && !is_forced1;
         let should_skip1 = is_default1 && user_config.exists();
-        assert!(should_skip1, "User config in default mode must not be overwritten!");
+        assert!(
+            should_skip1,
+            "User config in default mode must not be overwritten!"
+        );
 
         // Entry 2: mode default, but present in force_configs -> should NOT skip
         let entry_forced = ManifestFileEntry {
@@ -507,14 +537,18 @@ mod tests {
         let is_forced2 = force_set.contains(&clean_path2.to_lowercase());
         let is_default2 = entry_forced.mode.eq_ignore_ascii_case("default") && !is_forced2;
         let should_skip2 = is_default2 && forced_config.exists();
-        assert!(!should_skip2, "Forced config must not be skipped even in default mode!");
+        assert!(
+            !should_skip2,
+            "Forced config must not be skipped even in default mode!"
+        );
 
         // Entry 3: mode sync, identical hash and size -> should skip
         let synced_mod = instance_dir.join("mods").join("synced.jar");
         fs::create_dir_all(synced_mod.parent().unwrap()).unwrap();
         let content = b"test jar data";
         fs::write(&synced_mod, content).unwrap();
-        let expected_hash = crate::download::compute_file_hash(&synced_mod, HashType::Sha256).unwrap();
+        let expected_hash =
+            crate::download::compute_file_hash(&synced_mod, HashType::Sha256).unwrap();
 
         let entry_synced = ManifestFileEntry {
             path: "mods/synced.jar".to_string(),
@@ -527,7 +561,9 @@ mod tests {
         if synced_mod.exists() {
             if let Ok(meta) = fs::metadata(&synced_mod) {
                 if meta.len() == entry_synced.size {
-                    if let Ok(actual_hash) = crate::download::compute_file_hash(&synced_mod, HashType::Sha256) {
+                    if let Ok(actual_hash) =
+                        crate::download::compute_file_hash(&synced_mod, HashType::Sha256)
+                    {
                         if actual_hash.eq_ignore_ascii_case(&entry_synced.sha256) {
                             download_needed = false;
                         }
@@ -535,6 +571,9 @@ mod tests {
                 }
             }
         }
-        assert!(!download_needed, "Synced file matching size and hash must not re-download (0 files to download)");
+        assert!(
+            !download_needed,
+            "Synced file matching size and hash must not re-download (0 files to download)"
+        );
     }
 }

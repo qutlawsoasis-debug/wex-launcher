@@ -56,10 +56,19 @@ pub struct ConsoleEventHandler;
 impl EventHandler for ConsoleEventHandler {
     fn on_event(&self, event: &Event) {
         match event {
-            Event::StageStarted { stage, step, total_steps } => {
+            Event::StageStarted {
+                stage,
+                step,
+                total_steps,
+            } => {
                 println!("[{}/{}] === {} ===", step, total_steps, stage);
             }
-            Event::Progress { stage, current, total, message } => {
+            Event::Progress {
+                stage,
+                current,
+                total,
+                message,
+            } => {
                 let pct = if *total > 0 {
                     (*current as f64 / *total as f64) * 100.0
                 } else {
@@ -74,14 +83,12 @@ impl EventHandler for ConsoleEventHandler {
             Event::FileDownloaded { path, bytes } => {
                 tracing::debug!("Downloaded: {} ({} bytes)", path, bytes);
             }
-            Event::Log { level, message } => {
-                match level {
-                    LogLevel::Debug => tracing::debug!("{}", message),
-                    LogLevel::Info => println!("[INFO] {}", message),
-                    LogLevel::Warn => eprintln!("[WARN] {}", message),
-                    LogLevel::Error => eprintln!("[ERROR] {}", message),
-                }
-            }
+            Event::Log { level, message } => match level {
+                LogLevel::Debug => tracing::debug!("{}", message),
+                LogLevel::Info => println!("[INFO] {}", message),
+                LogLevel::Warn => eprintln!("[WARN] {}", message),
+                LogLevel::Error => eprintln!("[ERROR] {}", message),
+            },
             Event::GameLaunched { pid } => {
                 println!("[LAUNCH] Game process started with PID: {}", pid);
             }

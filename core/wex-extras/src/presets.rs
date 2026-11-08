@@ -380,8 +380,14 @@ pub fn apply_preset(
     };
 
     let mut target_values = HashMap::new();
-    target_values.insert("renderDistance".to_string(), preset.render_distance.to_string());
-    target_values.insert("simulationDistance".to_string(), preset.simulation_distance.to_string());
+    target_values.insert(
+        "renderDistance".to_string(),
+        preset.render_distance.to_string(),
+    );
+    target_values.insert(
+        "simulationDistance".to_string(),
+        preset.simulation_distance.to_string(),
+    );
     target_values.insert("graphicsMode".to_string(), preset.graphics_mode.clone());
     target_values.insert("particles".to_string(), preset.particles.clone());
     target_values.insert("clouds".to_string(), preset.clouds.clone());
@@ -389,7 +395,10 @@ pub fn apply_preset(
         "entityDistanceScaling".to_string(),
         format!("{:.2}", preset.entity_distance_scaling),
     );
-    target_values.insert("biomeBlendRadius".to_string(), preset.biome_blend_radius.to_string());
+    target_values.insert(
+        "biomeBlendRadius".to_string(),
+        preset.biome_blend_radius.to_string(),
+    );
     target_values.insert("mipmapLevels".to_string(), preset.mipmap_levels.to_string());
     target_values.insert("ao".to_string(), preset.ao.to_string());
 

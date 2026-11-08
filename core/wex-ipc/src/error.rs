@@ -166,7 +166,11 @@ impl From<wex_social::friends::FriendError> for IpcError {
                     404 => "SOCIAL_NOT_FOUND",
                     _ => "SOCIAL_API_ERROR",
                 };
-                return Self::new(code, message.as_str(), Some(format!("HTTP {status}: {message}")));
+                return Self::new(
+                    code,
+                    message.as_str(),
+                    Some(format!("HTTP {status}: {message}")),
+                );
             }
             FriendError::Json(_) => (
                 "SOCIAL_JSON_ERROR",
