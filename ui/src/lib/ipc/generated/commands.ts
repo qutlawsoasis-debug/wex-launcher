@@ -37,7 +37,7 @@ export type InstallInstanceRequest = { version: string, force_reinstall: boolean
 
 export type InstallInstanceResponse = { success: boolean, version: string, message: string, };;
 
-export type LaunchGameRequest = { version: string, nickname: string, jvm_args: Array<string> | null, };;
+export type LaunchGameRequest = { version: string, nickname: string, jvm_args: Array<string> | null, server: string | null, };;
 
 export type LaunchGameResponse = { success: boolean, pid: number | null, message: string, };;
 

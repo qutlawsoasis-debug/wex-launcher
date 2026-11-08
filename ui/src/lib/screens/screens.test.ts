@@ -147,7 +147,28 @@ describe('Wex Launcher Screens', () => {
     const comp = mount(ServersScreen, { target });
     expect(target.textContent).toContain('Список серверов пуст');
     expect(target.textContent).toContain('Добавить сервер');
+    expect(target.textContent).toContain('Обновить');
+    expect(target.textContent).toContain('1.21.1');
+    expect(target.textContent).toContain('1.20.1');
     expect(target.textContent).not.toContain('mc.wexmc.net');
+    unmount(comp);
+  });
+
+  it('renders ServersScreen with version segments and opens add server sheet on click', async () => {
+    const comp = mount(ServersScreen, { target });
+    const addBtn = Array.from(target.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Добавить сервер')
+    );
+    expect(addBtn).toBeDefined();
+
+    addBtn?.click();
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Modal Sheet should now be present in DOM with form fields
+    expect(document.querySelector('.sheet-card')).not.toBeNull();
+    expect(document.querySelector('#new-srv-name')).not.toBeNull();
+    expect(document.querySelector('#new-srv-addr')).not.toBeNull();
+
     unmount(comp);
   });
 

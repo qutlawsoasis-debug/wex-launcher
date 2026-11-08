@@ -559,6 +559,7 @@ pub async fn install_full_environment(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn prepare_and_launch(
     paths: &WexPaths,
     config: &LauncherConfig,
@@ -567,6 +568,7 @@ pub async fn prepare_and_launch(
     events: Arc<dyn EventHandler>,
     concurrency: usize,
     extra_jvm_args: &[String],
+    quick_play_multiplayer: Option<&str>,
 ) -> Result<GameProcess> {
     let (mojang_java, client_jar, vanilla_libs, fabric_libs, asset_index_id) =
         install_full_environment(paths, version, client, events.as_ref(), concurrency).await?;
@@ -591,7 +593,7 @@ pub async fn prepare_and_launch(
         fabric_libraries: &fabric_libs,
         asset_index_id: &asset_index_id,
         extra_jvm_args,
-        quick_play_multiplayer: None,
+        quick_play_multiplayer,
     };
 
     launch_game_process(launch_opts, events).await

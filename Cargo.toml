@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "core/wex-net",
+    "core/wex-ipc",
+    "core/wex-core",
     "app/src-tauri",
 ]
 resolver = "2"

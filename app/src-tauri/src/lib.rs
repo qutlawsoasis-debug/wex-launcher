@@ -1,12 +1,11 @@
 pub mod commands;
 pub mod ipc;
 
-use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{Manager, State};
 
 use commands::launch::PlayState;
-use ipc::{LobbyPlayerModel, LobbyRoomModel, ServerEntryModel, ServerPingResult, SystemInfo};
+use ipc::{LobbyPlayerModel, LobbyRoomModel, ServerEntryModel, SystemInfo};
 use wex_core::config::WexPaths;
 
 #[cfg(windows)]
@@ -134,127 +133,6 @@ fn social_get_news(state: State<'_, PlayState>) -> Vec<wex_social::ReleaseNoteVe
     let cache_dir = state.paths.root.join("news");
     let mgr = wex_social::NewsManager::new(cache_dir);
     mgr.load_cached_or_default()
-}
-
-// ---------------------------------------------------------------------------
-// Servers Management (powered by core/wex-net)
-// ---------------------------------------------------------------------------
-
-#[tauri::command]
-fn list_servers(state: State<'_, AppState>) -> Result<Vec<ServerEntryModel>, String> {
-    state
-        .servers
-        .lock()
-        .map(|s| s.clone())
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn ping_server(address: String) -> Result<ServerPingResult, String> {
-    let pinger = wex_net::ServerPinger::new(2500, 2500, 763);
-    match pinger.ping(&address).await {
-        Ok(res) => Ok(ServerPingResult {
-            latency_ms: res.latency_ms,
-            online: res.players.online,
-            max_players: res.players.max,
-            motd: res.description,
-            version: res.version.name,
-            favicon: res.favicon,
-        }),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-#[tauri::command]
-async fn add_server(
-    name: String,
-    address: String,
-    state: State<'_, AppState>,
-) -> Result<ServerEntryModel, String> {
-    let new_server = ServerEntryModel {
-        id: format!(
-            "server-{}",
-            std::time::SystemTime::now()
-                .elapsed()
-                .unwrap_or_default()
-                .as_millis()
-        ),
-        name: name.clone(),
-        address: address.clone(),
-        icon: None,
-        ping_ms: None,
-        online: None,
-        max_players: None,
-        motd: None,
-        version: None,
-    };
-
-    let mut list = state.servers.lock().map_err(|e| e.to_string())?;
-    list.push(new_server.clone());
-
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        let servers_dat_path = PathBuf::from(appdata).join("Wex").join("servers.dat");
-        if let Some(parent) = servers_dat_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let pack_servers: Vec<wex_net::PackServerEntry> = list
-            .iter()
-            .map(|s| wex_net::PackServerEntry {
-                id: Some(s.id.clone()),
-                name: s.name.clone(),
-                ip: s.address.clone(),
-                icon: s.icon.clone(),
-            })
-            .collect();
-
-        let mut root = wex_net::load_servers_dat(&servers_dat_path).unwrap_or_else(|_| {
-            wex_net::NbtTag::Compound(vec![(
-                "servers".to_string(),
-                wex_net::NbtTag::List {
-                    tag_id: 10,
-                    elements: Vec::new(),
-                },
-            )])
-        });
-        wex_net::merge_pack_servers(&mut root, &pack_servers);
-        let _ = wex_net::save_servers_dat(&servers_dat_path, &root);
-    }
-
-    Ok(new_server)
-}
-
-#[tauri::command]
-fn remove_server(address: String, state: State<'_, AppState>) -> Result<(), String> {
-    let mut list = state.servers.lock().map_err(|e| e.to_string())?;
-    list.retain(|s| s.address != address);
-
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        let servers_dat_path = PathBuf::from(appdata).join("Wex").join("servers.dat");
-        let mut root = wex_net::load_servers_dat(&servers_dat_path).unwrap_or_else(|_| {
-            wex_net::NbtTag::Compound(vec![(
-                "servers".to_string(),
-                wex_net::NbtTag::List {
-                    tag_id: 10,
-                    elements: Vec::new(),
-                },
-            )])
-        });
-        if let Some(wex_net::NbtTag::List { elements, .. }) = root.get_mut("servers") {
-            elements.retain(|elem| {
-                if let wex_net::NbtTag::Compound(fields) = elem {
-                    !fields.iter().any(|(k, v)| {
-                        k == "ip"
-                            && matches!(v, wex_net::NbtTag::String(ip_str) if ip_str == &address)
-                    })
-                } else {
-                    true
-                }
-            });
-        }
-        let _ = wex_net::save_servers_dat(&servers_dat_path, &root);
-    }
-
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -387,10 +265,16 @@ pub fn run() {
             open_data_dir,
             social_get_news,
             // Servers commands
-            list_servers,
-            ping_server,
-            add_server,
-            remove_server,
+            commands::servers::list_servers,
+            commands::servers::ping_server,
+            commands::servers::add_server,
+            commands::servers::edit_server,
+            commands::servers::remove_server,
+            commands::servers::net_load_servers,
+            commands::servers::net_save_servers,
+            commands::servers::net_merge_servers,
+            commands::servers::net_ping_server,
+            commands::servers::net_resolve_address,
             // Lobby commands
             create_lobby_room,
             join_lobby_room,

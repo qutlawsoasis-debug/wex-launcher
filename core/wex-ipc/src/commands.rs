@@ -34,6 +34,10 @@ pub struct LaunchGameRequest {
     pub version: String,
     pub nickname: String,
     pub jvm_args: Option<Vec<String>>,
+    #[serde(default)]
+    #[serde(alias = "quick_play")]
+    #[serde(alias = "quickPlay")]
+    pub server: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
