@@ -32,6 +32,26 @@ vi.mock('@tauri-apps/api/core', () => {
       if (cmd === 'connect_lan_world') {
         return `Подключение к ${args?.address} (PID 12345)`;
       }
+      if (cmd === 'publish_lan_world') {
+        return {
+          code: '#B2C3',
+          host_name: 'Player',
+          world_name: args?.motd || 'Мир LAN',
+          tunnel_address: `lan-host.tun.ply.gg:${args?.port || 25565}`,
+          tunnel_active: true,
+          is_host: true,
+          players: [
+            {
+              name: 'Player',
+              is_host: true,
+              ping_ms: 0,
+              mods_synced: true,
+            },
+          ],
+          mod_mismatch_count: 0,
+          total_mods: 142,
+        };
+      }
       if (cmd === 'list_mods') {
         if (args?.version === '1.20.1') {
           return [];
@@ -401,6 +421,29 @@ describe('Wex Launcher Screens', () => {
 
     await new Promise((r) => setTimeout(r, 50));
     expect(target.textContent).toContain('Подключение к 192.168.1.105:54321');
+
+    unmount(comp);
+  });
+
+  it('publishes discovered LAN world to cloud lobby via «Открыть друзьям» action', async () => {
+    const comp = mount(LobbyScreen, { target });
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(target.textContent).toContain('Локальные миры в сети (LAN)');
+    expect(target.textContent).toContain('Alex - Creative Studio');
+
+    const publishBtn = Array.from(target.querySelectorAll('button')).find(
+      (b) => b.textContent?.includes('Открыть друзьям') && b.closest('.lan-worlds-section')
+    );
+    expect(publishBtn).not.toBeUndefined();
+    publishBtn?.click();
+
+    await new Promise((r) => setTimeout(r, 50));
+    // Should transition to active room view
+    expect(target.textContent).toContain('#B2C3');
+    expect(target.textContent).toContain('Alex - Creative Studio');
+    expect(target.textContent).toContain('Туннель активен: lan-host.tun.ply.gg:54321');
+    expect(target.textContent).toContain('Закрыть комнату');
 
     unmount(comp);
   });
