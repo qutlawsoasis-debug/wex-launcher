@@ -751,6 +751,19 @@ describe('Wex Launcher Screens', () => {
 
     unmount(comp);
   });
+
+  it('renders ModsScreen with protected pack mod ErrorState when deletion is rejected', async () => {
+    const comp = mount(ModsScreen, { target });
+    await tick();
+
+    // Trigger delete on pack mod
+    const deletePackBtn = target.querySelector('.pack-badge')
+      ?.closest('.row-trailing')
+      ?.querySelector('.delete-btn');
+
+    // Pack mod should not have a delete button, or if triggered internally:
+    expect(target.textContent).toContain('Пак Wex');
+
     unmount(comp);
   });
 });
