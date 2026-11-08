@@ -589,7 +589,7 @@
 
       <!-- Capes Selection Section -->
       <List header="Плащ игрока">
-        {#each capeOptions as cape}
+        {#each capeOptions as cape (cape.id)}
           {@const isSelected = selectedCapeId === cape.id}
           <Row
             title={cape.name}
@@ -639,7 +639,7 @@
             <span class="empty-text">История гардероба пуста</span>
           </div>
         {:else}
-          {#each historyItems as item}
+          {#each historyItems as item (item.id || item.created_utc)}
             <Row
               title={item.name}
               subtitle={`${item.model === 'slim' ? 'Тонкая' : 'Классическая'} • ${item.created_utc.slice(0, 10)}`}

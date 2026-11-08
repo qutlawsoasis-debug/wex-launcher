@@ -131,6 +131,8 @@
     border-bottom: 1px solid var(--color-separator);
     width: 100%;
     text-align: left;
+    content-visibility: auto;
+    contain-intrinsic-size: 52px;
   }
 
   .apple-row:last-child {

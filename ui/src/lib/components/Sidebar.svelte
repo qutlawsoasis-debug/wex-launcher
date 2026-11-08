@@ -58,7 +58,7 @@
 
   <nav class="sidebar-nav">
     <ul class="nav-list">
-      {#each items as item}
+      {#each items as item (item.id)}
         {@const isActive = item.id === activeId}
         <li>
           <button
