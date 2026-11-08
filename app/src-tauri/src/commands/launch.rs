@@ -167,7 +167,7 @@ impl PlayState {
 
         // Connect Discord RPC asynchronously in background
         let discord_clone = discord.clone();
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let client = DiscordRpcClient::connect_or_noop(DEFAULT_DISCORD_APP_ID).await;
             let mut lock = discord_clone.lock().await;
             *lock = Some(client);
@@ -324,7 +324,7 @@ pub async fn start_game(
             let instance_dir = state.paths.instance_dir(&version);
             let version_clone = version.clone();
 
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 loop {
                     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     match core_clone.is_running(&version_clone).await {
