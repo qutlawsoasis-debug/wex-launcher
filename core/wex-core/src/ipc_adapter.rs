@@ -100,6 +100,7 @@ impl LauncherCore for WexLauncherCore {
         let mut cfg = CoreConfig::load_or_default(&self.paths.config_file);
         cfg.nickname = request.nickname;
         cfg.selected_version = request.version.clone();
+        cfg.quick_play_multiplayer = request.quick_play_multiplayer;
         let _ = cfg.save(&self.paths.config_file);
 
         let events = self.event_handler.clone();

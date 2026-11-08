@@ -24,12 +24,18 @@
   import WorkshopScreen from './lib/screens/WorkshopScreen.svelte';
   import SettingsScreen from './lib/screens/SettingsScreen.svelte';
   import ShowcaseScreen from './lib/screens/ShowcaseScreen.svelte';
+  import CrashSheet from './lib/components/CrashSheet.svelte';
+  import type { CrashDiagnosisDto } from './lib/ipc/generated/models';
 
   // Navigation state
   let activeTab = $state('play');
   let friendsSubtab = $state<'friends' | 'requests' | 'achievements'>('friends');
   let workshopSubtab = $state<'worlds' | 'resourcepacks' | 'shaders' | 'screenshots'>('worlds');
   let isMaximized = $state(false);
+
+  // Crash report modal state
+  let crashSheetOpen = $state(false);
+  let currentCrashDiagnosis = $state<CrashDiagnosisDto | null>(null);
 
   $effect(() => {
     if (typeof window !== 'undefined') {
@@ -309,14 +315,54 @@
         isLaunching = false;
         isGameRunning = false;
       }
+
+      // Hash crash triggers for tests and previews
+      const crashParam = params.get('crash');
+      if (crashParam === 'oom') {
+        currentCrashDiagnosis = {
+          kind: 'OutOfMemory',
+          title: 'Нехватка оперативной памяти (ОЗУ)',
+          user_advice: 'Увеличьте выделенный объём памяти в Настройках лаунчера (рекомендуется 6–8 ГБ) или закройте фоновые приложения.',
+          technical_summary: 'Exception in thread "main" java.lang.OutOfMemoryError: Java heap space\n\tat net.minecraft.client.Main.main(Main.java:123)',
+        };
+        crashSheetOpen = true;
+      } else if (crashParam === 'mod') {
+        currentCrashDiagnosis = {
+          kind: { MissingFabricDependency: { mod_name: 'iris', required_dep: 'sodium' } },
+          title: 'Отсутствует зависимость для «iris»',
+          user_advice: 'Мод «iris» требует обязательной установки «sodium». Установите недостающую библиотеку или удалите мод во вкладке Мастерская.',
+          technical_summary: 'net.fabricmc.loader.impl.FormattedException: Mod \'iris\' requires \'sodium\'',
+        };
+        crashSheetOpen = true;
+      } else if (crashParam === 'unknown') {
+        currentCrashDiagnosis = {
+          kind: { Unknown: { exit_code: -1 } },
+          title: 'Игра завершилась с ошибкой (код -1)',
+          user_advice: 'Причина не определена. Анализатор не нашёл известных сигнатур сбоя в логах игры.',
+          technical_summary: 'Process finished with exit code -1',
+        };
+        crashSheetOpen = true;
+      }
     }
 
     applyHashRoute();
     window.addEventListener('hashchange', applyHashRoute);
 
-    // Initial checks: network, profile, and active running game state
-    checkNetwork();
-    loadProfile();
+    // Initial checks: parallelized network, profile, and active running game state
+    Promise.allSettled([
+      checkNetwork(),
+      loadProfile(),
+      (async () => {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const running = await invoke<boolean>('is_game_running');
+          isGameRunning = running;
+          if (running) {
+            clientStatus = 'Minecraft запущен';
+          }
+        } catch {}
+      })(),
+    ]);
 
     if (typeof window !== 'undefined') {
       window.addEventListener('online', checkNetwork);
@@ -327,29 +373,22 @@
 
     const netInterval = setInterval(checkNetwork, 30000);
 
-    // Synchronize initial running state
-    import('@tauri-apps/api/core')
-      .then(({ invoke }) => {
-        invoke<boolean>('is_game_running')
-          .then((running) => {
-            isGameRunning = running;
-            if (running) {
-              clientStatus = 'Minecraft запущен';
-            }
-          })
-          .catch(() => {});
-      })
-      .catch(() => {});
-
     // Tauri 2 Event Listeners (install-progress & launch-status as per SPEC.md)
     let unlistenProgress: (() => void) | undefined;
     let unlistenStatus: (() => void) | undefined;
     let unlistenAchievement: (() => void) | undefined;
     let unlistenInvite: (() => void) | undefined;
+    let unlistenCrash: (() => void) | undefined;
 
     if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
       import('@tauri-apps/api/event')
         .then(({ listen }) => {
+          listen<CrashDiagnosisDto>('game-crash', (event) => {
+            currentCrashDiagnosis = event.payload;
+            crashSheetOpen = true;
+          }).then((fn) => {
+            unlistenCrash = fn;
+          });
           listen<{
             stage: string;
             percentage: number;
@@ -438,6 +477,7 @@
       unlistenStatus?.();
       unlistenAchievement?.();
       unlistenInvite?.();
+      unlistenCrash?.();
     };
   });
 </script>
@@ -545,6 +585,17 @@
       {/each}
     </div>
   {/if}
+
+  <!-- Game Crash Diagnosis Sheet (SPEC 2.10) -->
+  <CrashSheet
+    bind:open={crashSheetOpen}
+    diagnosis={currentCrashDiagnosis}
+    version={selectedVersion}
+    onnavigate={(tab) => {
+      activeTab = tab;
+    }}
+    ontoast={addToast}
+  />
 </div>
 
 <style>
@@ -565,9 +616,9 @@
     inset: 0;
     background-size: cover;
     background-position: center 30%;
-    transition: background-image 0.5s ease;
     z-index: 0;
     pointer-events: none;
+    will-change: transform;
   }
 
   .scenery-vignette {

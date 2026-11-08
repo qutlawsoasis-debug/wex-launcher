@@ -186,64 +186,62 @@
   let isImportWizardOpen = $derived(Boolean(initialShowImportWizard) || manualImportWizardOpen);
 
   onMount(async () => {
-    // 1. Fetch servers from IPC
+    // Parallelize all startup IPC calls using Promise.allSettled for fastest first-frame render
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const list = await invoke<Array<{ name: string; address: string; ping_ms?: number }>>('list_servers');
-      if (list && list.length > 0) {
-        recentServer = list[0];
-      } else {
-        recentServer = null;
-      }
+
+      const fetchServers = invoke<Array<{ name: string; address: string; ping_ms?: number }>>('list_servers')
+        .then((list) => {
+          recentServer = list && list.length > 0 ? list[0] : null;
+        })
+        .catch(() => {
+          recentServer = null;
+        });
+
+      const fetchNews = initialNews === undefined
+        ? invoke<any>('overview_get_news')
+            .then((res) => {
+              if (Array.isArray(res) && res.length > 0) {
+                fetchedNews = res;
+              } else if (res?.versions && Array.isArray(res.versions) && res.versions.length > 0) {
+                fetchedNews = res.versions;
+              } else {
+                fetchedNews = [];
+              }
+            })
+            .catch(() => {
+              fetchedNews = [];
+            })
+        : Promise.resolve();
+
+      const fetchUpdates = initialUpdateInfo === null
+        ? invoke<UpdateInfo>('overview_check_update')
+            .then((res) => {
+              if (res && res.update_available) {
+                fetchedUpdateInfo = res;
+              }
+            })
+            .catch(() => {})
+        : Promise.resolve();
+
+      const checkOldLauncher = (typeof localStorage !== 'undefined' && !localStorage.getItem('wex_import_checked'))
+        ? (async () => {
+            localStorage.setItem('wex_import_checked', 'true');
+            try {
+              const detected = await invoke<string | null>('extras_detect_old_launcher');
+              if (detected) {
+                manualImportWizardOpen = true;
+              }
+            } catch {}
+          })()
+        : Promise.resolve();
+
+      await Promise.allSettled([fetchServers, fetchNews, fetchUpdates, checkOldLauncher]);
     } catch {
       recentServer = null;
     }
 
-    // 2. Fetch news from wex-social / overview IPC if not provided via props
-    if (initialNews === undefined) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const res = await invoke<any>('overview_get_news');
-        if (Array.isArray(res) && res.length > 0) {
-          fetchedNews = res;
-        } else if (res?.versions && Array.isArray(res.versions) && res.versions.length > 0) {
-          fetchedNews = res.versions;
-        } else {
-          fetchedNews = [];
-        }
-      } catch {
-        fetchedNews = [];
-      }
-    }
-
-    // 3. Unobtrusive launcher update check
-    if (initialUpdateInfo === null) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const res = await invoke<UpdateInfo>('overview_check_update');
-        if (res && res.update_available) {
-          fetchedUpdateInfo = res;
-        }
-      } catch {
-        // Silent fallback for update check
-      }
-    }
-
-    // 4. Check for old launcher data on first launch
-    try {
-      if (typeof localStorage !== 'undefined' && !localStorage.getItem('wex_import_checked')) {
-        localStorage.setItem('wex_import_checked', 'true');
-        const { invoke } = await import('@tauri-apps/api/core');
-        const detected = await invoke<string | null>('extras_detect_old_launcher');
-        if (detected) {
-          manualImportWizardOpen = true;
-        }
-      }
-    } catch {
-      // Ignore if localStorage unavailable
-    }
-
-    // 5. Load latest screenshot from Workshop
+    // Load latest screenshot from Workshop
     loadLatestScreenshot();
   });
 
@@ -329,7 +327,7 @@
 
           {#if formattedNewsItems.length > 0}
             <div class="changelog-entries">
-              {#each formattedNewsItems as item}
+              {#each formattedNewsItems as item (item.badgeText + '-' + item.text)}
                 <div class="changelog-entry-row">
                   <span class="badge badge-{item.categoryClass}">{item.badgeText}</span>
                   <span class="changelog-entry-text">{item.text}</span>

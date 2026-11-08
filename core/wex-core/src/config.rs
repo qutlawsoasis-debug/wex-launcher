@@ -148,6 +148,13 @@ pub struct LauncherConfig {
     #[serde(default, alias = "reduceTransparency")]
     pub reduce_transparency: bool,
 
+    #[serde(
+        default,
+        alias = "quickPlayMultiplayer",
+        alias = "quick_play_multiplayer"
+    )]
+    pub quick_play_multiplayer: Option<String>,
+
     #[serde(default = "default_appearance")]
     pub appearance: String,
 
@@ -225,6 +232,7 @@ impl Default for LauncherConfig {
             java_mode: default_java_mode(),
             reduce_motion: false,
             reduce_transparency: false,
+            quick_play_multiplayer: None,
             appearance: default_appearance(),
             accent: default_accent(),
             fast_start_jvm: false,
@@ -250,6 +258,7 @@ impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
             java_mode: default_java_mode(),
             reduce_motion: ipc.reduce_motion,
             reduce_transparency: ipc.reduce_transparency,
+            quick_play_multiplayer: None,
             appearance: ipc.appearance,
             accent: ipc.accent,
             fast_start_jvm: ipc.fast_start_jvm,
