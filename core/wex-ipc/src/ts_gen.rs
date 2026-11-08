@@ -85,6 +85,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         SkinModelDto::decl(),
         SkinValidationResultDto::decl(),
         WardrobeItemDto::decl(),
+        WardrobeStateDto::decl(),
         DiscordActivityDto::decl(),
         ImportedServerDto::decl(),
         ImportedSkinDto::decl(),
@@ -153,6 +154,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
     cmd_ts.push_str("    UserAuthDto,\n");
     cmd_ts.push_str("    UserPresenceDto,\n");
     cmd_ts.push_str("    WardrobeItemDto,\n");
+    cmd_ts.push_str("    WardrobeStateDto,\n");
     cmd_ts.push_str("    WorldBackupItemDto,\n");
     cmd_ts.push_str("    WorldItemDto,\n");
     cmd_ts.push_str("} from './models';\n\n");
@@ -206,6 +208,10 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ExtrasListSkinHistoryRequest::decl(),
         ExtrasListSkinHistoryResponse::decl(),
         ExtrasGenerateCslConfigRequest::decl(),
+        WardrobeApplyRequest::decl(),
+        WardrobeApplyResponse::decl(),
+        WardrobeDeleteHistoryRequest::decl(),
+        WardrobeDeleteHistoryResponse::decl(),
         ExtrasDiscordSetActivityRequest::decl(),
         ExtrasImportOldLauncherRequest::decl(),
         ExtrasGetPresetsResponse::decl(),
@@ -283,6 +289,9 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ("EXTRAS_SAVE_SKIN", CMD_EXTRAS_SAVE_SKIN),
         ("EXTRAS_LIST_SKIN_HISTORY", CMD_EXTRAS_LIST_SKIN_HISTORY),
         ("EXTRAS_GENERATE_CSL_CONFIG", CMD_EXTRAS_GENERATE_CSL_CONFIG),
+        ("WARDROBE_GET_STATE", CMD_WARDROBE_GET_STATE),
+        ("WARDROBE_APPLY", CMD_WARDROBE_APPLY),
+        ("WARDROBE_DELETE_HISTORY", CMD_WARDROBE_DELETE_HISTORY),
         (
             "EXTRAS_DISCORD_SET_ACTIVITY",
             CMD_EXTRAS_DISCORD_SET_ACTIVITY,
