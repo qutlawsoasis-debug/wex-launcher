@@ -257,8 +257,8 @@ pub async fn get_installed_versions(
 
 /// Start game with specified version and nickname. Blocks duplicate start if already running.
 #[tauri::command]
-pub async fn start_game(
-    app: AppHandle,
+pub async fn start_game<R: tauri::Runtime>(
+    app: AppHandle<R>,
     version: String,
     nickname: String,
     jvm_args: Option<Vec<String>>,
@@ -498,7 +498,10 @@ pub async fn start_game(
 
 /// Request cancellation of an ongoing launch.
 #[tauri::command]
-pub async fn cancel_launch(app: AppHandle, state: State<'_, PlayState>) -> Result<(), String> {
+pub async fn cancel_launch<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, PlayState>,
+) -> Result<(), String> {
     let _ = state.core.cancel_launch().await;
     state.is_launching.store(false, Ordering::SeqCst);
 
@@ -549,8 +552,8 @@ pub async fn kill_game(version: Option<String>, state: State<'_, PlayState>) -> 
 // ============================================================================
 
 #[tauri::command]
-pub async fn launch_game(
-    app: AppHandle,
+pub async fn launch_game<R: tauri::Runtime>(
+    app: AppHandle<R>,
     version: String,
     nickname: String,
     state: State<'_, PlayState>,

@@ -17,6 +17,7 @@
   import OfflineState from '../components/OfflineState.svelte';
   import ErrorState from '../components/ErrorState.svelte';
   import { network } from '../design/network.svelte';
+  import { t, i18n } from '../i18n';
 
   interface LobbyPlayer {
     name: string;
@@ -274,8 +275,8 @@
     <div class="mode-segmented">
       <SegmentedControl
         options={[
-          { value: 'lan', label: 'LAN и Туннели' },
-          { value: 'cloud', label: 'Облачные миры' },
+          { value: 'lan', label: t('lobby.tab_lan') },
+          { value: 'cloud', label: t('lobby.tab_cloud') },
         ]}
         bind:value={mode}
       />
@@ -290,7 +291,7 @@
       {#if isLoadingCloudRooms}
         <div class="cloud-status-card">
           <div class="loading-spinner"></div>
-          <p class="status-text">Загрузка открытых комнат...</p>
+          <p class="status-text">{t('common.loading')}</p>
         </div>
       {:else if cloudError}
         <!-- Honest Service Error State via ErrorState -->
@@ -306,13 +307,13 @@
           <div class="status-icon-circle neutral">
             <Icon name="server" size={24} color="var(--color-secondary-label)" />
           </div>
-          <h2 class="status-title">Нет открытых комнат</h2>
+          <h2 class="status-title">{t('lobby.no_open_rooms')}</h2>
           <p class="status-desc">
-            В данный момент нет доступных публичных комнат. Вы можете открыть свой мир во вкладке «LAN и Туннели».
+            {i18n.locale === 'en' ? 'No public lobbies are available. Share a single-player world from LAN & Tunnels.' : 'В данный момент нет доступных публичных комнат. Вы можете открыть свой мир во вкладке «LAN и Туннели».'}
           </p>
           <div class="status-actions">
             <Button variant="secondary" size="regular" onclick={fetchCloudRooms} loading={isLoadingCloudRooms}>
-              Обновить
+              {t('lobby.refresh')}
             </Button>
           </div>
         </div>
@@ -480,8 +481,8 @@
             <Icon name="friends" size={20} color="var(--color-system-blue)" />
           </div>
           <div class="card-headings">
-            <h2 class="card-heading">Присоединиться по коду</h2>
-            <p class="card-caption">Введите код комнаты, полученный от друга</p>
+            <h2 class="card-heading">{t('lobby.title_connect')}</h2>
+            <p class="card-caption">{i18n.locale === 'en' ? 'Enter the lobby code your friend shared.' : 'Введите код комнаты, полученный от друга'}</p>
           </div>
         </div>
 
@@ -494,7 +495,7 @@
               maxlength={6}
               class="code-input"
               onkeydown={(e) => e.key === 'Enter' && handleJoinRoom()}
-              aria-label="Код комнаты"
+              aria-label={i18n.locale === 'en' ? 'Lobby code' : 'Код комнаты'}
             />
           </div>
 
@@ -520,7 +521,7 @@
             loading={isConnecting}
             disabled={!guestCode.trim()}
           >
-            <span>Войти в комнату</span>
+            <span>{i18n.locale === 'en' ? 'Join Lobby' : 'Войти в комнату'}</span>
           </Button>
         </div>
       </div>
@@ -532,13 +533,13 @@
             <Icon name="play" size={20} color="var(--color-system-green)" />
           </div>
           <div class="card-headings">
-            <h2 class="card-heading">Открыть локальный мир</h2>
-            <p class="card-caption">Создайте комнату через автоматический Playit-туннель</p>
+            <h2 class="card-heading">{t('lobby.host_title')}</h2>
+            <p class="card-caption">{i18n.locale === 'en' ? 'Share a world with friends through a Playit tunnel.' : 'Создайте комнату через автоматический Playit-туннель'}</p>
           </div>
         </div>
 
         <div class="world-picker">
-          <label class="picker-label" for="world-select">Выберите мир для кооператива</label>
+          <label class="picker-label" for="world-select">{t('lobby.select_world')}</label>
           <div class="world-options" id="world-select">
             {#each localWorlds as w (w.id || w.name)}
               <button
@@ -562,7 +563,7 @@
           loading={isHosting}
         >
           <Icon name="server" size={16} color="#ffffff" />
-          <span>Открыть мир для друзей</span>
+          <span>{i18n.locale === 'en' ? 'Open World for Friends' : 'Открыть мир для друзей'}</span>
         </Button>
       </div>
     </div>

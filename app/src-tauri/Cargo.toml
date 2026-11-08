@@ -31,5 +31,6 @@ wex-net = { path = "../../core/wex-net" }
 wex-social = { path = "../../core/wex-social" }
 
 [dev-dependencies]
+tauri = { version = "2.0.0", features = ["test"] }
 tempfile = "3.8"
 wiremock = "0.6"
