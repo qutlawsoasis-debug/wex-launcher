@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use wex_core::config::WexPaths;
@@ -66,7 +66,10 @@ pub fn get_news_internal(
 
     let mgr = NewsManager::new(cache_dir);
     let versions = mgr.load_cached_or_default();
-    versions.into_iter().map(ReleaseNoteVersionDto::from).collect()
+    versions
+        .into_iter()
+        .map(ReleaseNoteVersionDto::from)
+        .collect()
 }
 
 pub async fn check_update_internal(
@@ -162,7 +165,11 @@ pub async fn apply_import_internal(
     }
 
     if req.import_version {
-        if let Some(ver) = req.selected_version.as_ref().filter(|v| !v.trim().is_empty()) {
+        if let Some(ver) = req
+            .selected_version
+            .as_ref()
+            .filter(|v| !v.trim().is_empty())
+        {
             cfg.selected_version = ver.trim().to_string();
             cfg_modified = true;
         }
@@ -264,9 +271,7 @@ pub async fn social_check_launcher_update(
         .map(|r| r.current_version.as_str())
         .unwrap_or("1.0.0");
     let manifest_url = request.as_ref().map(|r| r.manifest_url.as_str());
-    let target_platform = request
-        .as_ref()
-        .and_then(|r| r.target_platform.as_deref());
+    let target_platform = request.as_ref().and_then(|r| r.target_platform.as_deref());
 
     check_update_internal(cur_v, manifest_url, target_platform).await
 }
@@ -341,8 +346,7 @@ mod tests {
             ]
         }"#;
 
-        mgr.update_from_version_json(custom_json, "v1.2.0")
-            .unwrap();
+        mgr.update_from_version_json(custom_json, "v1.2.0").unwrap();
 
         let req = SocialGetNewsRequest {
             cache_dir: news_dir.to_string_lossy().to_string(),
@@ -358,14 +362,17 @@ mod tests {
     #[tokio::test]
     async fn test_check_update_logic() {
         // Without remote URL -> reports current version is up to date
-        let res = check_update_internal("1.0.0", None, None)
-            .await
-            .unwrap();
+        let res = check_update_internal("1.0.0", None, None).await.unwrap();
         assert!(!res.update_available);
         assert_eq!(res.current_version, "1.0.0");
 
         // With invalid remote URL -> reports network error
-        let err_res = check_update_internal("1.0.0", Some("http://invalid.local.test:9999/manifest.json"), None).await;
+        let err_res = check_update_internal(
+            "1.0.0",
+            Some("http://invalid.local.test:9999/manifest.json"),
+            None,
+        )
+        .await;
         assert!(err_res.is_err());
     }
 
