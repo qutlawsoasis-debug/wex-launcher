@@ -88,8 +88,8 @@ pub async fn social_create_world_backup(
 ) -> Result<WorldBackupItemDto, String> {
     let world_path = PathBuf::from(&request.world_dir);
     let backup_base = PathBuf::from(&request.backups_dir);
-    let zip_path = wex_social::create_world_backup(&world_path, &backup_base)
-        .map_err(|e| e.to_string())?;
+    let zip_path =
+        wex_social::create_world_backup(&world_path, &backup_base).map_err(|e| e.to_string())?;
 
     let file_name = zip_path
         .file_name()
@@ -135,8 +135,8 @@ pub async fn social_list_world_backups(
     _state: State<'_, PlayState>,
 ) -> Result<SocialListWorldBackupsResponse, String> {
     let backup_base = PathBuf::from(&request.backups_dir);
-    let backups = wex_social::list_world_backups(&backup_base, "", "")
-        .map_err(|e| e.to_string())?;
+    let backups =
+        wex_social::list_world_backups(&backup_base, "", "").map_err(|e| e.to_string())?;
     Ok(SocialListWorldBackupsResponse {
         backups: backups.into_iter().map(Into::into).collect(),
     })
@@ -361,7 +361,8 @@ mod tests {
         let zip_path = wex_social::create_world_backup(&world_dir, &backups_dir).unwrap();
         assert!(zip_path.is_file());
 
-        let backups = wex_social::list_world_backups(&backups_dir, "BaseWorld", "Base World").unwrap();
+        let backups =
+            wex_social::list_world_backups(&backups_dir, "BaseWorld", "Base World").unwrap();
         assert_eq!(backups.len(), 1);
 
         // Delete original and restore from backup
