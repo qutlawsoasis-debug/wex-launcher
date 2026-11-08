@@ -356,8 +356,9 @@ pub fn run() {
         .setup(|app| {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();
-            let play_state = PlayState::new_real(paths, app.handle().clone());
+            let play_state = PlayState::new_real(paths.clone(), app.handle().clone());
             app.manage(play_state);
+            app.manage(commands::friends::FriendsState::new(paths));
             app.manage(AppState::default());
             Ok(())
         })
@@ -397,6 +398,18 @@ pub fn run() {
             join_lobby_room,
             get_lobby_status,
             close_lobby_room,
+            // Friends & Social commands
+            commands::friends::social_login,
+            commands::friends::social_get_friends,
+            commands::friends::social_send_friend_request,
+            commands::friends::social_accept_friend_request,
+            commands::friends::social_decline_friend_request,
+            commands::friends::social_sync,
+            commands::friends::social_send_lobby_invite,
+            commands::friends::social_respond_lobby_invite,
+            commands::friends::social_set_presence,
+            commands::friends::social_list_achievements,
+            commands::friends::social_report_achievement_progress,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
