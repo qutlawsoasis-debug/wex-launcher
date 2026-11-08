@@ -271,18 +271,16 @@ pub async fn sync_aura_pack(
             PathBuf::from(format!("C:\\Users\\Public\\agy-multiuser\\workspaces\\agy-a3\\aura-client\\mc-{}\\build\\libs\\aura-client-{}-1.0.0+{}.jar", version, version, version)),
         ];
         for cand in &local_candidates {
-            if cand.exists() {
-                if let Ok(_) = fs::copy(cand, &client_mod_path) {
-                    events.on_event(&Event::Log {
-                        level: LogLevel::Info,
-                        message: format!(
-                            "Populated {} from local build {}",
-                            client_mod_path.display(),
-                            cand.display()
-                        ),
-                    });
-                    break;
-                }
+            if cand.exists() && fs::copy(cand, &client_mod_path).is_ok() {
+                events.on_event(&Event::Log {
+                    level: LogLevel::Info,
+                    message: format!(
+                        "Populated {} from local build {}",
+                        client_mod_path.display(),
+                        cand.display()
+                    ),
+                });
+                break;
             }
         }
     }

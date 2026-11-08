@@ -634,7 +634,11 @@ mod tests {
         File::create(&lib1).unwrap();
         File::create(&lib2).unwrap();
 
-        let cp = build_classpath(&client_jar, &[lib1.clone()], &[lib2.clone()]);
+        let cp = build_classpath(
+            &client_jar,
+            std::slice::from_ref(&lib1),
+            std::slice::from_ref(&lib2),
+        );
         assert!(cp.contains("lib2.jar"));
         assert!(cp.contains("lib1.jar"));
         assert!(cp.contains("client.jar"));

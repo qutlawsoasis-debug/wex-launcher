@@ -276,9 +276,11 @@ mod tests {
         let tmp = tempdir().unwrap();
         let config_path = tmp.path().join("config.json");
 
-        let mut cfg = LauncherConfig::default();
-        cfg.nickname = "TestUser".to_string();
-        cfg.max_memory_mb = 8192;
+        let cfg = LauncherConfig {
+            nickname: "TestUser".to_string(),
+            max_memory_mb: 8192,
+            ..Default::default()
+        };
         cfg.save(&config_path).unwrap();
 
         let loaded = LauncherConfig::load_or_default(&config_path);
