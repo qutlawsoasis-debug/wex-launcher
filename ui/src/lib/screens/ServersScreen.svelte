@@ -465,7 +465,7 @@
         id="new-srv-name"
         type="text"
         bind:value={newServerName}
-        placeholder="Например: Aura Survival"
+        placeholder="Например: Wex Survival"
         class="form-input"
         maxlength={32}
       />
