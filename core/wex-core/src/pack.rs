@@ -5,7 +5,7 @@ use crate::event::{Event, EventHandler, LogLevel};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub const DEFAULT_PACK_REPO: &str = "qutlawsoasis-debug/Aura-Pack";
 pub const DEFAULT_PACK_BRANCH: &str = "main";
@@ -210,20 +210,22 @@ pub async fn sync_aura_pack(
             }
         }
 
-        let download_url = if let Some(custom_url) = &file.url {
-            custom_url.clone()
+        let escaped_segments: Vec<String> = clean_path.split('/').map(urlencoding_encode).collect();
+        let escaped_path = escaped_segments.join("/");
+        let raw_pack_url = format!(
+            "https://raw.githubusercontent.com/{}/{}/{}{}",
+            repo, branch, repo_prefix, escaped_path
+        );
+
+        let (download_url, fallback_url) = if let Some(custom_url) = &file.url {
+            (custom_url.clone(), Some(raw_pack_url))
         } else {
-            let escaped_segments: Vec<String> =
-                clean_path.split('/').map(urlencoding_encode).collect();
-            let escaped_path = escaped_segments.join("/");
-            format!(
-                "https://raw.githubusercontent.com/{}/{}/{}{}",
-                repo, branch, repo_prefix, escaped_path
-            )
+            (raw_pack_url, None)
         };
 
         download_tasks.push(DownloadTask {
             url: download_url,
+            fallback_url,
             target_path,
             size: Some(file.size),
             hash: Some((file.sha256.clone(), HashType::Sha256)),
@@ -241,48 +243,14 @@ pub async fn sync_aura_pack(
 
     let files_to_download_count = download_tasks.len();
     if !download_tasks.is_empty() {
-        if let Err(e) = download_pool(
+        download_pool(
             client,
             download_tasks,
             concurrency,
             events,
             &format!("Pack {}", version),
         )
-        .await
-        {
-            events.on_event(&Event::Log {
-                level: LogLevel::Warn,
-                message: format!(
-                    "Pack sync encountered non-fatal download error ({}). Continuing with available files.",
-                    e
-                ),
-            });
-        }
-    }
-
-    // Fallback: if aura-client was not downloaded (e.g. unreleased remote asset), check local build
-    let client_mod_path = instance_dir
-        .join("mods")
-        .join(format!("aura-client-1.0.0+mc{}.jar", version));
-    if !client_mod_path.exists() {
-        let local_candidates = [
-            PathBuf::from(format!("C:\\Users\\Public\\agy-multiuser\\workspaces\\agy-a3\\aura-client\\versions\\{}\\build\\libs\\aura-client-{}-1.0.0+{}.jar", version, version, version)),
-            PathBuf::from(format!("C:\\Users\\Public\\agy-multiuser\\workspaces\\agy-a2\\aura-client\\versions\\{}\\build\\libs\\aura-client-{}-1.0.0+{}.jar", version, version, version)),
-            PathBuf::from(format!("C:\\Users\\Public\\agy-multiuser\\workspaces\\agy-a3\\aura-client\\mc-{}\\build\\libs\\aura-client-{}-1.0.0+{}.jar", version, version, version)),
-        ];
-        for cand in &local_candidates {
-            if cand.exists() && fs::copy(cand, &client_mod_path).is_ok() {
-                events.on_event(&Event::Log {
-                    level: LogLevel::Info,
-                    message: format!(
-                        "Populated {} from local build {}",
-                        client_mod_path.display(),
-                        cand.display()
-                    ),
-                });
-                break;
-            }
-        }
+        .await?;
     }
 
     // Clean orphan mods (ONLY mods previously installed by Wex, never delete user mods!)
@@ -608,6 +576,103 @@ mod tests {
         assert!(
             !download_needed,
             "Synced file matching size and hash must not re-download (0 files to download)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pack_download_fallback_url_404_raw_ok() {
+        use sha2::Digest;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let payload = b"simulated mod jar binary content";
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(payload);
+        let expected_hash = hex::encode(hasher.finalize());
+
+        // Primary URL returns 404
+        Mock::given(method("GET"))
+            .and(path("/release/mod.jar"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        // Fallback raw URL returns 200 with payload
+        Mock::given(method("GET"))
+            .and(path("/raw/mods/mod.jar"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(payload.to_vec()))
+            .mount(&mock_server)
+            .await;
+
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("mods").join("mod.jar");
+        let client = reqwest::Client::new();
+        let events = crate::event::NoopEventHandler;
+
+        let primary_url = format!("{}/release/mod.jar", mock_server.uri());
+        let fallback_url = format!("{}/raw/mods/mod.jar", mock_server.uri());
+
+        let task = DownloadTask {
+            url: primary_url,
+            fallback_url: Some(fallback_url),
+            target_path: target.clone(),
+            size: Some(payload.len() as u64),
+            hash: Some((expected_hash.clone(), HashType::Sha256)),
+        };
+
+        let pool_res = download_pool(&client, vec![task], 2, &events, "Test Fallback").await;
+        assert!(pool_res.is_ok(), "Download pool must succeed via fallback");
+        assert!(target.exists(), "Target file must be written to disk");
+
+        let disk_hash = crate::download::compute_file_hash(&target, HashType::Sha256).unwrap();
+        assert_eq!(
+            disk_hash, expected_hash,
+            "Hash on disk must match expected sha256"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pack_download_fallback_both_404_returns_error() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Primary URL returns 404
+        Mock::given(method("GET"))
+            .and(path("/release/mod.jar"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        // Fallback raw URL also returns 404
+        Mock::given(method("GET"))
+            .and(path("/raw/mods/mod.jar"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("mods").join("mod.jar");
+        let client = reqwest::Client::new();
+        let events = crate::event::NoopEventHandler;
+
+        let primary_url = format!("{}/release/mod.jar", mock_server.uri());
+        let fallback_url = format!("{}/raw/mods/mod.jar", mock_server.uri());
+
+        let task = DownloadTask {
+            url: primary_url,
+            fallback_url: Some(fallback_url),
+            target_path: target,
+            size: Some(1024),
+            hash: Some(("abcdef".to_string(), HashType::Sha256)),
+        };
+
+        let pool_res = download_pool(&client, vec![task], 2, &events, "Test Fallback").await;
+        assert!(
+            pool_res.is_err(),
+            "Download pool must fail when both primary and fallback return 404"
         );
     }
 }

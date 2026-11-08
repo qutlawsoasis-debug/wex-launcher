@@ -117,6 +117,7 @@ pub async fn install_fabric_libraries(
 
         download_tasks.push(DownloadTask {
             url,
+            fallback_url: None,
             target_path,
             size: lib.size,
             hash: hash_opt,

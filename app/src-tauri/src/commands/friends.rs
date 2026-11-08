@@ -5,19 +5,18 @@ use tokio::sync::Mutex;
 
 use wex_core::config::WexPaths;
 use wex_ipc::commands::{
-    SocialAcceptFriendRequestRequest, SocialDeclineFriendRequestRequest,
-    SocialGetFriendsRequest, SocialGetFriendsResponse, SocialListAchievementsRequest,
-    SocialListAchievementsResponse, SocialLoginRequest,
-    SocialReportAchievementProgressRequest, SocialReportAchievementProgressResponse,
-    SocialSendFriendRequestRequest, SocialSendLobbyInviteRequest, SocialSetPresenceRequest,
-    SocialSyncRequest,
+    SocialAcceptFriendRequestRequest, SocialDeclineFriendRequestRequest, SocialGetFriendsRequest,
+    SocialGetFriendsResponse, SocialListAchievementsRequest, SocialListAchievementsResponse,
+    SocialLoginRequest, SocialReportAchievementProgressRequest,
+    SocialReportAchievementProgressResponse, SocialSendFriendRequestRequest,
+    SocialSendLobbyInviteRequest, SocialSetPresenceRequest, SocialSyncRequest,
 };
 use wex_ipc::error::IpcError;
 use wex_ipc::events::EVT_SOCIAL_ACHIEVEMENT_TOAST;
 use wex_ipc::models::{
-    AchievementDefinitionDto, AchievementProgressDto, AchievementUnlockedEventDto,
-    FriendItemDto, FriendProfileDto, FriendRequestItemDto, LobbyInviteItemDto,
-    OnlineStatusDto, SyncResponseDto, UserAuthDto, UserPresenceDto,
+    AchievementDefinitionDto, AchievementProgressDto, AchievementUnlockedEventDto, FriendItemDto,
+    FriendProfileDto, FriendRequestItemDto, LobbyInviteItemDto, OnlineStatusDto, SyncResponseDto,
+    UserAuthDto, UserPresenceDto,
 };
 use wex_social::achievements::{get_standard_achievements, AchievementManager};
 use wex_social::friends::{FriendApiClient, UserAuth};
@@ -67,9 +66,10 @@ pub async fn social_login(
     auth: Option<UserAuthDto>,
     state: State<'_, FriendsState>,
 ) -> Result<FriendProfileDto, IpcError> {
-    let auth_dto = request.map(|r| r.auth).or(auth).ok_or_else(|| {
-        IpcError::invalid_argument("Не указаны данные авторизации для входа")
-    })?;
+    let auth_dto = request
+        .map(|r| r.auth)
+        .or(auth)
+        .ok_or_else(|| IpcError::invalid_argument("Не указаны данные авторизации для входа"))?;
 
     // Store auth in state
     {
@@ -183,7 +183,9 @@ pub async fn social_accept_friend_request(
 
     let client = { state.client.lock().await.clone() };
     let wex_auth: UserAuth = auth_dto.into();
-    let _ = client.respond_friend_request(&wex_auth, &req_id, true).await;
+    let _ = client
+        .respond_friend_request(&wex_auth, &req_id, true)
+        .await;
 
     // Update local lists
     let mut reqs = state.local_requests.lock().await;
@@ -228,7 +230,9 @@ pub async fn social_decline_friend_request(
 
     let client = { state.client.lock().await.clone() };
     let wex_auth: UserAuth = auth_dto.into();
-    let _ = client.respond_friend_request(&wex_auth, &req_id, false).await;
+    let _ = client
+        .respond_friend_request(&wex_auth, &req_id, false)
+        .await;
 
     let mut reqs = state.local_requests.lock().await;
     reqs.retain(|r| r.id != req_id);
@@ -291,14 +295,15 @@ pub async fn social_send_lobby_invite(
                 .ok_or_else(|| IpcError::invalid_argument("Не указаны данные авторизации"))?;
             let tid = target_user_id
                 .ok_or_else(|| IpcError::invalid_argument("Не указан идентификатор получателя"))?;
-            let lc = lobby_code
-                .ok_or_else(|| IpcError::invalid_argument("Не указан код лобби"))?;
+            let lc = lobby_code.ok_or_else(|| IpcError::invalid_argument("Не указан код лобби"))?;
             (a, tid, lc)
         }
     };
 
     if code.trim().is_empty() {
-        return Err(IpcError::invalid_argument("Код комнаты не может быть пустым"));
+        return Err(IpcError::invalid_argument(
+            "Код комнаты не может быть пустым",
+        ));
     }
 
     let client = { state.client.lock().await.clone() };
@@ -497,7 +502,11 @@ mod tests {
         assert_eq!(first_launch.unwrap().title, "Искра");
 
         // Verify progress is initially 0 and unlocked is false
-        let p = res.progress.iter().find(|p| p.id == "first_launch").unwrap();
+        let p = res
+            .progress
+            .iter()
+            .find(|p| p.id == "first_launch")
+            .unwrap();
         assert_eq!(p.current, 0.0);
         assert!(!p.unlocked);
     }
@@ -508,28 +517,18 @@ mod tests {
         let dir = tmp.path().to_path_buf();
 
         // Increment 10_launches target=10
-        let res1 = report_achievement_progress_impl(
-            None,
-            dir.clone(),
-            "ten_launches",
-            1,
-        )
-        .await
-        .unwrap();
+        let res1 = report_achievement_progress_impl(None, dir.clone(), "ten_launches", 1)
+            .await
+            .unwrap();
 
         assert_eq!(res1.current, 1.0);
         assert_eq!(res1.target, 10);
         assert!(!res1.unlocked);
 
         // Increment again
-        let res2 = report_achievement_progress_impl(
-            None,
-            dir.clone(),
-            "ten_launches",
-            2,
-        )
-        .await
-        .unwrap();
+        let res2 = report_achievement_progress_impl(None, dir.clone(), "ten_launches", 2)
+            .await
+            .unwrap();
 
         assert_eq!(res2.current, 3.0);
         assert!(!res2.unlocked);
@@ -541,14 +540,9 @@ mod tests {
         let dir = tmp.path().to_path_buf();
 
         // first_launch target is 1
-        let res = report_achievement_progress_impl(
-            None,
-            dir.clone(),
-            "first_launch",
-            1,
-        )
-        .await
-        .unwrap();
+        let res = report_achievement_progress_impl(None, dir.clone(), "first_launch", 1)
+            .await
+            .unwrap();
 
         assert!(res.unlocked);
         assert_eq!(res.current, 1.0);
@@ -556,7 +550,11 @@ mod tests {
 
         // Achievements list should now reflect unlocked
         let list = list_achievements_impl(dir).await.unwrap();
-        let p = list.progress.iter().find(|p| p.id == "first_launch").unwrap();
+        let p = list
+            .progress
+            .iter()
+            .find(|p| p.id == "first_launch")
+            .unwrap();
         assert!(p.unlocked);
         assert!(p.unlocked_at.is_some());
     }
