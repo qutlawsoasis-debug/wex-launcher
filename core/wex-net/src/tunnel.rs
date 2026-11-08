@@ -217,6 +217,11 @@ impl WindowsJobObject {
 }
 
 #[cfg(windows)]
+unsafe impl Send for WindowsJobObject {}
+#[cfg(windows)]
+unsafe impl Sync for WindowsJobObject {}
+
+#[cfg(windows)]
 impl Drop for WindowsJobObject {
     fn drop(&mut self) {
         use windows_sys::Win32::Foundation::CloseHandle;

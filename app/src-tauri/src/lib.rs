@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use tauri::{Manager, State};
 
 use commands::launch::PlayState;
-use ipc::{LobbyPlayerModel, LobbyRoomModel, ServerEntryModel, ServerPingResult, SystemInfo};
+use ipc::{LobbyRoomModel, ServerEntryModel, ServerPingResult, SystemInfo};
 use wex_core::config::WexPaths;
 
 #[cfg(windows)]

@@ -10,7 +10,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{AppHandle, State};
+use tauri::State;
 use tokio::sync::Mutex;
 
 use wex_ipc::commands::{
@@ -54,6 +54,9 @@ pub struct LobbyState {
     pub tools_dir: PathBuf,
     pub old_backend_url: String,
 }
+
+unsafe impl Send for LobbyState {}
+unsafe impl Sync for LobbyState {}
 
 impl LobbyState {
     pub fn new(tools_dir: PathBuf, lobby_api_url: &str, old_backend_url: &str) -> Self {
