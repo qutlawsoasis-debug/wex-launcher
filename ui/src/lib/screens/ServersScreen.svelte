@@ -197,7 +197,7 @@
                 {:else if s.ping_ms !== null && s.ping_ms !== undefined}
                   <span class="ping-pill" class:fast={s.ping_ms < 60} class:medium={s.ping_ms >= 60 && s.ping_ms < 150} class:slow={s.ping_ms >= 150}>
                     <span class="dot"></span>
-                    {s.ping_ms} ms
+                    {s.ping_ms} мс
                   </span>
 
                   {#if s.online !== null && s.online !== undefined}
