@@ -42,6 +42,16 @@
     notes?: string;
   }
 
+  interface PlaytimeSummary {
+    total_seconds: number;
+    total_formatted: string;
+    version_seconds: number;
+    version_formatted: string;
+    version_summary: string;
+    total_launches: number;
+    last_played_utc?: string | null;
+  }
+
   interface Props {
     selectedVersion?: string;
     playerName?: string;
@@ -146,6 +156,33 @@
   let manualImportWizardOpen = $state(false);
   let isImportWizardOpen = $derived(Boolean(initialShowImportWizard) || manualImportWizardOpen);
 
+  // Playtime summary state
+  let playtimeSummary = $state<PlaytimeSummary | null>(null);
+
+  async function loadPlaytime() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<PlaytimeSummary>('get_playtime_summary', { version: selectedVersion });
+      if (res) {
+        playtimeSummary = res;
+      }
+    } catch {
+      playtimeSummary = null;
+    }
+  }
+
+  $effect(() => {
+    if (selectedVersion) {
+      loadPlaytime();
+    }
+  });
+
+  $effect(() => {
+    if (!isRunning) {
+      loadPlaytime();
+    }
+  });
+
   onMount(async () => {
     // 1. Fetch servers from IPC
     try {
@@ -203,6 +240,8 @@
     } catch {
       // Ignore if localStorage unavailable
     }
+    // 5. Load playtime tracking summary
+    loadPlaytime();
   });
 
   function handleImportCompleted(result: {
@@ -256,7 +295,12 @@
       <div class="header-main-row">
         <div class="header-titles">
           <h1 class="game-heading">Minecraft</h1>
-          <p class="game-subheading">Клиент Wex • Версия {selectedVersion}</p>
+          <p class="game-subheading">
+            Клиент Wex • Версия {selectedVersion}
+            {#if playtimeSummary && playtimeSummary.total_seconds > 0}
+              <span class="header-playtime-meta">• {playtimeSummary.version_seconds > 0 ? `${playtimeSummary.version_formatted} на этой версии` : `${playtimeSummary.total_formatted} всего`}</span>
+            {/if}
+          </p>
         </div>
         <div class="header-tools">
           <Button
@@ -408,6 +452,14 @@
                 <span class="tech-status-badge">• {clientStatus}</span>
               {/if}
             </div>
+            {#if playtimeSummary && playtimeSummary.total_seconds > 0}
+              <div class="tech-playtime-line" title="Суммарно: {playtimeSummary.total_formatted} • Запусков: {playtimeSummary.total_launches}">
+                <Icon name="clock" size={11} color="var(--color-tertiary-label)" />
+                <span class="tech-playtime-label">
+                  {playtimeSummary.version_seconds > 0 ? `В игре: ${playtimeSummary.version_formatted}` : `В игре: ${playtimeSummary.total_formatted}`}
+                </span>
+              </div>
+            {/if}
           </div>
 
           <!-- Action Button: Play (systemBlue) -> In Game / Stop (neutral) -->
@@ -864,6 +916,24 @@
   .tech-status-badge.running {
     color: var(--color-system-green);
     font-weight: 600;
+  }
+
+  .tech-playtime-line {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--color-secondary-label);
+    margin-top: -2px;
+  }
+
+  .tech-playtime-label {
+    line-height: 1;
+  }
+
+  .header-playtime-meta {
+    color: var(--color-secondary-label);
+    font-weight: var(--font-weight-regular);
   }
 
   .running-indicator-dot {

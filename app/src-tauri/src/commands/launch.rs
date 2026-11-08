@@ -5,6 +5,7 @@ use tokio::sync::Mutex;
 
 use wex_core::config::WexPaths;
 use wex_core::event::{Event, EventHandler, LogLevel};
+use wex_core::playtime::{PlaytimeStore, PlaytimeSummary};
 use wex_core::WexLauncherCore;
 use wex_extras::crash::{analyze_crash, CrashKind};
 use wex_extras::discord::{Activity, DiscordRpcClient, DEFAULT_DISCORD_APP_ID};
@@ -392,6 +393,8 @@ pub async fn start_game(
             let discord_clone = state.discord.clone();
             let instance_dir = state.paths.instance_dir(&version);
             let version_clone = version.clone();
+            let playtime_file = state.paths.playtime_file.clone();
+            let session_start = std::time::Instant::now();
 
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -401,6 +404,12 @@ pub async fn start_game(
                         _ => break,
                     }
                 }
+
+                // Record session duration into persistent playtime store
+                let elapsed_sec = session_start.elapsed().as_secs();
+                let mut store = PlaytimeStore::load_or_default(&playtime_file);
+                store.record_session(&version_clone, elapsed_sec);
+                let _ = store.save(&playtime_file);
 
                 is_running_clone.store(false, Ordering::SeqCst);
                 {
@@ -546,6 +555,25 @@ pub async fn set_config(
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
     save_config(new_config, state).await
+}
+
+/// Retrieve playtime statistics summary.
+#[tauri::command]
+pub async fn get_playtime_summary(
+    version: Option<String>,
+    state: State<'_, PlayState>,
+) -> Result<PlaytimeSummary, String> {
+    let store = PlaytimeStore::load_or_default(&state.paths.playtime_file);
+    Ok(store.get_summary(version.as_deref()))
+}
+
+/// Compatibility alias for playtime retrieval.
+#[tauri::command]
+pub async fn playtime_get_summary(
+    version: Option<String>,
+    state: State<'_, PlayState>,
+) -> Result<PlaytimeSummary, String> {
+    get_playtime_summary(version, state).await
 }
 
 // ============================================================================
@@ -722,5 +750,25 @@ mod tests {
             }
             other => panic!("Expected OfflineForbidden, got {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn test_playtime_summary_lifecycle() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let mut store = PlaytimeStore::load_or_default(&paths.playtime_file);
+
+        // Record sessions
+        store.record_session("1.20.1", 3600);
+        store.record_session("1.21.1", 1800);
+        store.save(&paths.playtime_file).unwrap();
+
+        let loaded = PlaytimeStore::load_or_default(&paths.playtime_file);
+        let summary = loaded.get_summary(Some("1.20.1"));
+        assert_eq!(summary.total_seconds, 5400);
+        assert_eq!(summary.total_formatted, "1 ч. 30 мин.");
+        assert_eq!(summary.current_version_formatted, "1 ч.");
+        assert_eq!(summary.total_launches, 2);
+        assert_eq!(summary.summary_text, "В игре: 1 ч. 30 мин. • Запусков: 2");
     }
 }

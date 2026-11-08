@@ -13,12 +13,14 @@
     playerName?: string;
     isOnline?: boolean;
     skinHeadUrl?: string;
+    playtimeFormatted?: string;
   }
 
   let {
     playerName = 'Player',
     isOnline = false,
     skinHeadUrl,
+    playtimeFormatted,
   }: Props = $props();
 
   let imageError = $state(false);
@@ -50,7 +52,8 @@
 <div
   class="apple-profile-badge"
   role="status"
-  aria-label="Профиль игрока: {playerName}, {isOnline ? 'в сети' : 'не в сети'}"
+  aria-label="Профиль игрока: {playerName}, {isOnline ? 'в сети' : 'не в сети'}{playtimeFormatted ? `, время в игре: ${playtimeFormatted}` : ''}"
+  title={playtimeFormatted ? `${playerName} • В игре: ${playtimeFormatted}` : undefined}
   data-tauri-drag-region="false"
 >
   <!-- Avatar: Head skin or initial letter -->
@@ -83,7 +86,7 @@
   <div class="profile-info-text">
     <span class="profile-nickname">{playerName}</span>
     <span class="profile-status-caption" class:online={isOnline}>
-      {isOnline ? 'В сети' : 'Офлайн'}
+      {isOnline ? 'В сети' : 'Офлайн'}{playtimeFormatted ? ` • ${playtimeFormatted}` : ''}
     </span>
   </div>
 </div>

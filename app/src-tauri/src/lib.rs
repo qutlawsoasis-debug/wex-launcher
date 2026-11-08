@@ -203,6 +203,8 @@ pub fn run() {
             commands::launch::cancel_launch,
             commands::launch::is_game_running,
             commands::launch::kill_game,
+            commands::launch::get_playtime_summary,
+            commands::launch::playtime_get_summary,
             // UI compatibility aliases
             commands::launch::launch_game,
             commands::launch::set_config,
@@ -216,6 +218,10 @@ pub fn run() {
             commands::settings::get_launcher_config,
             commands::settings::save_launcher_config,
             commands::settings::open_data_dir,
+            commands::settings::verify_instance_files,
+            commands::settings::settings_verify_files,
+            commands::settings::cleanup_cache,
+            commands::settings::settings_cleanup_cache,
             // Mods commands (commands/mods.rs)
             commands::mods::list_mods,
             commands::mods::toggle_mod,

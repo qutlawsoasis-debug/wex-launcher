@@ -58,6 +58,37 @@ vi.mock('@tauri-apps/api/core', () => {
           language: 'ru',
         };
       }
+      if (cmd === 'get_playtime_summary') {
+        return {
+          total_seconds: 7200,
+          total_formatted: '2 ч. 0 мин.',
+          version_seconds: 3600,
+          version_formatted: '1 ч. 0 мин.',
+          version_summary: 'В игре: 1 ч. 0 мин. • Запусков: 2',
+          total_launches: 4,
+          last_played_utc: '2026-11-08T18:00:00Z',
+        };
+      }
+      if (cmd === 'verify_instance_files') {
+        return {
+          success: true,
+          total_files: 264,
+          verified_files: 264,
+          repaired_files: 0,
+          corrupted_files: 0,
+          errors: [],
+          message: 'Все 264 файлов проверены, повреждений не обнаружено',
+        };
+      }
+      if (cmd === 'cleanup_cache') {
+        return {
+          success: true,
+          freed_bytes: 15204352,
+          freed_formatted: '14.5 МБ',
+          deleted_files_count: 8,
+          message: 'Кэш очищен: освобождено 14.5 МБ (удалено 8 файлов)',
+        };
+      }
       return [];
     }),
   };
@@ -462,8 +493,30 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Язык интерфейса');
     expect(target.textContent).toContain('О программе');
     expect(target.textContent).toContain('Tauri 2');
+    expect(target.textContent).toContain('Проверить файлы игры');
+    expect(target.textContent).toContain('Очистить кэш');
     expect(target.textContent).not.toContain('.minecraft');
     expect(target.textContent).toContain('Wex');
+    unmount(comp);
+  });
+
+  it('triggers verify instance files and clean cache in SettingsScreen', async () => {
+    const comp = mount(SettingsScreen, { target });
+    await tick();
+
+    const buttons = Array.from(target.querySelectorAll('button'));
+    const verifyBtn = buttons.find((b) => b.textContent?.includes('Проверить'));
+    const cleanBtn = buttons.find((b) => b.textContent?.includes('Очистить'));
+
+    expect(verifyBtn).toBeDefined();
+    expect(cleanBtn).toBeDefined();
+
+    verifyBtn?.click();
+    await tick();
+
+    cleanBtn?.click();
+    await tick();
+
     unmount(comp);
   });
 

@@ -28,6 +28,9 @@ pub struct ShellProfileDto {
     pub is_online: bool,
     pub has_custom_skin: bool,
     pub skin_head_url: Option<String>,
+    pub total_playtime_seconds: u64,
+    pub total_playtime_formatted: String,
+    pub total_launches: u64,
 }
 
 /// Current shell launch state.
@@ -146,12 +149,19 @@ pub async fn shell_get_profile(
 
     let (has_custom_skin, skin_head_url) = resolve_player_skin(&state.paths, &nickname);
 
+    let playtime_store =
+        wex_core::playtime::PlaytimeStore::load_or_default(&state.paths.playtime_file);
+    let summary = playtime_store.get_summary(None);
+
     Ok(ShellProfileDto {
         nickname,
         initials,
         is_online,
         has_custom_skin,
         skin_head_url,
+        total_playtime_seconds: summary.total_seconds,
+        total_playtime_formatted: summary.total_formatted,
+        total_launches: summary.total_launches,
     })
 }
 
