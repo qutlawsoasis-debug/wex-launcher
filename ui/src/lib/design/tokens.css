@@ -223,6 +223,12 @@
     --motion-duration-sheet: 0.001ms !important;
     --motion-press-scale: 1 !important;
   }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 :root[data-reduce-motion="true"] {
@@ -230,6 +236,15 @@
   --motion-duration-normal: 0.001ms !important;
   --motion-duration-sheet: 0.001ms !important;
   --motion-press-scale: 1 !important;
+}
+
+:root[data-reduce-motion="true"] *,
+:root[data-reduce-motion="true"] *::before,
+:root[data-reduce-motion="true"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
 }
 
 /* Global Reset & Base */

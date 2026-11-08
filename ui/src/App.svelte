@@ -347,9 +347,21 @@
     applyHashRoute();
     window.addEventListener('hashchange', applyHashRoute);
 
-    // Initial checks: network, profile, and active running game state
-    checkNetwork();
-    loadProfile();
+    // Initial checks: parallelized network, profile, and active running game state
+    Promise.allSettled([
+      checkNetwork(),
+      loadProfile(),
+      (async () => {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const running = await invoke<boolean>('is_game_running');
+          isGameRunning = running;
+          if (running) {
+            clientStatus = 'Minecraft запущен';
+          }
+        } catch {}
+      })(),
+    ]);
 
     if (typeof window !== 'undefined') {
       window.addEventListener('online', checkNetwork);
@@ -359,20 +371,6 @@
     }
 
     const netInterval = setInterval(checkNetwork, 30000);
-
-    // Synchronize initial running state
-    import('@tauri-apps/api/core')
-      .then(({ invoke }) => {
-        invoke<boolean>('is_game_running')
-          .then((running) => {
-            isGameRunning = running;
-            if (running) {
-              clientStatus = 'Minecraft запущен';
-            }
-          })
-          .catch(() => {});
-      })
-      .catch(() => {});
 
     // Tauri 2 Event Listeners (install-progress & launch-status as per SPEC.md)
     let unlistenProgress: (() => void) | undefined;
@@ -611,9 +609,9 @@
     inset: 0;
     background-size: cover;
     background-position: center 30%;
-    transition: background-image 0.5s ease;
     z-index: 0;
     pointer-events: none;
+    will-change: transform;
   }
 
   .scenery-vignette {
