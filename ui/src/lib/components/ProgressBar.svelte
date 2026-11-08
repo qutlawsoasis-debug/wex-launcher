@@ -29,10 +29,10 @@
   let clampedPct = $derived(Math.max(0, Math.min(100, percentage)));
 </script>
 
-<div class="apple-progress-container" aria-label={label || 'Progress'}>
+<div class="apple-progress-container" aria-label={label || 'Прогресс'}>
   {#if label || detail || !indeterminate}
     <div class="progress-info">
-      <span class="progress-label">{label || (indeterminate ? 'Выполнение...' : 'Синхронизация...')}</span>
+      <span class="progress-label">{label || (indeterminate ? 'Выполнение...' : 'Прогресс')}</span>
       <span class="progress-detail">
         {#if detail}
           {detail}
@@ -45,12 +45,19 @@
 
   <div class="progress-track" style="height: {height}px;">
     {#if indeterminate}
-      <div class="progress-indeterminate" style="background-color: {color};"></div>
+      <div
+        class="progress-indeterminate"
+        style="background-color: {color};"
+        role="progressbar"
+        aria-busy="true"
+        aria-label={label || 'Загрузка...'}
+      ></div>
     {:else}
       <div
         class="progress-fill"
         style="width: {clampedPct}%; background-color: {color};"
         role="progressbar"
+        aria-label={label || 'Прогресс'}
         aria-valuenow={Math.round(clampedPct)}
         aria-valuemin="0"
         aria-valuemax="100"
@@ -109,17 +116,42 @@
     position: absolute;
     top: 0;
     bottom: 0;
+    left: 0;
     width: 40%;
     border-radius: var(--radius-pill);
     animation: indeterminateSlide 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    will-change: transform;
   }
 
   @keyframes indeterminateSlide {
     0% {
-      left: -40%;
+      transform: translateX(-100%);
     }
     100% {
-      left: 100%;
+      transform: translateX(350%);
     }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .progress-fill {
+      transition: none !important;
+    }
+    .progress-indeterminate {
+      animation: none !important;
+      left: 20% !important;
+      width: 60% !important;
+      opacity: 0.8;
+    }
+  }
+
+  :global([data-reduce-motion="true"]) .progress-fill {
+    transition: none !important;
+  }
+
+  :global([data-reduce-motion="true"]) .progress-indeterminate {
+    animation: none !important;
+    left: 20% !important;
+    width: 60% !important;
+    opacity: 0.8;
   }
 </style>

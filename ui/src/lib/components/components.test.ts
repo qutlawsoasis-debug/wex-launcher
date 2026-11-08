@@ -11,6 +11,8 @@ import ProgressBar from './ProgressBar.svelte';
 import Toast from './Toast.svelte';
 import Logo from './Logo.svelte';
 import ProfileBadge from './ProfileBadge.svelte';
+import Sheet from './Sheet.svelte';
+import Popover from './Popover.svelte';
 
 describe('Apple HIG Svelte 5 Components', () => {
   let target: HTMLElement;
@@ -217,11 +219,15 @@ describe('Apple HIG Svelte 5 Components', () => {
       target,
       props: { indeterminate: true, label: 'Загрузка...' },
     });
-    expect(target.querySelector('.progress-indeterminate')).not.toBeNull();
+    const indet = target.querySelector('.progress-indeterminate');
+    expect(indet).not.toBeNull();
+    expect(indet?.getAttribute('role')).toBe('progressbar');
+    expect(indet?.getAttribute('aria-busy')).toBe('true');
     unmount(compIndet);
   });
 
-  it('renders Toast with semantic status and auto-dismiss handler', () => {
+  it('renders Toast with semantic status and dismiss handler', () => {
+    let dismissedId = '';
     const comp = mount(Toast, {
       target,
       props: {
@@ -231,12 +237,20 @@ describe('Apple HIG Svelte 5 Components', () => {
           title: 'Успешно выполнено',
           description: 'Тестовое описание',
         },
+        ondismiss: (id) => {
+          dismissedId = id;
+        },
       },
     });
 
     expect(target.querySelector('.apple-toast.success')).not.toBeNull();
     expect(target.querySelector('.toast-title')?.textContent).toBe('Успешно выполнено');
     expect(target.querySelector('.toast-description')?.textContent).toBe('Тестовое описание');
+
+    const dismissBtn = target.querySelector('.dismiss-btn') as HTMLButtonElement;
+    expect(dismissBtn).not.toBeNull();
+    dismissBtn.click();
+    expect(dismissedId).toBe('test-toast');
     unmount(comp);
   });
 
@@ -289,6 +303,225 @@ describe('Apple HIG Svelte 5 Components', () => {
     const img = target.querySelector('.avatar-head-image') as HTMLImageElement;
     expect(img).not.toBeNull();
     expect(img.src).toContain('Alex');
+    unmount(comp);
+  });
+
+  it('renders Sheet with modal dialog semantics and dispatches cancel and done', () => {
+    let closed = false;
+    let done = false;
+    const comp = mount(Sheet, {
+      target,
+      props: {
+        open: true,
+        title: 'Тестовый диалог',
+        cancelLabel: 'Отменить',
+        doneLabel: 'Сохранить',
+        onclose: () => {
+          closed = true;
+        },
+        ondone: () => {
+          done = true;
+        },
+      },
+    });
+
+    const dialog = target.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog).not.toBeNull();
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(dialog.getAttribute('aria-label')).toBe('Тестовый диалог');
+    expect(target.querySelector('.grabber')).not.toBeNull();
+
+    const doneBtn = target.querySelectorAll('.header-action.trailing button')[0] as HTMLButtonElement;
+    expect(doneBtn).not.toBeNull();
+    doneBtn.click();
+    expect(done).toBe(true);
+
+    unmount(comp);
+  });
+
+  it('dismisses Sheet on Escape key', () => {
+    let closed = false;
+    const comp = mount(Sheet, {
+      target,
+      props: {
+        open: true,
+        title: 'Escape тест',
+        onclose: () => {
+          closed = true;
+        },
+      },
+    });
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(closed).toBe(true);
+    unmount(comp);
+  });
+
+  it('renders Popover with trigger and dialog semantics and handles Escape', () => {
+    let closed = false;
+    const comp = mount(Popover, {
+      target,
+      props: {
+        open: true,
+        title: 'Информация',
+        placement: 'bottom-start',
+        onclose: () => {
+          closed = true;
+        },
+      },
+    });
+
+    const dialog = target.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog).not.toBeNull();
+    expect(dialog.classList.contains('bottom-start')).toBe(true);
+    expect(dialog.getAttribute('aria-label')).toBe('Информация');
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(closed).toBe(true);
+    unmount(comp);
+  });
+
+  it('supports Button click events, variants and disabled state', () => {
+    let clicked = false;
+    const comp = mount(Button, {
+      target,
+      props: {
+        variant: 'ghost',
+        size: 'small',
+        onclick: () => {
+          clicked = true;
+        },
+      },
+    });
+
+    const btn = target.querySelector('button') as HTMLButtonElement;
+    expect(btn.classList.contains('ghost')).toBe(true);
+    expect(btn.classList.contains('small')).toBe(true);
+    btn.click();
+    expect(clicked).toBe(true);
+    unmount(comp);
+
+    let disabledClicked = false;
+    const compDisabled = mount(Button, {
+      target,
+      props: {
+        disabled: true,
+        onclick: () => {
+          disabledClicked = true;
+        },
+      },
+    });
+    const disabledBtn = target.querySelector('button') as HTMLButtonElement;
+    expect(disabledBtn.disabled).toBe(true);
+    disabledBtn.click();
+    expect(disabledClicked).toBe(false);
+    unmount(compDisabled);
+  });
+
+  it('toggles Toggle with Space and Enter keyboard keys and respects disabled state', () => {
+    let checked = false;
+    const comp = mount(Toggle, {
+      target,
+      props: {
+        checked: false,
+        onchange: (val) => {
+          checked = val;
+        },
+      },
+    });
+
+    const switchEl = target.querySelector('[role="switch"]') as HTMLElement;
+    switchEl.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    expect(checked).toBe(true);
+
+    switchEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(checked).toBe(false);
+    unmount(comp);
+
+    let disabledToggle = false;
+    const compDisabled = mount(Toggle, {
+      target,
+      props: {
+        checked: false,
+        disabled: true,
+        onchange: (val) => {
+          disabledToggle = val;
+        },
+      },
+    });
+    const disabledSwitch = target.querySelector('[role="switch"]') as HTMLElement;
+    expect(disabledSwitch.getAttribute('aria-disabled')).toBe('true');
+    disabledSwitch.click();
+    expect(disabledToggle).toBe(false);
+    unmount(compDisabled);
+  });
+
+  it('navigates SegmentedControl options with arrow keys', () => {
+    let current = 'first';
+    const comp = mount(SegmentedControl, {
+      target,
+      props: {
+        options: [
+          { value: 'first', label: 'Первый' },
+          { value: 'second', label: 'Второй' },
+          { value: 'third', label: 'Третий' },
+        ],
+        value: current,
+        size: 'small',
+        onchange: (val) => {
+          current = val;
+        },
+      },
+    });
+
+    expect(target.querySelector('.apple-segmented-control')?.classList.contains('small')).toBe(true);
+    const tabs = target.querySelectorAll('[role="tab"]');
+    expect(tabs.length).toBe(3);
+
+    tabs[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(current).toBe('second');
+
+    unmount(comp);
+  });
+
+  it('clears SearchField with Escape key and renders accessible search role', () => {
+    let searchVal = 'Тест';
+    const comp = mount(SearchField, {
+      target,
+      props: {
+        value: searchVal,
+        oninput: (val) => {
+          searchVal = val;
+        },
+      },
+    });
+
+    expect(target.querySelector('[role="search"]')).not.toBeNull();
+    const input = target.querySelector('input[type="search"]') as HTMLInputElement;
+    expect(input).not.toBeNull();
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(searchVal).toBe('');
+    unmount(comp);
+  });
+
+  it('renders interactive Row with click handler and disabled state', () => {
+    let rowClicked = false;
+    const comp = mount(Row, {
+      target,
+      props: {
+        title: 'Кликабельный элемент',
+        clickable: true,
+        onclick: () => {
+          rowClicked = true;
+        },
+      },
+    });
+
+    const btn = target.querySelector('button.apple-row') as HTMLButtonElement;
+    expect(btn).not.toBeNull();
+    btn.click();
+    expect(rowClicked).toBe(true);
     unmount(comp);
   });
 });

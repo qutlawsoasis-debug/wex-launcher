@@ -15,7 +15,7 @@
   let {
     size = 'medium',
     showSubtitle = false,
-    subtitle = 'Launcher',
+    subtitle = 'Лаунчер',
   }: Props = $props();
 </script>
 
@@ -82,8 +82,6 @@
     font-family: var(--font-system);
     font-size: var(--font-size-caption1);
     font-weight: 500;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
     color: var(--color-secondary-label);
   }
 </style>

@@ -23,6 +23,8 @@
   import Toast, { type ToastMessage } from '../components/Toast.svelte';
   import Icon from '../components/icons/Icon.svelte';
   import OfflineState from '../components/OfflineState.svelte';
+  import ErrorState from '../components/ErrorState.svelte';
+  import { formatError } from '../design/errors';
   import { network } from '../design/network.svelte';
 
   interface FriendItem {
@@ -83,6 +85,7 @@
   let requests = $state<FriendRequestItem[]>([]);
   let invites = $state<LobbyInviteItem[]>([]);
   let isSubmitting = $state(false);
+  let socialError = $state<unknown>(null);
 
   // Achievements state
   let achievements = $state<AchievementItem[]>([
@@ -197,9 +200,11 @@
       await invoke('social_send_friend_request', { target_friend_code: code });
       friendCodeInput = '';
       addToast('success', 'Заявка отправлена', `Заявка в друзья по коду ${code} успешно передана`);
+      socialError = null;
     } catch (e: any) {
-      const errMsg = e?.message || 'Не удалось отправить заявку в друзья';
-      addToast('error', 'Ошибка отправки', errMsg);
+      const formatted = formatError(e, 'friends');
+      socialError = e;
+      addToast('error', formatted.title, formatted.description);
     } finally {
       isSubmitting = false;
     }
@@ -220,8 +225,11 @@
         },
       ];
       addToast('success', 'Заявка принята', `${request.from_nick} теперь в списке ваших друзей`);
+      socialError = null;
     } catch (e: any) {
-      addToast('error', 'Ошибка', e?.message || 'Не удалось принять заявку');
+      const formatted = formatError(e, 'friends');
+      socialError = e;
+      addToast('error', formatted.title, formatted.description);
     }
   }
 
@@ -232,8 +240,11 @@
       await invoke('social_decline_friend_request', { request_id: request.id });
       requests = requests.filter((r) => r.id !== request.id);
       addToast('info', 'Заявка отклонена', `Заявка от ${request.from_nick} отклонена`);
+      socialError = null;
     } catch (e: any) {
-      addToast('error', 'Ошибка', e?.message || 'Не удалось отклонить заявку');
+      const formatted = formatError(e, 'friends');
+      socialError = e;
+      addToast('error', formatted.title, formatted.description);
     }
   }
 
@@ -373,6 +384,24 @@
     </div>
   </div>
 
+  <!-- Social Error Banner -->
+  {#if socialError}
+    <div class="social-error-banner" role="alert">
+      <ErrorState
+        error={socialError}
+        domain="friends"
+        compact={true}
+        onaction={() => {
+          loadSocialData();
+          socialError = null;
+        }}
+        onclose={() => {
+          socialError = null;
+        }}
+      />
+    </div>
+  {/if}
+
   <!-- Tab 1: Friends List -->
   {#if activeTab === 'friends'}
     {#if !network.isOnline}
@@ -428,7 +457,7 @@
             <div class="empty-icon-wrap">
               <Icon name="friends" size={40} color="var(--color-tertiary-label)" />
             </div>
-            <h3 class="empty-title">Список друзей пуст</h3>
+            <h2 class="empty-title">Список друзей пуст</h2>
             <p class="empty-desc">
               {searchQuery
                 ? 'По запросу «' + searchQuery + '» ни одного игрока не найдено.'
@@ -484,7 +513,7 @@
             <div class="empty-icon-wrap">
               <Icon name="friends" size={40} color="var(--color-tertiary-label)" />
             </div>
-            <h3 class="empty-title">Нет входящих заявок</h3>
+            <h2 class="empty-title">Нет входящих заявок</h2>
             <p class="empty-desc">
               Когда другие игроки отправят вам заявку по вашему коду дружбы, она появится в этом разделе.
             </p>
@@ -503,7 +532,7 @@
           <span class="summary-count">{unlockedCount} из {achievements.length} получено</span>
         </div>
         <div class="summary-progress">
-          <ProgressBar percentage={overallPercentage} height={8} />
+          <ProgressBar percentage={overallPercentage} label="Общий прогресс достижений" height={8} />
         </div>
       </div>
 
@@ -535,7 +564,7 @@
 
               {#if !ach.unlocked}
                 <div class="ach-progress-bar">
-                  <ProgressBar percentage={pct} height={4} />
+                  <ProgressBar percentage={pct} label={ach.title} height={4} />
                 </div>
               {/if}
             </div>
@@ -580,6 +609,10 @@
     flex: 1;
     min-width: 280px;
     max-width: 420px;
+  }
+
+  .social-error-banner {
+    width: 100%;
   }
 
   .friend-add-bar {
