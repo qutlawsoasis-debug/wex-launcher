@@ -2,45 +2,11 @@ pub mod commands;
 pub mod ipc;
 
 use std::sync::Mutex;
-use tauri::{Manager, State};
+use tauri::Manager;
 
 use commands::launch::PlayState;
-use ipc::{LobbyPlayerModel, LobbyRoomModel, ServerEntryModel, SystemInfo};
+use ipc::{LobbyRoomModel, ServerEntryModel};
 use wex_core::config::WexPaths;
-
-#[cfg(windows)]
-fn get_total_ram_mb() -> u32 {
-    use std::mem::zeroed;
-    #[repr(C)]
-    struct MemoryStatusEx {
-        length: u32,
-        memory_load: u32,
-        total_phys: u64,
-        avail_phys: u64,
-        total_page_file: u64,
-        avail_page_file: u64,
-        total_virtual: u64,
-        avail_virtual: u64,
-        avail_extended_virtual: u64,
-    }
-    extern "system" {
-        fn GlobalMemoryStatusEx(status: *mut MemoryStatusEx) -> i32;
-    }
-    unsafe {
-        let mut status: MemoryStatusEx = zeroed();
-        status.length = std::mem::size_of::<MemoryStatusEx>() as u32;
-        if GlobalMemoryStatusEx(&mut status) != 0 {
-            (status.total_phys / (1024 * 1024)) as u32
-        } else {
-            16384
-        }
-    }
-}
-
-#[cfg(not(windows))]
-fn get_total_ram_mb() -> u32 {
-    16384
-}
 
 pub struct AppState {
     pub servers: Mutex<Vec<ServerEntryModel>>,
@@ -50,202 +16,36 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            servers: Mutex::new(vec![
-                ServerEntryModel {
-                    id: "aura-main".to_string(),
-                    name: "Aura Official — Survival & PvP".to_string(),
-                    address: "mc.auramc.net".to_string(),
-                    icon: None,
-                    ping_ms: None,
-                    online: None,
-                    max_players: None,
-                    motd: Some("Официальный сервер Aura Client • 1.20.1 & 1.21.1".to_string()),
-                    version: Some("1.21.1 / 1.20.1".to_string()),
-                },
-                ServerEntryModel {
-                    id: "aura-modded".to_string(),
-                    name: "Aura Pack Community Server".to_string(),
-                    address: "pack.auramc.net".to_string(),
-                    icon: None,
-                    ping_ms: None,
-                    online: None,
-                    max_players: None,
-                    motd: Some("Сервер сообщества Aura-Pack".to_string()),
-                    version: Some("1.21.1".to_string()),
-                },
-            ]),
+            servers: Mutex::new(Vec::new()),
             active_lobby: Mutex::new(None),
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// System Info & Telemetry
-// ---------------------------------------------------------------------------
-
-#[tauri::command]
-fn get_system_info(state: State<'_, PlayState>) -> SystemInfo {
-    SystemInfo {
-        total_memory_mb: get_total_ram_mb(),
-        os_name: std::env::consts::OS.to_string(),
-        launcher_version: "1.0.0".to_string(),
-        data_dir: state.paths.root.to_string_lossy().to_string(),
-    }
-}
-
-#[tauri::command]
-fn get_data_dir(state: State<'_, PlayState>) -> String {
-    state.paths.root.to_string_lossy().to_string()
-}
-
-#[tauri::command]
-fn open_data_dir(state: State<'_, PlayState>) -> Result<(), String> {
-    let path = &state.paths.root;
-    if !path.exists() {
-        let _ = std::fs::create_dir_all(path);
-    }
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("explorer")
-            .arg(path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
-#[tauri::command]
-fn social_get_news(state: State<'_, PlayState>) -> Vec<wex_social::ReleaseNoteVersion> {
-    let cache_dir = state.paths.root.join("news");
-    let mgr = wex_social::NewsManager::new(cache_dir);
-    mgr.load_cached_or_default()
-}
-
-// ---------------------------------------------------------------------------
-// Lobby Management (SPEC.md 1.4)
-// ---------------------------------------------------------------------------
-
-#[tauri::command]
-async fn create_lobby_room(
-    world_name: String,
-    state: State<'_, AppState>,
-) -> Result<LobbyRoomModel, String> {
-    let code = format!(
-        "#{:X}",
-        std::time::SystemTime::now()
-            .elapsed()
-            .unwrap_or_default()
-            .as_millis()
-            % 0xFFFF
-    );
-
-    let room = LobbyRoomModel {
-        code,
-        host_name: "HostPlayer".to_string(),
-        world_name,
-        tunnel_address: Some("tunnel.playit.gg:25565".to_string()),
-        tunnel_active: true,
-        is_host: true,
-        players: vec![LobbyPlayerModel {
-            name: "HostPlayer".to_string(),
-            is_host: true,
-            ping_ms: 0,
-            mods_synced: true,
-        }],
-        mod_mismatch_count: 0,
-        total_mods: 142,
-    };
-
-    let mut active = state.active_lobby.lock().map_err(|e| e.to_string())?;
-    *active = Some(room.clone());
-    Ok(room)
-}
-
-#[tauri::command]
-async fn join_lobby_room(
-    code: String,
-    state: State<'_, AppState>,
-) -> Result<LobbyRoomModel, String> {
-    let room = LobbyRoomModel {
-        code: code.clone(),
-        host_name: "HostPlayer".to_string(),
-        world_name: "Survival World".to_string(),
-        tunnel_address: Some("tunnel.playit.gg:25565".to_string()),
-        tunnel_active: true,
-        is_host: false,
-        players: vec![
-            LobbyPlayerModel {
-                name: "HostPlayer".to_string(),
-                is_host: true,
-                ping_ms: 24,
-                mods_synced: true,
-            },
-            LobbyPlayerModel {
-                name: "Player".to_string(),
-                is_host: false,
-                ping_ms: 18,
-                mods_synced: true,
-            },
-        ],
-        mod_mismatch_count: 0,
-        total_mods: 142,
-    };
-
-    let mut active = state.active_lobby.lock().map_err(|e| e.to_string())?;
-    *active = Some(room.clone());
-    Ok(room)
-}
-
-#[tauri::command]
-fn get_lobby_status(
-    code: String,
-    state: State<'_, AppState>,
-) -> Result<Option<LobbyRoomModel>, String> {
-    let active = state.active_lobby.lock().map_err(|e| e.to_string())?;
-    if let Some(ref r) = *active {
-        if r.code == code {
-            return Ok(Some(r.clone()));
-        }
-    }
-    Ok(None)
-}
-
-#[tauri::command]
-fn close_lobby_room(_code: String, state: State<'_, AppState>) -> Result<(), String> {
-    let mut active = state.active_lobby.lock().map_err(|e| e.to_string())?;
-    *active = None;
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Tauri Application Runner
-// ---------------------------------------------------------------------------
 
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();
-            let play_state = PlayState::new_real(paths, app.handle().clone());
+            let network_state = commands::network::NetworkState::new();
+            network_state.start_supervisor(app.handle().clone());
+            let play_state =
+                PlayState::new_real(paths.clone(), app.handle().clone(), network_state.clone());
             app.manage(play_state);
+            app.manage(network_state);
+            app.manage(commands::friends::FriendsState::new(paths.clone()));
             app.manage(AppState::default());
+            let lobby_state = commands::lobby::LobbyState::new(
+                paths.root.join("tools"),
+                commands::lobby::DEFAULT_LOBBY_API_URL,
+                commands::lobby::DEFAULT_OLD_BACKEND_URL,
+            );
+            app.manage(lobby_state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Network & Connectivity commands
+            commands::network::get_network_status,
             // Standard wex-ipc commands
             commands::launch::get_config,
             commands::launch::save_config,
@@ -256,15 +56,32 @@ pub fn run() {
             commands::launch::kill_game,
             // UI compatibility aliases
             commands::launch::launch_game,
-            commands::launch::get_launcher_config,
-            commands::launch::save_launcher_config,
             commands::launch::set_config,
-            // System info
-            get_system_info,
-            get_data_dir,
-            open_data_dir,
-            social_get_news,
-            // Servers commands
+            // Settings commands (commands/settings.rs)
+            commands::settings::get_launcher_settings,
+            commands::settings::save_launcher_settings,
+            commands::settings::reset_settings,
+            commands::settings::open_game_data_dir,
+            commands::settings::get_system_info,
+            commands::settings::get_data_dir,
+            commands::settings::get_launcher_config,
+            commands::settings::save_launcher_config,
+            commands::settings::open_data_dir,
+            // Mods commands (commands/mods.rs)
+            commands::mods::list_mods,
+            commands::mods::toggle_mod,
+            commands::mods::add_custom_mod,
+            commands::mods::delete_custom_mod,
+            commands::mods::open_mods_dir,
+            // Overview & Social/Extras commands
+            commands::overview::social_get_news,
+            commands::overview::overview_get_news,
+            commands::overview::social_check_launcher_update,
+            commands::overview::overview_check_update,
+            commands::overview::extras_detect_old_launcher,
+            commands::overview::extras_import_old_launcher,
+            commands::overview::extras_apply_import,
+            // Servers commands (commands/servers.rs)
             commands::servers::list_servers,
             commands::servers::ping_server,
             commands::servers::add_server,
@@ -275,11 +92,61 @@ pub fn run() {
             commands::servers::net_merge_servers,
             commands::servers::net_ping_server,
             commands::servers::net_resolve_address,
-            // Lobby commands
-            create_lobby_room,
-            join_lobby_room,
-            get_lobby_status,
-            close_lobby_room,
+            // Lobby commands (from commands::lobby)
+            commands::lobby::net_lobby_create,
+            commands::lobby::net_lobby_join,
+            commands::lobby::net_lobby_open,
+            commands::lobby::net_lobby_status,
+            commands::lobby::net_lobby_heartbeat,
+            commands::lobby::net_lobby_close,
+            commands::lobby::net_lobby_leave,
+            commands::lobby::net_lobby_kick,
+            commands::lobby::net_lobby_tunnel_config,
+            commands::lobby::net_lobby_list_open_rooms,
+            commands::lobby::net_tunnel_ensure_binary,
+            commands::lobby::net_tunnel_start,
+            commands::lobby::net_tunnel_stop,
+            commands::lobby::net_tunnel_status,
+            commands::lobby::create_lobby_room,
+            commands::lobby::join_lobby_room,
+            commands::lobby::get_lobby_status,
+            commands::lobby::close_lobby_room,
+            commands::lobby::kick_lobby_player,
+            commands::lobby::list_open_rooms,
+            // Friends & Social commands
+            commands::friends::social_login,
+            commands::friends::social_get_friends,
+            commands::friends::social_send_friend_request,
+            commands::friends::social_accept_friend_request,
+            commands::friends::social_decline_friend_request,
+            commands::friends::social_sync,
+            commands::friends::social_send_lobby_invite,
+            commands::friends::social_respond_lobby_invite,
+            commands::friends::social_set_presence,
+            commands::friends::social_list_achievements,
+            commands::friends::social_report_achievement_progress,
+            // Workshop commands (SPEC 1.7)
+            commands::workshop::workshop_list_worlds,
+            commands::workshop::social_list_worlds,
+            commands::workshop::workshop_create_world_backup,
+            commands::workshop::social_create_world_backup,
+            commands::workshop::workshop_list_world_backups,
+            commands::workshop::social_list_world_backups,
+            commands::workshop::workshop_restore_world_backup,
+            commands::workshop::social_restore_world_backup,
+            commands::workshop::workshop_delete_world,
+            commands::workshop::workshop_list_screenshots,
+            commands::workshop::social_list_screenshots,
+            commands::workshop::workshop_open_path,
+            // Workshop packs and shaders commands (SPEC 1.7)
+            commands::workshop_packs::workshop_list_resource_packs,
+            commands::workshop_packs::workshop_toggle_resource_pack,
+            commands::workshop_packs::workshop_set_resource_packs_order,
+            commands::workshop_packs::workshop_list_shader_packs,
+            commands::workshop_packs::workshop_set_active_shader_pack,
+            commands::workshop_packs::workshop_add_pack_file,
+            commands::workshop_packs::workshop_delete_pack_file,
+            commands::workshop_packs::workshop_open_packs_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -81,6 +81,7 @@ pub const CMD_NET_LOBBY_CLOSE: &str = "net_lobby_close";
 pub const CMD_NET_LOBBY_LEAVE: &str = "net_lobby_leave";
 pub const CMD_NET_LOBBY_KICK: &str = "net_lobby_kick";
 pub const CMD_NET_LOBBY_TUNNEL_CONFIG: &str = "net_lobby_tunnel_config";
+pub const CMD_NET_LOBBY_LIST_OPEN_ROOMS: &str = "net_lobby_list_open_rooms";
 pub const CMD_NET_COMPARE_MANIFESTS: &str = "net_compare_manifests";
 pub const CMD_NET_COMPUTE_MANIFEST_HASH: &str = "net_compute_manifest_hash";
 pub const CMD_NET_TUNNEL_START: &str = "net_tunnel_start";
@@ -184,6 +185,16 @@ pub struct NetLobbyKickRequest {
     pub code: String,
     pub host_token: String,
     pub player: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetListOpenRoomsRequest {
+    pub player_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetListOpenRoomsResponse {
+    pub rooms: Vec<NetOpenRoomDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]

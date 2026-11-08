@@ -4953,6 +4953,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "tauri",
@@ -4966,6 +4967,8 @@ dependencies = [
  "wex-ipc",
  "wex-net",
  "wex-social",
+ "wiremock",
+ "zip",
 ]
 
 [[package]]
@@ -4991,6 +4994,7 @@ dependencies = [
  "uuid",
  "wex-ipc",
  "windows-sys 0.59.0",
+ "wiremock",
  "zip",
 ]
 

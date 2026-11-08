@@ -235,6 +235,27 @@ pub fn build_launch_args(opts: &LaunchOptions) -> Vec<String> {
         args.push(arg.clone());
     }
 
+    if std::env::var("WEX_QA_BACKGROUND")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+        || opts
+            .extra_jvm_args
+            .iter()
+            .any(|a| a.contains("wex.qa.background"))
+        || opts
+            .config
+            .jvm_args
+            .iter()
+            .any(|a| a.contains("wex.qa.background"))
+    {
+        if !args.iter().any(|a| a.contains("wex.qa.background")) {
+            args.push("-Dwex.qa.background=true".to_string());
+        }
+        if !args.iter().any(|a| a.contains("aura.client.hiddenWindow")) {
+            args.push("-Daura.client.hiddenWindow=true".to_string());
+        }
+    }
+
     // Classpath
     let cp = build_classpath(
         opts.client_jar,
@@ -615,7 +636,11 @@ mod tests {
         File::create(&lib1).unwrap();
         File::create(&lib2).unwrap();
 
-        let cp = build_classpath(&client_jar, &[lib1.clone()], &[lib2.clone()]);
+        let cp = build_classpath(
+            &client_jar,
+            std::slice::from_ref(&lib1),
+            std::slice::from_ref(&lib2),
+        );
         assert!(cp.contains("lib2.jar"));
         assert!(cp.contains("lib1.jar"));
         assert!(cp.contains("client.jar"));
@@ -754,5 +779,37 @@ mod tests {
 
         assert_eq!(f_libs.len(), 1);
         assert!(f_libs[0].ends_with("sponge-mixin-0.15.3+mixin.0.8.7.jar"));
+    }
+
+    #[test]
+    fn test_wex_qa_background_arg_injection() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let config = LauncherConfig::default();
+
+        let java_bin = PathBuf::from("java.exe");
+        let client_jar = PathBuf::from("client.jar");
+        let vanilla_libs = Vec::new();
+        let fabric_libs = Vec::new();
+
+        std::env::set_var("WEX_QA_BACKGROUND", "true");
+        let launch_opts = LaunchOptions {
+            paths: &paths,
+            config: &config,
+            version: "1.20.1",
+            java_binary: &java_bin,
+            client_jar: &client_jar,
+            vanilla_libraries: &vanilla_libs,
+            fabric_libraries: &fabric_libs,
+            asset_index_id: "5",
+            extra_jvm_args: &[],
+            quick_play_multiplayer: None,
+        };
+
+        let args = build_launch_args(&launch_opts);
+        std::env::remove_var("WEX_QA_BACKGROUND");
+
+        assert!(args.iter().any(|a| a == "-Dwex.qa.background=true"));
+        assert!(args.iter().any(|a| a == "-Daura.client.hiddenWindow=true"));
     }
 }

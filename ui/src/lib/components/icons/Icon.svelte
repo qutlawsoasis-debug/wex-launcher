@@ -25,7 +25,11 @@
       | 'sun'
       | 'moon'
       | 'folder'
-      | 'cpu';
+      | 'plus'
+      | 'trash'
+      | 'cpu'
+      | 'workshop'
+      | 'wifi-off';
     size?: number;
     color?: string;
     class?: string;
@@ -125,6 +129,13 @@
     <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
   {:else if name === 'folder'}
     <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"></path>
+  {:else if name === 'plus'}
+    <line x1="12" y1="5" x2="12" y2="19"></line>
+    <line x1="5" y1="12" x2="19" y2="12"></line>
+  {:else if name === 'trash'}
+    <path d="M3 6h18"></path>
+    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
   {:else if name === 'cpu'}
     <rect x="4" y="4" width="16" height="16" rx="2"></rect>
     <rect x="9" y="9" width="6" height="6"></rect>
@@ -136,6 +147,16 @@
     <path d="M20 9h2"></path>
     <path d="M9 2v2"></path>
     <path d="M9 20v2"></path>
+  {:else if name === 'workshop'}
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+  {:else if name === 'wifi-off'}
+    <line x1="1" y1="1" x2="23" y2="23"></line>
+    <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
+    <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
+    <path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path>
+    <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path>
+    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+    <line x1="12" y1="20" x2="12.01" y2="20"></line>
   {/if}
 </svg>
 

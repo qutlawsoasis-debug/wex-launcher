@@ -18,6 +18,8 @@ export type LobbyStatusResponseDto = { code: string, status: string, tunnel_addr
 
 export type TunnelConfigResponseDto = { secret: string | null, public_address: string | null, public_port: number | null, };;
 
+export type NetOpenRoomDto = { id: string, name: string, host_name: string, game_version: string, player_count: number, max_players: number, address: string | null, status: string, };;
+
 export type ModManifestEntryDto = { id: string, name: string, version: string, enabled: boolean, };;
 
 export type ModMismatchTypeDto = "Disabled" | "Missing" | "Extra" | { "Version": { player_version: string, host_version: string, } };;

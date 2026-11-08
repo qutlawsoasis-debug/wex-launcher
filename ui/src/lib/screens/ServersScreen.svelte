@@ -23,6 +23,8 @@
   import Sheet from '../components/Sheet.svelte';
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Icon from '../components/icons/Icon.svelte';
+  import OfflineState from '../components/OfflineState.svelte';
+  import { network } from '../design/network.svelte';
 
   export interface ServerEntry {
     id: string;
@@ -340,7 +342,9 @@
 
   <!-- Main Servers List View (Apple HIG Inset Grouped) -->
   <div class="servers-content">
-    {#if filteredServers.length > 0}
+    {#if !network.isOnline}
+      <OfflineState onretry={loadServers} />
+    {:else if filteredServers.length > 0}
       <List header="Серверы Minecraft • {activeVersion}">
         {#each filteredServers as s (s.id)}
           <Row
@@ -415,8 +419,8 @@
                   type="button"
                   class="remove-btn"
                   onclick={() => handleRemoveServer(s)}
-                  title="Удалить сервер из списка"
-                  aria-label="Удалить сервер"
+                  title="Удалить сервер"
+                  aria-label="Удалить сервер {s.name}"
                 >
                   <Icon name="close" size={12} color="var(--color-secondary-label)" />
                 </button>
@@ -671,6 +675,11 @@
     background-color: rgba(255, 69, 58, 0.15);
   }
 
+  .remove-btn:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 2px;
+  }
+
   .remove-btn:hover :global(svg) {
     stroke: var(--color-system-red);
   }
@@ -748,6 +757,7 @@
 
   .form-input:focus {
     border-color: var(--color-system-blue);
+    box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
     background-color: var(--card-bg);
   }
 </style>
