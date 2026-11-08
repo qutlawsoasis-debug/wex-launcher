@@ -144,10 +144,12 @@
     }
   }
 
+  :global([data-effects="off"]) .progress-fill,
   :global([data-reduce-motion="true"]) .progress-fill {
     transition: none !important;
   }
 
+  :global([data-effects="off"]) .progress-indeterminate,
   :global([data-reduce-motion="true"]) .progress-indeterminate {
     animation: none !important;
     left: 20% !important;

@@ -81,11 +81,16 @@
     text-align: center;
     user-select: none;
     transition:
-      transform var(--motion-duration-short) var(--motion-spring-ease),
+      transform var(--motion-duration-press) var(--motion-curve-spring-system),
       background-color var(--motion-duration-short) ease,
       opacity var(--motion-duration-short) ease,
       box-shadow var(--motion-duration-short) ease;
     outline: none;
+  }
+
+  .apple-button:active:not(:disabled) {
+    transition-duration: var(--motion-duration-press);
+    transition-timing-function: var(--motion-curve-press);
   }
 
   .apple-button:focus-visible {
@@ -236,10 +241,12 @@
     }
   }
 
+  :global([data-effects="off"]) .apple-button,
   :global([data-reduce-motion="true"]) .apple-button {
-    transition: none !important;
+    transition: background-color var(--motion-duration-short) ease, opacity var(--motion-duration-short) ease !important;
   }
 
+  :global([data-effects="off"]) .apple-button:active:not(:disabled),
   :global([data-reduce-motion="true"]) .apple-button:active:not(:disabled) {
     transform: none !important;
   }

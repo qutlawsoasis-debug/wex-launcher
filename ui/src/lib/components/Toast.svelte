@@ -117,7 +117,10 @@
     user-select: none;
     min-width: 280px;
     max-width: 440px;
-    animation: toastSlideDown var(--motion-duration-normal) var(--motion-spring-ease) forwards;
+    animation: toastSlideDown var(--motion-duration-toast-enter) var(--motion-curve-spring-system) forwards;
+    transition:
+      transform var(--motion-duration-toast-exit) var(--motion-curve-fast-exit),
+      opacity var(--motion-duration-toast-exit) ease;
   }
 
   .toast-icon {
@@ -160,7 +163,7 @@
     outline: none;
     transition:
       background-color var(--motion-duration-short) ease,
-      box-shadow var(--motion-duration-short) ease;
+      transform var(--motion-duration-press) var(--motion-curve-press);
     flex-shrink: 0;
   }
 
@@ -170,6 +173,7 @@
 
   .dismiss-btn:active {
     background-color: var(--color-tertiary-system-fill);
+    transform: scale(var(--motion-press-scale, 0.97));
   }
 
   .dismiss-btn:focus-visible {
@@ -188,15 +192,25 @@
     }
   }
 
+  @keyframes toastFadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .apple-toast {
-      animation: none !important;
+      animation: toastFadeIn var(--motion-duration-short) ease forwards !important;
       transform: none !important;
     }
   }
 
+  :global([data-effects="off"]) .apple-toast,
   :global([data-reduce-motion="true"]) .apple-toast {
-    animation: none !important;
+    animation: toastFadeIn var(--motion-duration-short) ease forwards !important;
     transform: none !important;
   }
 </style>

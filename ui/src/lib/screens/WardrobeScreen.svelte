@@ -894,7 +894,7 @@
     border-radius: var(--radius-sm);
     font-family: inherit;
     font-weight: 500;
-    transition: background 0.15s ease;
+    transition: background var(--motion-duration-short) ease;
   }
 
   .reset-angle-btn:hover {

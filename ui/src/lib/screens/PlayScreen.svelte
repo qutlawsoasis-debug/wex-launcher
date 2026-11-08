@@ -597,6 +597,15 @@
     padding: 16px 20px;
     box-sizing: border-box;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+    transition:
+      transform var(--motion-duration-normal) var(--motion-curve-spring-bouncy),
+      box-shadow var(--motion-duration-hover) ease,
+      background-color var(--motion-duration-hover) ease;
+  }
+
+  .glass-card:hover {
+    transform: translateY(var(--motion-card-hover-y, -2px));
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
   }
 
   .updates-card {
@@ -872,12 +881,22 @@
     border-radius: 50%;
     background-color: var(--color-system-green);
     margin-right: 6px;
-    box-shadow: 0 0 6px rgba(48, 209, 88, 0.6);
   }
 
   .dock-primary-action {
     margin-left: auto;
     flex-shrink: 0;
+    transition:
+      transform var(--motion-duration-morph) var(--motion-curve-spring-bouncy),
+      opacity var(--motion-duration-screen-enter) ease;
+  }
+
+  .dock-controls-row {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 16px;
+    animation: dockRowIn var(--motion-duration-morph) var(--motion-curve-spring-bouncy) forwards;
   }
 
   .dock-progress-mode {
@@ -885,6 +904,37 @@
     align-items: center;
     gap: 16px;
     width: 100%;
+    animation: dockProgressIn var(--motion-duration-morph) var(--motion-curve-spring-bouncy) forwards;
+  }
+
+  @keyframes dockRowIn {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes dockProgressIn {
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  :global([data-effects="off"]) .dock-controls-row,
+  :global([data-effects="off"]) .dock-progress-mode,
+  :global([data-reduce-motion="true"]) .dock-controls-row,
+  :global([data-reduce-motion="true"]) .dock-progress-mode {
+    animation: none;
+    transform: none !important;
   }
 
   .dock-progress-mode :global(.progress-bar-wrapper) {

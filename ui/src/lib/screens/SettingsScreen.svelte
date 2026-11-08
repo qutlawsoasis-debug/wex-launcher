@@ -49,6 +49,12 @@
     { value: 'Ultra', label: t('settings.graphics_ultra') },
   ]);
 
+  let effectsOptions = $derived([
+    { value: 'full', label: i18n.locale === 'en' ? 'Full' : 'Полные' },
+    { value: 'low', label: i18n.locale === 'en' ? 'Low' : 'Умеренные' },
+    { value: 'off', label: i18n.locale === 'en' ? 'Off' : 'Отключены' },
+  ]);
+
   let javaModeOptions = $derived([
     { value: 'auto', label: t('settings.java_auto') },
     { value: 'custom', label: t('settings.java_custom') },
@@ -463,6 +469,22 @@
 
     <!-- Accessibility / Универсальный доступ -->
     <List header={t('settings.header_a11y')}>
+      <Row
+        title={i18n.locale === 'en' ? 'Interface Effects' : 'Эффекты интерфейса'}
+        subtitle={i18n.locale === 'en' ? 'Animation fidelity and spring motion' : 'Степень плавности и пружинных анимаций'}
+      >
+        {#snippet trailing()}
+          <SegmentedControl
+            options={effectsOptions}
+            value={theme.effectsMode}
+            onchange={(val) => {
+              theme.setEffectsMode(val as any);
+              saveConfig();
+            }}
+          />
+        {/snippet}
+      </Row>
+
       <Row
         title={t('settings.reduce_motion_title')}
         subtitle={t('settings.reduce_motion_subtitle')}
