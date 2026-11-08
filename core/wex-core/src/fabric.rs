@@ -71,6 +71,16 @@ pub async fn fetch_fabric_profile(
     Ok(profile)
 }
 
+pub fn resolve_fabric_libraries(paths: &WexPaths, profile: &FabricProfile) -> Vec<PathBuf> {
+    let mut classpath_jars = Vec::new();
+    for lib in &profile.libraries {
+        if let Ok(rel_path) = maven_coordinate_to_path(&lib.name) {
+            classpath_jars.push(paths.libraries_dir.join(rel_path));
+        }
+    }
+    classpath_jars
+}
+
 pub async fn install_fabric_libraries(
     paths: &WexPaths,
     profile: &FabricProfile,

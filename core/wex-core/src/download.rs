@@ -384,4 +384,28 @@ mod tests {
         assert!(verify_file(&file_path, Some(11), Some((&sha1, HashType::Sha1))));
         assert!(verify_file(&file_path, Some(11), Some((&sha256, HashType::Sha256))));
     }
+
+    #[tokio::test]
+    async fn test_cancellation_token_cancels_download() {
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("file.bin");
+        let token = CancellationToken::new();
+        token.cancel(); // Cancel immediately
+
+        let client = reqwest::Client::new();
+        let events = crate::event::NoopEventHandler;
+
+        let res = download_file_resumable_cancellable(
+            &client,
+            "http://127.0.0.1:9999/nonexistent",
+            &target,
+            None,
+            None,
+            &events,
+            Some(&token),
+        )
+        .await;
+
+        assert!(matches!(res, Err(WexError::Cancelled)));
+    }
 }

@@ -155,3 +155,49 @@ impl LauncherCore for WexLauncherCore {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn test_ipc_launcher_core_config_and_versions() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        paths.ensure_dirs().unwrap();
+
+        let core = WexLauncherCore::new(paths.clone());
+
+        // Initial default config
+        let cfg = core.get_config().await.unwrap();
+        assert_eq!(cfg.player_name, "Player");
+
+        // Save updated config
+        let mut new_cfg = cfg.clone();
+        new_cfg.player_name = "Alex".to_string();
+        new_cfg.ram_gb = 6;
+        core.save_config(new_cfg).await.unwrap();
+
+        // Reload and verify
+        let reloaded = core.get_config().await.unwrap();
+        assert_eq!(reloaded.player_name, "Alex");
+        assert_eq!(reloaded.ram_gb, 6);
+
+        // Check installed versions (initially false)
+        let versions = core.get_installed_versions().await.unwrap();
+        assert_eq!(versions.len(), 2);
+        assert!(!versions[0].is_installed);
+        assert!(!versions[1].is_installed);
+
+        // Create client.jar for 1.20.1 and recheck
+        let v120_jar = paths.client_jar("1.20.1");
+        fs::create_dir_all(v120_jar.parent().unwrap()).unwrap();
+        fs::write(&v120_jar, b"PK").unwrap();
+
+        let updated_versions = core.get_installed_versions().await.unwrap();
+        let v120 = updated_versions.iter().find(|v| v.id == "1.20.1").unwrap();
+        assert!(v120.is_installed);
+    }
+}

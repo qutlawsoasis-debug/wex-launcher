@@ -214,6 +214,25 @@ pub async fn install_minecraft_client(
     Ok(client_jar)
 }
 
+pub fn resolve_vanilla_libraries(paths: &WexPaths, pkg: &VersionPackage) -> Vec<PathBuf> {
+    let mut classpath_jars = Vec::new();
+    for lib in &pkg.libraries {
+        if !is_library_allowed(lib) {
+            continue;
+        }
+
+        if let Some(downloads) = &lib.downloads {
+            if let Some(artifact) = &downloads.artifact {
+                if let Some(rel_path) = &artifact.path {
+                    let target_path = paths.libraries_dir.join(rel_path);
+                    classpath_jars.push(target_path);
+                }
+            }
+        }
+    }
+    classpath_jars
+}
+
 pub async fn install_vanilla_libraries(
     paths: &WexPaths,
     version: &str,
@@ -475,5 +494,16 @@ mod tests {
         if cfg!(target_os = "windows") && cfg!(target_arch = "x86_64") {
             assert!(!evaluates_rule_for_current_os(&[arm64_rule]));
         }
+    }
+
+    #[test]
+    fn test_natives_template_resolution() {
+        let mut natives_map = std::collections::HashMap::new();
+        natives_map.insert("windows".to_string(), "natives-windows-${arch}".to_string());
+        natives_map.insert("osx".to_string(), "natives-osx".to_string());
+
+        let arch_bits = if cfg!(target_pointer_width = "64") { "64" } else { "32" };
+        let resolved = natives_map.get("windows").map(|tmpl| tmpl.replace("${arch}", arch_bits));
+        assert_eq!(resolved, Some(format!("natives-windows-{}", arch_bits)));
     }
 }

@@ -10,10 +10,11 @@ use crate::auth::offline_uuid;
 use crate::config::{LauncherConfig, WexPaths};
 use crate::error::{Result, WexError};
 use crate::event::{Event, EventHandler, LogLevel};
-use crate::fabric::{fetch_fabric_profile, install_fabric_libraries};
+use crate::fabric::{fetch_fabric_profile, install_fabric_libraries, resolve_fabric_libraries};
 use crate::java::ensure_mojang_java;
 use crate::minecraft::{
     fetch_version_package, install_assets, install_minecraft_client, install_vanilla_libraries,
+    resolve_vanilla_libraries,
 };
 use crate::pack::sync_aura_pack;
 
@@ -435,8 +436,7 @@ pub async fn install_full_environment(
                 level: LogLevel::Warn,
                 message: format!("Network error downloading vanilla libraries ({}), resolving cached libraries", e),
             });
-            // Try resolving existing libraries from disk
-            Vec::new()
+            resolve_vanilla_libraries(paths, &pkg)
         }
     };
 
@@ -476,7 +476,7 @@ pub async fn install_full_environment(
                 level: LogLevel::Warn,
                 message: format!("Network error downloading Fabric libraries ({}), resolving cached libraries", e),
             });
-            Vec::new()
+            resolve_fabric_libraries(paths, &fabric_profile)
         }
     };
 
@@ -623,5 +623,77 @@ mod tests {
         assert!(!cp.contains("asm-tree-9.3.jar"));
         // Non-conflicting vanilla library must remain
         assert!(cp.contains("guava-32.1.2-jre.jar"));
+    }
+
+    #[test]
+    fn test_offline_fallback_resolution() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        paths.ensure_dirs().unwrap();
+
+        let version = "1.20.1";
+        let ver_dir = paths.versions_dir.join(version);
+        fs::create_dir_all(&ver_dir).unwrap();
+
+        // Create cached version package
+        let pkg_cache_file = ver_dir.join(format!("{}.json", version));
+        let mock_pkg_json = r#"{
+            "id": "1.20.1",
+            "mainClass": "net.minecraft.client.main.Main",
+            "downloads": {
+                "client": {
+                    "sha1": "test_sha1",
+                    "size": 1234,
+                    "url": "https://piston-data.mojang.com/v1/objects/test/client.jar"
+                }
+            },
+            "libraries": [
+                {
+                    "name": "com.mojang:logging:1.1.1",
+                    "downloads": {
+                        "artifact": {
+                            "path": "com/mojang/logging/1.1.1/logging-1.1.1.jar",
+                            "sha1": "abc",
+                            "size": 500,
+                            "url": "https://libraries.minecraft.net/com/mojang/logging/1.1.1/logging-1.1.1.jar"
+                        }
+                    }
+                }
+            ],
+            "assetIndex": {
+                "id": "5",
+                "sha1": "idx_sha1",
+                "size": 100,
+                "url": "https://piston-meta.mojang.com/v1/packages/idx.json",
+                "totalSize": 200
+            }
+        }"#;
+        fs::write(&pkg_cache_file, mock_pkg_json).unwrap();
+
+        // Create cached Fabric profile
+        let fabric_cache_file = ver_dir.join(format!("fabric-{}.json", version));
+        let mock_fabric_json = r#"{
+            "id": "fabric-loader-0.19.5-1.20.1",
+            "mainClass": "net.fabricmc.loader.impl.launch.knot.KnotClient",
+            "libraries": [
+                {
+                    "name": "net.fabricmc:sponge-mixin:0.15.3+mixin.0.8.7"
+                }
+            ]
+        }"#;
+        fs::write(&fabric_cache_file, mock_fabric_json).unwrap();
+
+        // Verify offline reading of cached JSONs without network
+        let pkg: crate::minecraft::VersionPackage = serde_json::from_str(&fs::read_to_string(&pkg_cache_file).unwrap()).unwrap();
+        let fabric_prof: crate::fabric::FabricProfile = serde_json::from_str(&fs::read_to_string(&fabric_cache_file).unwrap()).unwrap();
+
+        let v_libs = resolve_vanilla_libraries(&paths, &pkg);
+        let f_libs = resolve_fabric_libraries(&paths, &fabric_prof);
+
+        assert_eq!(v_libs.len(), 1);
+        assert!(v_libs[0].ends_with("logging-1.1.1.jar"));
+
+        assert_eq!(f_libs.len(), 1);
+        assert!(f_libs[0].ends_with("sponge-mixin-0.15.3+mixin.0.8.7.jar"));
     }
 }
