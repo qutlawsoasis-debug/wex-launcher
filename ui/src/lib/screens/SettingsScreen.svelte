@@ -54,8 +54,8 @@
   ];
 
   const languageOptions = [
-    { value: 'ru', label: 'Русский (RU)' },
-    { value: 'en', label: 'English (EN)' },
+    { value: 'ru', label: 'Русский' },
+    { value: 'en', label: 'English' },
   ];
 
   const appearanceOptions = [
@@ -99,8 +99,8 @@
       return detected;
     }
     return selectedVersion === '1.20.1'
-      ? 'Mojang JRE 17 (java-runtime-gamma) • Автоматически'
-      : 'Mojang JRE 21 (java-runtime-delta) • Автоматически';
+      ? 'Mojang JRE 17 • Автоматически'
+      : 'Mojang JRE 21 • Автоматически';
   });
 
   async function loadConfig() {
@@ -465,7 +465,7 @@
     <List header="О программе">
       <Row
         title="Лаунчер Wex"
-        subtitle="Версия {launcherVersion} • ОС: {osName} (64-bit)"
+        subtitle="Версия {launcherVersion} • ОС: {osName} • 64-бит"
         trailingText="Wex Project"
       />
       <Row

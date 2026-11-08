@@ -53,8 +53,8 @@
   let mods = $state<ModEntryModel[]>([]);
 
   const versionOptions = [
-    { value: '1.21.1', label: '1.21.1 (Wex Client)' },
-    { value: '1.20.1', label: '1.20.1 (Wex Client)' },
+    { value: '1.21.1', label: '1.21.1' },
+    { value: '1.20.1', label: '1.20.1' },
   ];
 
   const filterTabs = [
