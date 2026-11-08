@@ -38,9 +38,15 @@
     children,
   }: Props = $props();
 
+  let cardEl: HTMLElement | undefined = $state();
+  let previouslyFocusedEl: HTMLElement | null = null;
+
   function close() {
     open = false;
     onclose?.();
+    if (previouslyFocusedEl && typeof previouslyFocusedEl.focus === 'function') {
+      previouslyFocusedEl.focus();
+    }
   }
 
   function handleDone() {
@@ -48,7 +54,63 @@
     close();
   }
 
-  function handleKeyDown(e: KeyboardEvent) {
+  $effect(() => {
+    if (open) {
+      if (typeof document !== 'undefined') {
+        previouslyFocusedEl = document.activeElement as HTMLElement | null;
+        setTimeout(() => {
+          if (!cardEl) return;
+          const focusables = cardEl.querySelectorAll<HTMLElement>(
+            'input:not([disabled]), button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          );
+          if (focusables.length > 0) {
+            focusables[0].focus();
+          } else {
+            cardEl.focus();
+          }
+        }, 15);
+      }
+    }
+  });
+
+  function handleCardKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+      return;
+    }
+
+    if (e.key === 'Tab' && cardEl) {
+      const focusables = Array.from(
+        cardEl.querySelectorAll<HTMLElement>(
+          'input:not([disabled]), button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => el.offsetParent !== null || el.offsetWidth > 0 || el.offsetHeight > 0);
+
+      if (focusables.length === 0) {
+        e.preventDefault();
+        return;
+      }
+
+      const firstEl = focusables[0];
+      const lastEl = focusables[focusables.length - 1];
+
+      if (e.shiftKey) {
+        if (document.activeElement === firstEl || !cardEl.contains(document.activeElement)) {
+          e.preventDefault();
+          lastEl.focus();
+        }
+      } else {
+        if (document.activeElement === lastEl || !cardEl.contains(document.activeElement)) {
+          e.preventDefault();
+          firstEl.focus();
+        }
+      }
+    }
+  }
+
+  function handleWindowKeyDown(e: KeyboardEvent) {
     if (e.key === 'Escape' && open) {
       e.preventDefault();
       close();
@@ -56,23 +118,21 @@
   }
 </script>
 
-<svelte:window onkeydown={handleKeyDown} />
+<svelte:window onkeydown={handleWindowKeyDown} />
 
 {#if open}
   <div
     class="sheet-scrim"
     onclick={close}
-    onkeydown={(e) => {
-      if (e.key === 'Enter' || e.key === ' ') close();
-    }}
     role="presentation"
     tabindex="-1"
   >
     <div
+      bind:this={cardEl}
       class="sheet-card"
       style="max-width: {maxWidth};"
       onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.stopPropagation()}
+      onkeydown={handleCardKeyDown}
       role="dialog"
       aria-modal="true"
       aria-label={title || 'Sheet'}
@@ -205,5 +265,24 @@
       transform: translateY(0) scale(1);
       opacity: 1;
     }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sheet-scrim {
+      animation: none !important;
+    }
+    .sheet-card {
+      animation: none !important;
+      transform: none !important;
+    }
+  }
+
+  :global([data-reduce-motion="true"]) .sheet-scrim {
+    animation: none !important;
+  }
+
+  :global([data-reduce-motion="true"]) .sheet-card {
+    animation: none !important;
+    transform: none !important;
   }
 </style>
