@@ -701,8 +701,8 @@
                     }}
                   >
                     {customCapeBase64
-                      ? (i18n.locale === 'en' ? 'Change...' : 'Сменить...')
-                      : (i18n.locale === 'en' ? 'Browse...' : 'Обзор...')}
+                      ? (i18n.locale === 'en' ? 'Change…' : 'Сменить...')
+                      : (i18n.locale === 'en' ? 'Browse…' : 'Обзор...')}
                   </Button>
 
                   <Button
@@ -749,7 +749,7 @@
       </List>
 
       <!-- History of Skins Section -->
-      <List header={i18n.locale === 'en' ? 'Wardrobe History' : 'История скинов'} footer={i18n.locale === 'en' ? 'Previously used skins are saved locally in your launcher profile.' : 'Ранее использованные скины сохраняются локально в профиле лаунчера.'}>
+      <List header={i18n.locale === 'en' ? 'Wardrobe History' : 'История скинов'} footer={i18n.locale === 'en' ? 'Skins you apply are saved in Wex on this device.' : 'Ранее использованные скины сохраняются локально в профиле лаунчера.'}>
         {#if historyItems.length === 0}
           <div class="empty-history">
             <span class="empty-text">{t('wardrobe.history_empty')}</span>
@@ -772,8 +772,8 @@
                   <Button
                     variant="ghost"
                     size="small"
-                    title={i18n.locale === 'en' ? 'Delete from history' : 'Удалить из истории'}
-                    ariaLabel={i18n.locale === 'en' ? 'Delete from history' : 'Удалить из истории'}
+                    title={i18n.locale === 'en' ? 'Remove from History' : 'Удалить из истории'}
+                    ariaLabel={i18n.locale === 'en' ? 'Remove from History' : 'Удалить из истории'}
                     onclick={(e) => deleteHistorySkin(item, e)}
                   >
                     <Icon name="close" size={14} color="var(--color-secondary-label)" />

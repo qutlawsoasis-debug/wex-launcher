@@ -368,7 +368,7 @@
       <input
         type="text"
         class="friend-code-input"
-        placeholder={i18n.locale === 'en' ? 'Friend code (#A7X9)...' : 'Код друга (#A7X9)...'}
+        placeholder={i18n.locale === 'en' ? 'Friend code (for example, #A7X9)' : 'Код друга (#A7X9)...'}
         bind:value={friendCodeInput}
         onkeydown={(e) => e.key === 'Enter' && handleSendRequest()}
         aria-label={t('friends.add_friend_placeholder')}
@@ -414,15 +414,15 @@
         </div>
 
         {#if filteredFriends.length > 0}
-          <List header="{i18n.locale === 'en' ? 'Friend List' : 'Список друзей'} ({filteredFriends.length})">
+          <List header="{i18n.locale === 'en' ? 'Friends' : 'Список друзей'} ({filteredFriends.length})">
             {#each filteredFriends as friend (friend.id)}
               <Row
                 title={friend.nick}
                 subtitle={
                   friend.status === 'playing'
-                    ? (i18n.locale === 'en' ? `In Game: ${friend.game_version || 'Minecraft'}` : `В игре: ${friend.game_version || 'Minecraft'}`)
+                    ? (i18n.locale === 'en' ? `Playing ${friend.game_version || 'Minecraft'}` : `В игре: ${friend.game_version || 'Minecraft'}`)
                     : friend.status === 'in_lobby'
-                      ? (i18n.locale === 'en' ? `In Lobby ${friend.lobby_code || ''}` : `В лобби ${friend.lobby_code || ''}`)
+                      ? (i18n.locale === 'en' ? `In lobby ${friend.lobby_code || ''}` : `В лобби ${friend.lobby_code || ''}`)
                       : friend.status === 'online'
                         ? t('friends.status_online')
                         : t('friends.status_offline')
@@ -461,8 +461,8 @@
             <h2 class="empty-title">{t('friends.empty_friends_title')}</h2>
             <p class="empty-desc">
               {searchQuery
-                ? (i18n.locale === 'en' ? `No players found for “${searchQuery}”.` : `По запросу «${searchQuery}» ни одного игрока не найдено.`)
-                : (i18n.locale === 'en' ? 'You have no friends added yet. Enter a friend code in the field above to send your first invitation.' : 'У вас пока нет добавленных друзей. Введите код друга в поле выше, чтобы отправить первое приглашение.')}
+                ? (i18n.locale === 'en' ? `No friends match “${searchQuery}”.` : `По запросу «${searchQuery}» ни одного игрока не найдено.`)
+                : (i18n.locale === 'en' ? 'Enter a friend code above to send a friend request.' : 'У вас пока нет добавленных друзей. Введите код друга в поле выше, чтобы отправить первое приглашение.')}
             </p>
           </div>
         {/if}
@@ -516,7 +516,7 @@
             </div>
             <h2 class="empty-title">{t('friends.empty_requests_title')}</h2>
             <p class="empty-desc">
-              {i18n.locale === 'en' ? 'When other players send you a friend request via your code, it will appear here.' : 'Когда другие игроки отправят вам заявку по вашему коду дружбы, она появится в этом разделе.'}
+              {i18n.locale === 'en' ? 'Friend requests will appear here.' : 'Когда другие игроки отправят вам заявку по вашему коду дружбы, она появится в этом разделе.'}
             </p>
           </div>
         {/if}
@@ -539,7 +539,7 @@
 
       <List
         header={t('friends.achievements_list')}
-        footer={i18n.locale === 'en' ? 'Progress is tracked automatically and saved in your launcher directory.' : 'Прогресс отслеживается автоматически и сохраняется в каталоге лаунчера.'}
+        footer={i18n.locale === 'en' ? 'Your progress is saved automatically in Wex.' : 'Прогресс отслеживается автоматически и сохраняется в каталоге лаунчера.'}
       >
         {#each achievements as ach (ach.id)}
           {@const pct = Math.min(100, Math.round((ach.current / ach.target) * 100))}

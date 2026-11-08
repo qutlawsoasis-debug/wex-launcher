@@ -84,13 +84,13 @@
     const totalGb = Math.round(totalMemoryMb / 1024);
     if (i18n.locale === 'en') {
       if (ramMb <= 4096) {
-        return `Recommended for base game and lightweight mods • System total: ${totalGb} GB`;
+        return `For Minecraft and lightweight mods · System memory: ${totalGb} GB`;
       } else if (ramMb <= 8192) {
-        return `Optimal for Wex pack, Iris shaders, and stable FPS • System total: ${totalGb} GB`;
+        return `For Wex Pack and Iris shaders · System memory: ${totalGb} GB`;
       } else if (ramMb <= totalMemoryMb * 0.75) {
-        return `For high-resolution resource packs and high render distance • System total: ${totalGb} GB`;
+        return `For large resource packs and longer render distances · System memory: ${totalGb} GB`;
       } else {
-        return `Warning: allocating over 75% RAM may slow down system • System total: ${totalGb} GB`;
+        return `Using more than 75% of system memory may slow down your computer · Total: ${totalGb} GB`;
       }
     }
     if (ramMb <= 4096) {
@@ -106,7 +106,7 @@
 
   let activeJavaDisplay = $derived.by(() => {
     if (javaMode === 'custom') {
-      return customJavaPath ? customJavaPath : (i18n.locale === 'en' ? 'Path to javaw.exe not specified' : 'Путь к javaw.exe не указан');
+      return customJavaPath ? customJavaPath : (i18n.locale === 'en' ? 'Choose a Java installation.' : 'Путь к javaw.exe не указан');
     }
     const detected = selectedVersion === '1.20.1' ? detectedJava17 : detectedJava21;
     if (detected) {
