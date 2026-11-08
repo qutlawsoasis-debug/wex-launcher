@@ -270,7 +270,9 @@
           }>('launch-status', (event) => {
             const s = event.payload;
             clientStatus = s.message;
-            if (s.state === 'running') {
+            if (s.state === 'preparing') {
+              progressStage = s.message;
+            } else if (s.state === 'running') {
               isLaunching = false;
               isGameRunning = true;
               addToast('success', 'Minecraft запущен', s.message);

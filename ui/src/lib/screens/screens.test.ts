@@ -17,6 +17,9 @@ import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
 vi.mock('@tauri-apps/api/core', () => {
   return {
     invoke: vi.fn(async (cmd: string, args?: Record<string, any>) => {
+      if (cmd === 'list_open_rooms') {
+        throw new Error('Сервис недоступен');
+      }
       if (cmd === 'list_mods') {
         if (args?.version === '1.20.1') {
           return [];
@@ -310,6 +313,49 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  it('renders LobbyScreen cloud mode with honest service unavailable state without fake rooms', async () => {
+    const comp = mount(LobbyScreen, { target });
+
+    // Switch to cloud mode
+    const cloudBtn = Array.from(target.querySelectorAll('button')).find(
+      (b) => b.textContent?.includes('Облачные миры')
+    );
+    expect(cloudBtn).not.toBeUndefined();
+    cloudBtn?.click();
+
+    // Trigger fetchCloudRooms or allow effect to settle
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Must show authentic service unavailable or empty state, strictly zero fake rooms
+    expect(target.textContent).toContain('Сервис недоступен');
+    expect(target.textContent).toContain('Повторить попытку');
+    expect(target.textContent).not.toContain('mc.wexmc.net');
+    expect(target.textContent).not.toContain('Aura Official');
+
+    unmount(comp);
+  });
+
+  it('renders LobbyScreen cloud mode with empty rooms state when API responds with empty list', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    (invoke as any).mockResolvedValueOnce([]);
+
+    const comp = mount(LobbyScreen, { target });
+
+    const cloudBtn = Array.from(target.querySelectorAll('button')).find(
+      (b) => b.textContent?.includes('Облачные миры')
+    );
+    expect(cloudBtn).not.toBeUndefined();
+    cloudBtn?.click();
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(target.textContent).toContain('Нет открытых комнат');
+    expect(target.textContent).toContain('Обновить');
+    expect(target.textContent).not.toContain('Сервис недоступен');
+
+    unmount(comp);
+  });
+
   it('renders FriendsScreen with clean empty state and search action', () => {
     const comp = mount(FriendsScreen, { target });
     expect(target.textContent).toContain('Список друзей пуст');
@@ -570,6 +616,60 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Перенести');
     expect(target.textContent).toContain('Пропустить');
 
+    unmount(comp);
+  });
+
+  it('renders ServersScreen in offline state when network is offline', async () => {
+    const { network } = await import('../design/network.svelte');
+    network.setOnlineForTesting(false);
+
+    const comp = mount(ServersScreen, { target });
+    expect(target.textContent).toContain('Нет подключения');
+    expect(target.textContent).toContain('Проверьте подключение к интернету или локальной сети');
+    expect(target.textContent).toContain('Повторить');
+
+    network.setOnlineForTesting(true);
+    unmount(comp);
+  });
+
+  it('renders LobbyScreen in offline state when network is offline', async () => {
+    const { network } = await import('../design/network.svelte');
+    network.setOnlineForTesting(false);
+
+    const comp = mount(LobbyScreen, { target });
+    expect(target.textContent).toContain('Нет подключения');
+    expect(target.textContent).toContain('Повторить');
+
+    network.setOnlineForTesting(true);
+    unmount(comp);
+  });
+
+  it('renders FriendsScreen in offline state when network is offline', async () => {
+    const { network } = await import('../design/network.svelte');
+    network.setOnlineForTesting(false);
+
+    const comp = mount(FriendsScreen, { target });
+    expect(target.textContent).toContain('Нет подключения');
+    expect(target.textContent).toContain('Повторить');
+
+    network.setOnlineForTesting(true);
+    unmount(comp);
+  });
+
+  it('renders PlayScreen with offline launch status message', () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        isLaunching: true,
+        progressPercentage: 10,
+        progressStage: 'Нет сети — запуск без обновления',
+        progressDetail: 'Запуск установленной версии 1.21.1',
+      },
+    });
+
+    expect(target.textContent).toContain('Нет сети — запуск без обновления');
     unmount(comp);
   });
 });

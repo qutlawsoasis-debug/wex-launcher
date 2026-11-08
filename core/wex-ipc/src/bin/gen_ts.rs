@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+// Re-generate TypeScript definitions for Wex IPC
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let target = manifest_dir.join("../../ui/src/lib/ipc/generated");
