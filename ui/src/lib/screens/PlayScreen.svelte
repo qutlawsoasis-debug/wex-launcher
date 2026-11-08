@@ -46,6 +46,7 @@
     playerName?: string;
     clientStatus?: string;
     isLaunching?: boolean;
+    isRunning?: boolean;
     progressPercentage?: number;
     progressStage?: string;
     progressDetail?: string;
@@ -62,6 +63,7 @@
     playerName = $bindable('Player'),
     clientStatus = '',
     isLaunching = false,
+    isRunning = false,
     progressPercentage = 0,
     progressStage = 'Готов к запуску',
     progressDetail = 'Нажмите «Играть» для старта',
@@ -344,7 +346,7 @@
               <SegmentedControl
                 options={versions}
                 bind:value={selectedVersion}
-                disabled={isLaunching}
+                disabled={isLaunching || isRunning}
               />
             </div>
           </div>
@@ -362,7 +364,7 @@
                 placeholder="Никнейм"
                 class="player-name-input nickname-input"
                 maxlength={16}
-                disabled={isLaunching}
+                disabled={isLaunching || isRunning}
               />
             </div>
           </div>
@@ -381,10 +383,10 @@
               variant="primary"
               size="large"
               onclick={onlaunch}
-              disabled={!playerName.trim()}
+              disabled={!playerName.trim() || isLaunching || isRunning}
             >
               <Icon name="play" size={18} color="#ffffff" />
-              <span>Играть</span>
+              <span>{isRunning ? 'В игре' : 'Играть'}</span>
             </Button>
           </div>
         </div>

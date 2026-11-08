@@ -91,6 +91,28 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  it('locks Play button and inputs when Minecraft is running', () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        isLaunching: false,
+        isRunning: true,
+      },
+    });
+
+    const playBtn = target.querySelector('.dock-action button') as HTMLButtonElement;
+    expect(playBtn).not.toBeNull();
+    expect(playBtn.disabled).toBe(true);
+    expect(playBtn.textContent).toContain('В игре');
+
+    const nicknameInput = target.querySelector('.nickname-input') as HTMLInputElement;
+    expect(nicknameInput.disabled).toBe(true);
+
+    unmount(comp);
+  });
+
   it('renders Mockup 2 (Editorial) with showcase banner, changelog, and servers', () => {
     const comp = mount(Mockup2, {
       target,

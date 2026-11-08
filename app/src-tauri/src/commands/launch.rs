@@ -167,7 +167,7 @@ impl PlayState {
 
         // Connect Discord RPC asynchronously in background
         let discord_clone = discord.clone();
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let client = DiscordRpcClient::connect_or_noop(DEFAULT_DISCORD_APP_ID).await;
             let mut lock = discord_clone.lock().await;
             *lock = Some(client);
@@ -268,12 +268,32 @@ pub async fn start_game(
     );
 
     // 4. Launch game via LauncherCore
+    let mut actual_jvm_args = jvm_args.unwrap_or_default();
+    if std::env::var("WEX_QA_BACKGROUND").is_ok()
+        || std::env::var("WEX_QA_BACKGROUND")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false)
+    {
+        if !actual_jvm_args
+            .iter()
+            .any(|a| a.contains("wex.qa.background"))
+        {
+            actual_jvm_args.push("-Dwex.qa.background=true".to_string());
+        }
+        if !actual_jvm_args
+            .iter()
+            .any(|a| a.contains("aura.client.hiddenWindow"))
+        {
+            actual_jvm_args.push("-Daura.client.hiddenWindow=true".to_string());
+        }
+    }
+
     let launch_res = state
         .core
         .launch_game(LaunchGameRequest {
             version: version.clone(),
             nickname: nickname.clone(),
-            jvm_args,
+            jvm_args: Some(actual_jvm_args),
         })
         .await;
 
@@ -304,7 +324,7 @@ pub async fn start_game(
             let instance_dir = state.paths.instance_dir(&version);
             let version_clone = version.clone();
 
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 loop {
                     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     match core_clone.is_running(&version_clone).await {
