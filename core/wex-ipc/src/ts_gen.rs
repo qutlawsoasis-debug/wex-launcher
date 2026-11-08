@@ -108,6 +108,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ImportedSkinDto::decl(),
         ImportedCapeDto::decl(),
         ImportedWardrobeItemDto::decl(),
+        ImportedWorldDto::decl(),
         OldLauncherDataDto::decl(),
         PresetTierDto::decl(),
         GraphicsPresetDto::decl(),

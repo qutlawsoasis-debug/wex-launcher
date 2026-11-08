@@ -690,6 +690,7 @@ describe('Wex Launcher Screens', () => {
           ],
           capes: [],
           wardrobe_history: [],
+          worlds: [],
         },
       },
     });
