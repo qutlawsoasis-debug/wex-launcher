@@ -4968,6 +4968,8 @@ dependencies = [
  "wex-ipc",
  "wex-net",
  "wex-social",
+ "wiremock",
+ "zip",
 ]
 
 [[package]]
@@ -4993,6 +4995,7 @@ dependencies = [
  "uuid",
  "wex-ipc",
  "windows-sys 0.59.0",
+ "wiremock",
  "zip",
 ]
 

@@ -154,10 +154,15 @@ pub struct PlayState {
     pub is_running: Arc<AtomicBool>,
     pub running_version: Arc<Mutex<Option<String>>>,
     pub discord: Arc<Mutex<Option<DiscordRpcClient>>>,
+    pub network: Option<super::network::NetworkState>,
 }
 
 impl PlayState {
-    pub fn new_real(paths: WexPaths, app: AppHandle) -> Self {
+    pub fn new_real(
+        paths: WexPaths,
+        app: AppHandle,
+        network: super::network::NetworkState,
+    ) -> Self {
         let event_handler = Arc::new(TauriEventHandler { app });
         let core = Arc::new(WexLauncherCore::with_event_handler(
             paths.clone(),
@@ -167,7 +172,7 @@ impl PlayState {
 
         // Connect Discord RPC asynchronously in background
         let discord_clone = discord.clone();
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let client = DiscordRpcClient::connect_or_noop(DEFAULT_DISCORD_APP_ID).await;
             let mut lock = discord_clone.lock().await;
             *lock = Some(client);
@@ -180,6 +185,7 @@ impl PlayState {
             is_running: Arc::new(AtomicBool::new(false)),
             running_version: Arc::new(Mutex::new(None)),
             discord,
+            network: Some(network),
         }
     }
 
@@ -192,6 +198,24 @@ impl PlayState {
             is_running: Arc::new(AtomicBool::new(false)),
             running_version: Arc::new(Mutex::new(None)),
             discord,
+            network: None,
+        }
+    }
+
+    pub fn new_with_core_and_network(
+        paths: WexPaths,
+        core: Arc<dyn LauncherCore>,
+        network: super::network::NetworkState,
+    ) -> Self {
+        let discord = Arc::new(Mutex::new(None));
+        Self {
+            core,
+            paths,
+            is_launching: Arc::new(AtomicBool::new(false)),
+            is_running: Arc::new(AtomicBool::new(false)),
+            running_version: Arc::new(Mutex::new(None)),
+            discord,
+            network: Some(network),
         }
     }
 }
@@ -245,35 +269,100 @@ pub async fn start_game(
         return Err("Игра уже запущена или выполняется запуск".to_string());
     }
 
-    // 2. Set Discord RPC activity
-    set_discord_rpc(
-        &state.discord,
-        Activity::Playing {
-            version: version.clone(),
-            world_name: None,
-            mod_count: None,
-            start_timestamp: Some(chrono::Utc::now().timestamp()),
-        },
-    )
-    .await;
+    // 2. Load launcher config to apply preset and check features
+    let cfg = wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file);
 
-    // 3. Emit preparing launch status
-    let _ = app.emit(
-        EVT_LAUNCH_STATUS,
-        LaunchStatusPayload {
-            state: "preparing".to_string(),
-            message: format!("Подготовка к запуску Minecraft {}...", version),
-            exit_code: None,
-        },
-    );
+    // Apply graphics preset before launch
+    let pool_dirs = vec![state.paths.root.join("shaderpacks_pool")];
+    let inst_dir = state.paths.instance_dir(&version);
+    let _ = wex_extras::presets::apply_preset(&inst_dir, &cfg.graphics_preset, &pool_dirs);
+
+    // 3. Offline launch check
+    let is_online = if let Some(ref net) = state.network {
+        net.is_online().await
+    } else {
+        true
+    };
+
+    match super::network::check_offline_launch(state.core.as_ref(), &version, is_online).await {
+        Ok(super::network::OfflineLaunchDecision::OfflineForbidden { reason }) => {
+            state.is_launching.store(false, Ordering::SeqCst);
+            let _ = app.emit(
+                EVT_LAUNCH_STATUS,
+                LaunchStatusPayload {
+                    state: "error".to_string(),
+                    message: reason.clone(),
+                    exit_code: None,
+                },
+            );
+            return Err(reason);
+        }
+        Ok(super::network::OfflineLaunchDecision::OfflineAllowed { status_message }) => {
+            let _ = app.emit(
+                EVT_LAUNCH_STATUS,
+                LaunchStatusPayload {
+                    state: "preparing".to_string(),
+                    message: status_message,
+                    exit_code: None,
+                },
+            );
+        }
+        Ok(super::network::OfflineLaunchDecision::Online) => {
+            if cfg.discord_rpc {
+                set_discord_rpc(
+                    &state.discord,
+                    Activity::Playing {
+                        version: version.clone(),
+                        world_name: None,
+                        mod_count: None,
+                        start_timestamp: Some(chrono::Utc::now().timestamp()),
+                    },
+                )
+                .await;
+            }
+
+            let _ = app.emit(
+                EVT_LAUNCH_STATUS,
+                LaunchStatusPayload {
+                    state: "preparing".to_string(),
+                    message: format!("Подготовка к запуску Minecraft {}...", version),
+                    exit_code: None,
+                },
+            );
+        }
+        Err(e) => {
+            state.is_launching.store(false, Ordering::SeqCst);
+            return Err(e);
+        }
+    }
 
     // 4. Launch game via LauncherCore
+    let mut actual_jvm_args = jvm_args.unwrap_or_default();
+    if std::env::var("WEX_QA_BACKGROUND").is_ok()
+        || std::env::var("WEX_QA_BACKGROUND")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false)
+    {
+        if !actual_jvm_args
+            .iter()
+            .any(|a| a.contains("wex.qa.background"))
+        {
+            actual_jvm_args.push("-Dwex.qa.background=true".to_string());
+        }
+        if !actual_jvm_args
+            .iter()
+            .any(|a| a.contains("aura.client.hiddenWindow"))
+        {
+            actual_jvm_args.push("-Daura.client.hiddenWindow=true".to_string());
+        }
+    }
+
     let launch_res = state
         .core
         .launch_game(LaunchGameRequest {
             version: version.clone(),
             nickname: nickname.clone(),
-            jvm_args,
+            jvm_args: Some(actual_jvm_args),
         })
         .await;
 
@@ -304,7 +393,7 @@ pub async fn start_game(
             let instance_dir = state.paths.instance_dir(&version);
             let version_clone = version.clone();
 
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 loop {
                     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     match core_clone.is_running(&version_clone).await {
@@ -452,19 +541,6 @@ pub async fn launch_game(
 }
 
 #[tauri::command]
-pub async fn get_launcher_config(state: State<'_, PlayState>) -> Result<LauncherConfig, String> {
-    get_config(state).await
-}
-
-#[tauri::command]
-pub async fn save_launcher_config(
-    new_config: LauncherConfig,
-    state: State<'_, PlayState>,
-) -> Result<(), String> {
-    save_config(new_config, state).await
-}
-
-#[tauri::command]
 pub async fn set_config(
     new_config: LauncherConfig,
     state: State<'_, PlayState>,
@@ -585,5 +661,66 @@ mod tests {
 
         // Transition back to in launcher
         set_discord_rpc(&discord, Activity::InLauncher).await;
+    }
+
+    #[tokio::test]
+    async fn test_play_state_offline_launch_allowed() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let mock_core = Arc::new(MockLauncherCore::new());
+        mock_core.add_version(InstalledVersion {
+            id: "1.21.1".to_string(),
+            name: "1.21.1".to_string(),
+            is_installed: true,
+        });
+        let net = super::super::network::NetworkState::new_with_status(false);
+        let play_state = PlayState::new_with_core_and_network(paths, mock_core.clone(), net);
+
+        let is_online = play_state.network.as_ref().unwrap().is_online().await;
+        let decision = super::super::network::check_offline_launch(
+            play_state.core.as_ref(),
+            "1.21.1",
+            is_online,
+        )
+        .await
+        .unwrap();
+
+        match decision {
+            super::super::network::OfflineLaunchDecision::OfflineAllowed { status_message } => {
+                assert_eq!(status_message, "Нет сети — запуск без обновления");
+            }
+            other => panic!("Expected OfflineAllowed, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_play_state_offline_launch_forbidden() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let mock_core = Arc::new(MockLauncherCore::new());
+        mock_core.add_version(InstalledVersion {
+            id: "1.22.0".to_string(),
+            name: "1.22.0".to_string(),
+            is_installed: false,
+        });
+        let net = super::super::network::NetworkState::new_with_status(false);
+        let play_state = PlayState::new_with_core_and_network(paths, mock_core.clone(), net);
+
+        let is_online = play_state.network.as_ref().unwrap().is_online().await;
+        let decision = super::super::network::check_offline_launch(
+            play_state.core.as_ref(),
+            "1.22.0",
+            is_online,
+        )
+        .await
+        .unwrap();
+
+        match decision {
+            super::super::network::OfflineLaunchDecision::OfflineForbidden { reason } => {
+                assert!(reason.contains("1.22.0"));
+                assert!(reason.contains("не установлена"));
+            }
+            other => panic!("Expected OfflineForbidden, got {:?}", other),
+        }
     }
 }

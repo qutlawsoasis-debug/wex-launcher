@@ -194,6 +194,18 @@ pub struct TunnelConfigResponseDto {
     pub public_port: Option<u16>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetOpenRoomDto {
+    pub id: String,
+    pub name: String,
+    pub host_name: String,
+    pub game_version: String,
+    pub player_count: u32,
+    pub max_players: u32,
+    pub address: Option<String>,
+    pub status: String,
+}
+
 impl From<wex_net::lobby::TunnelConfigResponse> for TunnelConfigResponseDto {
     fn from(r: wex_net::lobby::TunnelConfigResponse) -> Self {
         Self {

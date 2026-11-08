@@ -22,6 +22,8 @@
   import ProgressBar from '../components/ProgressBar.svelte';
   import Toast, { type ToastMessage } from '../components/Toast.svelte';
   import Icon from '../components/icons/Icon.svelte';
+  import OfflineState from '../components/OfflineState.svelte';
+  import { network } from '../design/network.svelte';
 
   interface FriendItem {
     id: string;
@@ -372,115 +374,123 @@
 
   <!-- Tab 1: Friends List -->
   {#if activeTab === 'friends'}
-    <div class="tab-pane">
-      <div class="search-wrap">
-        <SearchField placeholder="Поиск среди друзей..." bind:value={searchQuery} />
-      </div>
-
-      {#if filteredFriends.length > 0}
-        <List header="СПИСОК ДРУЗЕЙ ({filteredFriends.length})">
-          {#each filteredFriends as friend (friend.id)}
-            <Row
-              title={friend.nick}
-              subtitle={
-                friend.status === 'playing'
-                  ? `В игре: ${friend.game_version || 'Minecraft'}`
-                  : friend.status === 'in_lobby'
-                    ? `В лобби ${friend.lobby_code || ''}`
-                    : friend.status === 'online'
-                      ? 'В сети'
-                      : 'Не в сети'
-              }
-            >
-              {#snippet leading()}
-                <div class="avatar-capsule">
-                  <span class="avatar-letter">{friend.nick.charAt(0).toUpperCase()}</span>
-                  <span
-                    class="status-indicator {friend.status}"
-                    title={friend.status}
-                  ></span>
-                </div>
-              {/snippet}
-
-              {#snippet trailing()}
-                {#if friend.status === 'online' || friend.status === 'playing'}
-                  <Button
-                    variant="secondary"
-                    size="small"
-                    onclick={() => handleSendLobbyInvite(friend)}
-                  >
-                    <Icon name="lobby" size={13} color="var(--color-system-blue)" />
-                    <span>Пригласить в лобби</span>
-                  </Button>
-                {/if}
-              {/snippet}
-            </Row>
-          {/each}
-        </List>
-      {:else}
-        <div class="empty-state-card">
-          <div class="empty-icon-wrap">
-            <Icon name="friends" size={40} color="var(--color-tertiary-label)" />
-          </div>
-          <h3 class="empty-title">Список друзей пуст</h3>
-          <p class="empty-desc">
-            {searchQuery
-              ? 'По запросу «' + searchQuery + '» ни одного игрока не найдено.'
-              : 'У вас пока нет добавленных друзей. Введите код друга в поле выше, чтобы отправить первое приглашение.'}
-          </p>
+    {#if !network.isOnline}
+      <OfflineState onretry={loadSocialData} />
+    {:else}
+      <div class="tab-pane">
+        <div class="search-wrap">
+          <SearchField placeholder="Поиск среди друзей..." bind:value={searchQuery} />
         </div>
-      {/if}
-    </div>
+
+        {#if filteredFriends.length > 0}
+          <List header="СПИСОК ДРУЗЕЙ ({filteredFriends.length})">
+            {#each filteredFriends as friend (friend.id)}
+              <Row
+                title={friend.nick}
+                subtitle={
+                  friend.status === 'playing'
+                    ? `В игре: ${friend.game_version || 'Minecraft'}`
+                    : friend.status === 'in_lobby'
+                      ? `В лобби ${friend.lobby_code || ''}`
+                      : friend.status === 'online'
+                        ? 'В сети'
+                        : 'Не в сети'
+                }
+              >
+                {#snippet leading()}
+                  <div class="avatar-capsule">
+                    <span class="avatar-letter">{friend.nick.charAt(0).toUpperCase()}</span>
+                    <span
+                      class="status-indicator {friend.status}"
+                      title={friend.status}
+                    ></span>
+                  </div>
+                {/snippet}
+
+                {#snippet trailing()}
+                  {#if friend.status === 'online' || friend.status === 'playing'}
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      onclick={() => handleSendLobbyInvite(friend)}
+                    >
+                      <Icon name="lobby" size={13} color="var(--color-system-blue)" />
+                      <span>Пригласить в лобби</span>
+                    </Button>
+                  {/if}
+                {/snippet}
+              </Row>
+            {/each}
+          </List>
+        {:else}
+          <div class="empty-state-card">
+            <div class="empty-icon-wrap">
+              <Icon name="friends" size={40} color="var(--color-tertiary-label)" />
+            </div>
+            <h3 class="empty-title">Список друзей пуст</h3>
+            <p class="empty-desc">
+              {searchQuery
+                ? 'По запросу «' + searchQuery + '» ни одного игрока не найдено.'
+                : 'У вас пока нет добавленных друзей. Введите код друга в поле выше, чтобы отправить первое приглашение.'}
+            </p>
+          </div>
+        {/if}
+      </div>
+    {/if}
 
   <!-- Tab 2: Incoming Requests -->
   {:else if activeTab === 'requests'}
-    <div class="tab-pane">
-      {#if requests.length > 0}
-        <List header="ВХОДЯЩИЕ ЗАЯВКИ В ДРУЗЬЯ ({requests.length})">
-          {#each requests as req (req.id)}
-            <Row
-              title={req.from_nick}
-              subtitle="Хочет добавить вас в список друзей"
-            >
-              {#snippet leading()}
-                <div class="avatar-capsule">
-                  <span class="avatar-letter">{req.from_nick.charAt(0).toUpperCase()}</span>
-                </div>
-              {/snippet}
+    {#if !network.isOnline}
+      <OfflineState onretry={loadSocialData} />
+    {:else}
+      <div class="tab-pane">
+        {#if requests.length > 0}
+          <List header="ВХОДЯЩИЕ ЗАЯВКИ В ДРУЗЬЯ ({requests.length})">
+            {#each requests as req (req.id)}
+              <Row
+                title={req.from_nick}
+                subtitle="Хочет добавить вас в список друзей"
+              >
+                {#snippet leading()}
+                  <div class="avatar-capsule">
+                    <span class="avatar-letter">{req.from_nick.charAt(0).toUpperCase()}</span>
+                  </div>
+                {/snippet}
 
-              {#snippet trailing()}
-                <div class="request-actions">
-                  <Button
-                    variant="primary"
-                    size="small"
-                    onclick={() => handleAcceptRequest(req)}
-                  >
-                    <span>Принять</span>
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="small"
-                    onclick={() => handleDeclineRequest(req)}
-                  >
-                    <span>Отклонить</span>
-                  </Button>
-                </div>
-              {/snippet}
-            </Row>
-          {/each}
-        </List>
-      {:else}
-        <div class="empty-state-card">
-          <div class="empty-icon-wrap">
-            <Icon name="friends" size={40} color="var(--color-tertiary-label)" />
+                {#snippet trailing()}
+                  <div class="request-actions">
+                    <Button
+                      variant="primary"
+                      size="small"
+                      onclick={() => handleAcceptRequest(req)}
+                    >
+                      <span>Принять</span>
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      onclick={() => handleDeclineRequest(req)}
+                    >
+                      <span>Отклонить</span>
+                    </Button>
+                  </div>
+                {/snippet}
+              </Row>
+            {/each}
+          </List>
+        {:else}
+          <div class="empty-state-card">
+            <div class="empty-icon-wrap">
+              <Icon name="friends" size={40} color="var(--color-tertiary-label)" />
+            </div>
+            <h3 class="empty-title">Нет входящих заявок</h3>
+            <p class="empty-desc">
+              Когда другие игроки отправят вам заявку по вашему коду дружбы, она появится в этом разделе.
+            </p>
           </div>
-          <h3 class="empty-title">Нет входящих заявок</h3>
-          <p class="empty-desc">
-            Когда другие игроки отправят вам заявку по вашему коду дружбы, она появится в этом разделе.
-          </p>
-        </div>
-      {/if}
-    </div>
+        {/if}
+      </div>
+    {/if}
 
   <!-- Tab 3: Launcher Achievements -->
   {:else if activeTab === 'achievements'}

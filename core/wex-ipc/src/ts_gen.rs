@@ -73,6 +73,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         LobbyJoinResponseDto::decl(),
         LobbyStatusResponseDto::decl(),
         TunnelConfigResponseDto::decl(),
+        NetOpenRoomDto::decl(),
         ModManifestEntryDto::decl(),
         ModMismatchTypeDto::decl(),
         ModMismatchItemDto::decl(),
@@ -134,6 +135,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
     cmd_ts.push_str("    LobbyStatusResponseDto,\n");
     cmd_ts.push_str("    ModManifestEntryDto,\n");
     cmd_ts.push_str("    ModMismatchItemDto,\n");
+    cmd_ts.push_str("    NetOpenRoomDto,\n");
     cmd_ts.push_str("    OldLauncherDataDto,\n");
     cmd_ts.push_str("    PackServerEntryDto,\n");
     cmd_ts.push_str("    PresetApplyResultDto,\n");
@@ -181,6 +183,8 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         NetLobbyCloseRequest::decl(),
         NetLobbyLeaveRequest::decl(),
         NetLobbyKickRequest::decl(),
+        NetListOpenRoomsRequest::decl(),
+        NetListOpenRoomsResponse::decl(),
         NetCompareManifestsRequest::decl(),
         NetCompareManifestsResponse::decl(),
         NetComputeManifestHashRequest::decl(),
@@ -264,6 +268,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ("NET_LOBBY_LEAVE", CMD_NET_LOBBY_LEAVE),
         ("NET_LOBBY_KICK", CMD_NET_LOBBY_KICK),
         ("NET_LOBBY_TUNNEL_CONFIG", CMD_NET_LOBBY_TUNNEL_CONFIG),
+        ("NET_LOBBY_LIST_OPEN_ROOMS", CMD_NET_LOBBY_LIST_OPEN_ROOMS),
         ("NET_COMPARE_MANIFESTS", CMD_NET_COMPARE_MANIFESTS),
         ("NET_COMPUTE_MANIFEST_HASH", CMD_NET_COMPUTE_MANIFEST_HASH),
         ("NET_TUNNEL_START", CMD_NET_TUNNEL_START),

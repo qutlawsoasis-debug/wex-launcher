@@ -259,11 +259,62 @@ pub async fn download_file_resumable_cancellable(
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct DownloadTask {
     pub url: String,
+    pub fallback_url: Option<String>,
     pub target_path: PathBuf,
     pub size: Option<u64>,
     pub hash: Option<(String, HashType)>,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn download_file_with_fallback(
+    client: &reqwest::Client,
+    url: &str,
+    fallback_url: Option<&str>,
+    target_path: &Path,
+    expected_size: Option<u64>,
+    expected_hash: Option<(&str, HashType)>,
+    events: &dyn EventHandler,
+    cancel_token: Option<&CancellationToken>,
+) -> Result<bool> {
+    match download_file_resumable_cancellable(
+        client,
+        url,
+        target_path,
+        expected_size,
+        expected_hash,
+        events,
+        cancel_token,
+    )
+    .await
+    {
+        Ok(res) => Ok(res),
+        Err(primary_err) => {
+            if let Some(fallback) = fallback_url {
+                events.on_event(&Event::Log {
+                    level: crate::event::LogLevel::Warn,
+                    message: format!(
+                        "Download failed from primary URL {}, falling back to {}: {}",
+                        url, fallback, primary_err
+                    ),
+                });
+                download_file_resumable_cancellable(
+                    client,
+                    fallback,
+                    target_path,
+                    expected_size,
+                    expected_hash,
+                    events,
+                    cancel_token,
+                )
+                .await
+            } else {
+                Err(primary_err)
+            }
+        }
+    }
 }
 
 pub async fn download_pool(
@@ -320,9 +371,10 @@ pub async fn download_pool_cancellable(
 
             let expected_hash = task.hash.as_ref().map(|(h, t)| (h.as_str(), *t));
             let noop = crate::event::NoopEventHandler;
-            let res = download_file_resumable_cancellable(
+            let res = download_file_with_fallback(
                 &client,
                 &task.url,
+                task.fallback_url.as_deref(),
                 &task.target_path,
                 task.size,
                 expected_hash,

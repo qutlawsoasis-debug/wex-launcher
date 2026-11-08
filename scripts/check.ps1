@@ -56,8 +56,8 @@ function Invoke-Check {
 # Root and core are separate Cargo workspaces, so each gets the same Rust gates.
 Invoke-Check 'core: cargo fmt --check' $coreRoot 'cargo' @('fmt', '--all', '--', '--check')
 Invoke-Check 'app: cargo fmt --check' $repoRoot 'cargo' @('fmt', '--all', '--', '--check')
-Invoke-Check 'core: cargo clippy' $coreRoot 'cargo' @('clippy', '--workspace', '-j', '2', '--', '-D', 'warnings')
-Invoke-Check 'app: cargo clippy' $repoRoot 'cargo' @('clippy', '--workspace', '-j', '2', '--', '-D', 'warnings')
+Invoke-Check 'core: cargo clippy' $coreRoot 'cargo' @('clippy', '--workspace', '--all-targets', '-j', '2', '--', '-D', 'warnings')
+Invoke-Check 'app: cargo clippy' $repoRoot 'cargo' @('clippy', '--workspace', '--all-targets', '-j', '2', '--', '-D', 'warnings')
 Invoke-Check 'core: cargo test' $coreRoot 'cargo' @('test', '--workspace', '-j', '2')
 Invoke-Check 'app: cargo test' $repoRoot 'cargo' @('test', '--workspace', '-j', '2')
 

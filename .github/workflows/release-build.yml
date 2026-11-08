@@ -1,0 +1,98 @@
+name: Release Build
+
+"on":
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: 'Release notes for update manifest'
+        required: false
+        default: 'Wex Launcher manual release build'
+
+jobs:
+  build:
+    name: Build Windows Installers (NSIS & MSI)
+    runs-on: windows-latest
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install UI dependencies
+        working-directory: ui
+        run: npm ci --workspaces=false --foreground-scripts
+
+      - name: Build frontend
+        working-directory: ui
+        run: npm run build
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            core -> core/target
+
+      - name: Check signing key configuration
+        id: signing-check
+        shell: pwsh
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:KEY)) {
+            Write-Warning "::warning::TAURI_SIGNING_PRIVATE_KEY secret is not configured in repository secrets. Proceeding with unsigned build."
+            "signed=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          } else {
+            Write-Host "TAURI_SIGNING_PRIVATE_KEY is detected. Signing enabled."
+            "signed=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+
+      - name: Build Tauri installers (NSIS & MSI)
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_KEY_PASSWORD }}
+        run: |
+          npx --yes @tauri-apps/cli@^2.2.0 build
+
+      - name: Generate updater manifest (latest.json)
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts\generate-latest-json.ps1 -Notes "${{ github.event.inputs.notes || 'Wex Launcher update' }}"
+
+      - name: Upload NSIS Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wex-NSIS-Setup
+          path: |
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/nsis/*.zip
+            target/release/bundle/nsis/*.sig
+          if-no-files-found: warn
+
+      - name: Upload MSI Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wex-MSI-Package
+          path: |
+            target/release/bundle/msi/*.msi
+            target/release/bundle/msi/*.sig
+          if-no-files-found: warn
+
+      - name: Upload Updater Manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wex-Updater-Manifest
+          path: latest.json
+          if-no-files-found: error
