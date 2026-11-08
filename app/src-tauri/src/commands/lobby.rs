@@ -756,20 +756,28 @@ pub async fn list_open_rooms(
     }
 }
 
+fn lan_world_to_dto(w: wex_net::DiscoveredLanWorld) -> LanWorldDto {
+    LanWorldDto {
+        motd: w.clean_motd,
+        address: w.address,
+        port: w.port,
+    }
+}
+
 #[tauri::command]
 pub async fn net_lan_list_discovered(
     _request: NetLanListDiscoveredRequest,
     state: State<'_, LobbyState>,
 ) -> IpcResult<NetLanListDiscoveredResponse> {
     let worlds = state.lan_discovery.get_discovered_worlds().await;
-    let list = worlds.into_iter().map(Into::into).collect();
+    let list = worlds.into_iter().map(lan_world_to_dto).collect();
     Ok(NetLanListDiscoveredResponse { worlds: list })
 }
 
 #[tauri::command]
 pub async fn list_lan_worlds(state: State<'_, LobbyState>) -> Result<Vec<LanWorldDto>, String> {
     let worlds = state.lan_discovery.get_discovered_worlds().await;
-    Ok(worlds.into_iter().map(Into::into).collect())
+    Ok(worlds.into_iter().map(lan_world_to_dto).collect())
 }
 
 #[tauri::command]
@@ -782,7 +790,7 @@ pub async fn record_lan_world(
         .lan_discovery
         .record_announcement(&packet, &sender_ip)
         .await;
-    Ok(world.map(Into::into))
+    Ok(world.map(lan_world_to_dto))
 }
 
 #[tauri::command]
@@ -1084,7 +1092,7 @@ mod tests {
 
         let list = state.lan_discovery.get_discovered_worlds().await;
         assert_eq!(list.len(), 1);
-        let dto: LanWorldDto = list[0].clone().into();
+        let dto = lan_world_to_dto(list[0].clone());
         assert_eq!(dto.motd, "Steve's Underground Base");
         assert_eq!(dto.address, "192.168.1.77:51234");
         assert_eq!(dto.port, 51234);
