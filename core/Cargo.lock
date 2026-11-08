@@ -2429,6 +2429,7 @@ name = "wex-extras"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "flate2",
  "hex",
  "image",
  "regex",

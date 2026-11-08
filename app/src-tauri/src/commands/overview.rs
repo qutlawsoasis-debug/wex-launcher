@@ -10,8 +10,8 @@ use wex_ipc::commands::{
 };
 use wex_ipc::core_trait::LauncherCore;
 use wex_ipc::models::{
-    ImportedServerDto, ImportedSkinDto, OldLauncherDataDto, ReleaseNoteVersionDto,
-    UpdateCheckResultDto,
+    ImportedCapeDto, ImportedServerDto, ImportedSkinDto, ImportedWorldDto, OldLauncherDataDto,
+    ReleaseNoteVersionDto, UpdateCheckResultDto,
 };
 use wex_social::launcher_update::{check_update_from_url, DEFAULT_TARGET_PLATFORM};
 use wex_social::NewsManager;
@@ -31,6 +31,8 @@ pub struct ApplyImportRequest {
     pub import_version: bool,
     pub selected_version: Option<String>,
     #[serde(default)]
+    pub graphics_preset: Option<String>,
+    #[serde(default)]
     pub import_servers: bool,
     #[serde(default)]
     pub servers: Vec<ImportedServerDto>,
@@ -38,6 +40,12 @@ pub struct ApplyImportRequest {
     pub import_skins: bool,
     #[serde(default)]
     pub skins: Vec<ImportedSkinDto>,
+    #[serde(default)]
+    pub capes: Vec<ImportedCapeDto>,
+    #[serde(default)]
+    pub import_worlds: bool,
+    #[serde(default)]
+    pub worlds: Vec<ImportedWorldDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -47,7 +55,96 @@ pub struct ApplyImportResponse {
     pub imported_ram_gb: Option<u32>,
     pub imported_servers_count: usize,
     pub imported_skins_count: usize,
+    pub imported_worlds_count: usize,
     pub message: String,
+    #[serde(default)]
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PlayTimeDto {
+    pub total_seconds: u64,
+    pub total_launches: u32,
+    pub last_played_utc: Option<String>,
+    pub formatted_play_time: String,
+    pub summary_text: String,
+}
+
+pub fn format_play_time(total_seconds: u64) -> String {
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    if hours > 0 {
+        format!("{hours} ч. {minutes} мин.")
+    } else {
+        format!("{minutes} мин.")
+    }
+}
+
+pub fn get_playtime_internal(paths: &WexPaths) -> PlayTimeDto {
+    let stats_file = paths.root.join("stats.json");
+    if let Ok(bytes) = fs::read(&stats_file) {
+        if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+            let total_seconds = val
+                .get("total_play_time_seconds")
+                .or_else(|| val.get("total_seconds"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let total_launches = val
+                .get("total_game_launches")
+                .or_else(|| val.get("total_launches"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32;
+            let last_played_utc = val
+                .get("last_played_utc")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let formatted = format_play_time(total_seconds);
+            let summary = format!("В игре: {formatted}  •  Запусков: {total_launches}");
+            return PlayTimeDto {
+                total_seconds,
+                total_launches,
+                last_played_utc,
+                formatted_play_time: formatted,
+                summary_text: summary,
+            };
+        }
+    }
+    PlayTimeDto {
+        total_seconds: 0,
+        total_launches: 0,
+        last_played_utc: None,
+        formatted_play_time: "0 мин.".to_string(),
+        summary_text: "Время в игре: 0 мин. • 0 запусков".to_string(),
+    }
+}
+
+pub fn record_playtime_internal(
+    paths: &WexPaths,
+    added_seconds: u64,
+    inc_launch: bool,
+) -> PlayTimeDto {
+    let stats_file = paths.root.join("stats.json");
+    let mut current = get_playtime_internal(paths);
+    current.total_seconds += added_seconds;
+    if inc_launch {
+        current.total_launches += 1;
+    }
+    current.last_played_utc = Some(chrono::Utc::now().to_rfc3339());
+    current.formatted_play_time = format_play_time(current.total_seconds);
+    current.summary_text = format!(
+        "В игре: {}  •  Запусков: {}",
+        current.formatted_play_time, current.total_launches
+    );
+
+    let val = serde_json::json!({
+        "total_play_time_seconds": current.total_seconds,
+        "total_game_launches": current.total_launches,
+        "last_played_utc": current.last_played_utc,
+    });
+    if let Ok(json_str) = serde_json::to_string_pretty(&val) {
+        let _ = fs::write(&stats_file, json_str);
+    }
+    current
 }
 
 // ---------------------------------------------------------------------------
@@ -132,6 +229,105 @@ pub fn import_old_launcher_internal(old_dir: &str) -> Result<OldLauncherDataDto,
     }
 }
 
+fn validate_safe_component(name: &str, field_label: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{}: имя не может быть пустым", field_label));
+    }
+    if trimmed.contains('\0') || trimmed.contains('/') || trimmed.contains('\\') {
+        return Err(format!(
+            "{}: обнаружена попытка path traversal или недопустимые разделители пути в '{}'",
+            field_label, name
+        ));
+    }
+    if trimmed == "." || trimmed == ".." {
+        return Err(format!(
+            "{}: недопустимое относительное имя '{}'",
+            field_label, name
+        ));
+    }
+    let p = Path::new(trimmed);
+    let mut comps = p.components();
+    match (comps.next(), comps.next()) {
+        (Some(std::path::Component::Normal(c)), None) => {
+            let s = c
+                .to_str()
+                .ok_or_else(|| format!("{}: имя содержит невалидный UTF-8", field_label))?;
+            Ok(s.to_string())
+        }
+        _ => Err(format!(
+            "{}: недопустимый компонент пути '{}'",
+            field_label, name
+        )),
+    }
+}
+
+fn validate_supported_version(version: &str) -> Result<String, String> {
+    let safe = validate_safe_component(version, "Версия игры")?;
+    if !safe
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+    {
+        return Err(format!("Неподдерживаемая версия игры: '{}'", version));
+    }
+    Ok(safe)
+}
+
+fn generate_unique_world_dest(base_dir: &Path, folder_name: &str) -> PathBuf {
+    let initial = base_dir.join(folder_name);
+    if !initial.exists() {
+        return initial;
+    }
+    let mut index = 1;
+    loop {
+        let candidate_name = format!("{}-imported-{}", folder_name, index);
+        let candidate_path = base_dir.join(&candidate_name);
+        if !candidate_path.exists() {
+            return candidate_path;
+        }
+        index += 1;
+    }
+}
+
+fn generate_unique_file_dest(base_dir: &Path, file_name: &str) -> PathBuf {
+    let initial = base_dir.join(file_name);
+    if !initial.exists() {
+        return initial;
+    }
+    let p = Path::new(file_name);
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let mut index = 1;
+    loop {
+        let candidate_name = if ext.is_empty() {
+            format!("{}-imported-{}", stem, index)
+        } else {
+            format!("{}-imported-{}.{}", stem, index, ext)
+        };
+        let candidate_path = base_dir.join(&candidate_name);
+        if !candidate_path.exists() {
+            return candidate_path;
+        }
+        index += 1;
+    }
+}
+
+fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_all(&from, &to)?;
+        } else {
+            fs::copy(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
 pub async fn apply_import_internal(
     paths: &WexPaths,
     core: &dyn LauncherCore,
@@ -141,6 +337,8 @@ pub async fn apply_import_internal(
     let mut imported_ram_gb = None;
     let mut imported_servers_count = 0;
     let mut imported_skins_count = 0;
+    let mut imported_worlds_count = 0;
+    let mut errors: Vec<String> = Vec::new();
 
     // 1. Update Wex launcher configuration if requested
     let mut cfg = core.get_config().await.map_err(|e| e.to_string())?;
@@ -170,8 +368,15 @@ pub async fn apply_import_internal(
             .as_ref()
             .filter(|v| !v.trim().is_empty())
         {
-            cfg.selected_version = ver.trim().to_string();
-            cfg_modified = true;
+            match validate_supported_version(ver) {
+                Ok(safe_ver) => {
+                    cfg.selected_version = safe_ver;
+                    cfg_modified = true;
+                }
+                Err(err) => {
+                    errors.push(err);
+                }
+            }
         }
     }
 
@@ -179,12 +384,50 @@ pub async fn apply_import_internal(
         core.save_config(cfg).await.map_err(|e| e.to_string())?;
     }
 
-    // 2. Safe non-destructive servers import: append to Wex servers.dat
-    if req.import_servers && !req.servers.is_empty() {
-        let servers_dat_path = paths.root.join("servers.dat");
-        if let Some(parent) = servers_dat_path.parent() {
-            let _ = fs::create_dir_all(parent);
+    // 1b. Update core config file directly to preserve graphics_preset and exact RAM
+    let mut core_cfg = wex_core::config::LauncherConfig::load_or_default(&paths.config_file);
+    let mut core_modified = false;
+    if req.import_nickname {
+        if let Some(nick) = req.nickname.as_ref().filter(|n| !n.trim().is_empty()) {
+            core_cfg.nickname = nick.trim().to_string();
+            core_modified = true;
         }
+    }
+    if req.import_ram {
+        if let Some(ram_mb) = req.ram_mb.filter(|&m| m > 0) {
+            core_cfg.max_memory_mb = ram_mb;
+            core_modified = true;
+        }
+    }
+    if req.import_version {
+        if let Some(ver) = req
+            .selected_version
+            .as_ref()
+            .filter(|v| !v.trim().is_empty())
+        {
+            if let Ok(safe_ver) = validate_supported_version(ver) {
+                core_cfg.selected_version = safe_ver;
+                core_modified = true;
+            }
+        }
+    }
+    if let Some(preset) = req
+        .graphics_preset
+        .as_ref()
+        .filter(|p| !p.trim().is_empty())
+    {
+        core_cfg.graphics_preset = preset.trim().to_string();
+        core_modified = true;
+    }
+    if core_modified {
+        let _ = core_cfg.save(&paths.config_file);
+    }
+
+    // 2. Safe non-destructive servers import: append to Wex root servers.dat AND instance servers.dat
+    if req.import_servers && !req.servers.is_empty() {
+        let root_servers_dat = paths.root.join("servers.dat");
+        let v120_servers_dat = paths.instance_dir("1.20.1").join("servers.dat");
+        let v121_servers_dat = paths.instance_dir("1.21.1").join("servers.dat");
 
         let pack_entries: Vec<wex_net::PackServerEntry> = req
             .servers
@@ -197,47 +440,234 @@ pub async fn apply_import_internal(
             })
             .collect();
 
-        let mut root = wex_net::load_servers_dat(&servers_dat_path).unwrap_or_else(|_| {
-            wex_net::NbtTag::Compound(vec![(
-                "servers".to_string(),
-                wex_net::NbtTag::List {
-                    tag_id: 10,
-                    elements: Vec::new(),
-                },
-            )])
-        });
+        for s_path in [&root_servers_dat, &v120_servers_dat, &v121_servers_dat] {
+            if let Some(parent) = s_path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
 
-        wex_net::merge_pack_servers(&mut root, &pack_entries);
-        if wex_net::save_servers_dat(&servers_dat_path, &root).is_ok() {
-            imported_servers_count = req.servers.len();
+            let mut root = wex_net::load_servers_dat(s_path).unwrap_or_else(|_| {
+                wex_net::NbtTag::Compound(vec![(
+                    "servers".to_string(),
+                    wex_net::NbtTag::List {
+                        tag_id: 10,
+                        elements: Vec::new(),
+                    },
+                )])
+            });
+
+            wex_net::merge_pack_servers(&mut root, &pack_entries);
+            let _ = wex_net::save_servers_dat(s_path, &root);
         }
+        imported_servers_count = req.servers.len();
     }
 
     // 3. Safe non-destructive skins import: copy PNGs into Wex skins/
     if req.import_skins && !req.skins.is_empty() {
         let target_skins_dir = paths.root.join("skins");
-        let _ = fs::create_dir_all(&target_skins_dir);
+        if let Err(e) = fs::create_dir_all(&target_skins_dir) {
+            errors.push(format!("Не удалось создать папку скинов: {}", e));
+        } else {
+            for skin in &req.skins {
+                let file_name = match validate_safe_component(&skin.file_name, "Имя файла скина")
+                {
+                    Ok(f) => f,
+                    Err(err) => {
+                        errors.push(err);
+                        continue;
+                    }
+                };
+                let src = PathBuf::from(&skin.path);
+                if !src.is_file() {
+                    errors.push(format!("Файл скина не найден: '{}'", skin.path));
+                    continue;
+                }
 
-        for skin in &req.skins {
-            let src = PathBuf::from(&skin.path);
-            if src.is_file() {
-                let dest = target_skins_dir.join(&skin.file_name);
-                // Safe read and copy without touching or deleting original
-                if fs::copy(&src, &dest).is_ok() {
-                    imported_skins_count += 1;
+                let initial_dest = target_skins_dir.join(&file_name);
+                let dest = if initial_dest.exists() {
+                    if let (Ok(s_bytes), Ok(d_bytes)) = (fs::read(&src), fs::read(&initial_dest)) {
+                        if s_bytes == d_bytes {
+                            imported_skins_count += 1;
+                            continue;
+                        }
+                    }
+                    generate_unique_file_dest(&target_skins_dir, &file_name)
+                } else {
+                    initial_dest
+                };
+
+                if !dest.starts_with(&target_skins_dir) {
+                    errors.push(format!(
+                        "Целевой путь скина выходит за пределы каталога: {:?}",
+                        dest
+                    ));
+                    continue;
+                }
+
+                match fs::copy(&src, &dest) {
+                    Ok(_) => imported_skins_count += 1,
+                    Err(e) => errors.push(format!(
+                        "Ошибка копирования скина '{}': {}",
+                        skin.file_name, e
+                    )),
                 }
             }
         }
     }
 
+    // 3b. Safe non-destructive capes import: copy PNGs into Wex capes/
+    if req.import_skins && !req.capes.is_empty() {
+        let target_capes_dir = paths.root.join("capes");
+        if let Err(e) = fs::create_dir_all(&target_capes_dir) {
+            errors.push(format!("Не удалось создать папку плащей: {}", e));
+        } else {
+            for cape in &req.capes {
+                let file_name = match validate_safe_component(&cape.file_name, "Имя файла плаща")
+                {
+                    Ok(f) => f,
+                    Err(err) => {
+                        errors.push(err);
+                        continue;
+                    }
+                };
+                let src = PathBuf::from(&cape.path);
+                if !src.is_file() {
+                    errors.push(format!("Файл плаща не найден: '{}'", cape.path));
+                    continue;
+                }
+
+                let initial_dest = target_capes_dir.join(&file_name);
+                let dest = if initial_dest.exists() {
+                    if let (Ok(s_bytes), Ok(d_bytes)) = (fs::read(&src), fs::read(&initial_dest)) {
+                        if s_bytes == d_bytes {
+                            continue;
+                        }
+                    }
+                    generate_unique_file_dest(&target_capes_dir, &file_name)
+                } else {
+                    initial_dest
+                };
+
+                if !dest.starts_with(&target_capes_dir) {
+                    errors.push(format!(
+                        "Целевой путь плаща выходит за пределы каталога: {:?}",
+                        dest
+                    ));
+                    continue;
+                }
+
+                if let Err(e) = fs::copy(&src, &dest) {
+                    errors.push(format!(
+                        "Ошибка копирования плаща '{}': {}",
+                        cape.file_name, e
+                    ));
+                }
+            }
+        }
+    }
+
+    // 3c. Import playtime statistics if present in old launcher
+    if let Ok(old_data) = import_old_launcher_internal(&req.old_launcher_dir) {
+        if old_data.total_play_time_seconds > 0 || old_data.total_game_launches > 0 {
+            let stats_file = paths.root.join("stats.json");
+            let mut current = get_playtime_internal(paths);
+            if current.total_seconds == 0 {
+                current.total_seconds = old_data.total_play_time_seconds;
+            }
+            if current.total_launches == 0 {
+                current.total_launches = old_data.total_game_launches;
+            }
+            current.formatted_play_time = format_play_time(current.total_seconds);
+            current.summary_text = format!(
+                "В игре: {}  •  Запусков: {}",
+                current.formatted_play_time, current.total_launches
+            );
+            let val = serde_json::json!({
+                "total_play_time_seconds": current.total_seconds,
+                "total_game_launches": current.total_launches,
+                "last_played_utc": current.last_played_utc,
+            });
+            if let Ok(json_str) = serde_json::to_string_pretty(&val) {
+                let _ = fs::write(&stats_file, json_str);
+            }
+        }
+    }
+
+    // 4. Safe non-destructive worlds import: copy world saves into Wex instance saves
+    if req.import_worlds && !req.worlds.is_empty() {
+        for world in &req.worlds {
+            let folder_name = match validate_safe_component(&world.folder_name, "Папка мира")
+            {
+                Ok(f) => f,
+                Err(err) => {
+                    errors.push(err);
+                    continue;
+                }
+            };
+
+            let raw_ver = world
+                .version
+                .as_deref()
+                .or(req.selected_version.as_deref())
+                .unwrap_or("1.21.1");
+            let target_ver = match validate_supported_version(raw_ver) {
+                Ok(v) => v,
+                Err(err) => {
+                    errors.push(err);
+                    continue;
+                }
+            };
+
+            let src = PathBuf::from(&world.source_path);
+            if !src.is_dir() {
+                errors.push(format!("Каталог мира не найден: '{}'", world.source_path));
+                continue;
+            }
+
+            let target_saves_dir = paths.instance_dir(&target_ver).join("saves");
+            if let Err(e) = fs::create_dir_all(&target_saves_dir) {
+                errors.push(format!("Не удалось создать каталог сохранений: {}", e));
+                continue;
+            }
+
+            let dest = generate_unique_world_dest(&target_saves_dir, &folder_name);
+            if !dest.starts_with(&target_saves_dir) {
+                errors.push(format!(
+                    "Целевой путь сохранения мира выходит за пределы каталога: {:?}",
+                    dest
+                ));
+                continue;
+            }
+
+            match copy_dir_all(&src, &dest) {
+                Ok(_) => imported_worlds_count += 1,
+                Err(err) => errors.push(format!(
+                    "Ошибка копирования файлов мира '{}': {}",
+                    world.folder_name, err
+                )),
+            }
+        }
+    }
+
+    let success = errors.is_empty();
+    let message = if success {
+        "Данные успешно перенесены в Wex без изменения файлов старого лаунчера".to_string()
+    } else {
+        format!(
+            "Импорт завершён с ошибками ({}/{} операций не выполнено): {}",
+            errors.len(),
+            req.worlds.len() + req.skins.len() + req.capes.len(),
+            errors.join("; ")
+        )
+    };
     Ok(ApplyImportResponse {
-        success: true,
+        success,
         imported_nickname,
         imported_ram_gb,
         imported_servers_count,
         imported_skins_count,
-        message: "Данные успешно перенесены в Wex без изменения файлов старого лаунчера"
-            .to_string(),
+        imported_worlds_count,
+        message,
+        errors,
     })
 }
 
@@ -307,6 +737,24 @@ pub async fn extras_apply_import(
     state: State<'_, PlayState>,
 ) -> Result<ApplyImportResponse, String> {
     apply_import_internal(&state.paths, state.core.as_ref(), request).await
+}
+
+#[tauri::command]
+pub async fn overview_get_playtime(state: State<'_, PlayState>) -> Result<PlayTimeDto, String> {
+    Ok(get_playtime_internal(&state.paths))
+}
+
+#[tauri::command]
+pub async fn overview_record_playtime(
+    state: State<'_, PlayState>,
+    added_seconds: u64,
+    inc_launch: Option<bool>,
+) -> Result<PlayTimeDto, String> {
+    Ok(record_playtime_internal(
+        &state.paths,
+        added_seconds,
+        inc_launch.unwrap_or(false),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -452,6 +900,10 @@ mod tests {
                 hash: "dummyhash".to_string(),
                 is_slim: false,
             }],
+            capes: Vec::new(),
+            graphics_preset: Some("High".to_string()),
+            import_worlds: false,
+            worlds: Vec::new(),
         };
 
         let res = apply_import_internal(&paths, &core, req).await.unwrap();
@@ -481,5 +933,444 @@ mod tests {
             fs::read(&test_skin_path).unwrap(),
             b"TEST_SKIN_DATA_ORIGINAL"
         );
+    }
+
+    #[tokio::test]
+    async fn test_import_real_scenario_with_worlds_and_settings() {
+        let tmp = tempdir().unwrap();
+        let wex_root = tmp.path().join("Wex");
+        let paths = WexPaths::new(Some(wex_root.clone()));
+        let core = MockLauncherCore::new();
+
+        // 1. Setup realistic old launcher directory structure
+        let old_aura_dir = tmp.path().join(".aura");
+        fs::create_dir_all(&old_aura_dir).unwrap();
+
+        // Old config.json
+        let config_json = serde_json::json!({
+            "Nickname": "AuraVeteran",
+            "RamMb": 8192,
+            "SelectedVersion": "1.20.1",
+            "GraphicsPreset": "Ultra",
+            "JvmArgs": "-XX:+UseG1GC",
+            "DiscordRpcEnabled": true,
+            "TotalPlayTimeSeconds": 86400,
+            "TotalGameLaunches": 50,
+            "SkinPath": "skins/hero.png",
+            "SkinModel": "default"
+        });
+        fs::write(old_aura_dir.join("config.json"), config_json.to_string()).unwrap();
+
+        // Old skins & capes
+        let old_skins = old_aura_dir.join("skins");
+        fs::create_dir_all(&old_skins).unwrap();
+        let hero_skin = old_skins.join("hero.png");
+        fs::write(&hero_skin, b"PNG_HERO_SKIN_DATA").unwrap();
+
+        let old_capes = old_aura_dir.join("capes");
+        fs::create_dir_all(&old_capes).unwrap();
+        let aura_cape = old_capes.join("cape_cyan.png");
+        fs::write(&aura_cape, b"PNG_AURA_CAPE_DATA").unwrap();
+
+        // Old worlds in instances
+        let v120_saves = old_aura_dir.join("instances").join("1.20.1").join("saves");
+        let world_a = v120_saves.join("SurvivalWorld");
+        fs::create_dir_all(&world_a).unwrap();
+        fs::write(world_a.join("level.dat"), b"MOCK_LEVEL_DAT_A").unwrap();
+        fs::write(world_a.join("icon.png"), b"MOCK_ICON_A").unwrap();
+
+        let v121_saves = old_aura_dir.join("instances").join("1.21.1").join("saves");
+        let world_b = v121_saves.join("CoopRealm");
+        fs::create_dir_all(&world_b).unwrap();
+        fs::write(world_b.join("level.dat"), b"MOCK_LEVEL_DAT_B").unwrap();
+
+        // 2. Run scan
+        let scanned = import_old_launcher_internal(&old_aura_dir.to_string_lossy()).unwrap();
+        assert_eq!(scanned.nickname, "AuraVeteran");
+        assert_eq!(scanned.ram_mb, 8192);
+        assert_eq!(scanned.selected_version, "1.20.1");
+        assert_eq!(scanned.graphics_preset.as_deref(), Some("Ultra"));
+        assert_eq!(scanned.skins.len(), 1);
+        assert_eq!(scanned.capes.len(), 1);
+        assert_eq!(scanned.worlds.len(), 2);
+
+        // 3. Apply import
+        let req = ApplyImportRequest {
+            old_launcher_dir: old_aura_dir.to_string_lossy().to_string(),
+            import_nickname: true,
+            nickname: Some(scanned.nickname),
+            import_ram: true,
+            ram_mb: Some(scanned.ram_mb),
+            import_version: true,
+            selected_version: Some(scanned.selected_version),
+            graphics_preset: scanned.graphics_preset,
+            import_servers: true,
+            servers: scanned.servers,
+            import_skins: true,
+            skins: scanned.skins,
+            capes: scanned.capes,
+            import_worlds: true,
+            worlds: scanned.worlds,
+        };
+
+        let res = apply_import_internal(&paths, &core, req).await.unwrap();
+        assert!(res.success);
+        assert_eq!(res.imported_nickname.as_deref(), Some("AuraVeteran"));
+        assert_eq!(res.imported_ram_gb, Some(8));
+        assert_eq!(res.imported_skins_count, 1);
+        assert_eq!(res.imported_worlds_count, 2);
+
+        // 4. Verify Wex directories received all files
+        assert!(wex_root.join("skins").join("hero.png").is_file());
+        assert!(wex_root.join("capes").join("cape_cyan.png").is_file());
+
+        let target_world_a = paths
+            .instance_dir("1.20.1")
+            .join("saves")
+            .join("SurvivalWorld");
+        assert!(target_world_a.join("level.dat").is_file());
+        assert!(target_world_a.join("icon.png").is_file());
+        assert_eq!(
+            fs::read(target_world_a.join("level.dat")).unwrap(),
+            b"MOCK_LEVEL_DAT_A"
+        );
+
+        let target_world_b = paths.instance_dir("1.21.1").join("saves").join("CoopRealm");
+        assert!(target_world_b.join("level.dat").is_file());
+        assert_eq!(
+            fs::read(target_world_b.join("level.dat")).unwrap(),
+            b"MOCK_LEVEL_DAT_B"
+        );
+
+        // Verify core config has graphics preset and exact memory
+        let core_cfg = wex_core::config::LauncherConfig::load_or_default(&paths.config_file);
+        assert_eq!(core_cfg.graphics_preset, "Ultra");
+        assert_eq!(core_cfg.max_memory_mb, 8192);
+
+        // 5. CRITICAL NON-DESTRUCTIVE CHECK:
+        // Ensure old launcher files still exist completely untouched
+        assert!(hero_skin.is_file());
+        assert!(aura_cape.is_file());
+        assert!(world_a.join("level.dat").is_file());
+        assert!(world_b.join("level.dat").is_file());
+    }
+
+    #[tokio::test]
+    async fn test_apply_import_repeat_is_idempotent_and_safe() {
+        let tmp = tempdir().unwrap();
+        let wex_root = tmp.path().join("Wex");
+        let paths = WexPaths::new(Some(wex_root.clone()));
+        let core = MockLauncherCore::new();
+
+        let old_aura_dir = tmp.path().join(".aura");
+        let old_skins = old_aura_dir.join("skins");
+        fs::create_dir_all(&old_skins).unwrap();
+        let skin_path = old_skins.join("player.png");
+        fs::write(&skin_path, b"ORIGINAL_SKIN").unwrap();
+
+        let req = ApplyImportRequest {
+            old_launcher_dir: old_aura_dir.to_string_lossy().to_string(),
+            import_nickname: true,
+            nickname: Some("Player1".to_string()),
+            import_ram: true,
+            ram_mb: Some(4096),
+            import_version: true,
+            selected_version: Some("1.21.1".to_string()),
+            graphics_preset: None,
+            import_servers: false,
+            servers: Vec::new(),
+            import_skins: true,
+            skins: vec![ImportedSkinDto {
+                file_name: "player.png".to_string(),
+                path: skin_path.to_string_lossy().to_string(),
+                hash: "h1".to_string(),
+                is_slim: false,
+            }],
+            capes: Vec::new(),
+            import_worlds: false,
+            worlds: Vec::new(),
+        };
+
+        // First import
+        let res1 = apply_import_internal(&paths, &core, req.clone())
+            .await
+            .unwrap();
+        assert!(res1.success);
+        assert_eq!(res1.imported_skins_count, 1);
+        assert!(res1.errors.is_empty());
+
+        // Second (repeat) import of identical content
+        let res2 = apply_import_internal(&paths, &core, req).await.unwrap();
+        assert!(res2.success);
+        assert_eq!(res2.imported_skins_count, 1);
+        assert!(res2.errors.is_empty());
+        assert_eq!(
+            fs::read(wex_root.join("skins").join("player.png")).unwrap(),
+            b"ORIGINAL_SKIN"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_apply_import_world_collision_preserves_existing_world() {
+        let tmp = tempdir().unwrap();
+        let wex_root = tmp.path().join("Wex");
+        let paths = WexPaths::new(Some(wex_root.clone()));
+        let core = MockLauncherCore::new();
+
+        // Pre-create existing world in Wex instance
+        let target_saves_dir = paths.instance_dir("1.21.1").join("saves");
+        let existing_world = target_saves_dir.join("MyWorld");
+        fs::create_dir_all(&existing_world).unwrap();
+        fs::write(existing_world.join("level.dat"), b"EXISTING_ORIGINAL_DATA").unwrap();
+
+        // Source world with same folder_name but different data
+        let old_aura_dir = tmp.path().join(".aura");
+        let src_world = old_aura_dir.join("saves").join("MyWorld");
+        fs::create_dir_all(&src_world).unwrap();
+        fs::write(src_world.join("level.dat"), b"IMPORTED_NEW_DATA").unwrap();
+
+        let req = ApplyImportRequest {
+            old_launcher_dir: old_aura_dir.to_string_lossy().to_string(),
+            import_nickname: false,
+            nickname: None,
+            import_ram: false,
+            ram_mb: None,
+            import_version: false,
+            selected_version: Some("1.21.1".to_string()),
+            graphics_preset: None,
+            import_servers: false,
+            servers: Vec::new(),
+            import_skins: false,
+            skins: Vec::new(),
+            capes: Vec::new(),
+            import_worlds: true,
+            worlds: vec![ImportedWorldDto {
+                folder_name: "MyWorld".to_string(),
+                display_name: "My World".to_string(),
+                version: Some("1.21.1".to_string()),
+                size_bytes: 100,
+                source_path: src_world.to_string_lossy().to_string(),
+            }],
+        };
+
+        let res = apply_import_internal(&paths, &core, req).await.unwrap();
+        assert!(res.success);
+        assert_eq!(res.imported_worlds_count, 1);
+        assert!(res.errors.is_empty());
+
+        // Verify existing world is 100% UNTOUCHED
+        assert_eq!(
+            fs::read(existing_world.join("level.dat")).unwrap(),
+            b"EXISTING_ORIGINAL_DATA",
+            "Existing world MUST NOT be overwritten on collision"
+        );
+
+        // Verify imported world was written to unique imported path
+        let imported_dest = target_saves_dir.join("MyWorld-imported-1");
+        assert!(imported_dest.is_dir());
+        assert_eq!(
+            fs::read(imported_dest.join("level.dat")).unwrap(),
+            b"IMPORTED_NEW_DATA"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_apply_import_path_traversal_prevention() {
+        let tmp = tempdir().unwrap();
+        let wex_root = tmp.path().join("Wex");
+        let paths = WexPaths::new(Some(wex_root.clone()));
+        let core = MockLauncherCore::new();
+
+        let old_aura_dir = tmp.path().join(".aura");
+        let dummy_src = old_aura_dir.join("dummy");
+        fs::create_dir_all(&dummy_src).unwrap();
+        fs::write(dummy_src.join("level.dat"), b"EVIL").unwrap();
+
+        // 1. World folder traversal
+        let req1 = ApplyImportRequest {
+            old_launcher_dir: old_aura_dir.to_string_lossy().to_string(),
+            import_nickname: false,
+            nickname: None,
+            import_ram: false,
+            ram_mb: None,
+            import_version: false,
+            selected_version: Some("1.21.1".to_string()),
+            graphics_preset: None,
+            import_servers: false,
+            servers: Vec::new(),
+            import_skins: false,
+            skins: Vec::new(),
+            capes: Vec::new(),
+            import_worlds: true,
+            worlds: vec![ImportedWorldDto {
+                folder_name: "../../escape".to_string(),
+                display_name: "Evil World".to_string(),
+                version: Some("1.21.1".to_string()),
+                size_bytes: 10,
+                source_path: dummy_src.to_string_lossy().to_string(),
+            }],
+        };
+
+        let res1 = apply_import_internal(&paths, &core, req1).await.unwrap();
+        assert!(!res1.success);
+        assert_eq!(res1.imported_worlds_count, 0);
+        assert!(res1.errors.iter().any(|e| e.contains("path traversal")));
+        assert!(!wex_root.parent().unwrap().join("escape").exists());
+
+        // 2. Skin file traversal
+        let req2 = ApplyImportRequest {
+            old_launcher_dir: old_aura_dir.to_string_lossy().to_string(),
+            import_nickname: false,
+            nickname: None,
+            import_ram: false,
+            ram_mb: None,
+            import_version: false,
+            selected_version: Some("1.21.1".to_string()),
+            graphics_preset: None,
+            import_servers: false,
+            servers: Vec::new(),
+            import_skins: true,
+            skins: vec![ImportedSkinDto {
+                file_name: "../evil_skin.png".to_string(),
+                path: dummy_src.join("level.dat").to_string_lossy().to_string(),
+                hash: "h".to_string(),
+                is_slim: false,
+            }],
+            capes: Vec::new(),
+            import_worlds: false,
+            worlds: Vec::new(),
+        };
+
+        let res2 = apply_import_internal(&paths, &core, req2).await.unwrap();
+        assert!(!res2.success);
+        assert_eq!(res2.imported_skins_count, 0);
+        assert!(res2.errors.iter().any(|e| e.contains("path traversal")));
+
+        // 3. Version traversal
+        let req3 = ApplyImportRequest {
+            old_launcher_dir: old_aura_dir.to_string_lossy().to_string(),
+            import_nickname: false,
+            nickname: None,
+            import_ram: false,
+            ram_mb: None,
+            import_version: false,
+            selected_version: Some("../../evil_ver".to_string()),
+            graphics_preset: None,
+            import_servers: false,
+            servers: Vec::new(),
+            import_skins: false,
+            skins: Vec::new(),
+            capes: Vec::new(),
+            import_worlds: true,
+            worlds: vec![ImportedWorldDto {
+                folder_name: "World1".to_string(),
+                display_name: "World".to_string(),
+                version: Some("../../evil_ver".to_string()),
+                size_bytes: 10,
+                source_path: dummy_src.to_string_lossy().to_string(),
+            }],
+        };
+
+        let res3 = apply_import_internal(&paths, &core, req3).await.unwrap();
+        assert!(!res3.success);
+        assert_eq!(res3.imported_worlds_count, 0);
+        assert!(res3
+            .errors
+            .iter()
+            .any(|e| e.contains("path traversal") || e.contains("Неподдерживаемая версия")));
+    }
+
+    #[tokio::test]
+    async fn test_apply_import_copy_error_handling() {
+        let tmp = tempdir().unwrap();
+        let wex_root = tmp.path().join("Wex");
+        let paths = WexPaths::new(Some(wex_root.clone()));
+        let core = MockLauncherCore::new();
+
+        let non_existent = tmp.path().join("does_not_exist");
+
+        let req = ApplyImportRequest {
+            old_launcher_dir: tmp.path().to_string_lossy().to_string(),
+            import_nickname: false,
+            nickname: None,
+            import_ram: false,
+            ram_mb: None,
+            import_version: false,
+            selected_version: Some("1.21.1".to_string()),
+            graphics_preset: None,
+            import_servers: false,
+            servers: Vec::new(),
+            import_skins: true,
+            skins: vec![ImportedSkinDto {
+                file_name: "missing.png".to_string(),
+                path: non_existent
+                    .join("missing.png")
+                    .to_string_lossy()
+                    .to_string(),
+                hash: "h".to_string(),
+                is_slim: false,
+            }],
+            capes: Vec::new(),
+            import_worlds: true,
+            worlds: vec![ImportedWorldDto {
+                folder_name: "MissingWorld".to_string(),
+                display_name: "Missing World".to_string(),
+                version: Some("1.21.1".to_string()),
+                size_bytes: 10,
+                source_path: non_existent
+                    .join("MissingWorld")
+                    .to_string_lossy()
+                    .to_string(),
+            }],
+        };
+
+        let res = apply_import_internal(&paths, &core, req).await.unwrap();
+        assert!(
+            !res.success,
+            "Must report success=false when copy errors occur"
+        );
+        assert_eq!(res.imported_skins_count, 0);
+        assert_eq!(res.imported_worlds_count, 0);
+        assert_eq!(
+            res.errors.len(),
+            2,
+            "Both skin and world copy failures must be recorded explicitly"
+        );
+        assert!(res.errors.iter().any(|e| e.contains("не найден")));
+        assert!(res.message.contains("ошибками"));
+    }
+
+    #[test]
+    fn test_playtime_initial_and_recording() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+
+        // 1. Initially empty
+        let initial = get_playtime_internal(&paths);
+        assert_eq!(initial.total_seconds, 0);
+        assert_eq!(initial.total_launches, 0);
+        assert_eq!(initial.formatted_play_time, "0 мин.");
+
+        // 2. Record 3700 seconds (~1 hr 1 min) with launch
+        let rec = record_playtime_internal(&paths, 3700, true);
+        assert_eq!(rec.total_seconds, 3700);
+        assert_eq!(rec.total_launches, 1);
+        assert_eq!(rec.formatted_play_time, "1 ч. 1 мин.");
+        assert_eq!(rec.summary_text, "В игре: 1 ч. 1 мин.  •  Запусков: 1");
+
+        // 3. Persistent across reloads
+        let loaded = get_playtime_internal(&paths);
+        assert_eq!(loaded.total_seconds, 3700);
+        assert_eq!(loaded.total_launches, 1);
+    }
+
+    #[test]
+    fn test_playtime_formatting() {
+        assert_eq!(format_play_time(0), "0 мин.");
+        assert_eq!(format_play_time(59), "0 мин.");
+        assert_eq!(format_play_time(125), "2 мин.");
+        assert_eq!(format_play_time(3600), "1 ч. 0 мин.");
+        assert_eq!(format_play_time(3665), "1 ч. 1 мин.");
+        assert_eq!(format_play_time(7500), "2 ч. 5 мин.");
     }
 }

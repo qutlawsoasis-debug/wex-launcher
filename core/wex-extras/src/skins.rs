@@ -290,6 +290,30 @@ impl SkinHistoryManager {
             Ok(false)
         }
     }
+
+    pub fn get_skin_bytes_by_hash(&self, hash: &str) -> Result<Vec<u8>, SkinError> {
+        let filename = format!("{}.png", hash);
+        let path = self.skins_dir().join(filename);
+        if !path.exists() {
+            return Err(SkinError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Скин с хэшем {} не найден", hash),
+            )));
+        }
+        Ok(fs::read(path)?)
+    }
+
+    pub fn get_skin_bytes_by_id(&self, id: &str) -> Result<(Vec<u8>, WardrobeItem), SkinError> {
+        let history = self.get_history()?;
+        let item = history.into_iter().find(|i| i.id == id).ok_or_else(|| {
+            SkinError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Скин не найден в истории",
+            ))
+        })?;
+        let bytes = self.get_skin_bytes_by_hash(&item.hash)?;
+        Ok((bytes, item))
+    }
 }
 
 pub fn generate_csl_config(
@@ -319,7 +343,7 @@ pub fn generate_csl_config(
                 "elytra": "LocalSkin/elytras/{USERNAME}.png"
             },
             {
-                "name": "AuraLobby",
+                "name": "WexLobby",
                 "type": "CustomSkinAPI",
                 "root": "https://lobby-api.vercel.app/csl/"
             }
@@ -442,6 +466,13 @@ mod tests {
         let history = mgr.get_history().unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].id, item.id);
+
+        let (loaded_bytes, loaded_item) = mgr.get_skin_bytes_by_id(&item.id).unwrap();
+        assert_eq!(loaded_bytes, bytes);
+        assert_eq!(loaded_item.name, "AlexSkin");
+
+        let hash_bytes = mgr.get_skin_bytes_by_hash(&item.hash).unwrap();
+        assert_eq!(hash_bytes, bytes);
 
         let removed = mgr.remove_item(&item.id).unwrap();
         assert!(removed);

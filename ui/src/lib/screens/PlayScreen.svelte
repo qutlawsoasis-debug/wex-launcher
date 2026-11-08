@@ -18,6 +18,7 @@
   import Icon from '../components/icons/Icon.svelte';
   import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
   import ErrorState from '../components/ErrorState.svelte';
+  import StoriesCarousel, { type StorySlideData } from '../components/StoriesCarousel.svelte';
   import { theme } from '../design/theme.svelte';
   import { t, i18n } from '../i18n';
 
@@ -57,10 +58,15 @@
     initialNews?: ReleaseNoteVersion[];
     initialUpdateInfo?: UpdateInfo | null;
     initialShowImportWizard?: boolean;
+    initialScreenshots?: Array<{ file_name: string; file_path: string; preview_data_url?: string; created_at?: string }>;
+    initialAchievements?: { achievements: any[]; progress: any[] } | null;
+    initialPlaytime?: { total_seconds: number; total_launches: number; formatted_play_time: string; last_played_utc?: string } | null;
     onlaunch?: () => void;
     oncancel?: () => void;
     onstop?: () => void;
     onopensettings?: () => void;
+    onnavigatescreen?: (screen: string) => void;
+    ontoast?: (toast: { type: 'info' | 'success' | 'warning' | 'error'; title: string; message: string }) => void;
   }
 
   let {
@@ -77,10 +83,15 @@
     initialNews = undefined,
     initialUpdateInfo = null,
     initialShowImportWizard = false,
+    initialScreenshots = undefined,
+    initialAchievements = undefined,
+    initialPlaytime = undefined,
     onlaunch,
     oncancel,
     onstop,
     onopensettings,
+    onnavigatescreen,
+    ontoast,
   }: Props = $props();
 
   const versions = [
@@ -147,6 +158,125 @@
   let manualImportWizardOpen = $state(false);
   let isImportWizardOpen = $derived(Boolean(initialShowImportWizard) || manualImportWizardOpen);
 
+  // Screenshots state (from workshop_list_screenshots)
+  let fetchedScreenshots = $state<Array<{ file_name: string; file_path: string; preview_data_url?: string; created_at?: string }>>([]);
+  let screenshotsList = $derived(initialScreenshots !== undefined ? initialScreenshots : fetchedScreenshots);
+  let latestScreenshot = $derived(screenshotsList && screenshotsList.length > 0 ? screenshotsList[0] : null);
+
+  // Achievements state (from social_list_achievements)
+  let fetchedAchievements = $state<{ achievements: any[]; progress: any[] } | null>(null);
+  let achievementsData = $derived(initialAchievements !== undefined ? initialAchievements : fetchedAchievements);
+  let achievementsSummary = $derived.by(() => {
+    if (!achievementsData || !achievementsData.achievements) return null;
+    const defs = achievementsData.achievements;
+    const prog = achievementsData.progress || [];
+    const unlockedList = prog.filter((p: any) => p.unlocked);
+    const unlockedCount = unlockedList.length;
+    const totalCount = defs.length;
+
+    let latestAch: any = undefined;
+    if (unlockedList.length > 0) {
+      const lastP = unlockedList[unlockedList.length - 1];
+      const foundDef = defs.find((d: any) => d.id === lastP.id);
+      if (foundDef) {
+        latestAch = {
+          id: foundDef.id,
+          title: foundDef.title,
+          description: foundDef.description,
+          icon: foundDef.icon,
+          unlockedAt: lastP.unlocked_at,
+        };
+      }
+    } else if (defs.length > 0) {
+      latestAch = {
+        id: defs[0].id,
+        title: defs[0].title,
+        description: defs[0].description,
+        icon: defs[0].icon,
+      };
+    }
+
+    return {
+      unlockedCount,
+      totalCount,
+      latestAchievement: latestAch,
+    };
+  });
+
+  // Playtime state (from overview_get_playtime)
+  let fetchedPlaytime = $state<{ total_seconds: number; total_launches: number; formatted_play_time: string; last_played_utc?: string } | null>(null);
+  let playtimeData = $derived(initialPlaytime !== undefined ? initialPlaytime : fetchedPlaytime);
+
+  // Stories Carousel Slides (Strictly only real data! Card without data is not displayed)
+  let storySlides = $derived.by<StorySlideData[]>(() => {
+    const list: StorySlideData[] = [];
+
+    // 1. What's new / Changelog
+    if (newsVersions.length > 0 && latestVersionNote && formattedNewsItems.length > 0) {
+      list.push({
+        type: 'news',
+        version: latestVersionNote.version,
+        dateText: latestVersionNote.date_text,
+        shortTitle: latestVersionNote.short_title,
+        items: formattedNewsItems,
+      });
+    }
+
+    // 2. Latest Screenshot
+    if (latestScreenshot) {
+      list.push({
+        type: 'screenshot',
+        fileName: latestScreenshot.file_name,
+        filePath: latestScreenshot.file_path,
+        previewUrl: latestScreenshot.preview_data_url || (latestScreenshot.file_path ? `file://${latestScreenshot.file_path}` : undefined),
+        createdAt: latestScreenshot.created_at,
+      });
+    }
+
+    // 3. Achievements
+    if (achievementsSummary && (achievementsSummary.unlockedCount > 0 || achievementsSummary.totalCount > 0)) {
+      list.push({
+        type: 'achievements',
+        unlockedCount: achievementsSummary.unlockedCount,
+        totalCount: achievementsSummary.totalCount,
+        latestAchievement: achievementsSummary.latestAchievement,
+      });
+    }
+
+    // 4. Playtime (only if real seconds or launches recorded)
+    if (playtimeData && (playtimeData.total_seconds > 0 || playtimeData.total_launches > 0)) {
+      list.push({
+        type: 'playtime',
+        totalSeconds: playtimeData.total_seconds,
+        formattedPlayTime: playtimeData.formatted_play_time || `${Math.floor(playtimeData.total_seconds / 60)} мин.`,
+        totalLaunches: playtimeData.total_launches,
+        lastPlayed: playtimeData.last_played_utc ? new Date(playtimeData.last_played_utc).toLocaleDateString() : undefined,
+      });
+    }
+
+    return list;
+  });
+
+  // Session playtime auto-tracking
+  let gameSessionStartTime: number | null = null;
+  $effect(() => {
+    if (isRunning && gameSessionStartTime === null) {
+      gameSessionStartTime = Date.now();
+    } else if (!isRunning && gameSessionStartTime !== null) {
+      const elapsedSec = Math.floor((Date.now() - gameSessionStartTime) / 1000);
+      gameSessionStartTime = null;
+      if (elapsedSec >= 5) {
+        import('@tauri-apps/api/core').then(({ invoke }) => {
+          invoke<any>('overview_record_playtime', { addedSeconds: elapsedSec, incLaunch: false })
+            .then((res) => {
+              if (res) fetchedPlaytime = res;
+            })
+            .catch(() => {});
+        }).catch(() => {});
+      }
+    }
+  });
+
   onMount(async () => {
     // Parallelize all startup IPC calls using Promise.allSettled for fastest first-frame render
     try {
@@ -198,7 +328,53 @@
           })()
         : Promise.resolve();
 
-      await Promise.allSettled([fetchServers, fetchNews, fetchUpdates, checkOldLauncher]);
+      const fetchScreenshots = initialScreenshots === undefined
+        ? invoke<any[]>('workshop_list_screenshots', { version: selectedVersion })
+            .then((list) => {
+              if (Array.isArray(list) && list.length > 0) {
+                fetchedScreenshots = list;
+              } else {
+                fetchedScreenshots = [];
+              }
+            })
+            .catch(() => {
+              fetchedScreenshots = [];
+            })
+        : Promise.resolve();
+
+      const fetchAchievements = initialAchievements === undefined
+        ? invoke<any>('social_list_achievements')
+            .then((res) => {
+              if (res && res.achievements) {
+                fetchedAchievements = res;
+              }
+            })
+            .catch(() => {
+              fetchedAchievements = null;
+            })
+        : Promise.resolve();
+
+      const fetchPlaytime = initialPlaytime === undefined
+        ? invoke<any>('overview_get_playtime')
+            .then((res) => {
+              if (res && (res.total_seconds > 0 || res.total_launches > 0)) {
+                fetchedPlaytime = res;
+              }
+            })
+            .catch(() => {
+              fetchedPlaytime = null;
+            })
+        : Promise.resolve();
+
+      await Promise.allSettled([
+        fetchServers,
+        fetchNews,
+        fetchUpdates,
+        checkOldLauncher,
+        fetchScreenshots,
+        fetchAchievements,
+        fetchPlaytime,
+      ]);
     } catch {
       recentServer = null;
     }
@@ -210,6 +386,7 @@
     selectedVersion?: string;
     serversCount: number;
     skinsCount: number;
+    worldsCount?: number;
   }) {
     if (result.nickname) {
       playerName = result.nickname;
@@ -273,27 +450,14 @@
 
     <!-- Middle Shelf: Real Updates & Activity Glance -->
     <div class="dashboard-shelf">
-      <!-- Changelog Card: STRICTLY HIDDEN IF NO NEWS SOURCE (Apple HIG & Task Spec) -->
-      {#if newsVersions.length > 0 && latestVersionNote}
-        <div class="glass-card updates-card">
-          <div class="card-title-row">
-            <Icon name="play" size={15} color="var(--color-system-blue)" />
-            <span class="card-title">Журнал изменений</span>
-            <span class="card-meta">
-              {latestVersionNote.version}{latestVersionNote.date_text ? ` • ${latestVersionNote.date_text}` : ''}
-            </span>
-          </div>
-
-          {#if formattedNewsItems.length > 0}
-            <div class="changelog-entries">
-              {#each formattedNewsItems as item (item.badgeText + '-' + item.text)}
-                <div class="changelog-entry-row">
-                  <span class="badge badge-{item.categoryClass}">{item.badgeText}</span>
-                  <span class="changelog-entry-text">{item.text}</span>
-                </div>
-              {/each}
-            </div>
-          {/if}
+      <!-- Stories Carousel: STRICTLY REAL DATA ONLY (Parity with StoriesCarousel.xaml) -->
+      {#if storySlides.length > 0}
+        <div class="stories-shelf-col updates-card">
+          <StoriesCarousel
+            slides={storySlides}
+            {onnavigatescreen}
+            {ontoast}
+          />
         </div>
       {/if}
 
@@ -599,9 +763,12 @@
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
   }
 
-  .updates-card {
+  .updates-card,
+  .stories-shelf-col {
     flex: 1 1 380px;
     max-width: 520px;
+    display: flex;
+    flex-direction: column;
   }
 
   .status-card {
@@ -622,65 +789,6 @@
     font-size: var(--text-subheadline);
     font-weight: 600;
     color: var(--color-label);
-  }
-
-  .card-meta {
-    margin-left: auto;
-    font-size: var(--text-caption-2);
-    color: var(--color-tertiary-label);
-  }
-
-  /* Changelog entries with Apple HIG badges */
-  .changelog-entries {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .changelog-entry-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    line-height: 1.4;
-  }
-
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 9999px;
-    padding: 1px 7px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    flex-shrink: 0;
-    margin-top: 2px;
-  }
-
-  .badge-new {
-    background: rgba(0, 145, 255, 0.16);
-    color: var(--color-system-blue);
-  }
-
-  .badge-improved {
-    background: var(--color-secondary-system-fill);
-    color: var(--color-label);
-  }
-
-  .badge-fixed {
-    background: rgba(255, 159, 10, 0.16);
-    color: var(--color-system-orange);
-  }
-
-  .badge-general {
-    background: var(--color-tertiary-system-fill);
-    color: var(--color-secondary-label);
-  }
-
-  .changelog-entry-text {
-    font-size: var(--text-footnote);
-    color: var(--color-secondary-label);
-    flex: 1;
   }
 
   .recent-server-item {
