@@ -560,6 +560,9 @@ pub async fn install_full_environment(
     });
     let state_file = paths.instance_dir(version).join("pack.state.json");
     if let Err(e) = sync_aura_pack(paths, version, client, events, concurrency).await {
+        if matches!(e, WexError::Cancelled) {
+            return Err(e);
+        }
         if state_file.exists() {
             events.on_event(&Event::Log {
                 level: LogLevel::Warn,
@@ -842,5 +845,92 @@ mod tests {
             "--quickPlayMultiplayer must be present in launch args"
         );
         assert_eq!(args[qp_pos.unwrap() + 1], "192.168.1.42:54321");
+    }
+
+    #[tokio::test]
+    async fn test_install_full_environment_offline_success() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        paths.ensure_dirs().unwrap();
+        let version = "1.20.1";
+        paths.ensure_instance_dirs(version).unwrap();
+
+        let ver_dir = paths.versions_dir.join(version);
+        fs::create_dir_all(&ver_dir).unwrap();
+
+        // 1. Cached version package
+        let pkg_cache_file = ver_dir.join(format!("{}.json", version));
+        let mock_pkg_json = r#"{
+            "id": "1.20.1",
+            "mainClass": "net.minecraft.client.main.Main",
+            "downloads": {
+                "client": {
+                    "sha1": "test_sha1",
+                    "size": 100,
+                    "url": "https://piston-data.mojang.com/v1/objects/test/client.jar"
+                }
+            },
+            "libraries": [],
+            "assetIndex": {
+                "id": "5",
+                "sha1": "idx_sha1",
+                "size": 100,
+                "url": "https://piston-meta.mojang.com/v1/packages/idx.json",
+                "totalSize": 200
+            }
+        }"#;
+        fs::write(&pkg_cache_file, mock_pkg_json).unwrap();
+
+        // 2. Installed client.jar
+        let client_jar = paths.client_jar(version);
+        fs::create_dir_all(client_jar.parent().unwrap()).unwrap();
+        fs::write(&client_jar, b"mock client jar binary").unwrap();
+
+        // 3. Cached Fabric profile
+        let fabric_cache_file = ver_dir.join(format!("fabric-{}.json", version));
+        let mock_fabric_json = r#"{
+            "id": "fabric-loader-0.19.5-1.20.1",
+            "mainClass": "net.fabricmc.loader.impl.launch.knot.KnotClient",
+            "libraries": []
+        }"#;
+        fs::write(&fabric_cache_file, mock_fabric_json).unwrap();
+
+        // 4. Installed Mojang Java Runtime
+        let comp = crate::java::get_java_component_for_version(version);
+        let comp_dir = paths.runtime_dir.join(comp);
+        let bin_dir = comp_dir.join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+        fs::write(comp_dir.join("release"), "JAVA_VERSION=17\n").unwrap();
+        let javaw = bin_dir.join("javaw.exe");
+        fs::write(&javaw, b"dummy java").unwrap();
+
+        // 5. Installed pack state
+        let state_file = paths.instance_dir(version).join("pack.state.json");
+        let pack_state = crate::pack::PackState {
+            pack_version: "20261108.offline".to_string(),
+            minecraft: version.to_string(),
+            fabric_loader: "0.19.5".to_string(),
+            installed_at_utc: chrono::Utc::now().to_rfc3339(),
+            installed_mods: vec![],
+        };
+        fs::write(&state_file, serde_json::to_string(&pack_state).unwrap()).unwrap();
+
+        // Unreachable client (offline)
+        let offline_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(50))
+            .build()
+            .unwrap();
+        let events = crate::event::NoopEventHandler;
+
+        let res = install_full_environment(&paths, version, &offline_client, &events, 2).await;
+        assert!(
+            res.is_ok(),
+            "Offline environment installation must succeed when cached/installed: {:?}",
+            res
+        );
+        let (java_bin, jar, _, _, asset_id) = res.unwrap();
+        assert_eq!(jar, client_jar);
+        assert_eq!(asset_id, "5");
+        assert!(java_bin.exists());
     }
 }

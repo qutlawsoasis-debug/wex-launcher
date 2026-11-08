@@ -12,6 +12,7 @@ pub mod pack;
 
 pub use auth::offline_uuid;
 pub use config::{LauncherConfig, WexPaths};
+pub use download::is_disk_full_error;
 pub use error::{Result, WexError};
 pub use event::{
     ChannelEventHandler, ConsoleEventHandler, Event, EventHandler, LogLevel, NoopEventHandler,
@@ -22,5 +23,5 @@ pub use launcher::{
     build_classpath, build_launch_command, install_full_environment, launch_game_process,
     prepare_and_launch, GameProcess, LaunchOptions,
 };
-pub use pack::sync_aura_pack;
+pub use pack::{sync_aura_pack, sync_aura_pack_cancellable};
 pub use reqwest;

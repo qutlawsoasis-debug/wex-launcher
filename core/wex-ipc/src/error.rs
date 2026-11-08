@@ -102,13 +102,28 @@ impl From<std::io::Error> for IpcError {
             std::io::ErrorKind::PermissionDenied => "IO_PERMISSION_DENIED",
             std::io::ErrorKind::AlreadyExists => "IO_ALREADY_EXISTS",
             std::io::ErrorKind::TimedOut => "IO_TIMED_OUT",
-            _ => "IO_ERROR",
+            std::io::ErrorKind::StorageFull => "IO_DISK_FULL",
+            _ => {
+                #[cfg(windows)]
+                if matches!(err.raw_os_error(), Some(112) | Some(39)) {
+                    "IO_DISK_FULL"
+                } else {
+                    "IO_ERROR"
+                }
+                #[cfg(not(windows))]
+                if matches!(err.raw_os_error(), Some(28)) {
+                    "IO_DISK_FULL"
+                } else {
+                    "IO_ERROR"
+                }
+            }
         };
-        let message = match err.kind() {
-            std::io::ErrorKind::NotFound => "Файл или каталог не найден на диске",
-            std::io::ErrorKind::PermissionDenied => "Доступ к файлу запрещён операционной системой",
-            std::io::ErrorKind::AlreadyExists => "Файл или каталог уже существует",
-            std::io::ErrorKind::TimedOut => "Истекло время ожидания файловой операции",
+        let message = match code {
+            "IO_NOT_FOUND" => "Файл или каталог не найден на диске",
+            "IO_PERMISSION_DENIED" => "Доступ к файлу запрещён операционной системой",
+            "IO_ALREADY_EXISTS" => "Файл или каталог уже существует",
+            "IO_TIMED_OUT" => "Истекло время ожидания файловой операции",
+            "IO_DISK_FULL" => "Недостаточно свободного места на диске",
             _ => "Произошла ошибка при выполнении операции ввода-вывода на диске",
         };
         Self::new(code, message, Some(err.to_string()))
