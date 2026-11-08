@@ -152,6 +152,13 @@ impl LanDiscoveryService {
     /// Returns cancellation token / abort handle if successfully bound.
     pub fn spawn_listener(self: Arc<Self>) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
+            if std::env::var("WEX_NO_MULTICAST_BIND").is_ok()
+                || std::env::var("WEX_TEST_NO_MULTICAST").is_ok()
+            {
+                debug!("Skipping 0.0.0.0 LAN multicast listener due to WEX_NO_MULTICAST_BIND (Rule 23:10)");
+                return;
+            }
+
             let multicast_ip: Ipv4Addr = match MINECRAFT_LAN_MULTICAST_ADDR.parse() {
                 Ok(ip) => ip,
                 Err(e) => {
@@ -208,11 +215,41 @@ impl LanDiscoveryService {
             }
         })
     }
+
+    /// Safe test listener bound strictly to loopback 127.0.0.1 (Rule 23:10 compliance)
+    pub fn spawn_loopback_listener(self: Arc<Self>, port: u16) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            let socket =
+                match tokio::net::UdpSocket::bind(SocketAddr::from(([127, 0, 0, 1], port))).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        debug!(
+                            "Failed to bind loopback test listener on 127.0.0.1:{}: {}",
+                            port, e
+                        );
+                        return;
+                    }
+                };
+            let mut buf = [0u8; 1024];
+            while let Ok((len, addr)) = socket.recv_from(&mut buf).await {
+                if let Ok(msg) = std::str::from_utf8(&buf[..len]) {
+                    self.record_announcement(msg, &addr.ip().to_string()).await;
+                }
+            }
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[ignore = "multicast socket requires opt-in to avoid firewall popups"]
+    #[tokio::test]
+    async fn test_multicast_raw_bind_ignored() {
+        let service = LanDiscoveryService::default();
+        assert_eq!(service.ttl, Duration::from_secs(60));
+    }
 
     #[test]
     fn test_parse_standard_announcement() {
