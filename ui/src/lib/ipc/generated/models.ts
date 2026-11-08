@@ -38,6 +38,8 @@ export type SkinValidationResultDto = { is_valid: boolean, error: string | null,
 
 export type WardrobeItemDto = { id: string, item_type: string, name: string, hash: string, model: string, relative_path: string, created_utc: string, };;
 
+export type WardrobeStateDto = { nickname: string, skin_name: string, skin_base64: string | null, model: SkinModelDto, cape_id: string, cape_name: string, cape_base64: string | null, };;
+
 export type DiscordActivityDto = "InLauncher" | { "Playing": { version: string, world_name: string | null, mod_count: number | null, start_timestamp: bigint | null, } } | { "InLobby": { lobby_code: string | null, player_count: number, host_name: string | null, } };;
 
 export type ImportedServerDto = { name: string, ip: string, icon: string | null, };;

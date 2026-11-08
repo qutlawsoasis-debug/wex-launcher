@@ -256,6 +256,15 @@ pub fn run() {
             commands::lobby::close_lobby_room,
             commands::lobby::kick_lobby_player,
             commands::lobby::list_open_rooms,
+            // Wardrobe commands
+            commands::wardrobe::extras_validate_skin,
+            commands::wardrobe::extras_convert_skin,
+            commands::wardrobe::extras_save_skin,
+            commands::wardrobe::extras_list_skin_history,
+            commands::wardrobe::extras_generate_csl_config,
+            commands::wardrobe::wardrobe_delete_history,
+            commands::wardrobe::wardrobe_get_state,
+            commands::wardrobe::wardrobe_apply,
             // Friends & Social commands
             commands::friends::social_login,
             commands::friends::social_get_friends,
