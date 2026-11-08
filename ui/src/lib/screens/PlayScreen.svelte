@@ -290,7 +290,6 @@
       if (unlistenProgress) unlistenProgress();
     };
   });
-  });
 
   function handleImportCompleted(result: {
     nickname?: string;
