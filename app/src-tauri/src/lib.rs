@@ -230,6 +230,8 @@ pub fn run() {
             commands::overview::extras_detect_old_launcher,
             commands::overview::extras_import_old_launcher,
             commands::overview::extras_apply_import,
+            commands::overview::overview_get_playtime,
+            commands::overview::overview_record_playtime,
             // Servers commands
             list_servers,
             ping_server,
