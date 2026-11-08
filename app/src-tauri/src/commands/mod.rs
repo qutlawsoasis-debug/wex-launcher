@@ -1,6 +1,7 @@
 pub mod friends;
 pub mod launch;
 pub mod lobby;
+pub mod logs;
 pub mod mods;
 pub mod network;
 pub mod overview;

@@ -449,7 +449,7 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders SettingsScreen with RAM slider, Java options, Discord RPC, graphics presets, and About Wex', () => {
+  it('renders SettingsScreen with RAM slider, Java options, Discord RPC, graphics presets, and About Wex', async () => {
     const comp = mount(SettingsScreen, { target });
     expect(target.textContent).toContain('Тема оформления');
     expect(target.textContent).toContain('Цветовой акцент');
@@ -464,6 +464,13 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Tauri 2');
     expect(target.textContent).not.toContain('.minecraft');
     expect(target.textContent).toContain('Wex');
+    expect(target.textContent).toContain('Журнал событий и краш-дампы');
+
+    const openLogsBtn = target.querySelector('[data-testid="btn-open-logs-sheet"]') as HTMLElement;
+    expect(openLogsBtn).not.toBeNull();
+    openLogsBtn.click();
+    await tick();
+    expect(target.textContent).toContain('latest.log');
     unmount(comp);
   });
 

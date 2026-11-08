@@ -299,6 +299,10 @@ pub fn run() {
             commands::workshop_packs::workshop_add_pack_file,
             commands::workshop_packs::workshop_delete_pack_file,
             commands::workshop_packs::workshop_open_packs_folder,
+            // Logs commands (SPEC 2.10)
+            commands::logs::logs_list_files,
+            commands::logs::logs_read_file,
+            commands::logs::logs_open_folder,
             // Shell commands (SPEC 1.2)
             commands::shell::shell_check_network,
             commands::shell::shell_get_profile,
