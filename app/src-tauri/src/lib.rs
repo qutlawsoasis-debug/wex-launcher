@@ -113,6 +113,19 @@ pub fn run() {
             commands::lobby::close_lobby_room,
             commands::lobby::kick_lobby_player,
             commands::lobby::list_open_rooms,
+            commands::lobby::net_lan_list_discovered,
+            commands::lobby::list_lan_worlds,
+            commands::lobby::record_lan_world,
+            commands::lobby::connect_lan_world,
+            // Wardrobe commands
+            commands::wardrobe::extras_validate_skin,
+            commands::wardrobe::extras_convert_skin,
+            commands::wardrobe::extras_save_skin,
+            commands::wardrobe::extras_list_skin_history,
+            commands::wardrobe::extras_generate_csl_config,
+            commands::wardrobe::wardrobe_delete_history,
+            commands::wardrobe::wardrobe_get_state,
+            commands::wardrobe::wardrobe_apply,
             // Friends & Social commands
             commands::friends::social_login,
             commands::friends::social_get_friends,
@@ -147,6 +160,19 @@ pub fn run() {
             commands::workshop_packs::workshop_add_pack_file,
             commands::workshop_packs::workshop_delete_pack_file,
             commands::workshop_packs::workshop_open_packs_folder,
+            // Crash diagnosis commands (SPEC 2.10)
+            commands::crash::extras_analyze_crash,
+            commands::crash::crash_get_last_diagnosis,
+            commands::crash::crash_open_log_file,
+            commands::crash::crash_disable_mod,
+            // Shell commands (SPEC 1.2)
+            commands::shell::shell_check_network,
+            commands::shell::shell_get_profile,
+            commands::shell::shell_get_launch_state,
+            commands::shell::shell_stop_game,
+            commands::shell::shell_minimize_window,
+            commands::shell::shell_toggle_maximize_window,
+            commands::shell::shell_close_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

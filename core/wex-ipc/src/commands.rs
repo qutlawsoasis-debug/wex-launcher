@@ -35,9 +35,10 @@ pub struct LaunchGameRequest {
     pub nickname: String,
     pub jvm_args: Option<Vec<String>>,
     #[serde(default)]
+    #[serde(alias = "server")]
     #[serde(alias = "quick_play")]
     #[serde(alias = "quickPlay")]
-    pub server: Option<String>,
+    pub quick_play_multiplayer: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
@@ -82,6 +83,8 @@ pub const CMD_NET_LOBBY_LEAVE: &str = "net_lobby_leave";
 pub const CMD_NET_LOBBY_KICK: &str = "net_lobby_kick";
 pub const CMD_NET_LOBBY_TUNNEL_CONFIG: &str = "net_lobby_tunnel_config";
 pub const CMD_NET_LOBBY_LIST_OPEN_ROOMS: &str = "net_lobby_list_open_rooms";
+pub const CMD_NET_LAN_LIST_DISCOVERED: &str = "net_lan_list_discovered";
+pub const CMD_NET_LAN_CONNECT: &str = "net_lan_connect";
 pub const CMD_NET_COMPARE_MANIFESTS: &str = "net_compare_manifests";
 pub const CMD_NET_COMPUTE_MANIFEST_HASH: &str = "net_compute_manifest_hash";
 pub const CMD_NET_TUNNEL_START: &str = "net_tunnel_start";
@@ -198,6 +201,25 @@ pub struct NetListOpenRoomsResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetLanListDiscoveredRequest {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetLanListDiscoveredResponse {
+    pub worlds: Vec<LanWorldDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetLanConnectRequest {
+    pub address: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetLanConnectResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct NetCompareManifestsRequest {
     pub client_manifest: Vec<ModManifestEntryDto>,
     pub host_manifest: Vec<ModManifestEntryDto>,
@@ -256,6 +278,9 @@ pub const CMD_EXTRAS_DISCORD_CLEAR_ACTIVITY: &str = "extras_discord_clear_activi
 pub const CMD_EXTRAS_IMPORT_OLD_LAUNCHER: &str = "extras_import_old_launcher";
 pub const CMD_EXTRAS_GET_PRESETS: &str = "extras_get_presets";
 pub const CMD_EXTRAS_APPLY_PRESET: &str = "extras_apply_preset";
+pub const CMD_WARDROBE_GET_STATE: &str = "wardrobe_get_state";
+pub const CMD_WARDROBE_APPLY: &str = "wardrobe_apply";
+pub const CMD_WARDROBE_DELETE_HISTORY: &str = "wardrobe_delete_history";
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct ExtrasAnalyzeCrashRequest {
@@ -301,6 +326,34 @@ pub struct ExtrasListSkinHistoryResponse {
 pub struct ExtrasGenerateCslConfigRequest {
     pub output_path: String,
     pub csl_api_root: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct WardrobeApplyRequest {
+    pub nickname: String,
+    pub skin_name: String,
+    pub skin_base64: Option<String>,
+    pub model: SkinModelDto,
+    pub cape_id: String,
+    pub cape_name: String,
+    pub cape_base64: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct WardrobeApplyResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct WardrobeDeleteHistoryRequest {
+    pub history_dir: String,
+    pub item_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct WardrobeDeleteHistoryResponse {
+    pub success: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS, PartialEq, Eq)]

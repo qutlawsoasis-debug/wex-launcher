@@ -19,6 +19,10 @@
     showChevron?: boolean;
     clickable?: boolean;
     disabled?: boolean;
+    role?: string;
+    ariaChecked?: boolean;
+    ariaPressed?: boolean;
+    ariaLabel?: string;
     onclick?: () => void;
     leading?: Snippet;
     trailing?: Snippet;
@@ -32,6 +36,10 @@
     showChevron = false,
     clickable = false,
     disabled = false,
+    role,
+    ariaChecked,
+    ariaPressed,
+    ariaLabel,
     onclick,
     leading,
     trailing,
@@ -48,6 +56,10 @@
     class:disabled
     disabled={disabled}
     onclick={onclick}
+    {role}
+    aria-checked={ariaChecked}
+    aria-pressed={ariaPressed}
+    aria-label={ariaLabel}
   >
     {#if leading}
       <div class="row-leading">
@@ -123,6 +135,7 @@
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
+    min-height: 44px;
     background-color: transparent;
     font-family: var(--font-system);
     user-select: none;
@@ -131,6 +144,9 @@
     border-bottom: 1px solid var(--color-separator);
     width: 100%;
     text-align: left;
+    content-visibility: auto;
+    contain-intrinsic-size: 52px;
+    outline: none;
   }
 
   .apple-row:last-child {
@@ -147,6 +163,12 @@
 
   .apple-row.clickable:active:not(.disabled) {
     background-color: var(--color-tertiary-system-fill);
+  }
+
+  .apple-row.clickable:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: -2px;
+    z-index: 1;
   }
 
   .apple-row.disabled {
@@ -189,6 +211,7 @@
   .row-subtitle {
     font-size: var(--text-footnote);
     color: var(--color-secondary-label);
+    font-weight: 500;
     line-height: var(--line-footnote);
   }
 
@@ -207,5 +230,15 @@
   .chevron {
     display: flex;
     align-items: center;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .apple-row {
+      transition: none !important;
+    }
+  }
+
+  :global([data-reduce-motion="true"]) .apple-row {
+    transition: none !important;
   }
 </style>

@@ -11,6 +11,7 @@ import type {
     LobbyCreateResponseDto,
     LobbyJoinResponseDto,
     LobbyStatusResponseDto,
+    LanWorldDto,
     ModManifestEntryDto,
     ModMismatchItemDto,
     NetOpenRoomDto,
@@ -30,6 +31,7 @@ import type {
     UserAuthDto,
     UserPresenceDto,
     WardrobeItemDto,
+    WardrobeStateDto,
     WorldBackupItemDto,
     WorldItemDto,
 } from './models';
@@ -38,7 +40,7 @@ export type InstallInstanceRequest = { version: string, force_reinstall: boolean
 
 export type InstallInstanceResponse = { success: boolean, version: string, message: string, };;
 
-export type LaunchGameRequest = { version: string, nickname: string, jvm_args: Array<string> | null, server: string | null, };;
+export type LaunchGameRequest = { version: string, nickname: string, jvm_args: Array<string> | null, quick_play_multiplayer: string | null, };;
 
 export type LaunchGameResponse = { success: boolean, pid: number | null, message: string, };;
 
@@ -84,6 +86,14 @@ export type NetListOpenRoomsRequest = { player_name: string | null, };;
 
 export type NetListOpenRoomsResponse = { rooms: Array<NetOpenRoomDto>, };;
 
+export type NetLanListDiscoveredRequest = Record<string, never>;;
+
+export type NetLanListDiscoveredResponse = { worlds: Array<LanWorldDto>, };;
+
+export type NetLanConnectRequest = { address: string, };;
+
+export type NetLanConnectResponse = { success: boolean, message: string, };;
+
 export type NetCompareManifestsRequest = { client_manifest: Array<ModManifestEntryDto>, host_manifest: Array<ModManifestEntryDto>, };;
 
 export type NetCompareManifestsResponse = { mismatches: Array<ModMismatchItemDto>, manifest_hash: string, };;
@@ -115,6 +125,14 @@ export type ExtrasListSkinHistoryRequest = { history_dir: string, };;
 export type ExtrasListSkinHistoryResponse = { items: Array<WardrobeItemDto>, };;
 
 export type ExtrasGenerateCslConfigRequest = { output_path: string, csl_api_root: string, };;
+
+export type WardrobeApplyRequest = { nickname: string, skin_name: string, skin_base64: string | null, model: SkinModelDto, cape_id: string, cape_name: string, cape_base64: string | null, };;
+
+export type WardrobeApplyResponse = { success: boolean, message: string, };;
+
+export type WardrobeDeleteHistoryRequest = { history_dir: string, item_id: string, };;
+
+export type WardrobeDeleteHistoryResponse = { success: boolean, };;
 
 export type ExtrasDiscordSetActivityRequest = { activity: DiscordActivityDto, };;
 
@@ -198,6 +216,8 @@ export const COMMANDS = {
     NET_LOBBY_KICK: "net_lobby_kick",
     NET_LOBBY_TUNNEL_CONFIG: "net_lobby_tunnel_config",
     NET_LOBBY_LIST_OPEN_ROOMS: "net_lobby_list_open_rooms",
+    NET_LAN_LIST_DISCOVERED: "net_lan_list_discovered",
+    NET_LAN_CONNECT: "net_lan_connect",
     NET_COMPARE_MANIFESTS: "net_compare_manifests",
     NET_COMPUTE_MANIFEST_HASH: "net_compute_manifest_hash",
     NET_TUNNEL_START: "net_tunnel_start",
@@ -210,6 +230,9 @@ export const COMMANDS = {
     EXTRAS_SAVE_SKIN: "extras_save_skin",
     EXTRAS_LIST_SKIN_HISTORY: "extras_list_skin_history",
     EXTRAS_GENERATE_CSL_CONFIG: "extras_generate_csl_config",
+    WARDROBE_GET_STATE: "wardrobe_get_state",
+    WARDROBE_APPLY: "wardrobe_apply",
+    WARDROBE_DELETE_HISTORY: "wardrobe_delete_history",
     EXTRAS_DISCORD_SET_ACTIVITY: "extras_discord_set_activity",
     EXTRAS_DISCORD_CLEAR_ACTIVITY: "extras_discord_clear_activity",
     EXTRAS_IMPORT_OLD_LAUNCHER: "extras_import_old_launcher",

@@ -92,10 +92,7 @@ impl LauncherCore for WexLauncherCore {
                 version: request.version,
                 message: "Environment installed successfully".to_string(),
             }),
-            Err(e) => Err(IpcError::internal(
-                format!("Installation failed: {}", e),
-                Some(e.to_string()),
-            )),
+            Err(e) => Err(e.into()),
         }
     }
 
@@ -103,6 +100,7 @@ impl LauncherCore for WexLauncherCore {
         let mut cfg = CoreConfig::load_or_default(&self.paths.config_file);
         cfg.nickname = request.nickname;
         cfg.selected_version = request.version.clone();
+        cfg.quick_play_multiplayer = request.quick_play_multiplayer;
         let _ = cfg.save(&self.paths.config_file);
 
         let events = self.event_handler.clone();
@@ -139,10 +137,7 @@ impl LauncherCore for WexLauncherCore {
                     message: "Game launched successfully".to_string(),
                 })
             }
-            Err(e) => Err(IpcError::internal(
-                format!("Launch failed: {}", e),
-                Some(e.to_string()),
-            )),
+            Err(e) => Err(e.into()),
         };
 
         {

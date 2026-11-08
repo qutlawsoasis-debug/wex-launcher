@@ -378,7 +378,7 @@
                     title="Задержка RTT"
                   >
                     <span class="dot"></span>
-                    {s.ping_ms} ms
+                    {s.ping_ms} мс
                   </span>
 
                   {#if s.online !== null && s.online !== undefined}
@@ -433,7 +433,7 @@
       <!-- Authentic empty state without fabricated mock data -->
       <div class="empty-state-card">
         <Icon name="server" size={44} color="var(--color-tertiary-label)" />
-        <h3 class="empty-title">Серверы не найдены</h3>
+        <h2 class="empty-title">Серверы не найдены</h2>
         <p class="empty-desc">
           {searchQuery
             ? 'По запросу «' + searchQuery + '» ничего не найдено.'

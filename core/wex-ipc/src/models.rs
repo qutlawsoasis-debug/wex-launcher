@@ -206,6 +206,13 @@ pub struct NetOpenRoomDto {
     pub status: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct LanWorldDto {
+    pub motd: String,
+    pub address: String,
+    pub port: u16,
+}
+
 impl From<wex_net::lobby::TunnelConfigResponse> for TunnelConfigResponseDto {
     fn from(r: wex_net::lobby::TunnelConfigResponse) -> Self {
         Self {
@@ -481,6 +488,17 @@ impl From<wex_extras::WardrobeItem> for WardrobeItemDto {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct WardrobeStateDto {
+    pub nickname: String,
+    pub skin_name: String,
+    pub skin_base64: Option<String>,
+    pub model: SkinModelDto,
+    pub cape_id: String,
+    pub cape_name: String,
+    pub cape_base64: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub enum DiscordActivityDto {
     #[default]
@@ -522,6 +540,8 @@ impl From<wex_extras::Activity> for DiscordActivityDto {
                 player_count,
                 host_name,
             },
+            #[allow(unreachable_patterns)]
+            _ => Self::InLauncher,
         }
     }
 }

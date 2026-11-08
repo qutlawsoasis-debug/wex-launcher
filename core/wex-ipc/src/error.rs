@@ -62,6 +62,33 @@ impl IpcError {
     pub fn timeout(message: impl Into<String>) -> Self {
         Self::new("TIMEOUT", message, None)
     }
+
+    /// Helper for launch errors.
+    pub fn launch(
+        code: impl Into<String>,
+        message: impl Into<String>,
+        technical: Option<String>,
+    ) -> Self {
+        Self::new(code, message, technical)
+    }
+
+    /// Helper for installation errors.
+    pub fn install(
+        code: impl Into<String>,
+        message: impl Into<String>,
+        technical: Option<String>,
+    ) -> Self {
+        Self::new(code, message, technical)
+    }
+
+    /// Helper for Java runtime errors.
+    pub fn java(
+        code: impl Into<String>,
+        message: impl Into<String>,
+        technical: Option<String>,
+    ) -> Self {
+        Self::new(code, message, technical)
+    }
 }
 
 // ============================================================================
@@ -246,6 +273,32 @@ impl From<wex_social::launcher_update::UpdateError> for IpcError {
             UpdateError::InvalidSignature(_) => (
                 "UPDATE_SIGNATURE_FAILED",
                 "Цифровая подпись обновления лаунчера не прошла проверку подлинности",
+            ),
+        };
+        Self::new(code, msg, Some(err.to_string()))
+    }
+}
+
+impl From<wex_extras::SkinError> for IpcError {
+    fn from(err: wex_extras::SkinError) -> Self {
+        use wex_extras::SkinError;
+        let (code, msg) = match &err {
+            SkinError::ImageError(_) => {
+                ("SKIN_IMAGE_ERROR", "Ошибка декодирования изображения скина")
+            }
+            SkinError::InvalidPng(d) => ("SKIN_INVALID_PNG", d.as_str()),
+            SkinError::UnsupportedDimensions { .. } => (
+                "SKIN_UNSUPPORTED_DIMENSIONS",
+                "Неподдерживаемый размер скина: требуется 64x64 или 64x32",
+            ),
+            SkinError::FileTooLarge => ("SKIN_FILE_TOO_LARGE", "Размер файла скина превышает 2 МБ"),
+            SkinError::Io(_) => (
+                "IO_ERROR",
+                "Ошибка ввода-вывода при работе с файлами гардероба",
+            ),
+            SkinError::Json(_) => (
+                "SERIALIZATION_ERROR",
+                "Ошибка сериализации данных гардероба",
             ),
         };
         Self::new(code, msg, Some(err.to_string()))

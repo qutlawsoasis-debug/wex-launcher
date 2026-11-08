@@ -30,6 +30,23 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ("IO_ALREADY_EXISTS", "IO_ALREADY_EXISTS"),
         ("IO_TIMED_OUT", "IO_TIMED_OUT"),
         ("SERIALIZATION_ERROR", "SERIALIZATION_ERROR"),
+        ("LAUNCH_FAILED", "LAUNCH_FAILED"),
+        ("LAUNCH_PROCESS_FAILED", "LAUNCH_PROCESS_FAILED"),
+        ("LAUNCH_OFFLINE_FORBIDDEN", "LAUNCH_OFFLINE_FORBIDDEN"),
+        ("LAUNCH_ALREADY_RUNNING", "LAUNCH_ALREADY_RUNNING"),
+        ("JAVA_NOT_FOUND", "JAVA_NOT_FOUND"),
+        ("JAVA_WRONG_VERSION", "JAVA_WRONG_VERSION"),
+        ("JAVA_RUNTIME_ERROR", "JAVA_RUNTIME_ERROR"),
+        ("INSTALL_FAILED", "INSTALL_FAILED"),
+        ("INSTALL_HASH_MISMATCH", "INSTALL_HASH_MISMATCH"),
+        ("INSTALL_SIZE_MISMATCH", "INSTALL_SIZE_MISMATCH"),
+        ("INSTALL_DOWNLOAD_FAILED", "INSTALL_DOWNLOAD_FAILED"),
+        ("INSTALL_MANIFEST_ERROR", "INSTALL_MANIFEST_ERROR"),
+        ("PACK_SYNC_FAILED", "PACK_SYNC_FAILED"),
+        ("MODS_PROTECTED_PACK_MOD", "MODS_PROTECTED_PACK_MOD"),
+        ("MODS_INVALID_FILE", "MODS_INVALID_FILE"),
+        ("MODS_LOAD_FAILED", "MODS_LOAD_FAILED"),
+        ("MODS_DELETE_FAILED", "MODS_DELETE_FAILED"),
         ("NET_LOBBY_NOT_FOUND", "NET_LOBBY_NOT_FOUND"),
         ("NET_LOBBY_UNAUTHORIZED", "NET_LOBBY_UNAUTHORIZED"),
         ("NET_LOBBY_API_ERROR", "NET_LOBBY_API_ERROR"),
@@ -74,6 +91,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         LobbyStatusResponseDto::decl(),
         TunnelConfigResponseDto::decl(),
         NetOpenRoomDto::decl(),
+        LanWorldDto::decl(),
         ModManifestEntryDto::decl(),
         ModMismatchTypeDto::decl(),
         ModMismatchItemDto::decl(),
@@ -84,6 +102,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         SkinModelDto::decl(),
         SkinValidationResultDto::decl(),
         WardrobeItemDto::decl(),
+        WardrobeStateDto::decl(),
         DiscordActivityDto::decl(),
         ImportedServerDto::decl(),
         ImportedSkinDto::decl(),
@@ -132,6 +151,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
     cmd_ts.push_str("    LobbyCreateResponseDto,\n");
     cmd_ts.push_str("    LobbyJoinResponseDto,\n");
     cmd_ts.push_str("    LobbyStatusResponseDto,\n");
+    cmd_ts.push_str("    LanWorldDto,\n");
     cmd_ts.push_str("    ModManifestEntryDto,\n");
     cmd_ts.push_str("    ModMismatchItemDto,\n");
     cmd_ts.push_str("    NetOpenRoomDto,\n");
@@ -151,6 +171,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
     cmd_ts.push_str("    UserAuthDto,\n");
     cmd_ts.push_str("    UserPresenceDto,\n");
     cmd_ts.push_str("    WardrobeItemDto,\n");
+    cmd_ts.push_str("    WardrobeStateDto,\n");
     cmd_ts.push_str("    WorldBackupItemDto,\n");
     cmd_ts.push_str("    WorldItemDto,\n");
     cmd_ts.push_str("} from './models';\n\n");
@@ -183,6 +204,10 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         NetLobbyKickRequest::decl(),
         NetListOpenRoomsRequest::decl(),
         NetListOpenRoomsResponse::decl(),
+        NetLanListDiscoveredRequest::decl(),
+        NetLanListDiscoveredResponse::decl(),
+        NetLanConnectRequest::decl(),
+        NetLanConnectResponse::decl(),
         NetCompareManifestsRequest::decl(),
         NetCompareManifestsResponse::decl(),
         NetComputeManifestHashRequest::decl(),
@@ -200,6 +225,10 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ExtrasListSkinHistoryRequest::decl(),
         ExtrasListSkinHistoryResponse::decl(),
         ExtrasGenerateCslConfigRequest::decl(),
+        WardrobeApplyRequest::decl(),
+        WardrobeApplyResponse::decl(),
+        WardrobeDeleteHistoryRequest::decl(),
+        WardrobeDeleteHistoryResponse::decl(),
         ExtrasDiscordSetActivityRequest::decl(),
         ExtrasImportOldLauncherRequest::decl(),
         ExtrasGetPresetsResponse::decl(),
@@ -263,6 +292,8 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ("NET_LOBBY_KICK", CMD_NET_LOBBY_KICK),
         ("NET_LOBBY_TUNNEL_CONFIG", CMD_NET_LOBBY_TUNNEL_CONFIG),
         ("NET_LOBBY_LIST_OPEN_ROOMS", CMD_NET_LOBBY_LIST_OPEN_ROOMS),
+        ("NET_LAN_LIST_DISCOVERED", CMD_NET_LAN_LIST_DISCOVERED),
+        ("NET_LAN_CONNECT", CMD_NET_LAN_CONNECT),
         ("NET_COMPARE_MANIFESTS", CMD_NET_COMPARE_MANIFESTS),
         ("NET_COMPUTE_MANIFEST_HASH", CMD_NET_COMPUTE_MANIFEST_HASH),
         ("NET_TUNNEL_START", CMD_NET_TUNNEL_START),
@@ -275,6 +306,9 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ("EXTRAS_SAVE_SKIN", CMD_EXTRAS_SAVE_SKIN),
         ("EXTRAS_LIST_SKIN_HISTORY", CMD_EXTRAS_LIST_SKIN_HISTORY),
         ("EXTRAS_GENERATE_CSL_CONFIG", CMD_EXTRAS_GENERATE_CSL_CONFIG),
+        ("WARDROBE_GET_STATE", CMD_WARDROBE_GET_STATE),
+        ("WARDROBE_APPLY", CMD_WARDROBE_APPLY),
+        ("WARDROBE_DELETE_HISTORY", CMD_WARDROBE_DELETE_HISTORY),
         (
             "EXTRAS_DISCORD_SET_ACTIVITY",
             CMD_EXTRAS_DISCORD_SET_ACTIVITY,

@@ -17,6 +17,7 @@
   import ProgressBar from '../components/ProgressBar.svelte';
   import Icon from '../components/icons/Icon.svelte';
   import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
+  import ErrorState from '../components/ErrorState.svelte';
   import { theme } from '../design/theme.svelte';
 
   interface ReleaseNoteItem {
@@ -51,11 +52,14 @@
     progressStage?: string;
     progressDetail?: string;
     progressSpeed?: string;
+    launchError?: unknown;
     initialNews?: ReleaseNoteVersion[];
     initialUpdateInfo?: UpdateInfo | null;
     initialShowImportWizard?: boolean;
     onlaunch?: () => void;
     oncancel?: () => void;
+    onstop?: () => void;
+    onopensettings?: () => void;
   }
 
   let {
@@ -68,11 +72,14 @@
     progressStage = 'Готов к запуску',
     progressDetail = 'Нажмите «Играть» для старта',
     progressSpeed = '',
+    launchError = $bindable<unknown>(null),
     initialNews = undefined,
     initialUpdateInfo = null,
     initialShowImportWizard = false,
     onlaunch,
     oncancel,
+    onstop,
+    onopensettings,
   }: Props = $props();
 
   const versions = [
@@ -140,61 +147,59 @@
   let isImportWizardOpen = $derived(Boolean(initialShowImportWizard) || manualImportWizardOpen);
 
   onMount(async () => {
-    // 1. Fetch servers from IPC
+    // Parallelize all startup IPC calls using Promise.allSettled for fastest first-frame render
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const list = await invoke<Array<{ name: string; address: string; ping_ms?: number }>>('list_servers');
-      if (list && list.length > 0) {
-        recentServer = list[0];
-      } else {
-        recentServer = null;
-      }
+
+      const fetchServers = invoke<Array<{ name: string; address: string; ping_ms?: number }>>('list_servers')
+        .then((list) => {
+          recentServer = list && list.length > 0 ? list[0] : null;
+        })
+        .catch(() => {
+          recentServer = null;
+        });
+
+      const fetchNews = initialNews === undefined
+        ? invoke<any>('overview_get_news')
+            .then((res) => {
+              if (Array.isArray(res) && res.length > 0) {
+                fetchedNews = res;
+              } else if (res?.versions && Array.isArray(res.versions) && res.versions.length > 0) {
+                fetchedNews = res.versions;
+              } else {
+                fetchedNews = [];
+              }
+            })
+            .catch(() => {
+              fetchedNews = [];
+            })
+        : Promise.resolve();
+
+      const fetchUpdates = initialUpdateInfo === null
+        ? invoke<UpdateInfo>('overview_check_update')
+            .then((res) => {
+              if (res && res.update_available) {
+                fetchedUpdateInfo = res;
+              }
+            })
+            .catch(() => {})
+        : Promise.resolve();
+
+      const checkOldLauncher = (typeof localStorage !== 'undefined' && !localStorage.getItem('wex_import_checked'))
+        ? (async () => {
+            localStorage.setItem('wex_import_checked', 'true');
+            try {
+              const detected = await invoke<string | null>('extras_detect_old_launcher');
+              if (detected) {
+                manualImportWizardOpen = true;
+              }
+            } catch {}
+          })()
+        : Promise.resolve();
+
+      await Promise.allSettled([fetchServers, fetchNews, fetchUpdates, checkOldLauncher]);
     } catch {
       recentServer = null;
-    }
-
-    // 2. Fetch news from wex-social / overview IPC if not provided via props
-    if (initialNews === undefined) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const res = await invoke<any>('overview_get_news');
-        if (Array.isArray(res) && res.length > 0) {
-          fetchedNews = res;
-        } else if (res?.versions && Array.isArray(res.versions) && res.versions.length > 0) {
-          fetchedNews = res.versions;
-        } else {
-          fetchedNews = [];
-        }
-      } catch {
-        fetchedNews = [];
-      }
-    }
-
-    // 3. Unobtrusive launcher update check
-    if (initialUpdateInfo === null) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const res = await invoke<UpdateInfo>('overview_check_update');
-        if (res && res.update_available) {
-          fetchedUpdateInfo = res;
-        }
-      } catch {
-        // Silent fallback for update check
-      }
-    }
-
-    // 4. Check for old launcher data on first launch
-    try {
-      if (typeof localStorage !== 'undefined' && !localStorage.getItem('wex_import_checked')) {
-        localStorage.setItem('wex_import_checked', 'true');
-        const { invoke } = await import('@tauri-apps/api/core');
-        const detected = await invoke<string | null>('extras_detect_old_launcher');
-        if (detected) {
-          manualImportWizardOpen = true;
-        }
-      }
-    } catch {
-      // Ignore if localStorage unavailable
     }
   });
 
@@ -280,7 +285,7 @@
 
           {#if formattedNewsItems.length > 0}
             <div class="changelog-entries">
-              {#each formattedNewsItems as item}
+              {#each formattedNewsItems as item (item.badgeText + '-' + item.text)}
                 <div class="changelog-entry-row">
                   <span class="badge badge-{item.categoryClass}">{item.badgeText}</span>
                   <span class="changelog-entry-text">{item.text}</span>
@@ -320,6 +325,22 @@
         </div>
       </div>
     </div>
+
+    <!-- Launch Error Banner (Apple HIG Alert State) -->
+    {#if launchError}
+      <div class="launch-error-banner" role="alert">
+        <ErrorState
+          error={launchError}
+          domain="launch"
+          compact={true}
+          onaction={onlaunch}
+          onsecondaryaction={onopensettings}
+          onclose={() => {
+            launchError = null;
+          }}
+        />
+      </div>
+    {/if}
 
     <!-- Bottom Floating Launch Dock (Liquid Glass) -->
     <div class="launch-dock">
@@ -372,23 +393,44 @@
 
           <div class="dock-vertical-divider"></div>
 
-          <!-- Java Environment -->
+          <!-- Java Environment & Core Status -->
           <div class="dock-block tech-block">
-            <span class="dock-caption">Среда выполнения</span>
-            <span class="tech-runtime-text">{javaRuntime}</span>
+            <span class="dock-caption">
+              {isRunning ? 'Статус сессии' : 'Среда выполнения'}
+            </span>
+            <div class="tech-runtime-box">
+              <span class="tech-runtime-text">{javaRuntime}</span>
+              {#if isRunning}
+                <span class="tech-status-badge running">• В игре</span>
+              {:else if clientStatus}
+                <span class="tech-status-badge">• {clientStatus}</span>
+              {/if}
+            </div>
           </div>
 
-          <!-- Primary Play Action Button -->
-          <div class="dock-primary-action dock-action">
-            <Button
-              variant="primary"
-              size="large"
-              onclick={onlaunch}
-              disabled={!playerName.trim() || isLaunching || isRunning}
-            >
-              <Icon name="play" size={18} color="#ffffff" />
-              <span>{isRunning ? 'В игре' : 'Играть'}</span>
-            </Button>
+          <!-- Action Button: Play (systemBlue) -> In Game / Stop (neutral) -->
+          <div class="dock-primary-action dock-action" class:is-running={isRunning}>
+            {#if isRunning}
+              <Button
+                variant="secondary"
+                size="large"
+                onclick={onstop}
+                title="Остановить процесс Minecraft"
+              >
+                <span class="running-indicator-dot"></span>
+                <span>В игре • Остановить</span>
+              </Button>
+            {:else}
+              <Button
+                variant="primary"
+                size="large"
+                onclick={onlaunch}
+                disabled={!playerName.trim() || isLaunching || isRunning}
+              >
+                <Icon name="play" size={18} color="#ffffff" />
+                <span>Играть</span>
+              </Button>
+            {/if}
           </div>
         </div>
       {/if}
@@ -508,13 +550,26 @@
     line-height: 1.08;
     margin: 0 0 4px;
     color: var(--color-label);
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
   }
 
   .game-subheading {
     font-size: 16px;
-    color: var(--color-secondary-label);
+    color: var(--color-label);
+    opacity: 0.94;
     margin: 0;
-    font-weight: 500;
+    font-weight: 600;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  :global([data-theme="light"]) .game-heading {
+    text-shadow: 0 1px 8px rgba(255, 255, 255, 0.8);
+  }
+
+  :global([data-theme="light"]) .game-subheading {
+    color: #1c1c1e;
+    opacity: 1;
+    text-shadow: 0 1px 8px rgba(255, 255, 255, 0.8);
   }
 
   .header-tools {
@@ -533,13 +588,14 @@
   }
 
   .glass-card {
-    background: var(--color-system-ultra-thin-material);
+    background: var(--color-system-ultra-thin-material, var(--card-bg));
     backdrop-filter: blur(28px) saturate(160%);
     -webkit-backdrop-filter: blur(28px) saturate(160%);
     border: 1px solid var(--color-separator);
     border-radius: var(--radius-lg);
     padding: 16px 20px;
     box-sizing: border-box;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
   }
 
   .updates-card {
@@ -660,7 +716,9 @@
 
   .empty-status-text {
     font-size: var(--text-footnote);
-    color: var(--color-secondary-label);
+    color: var(--color-label);
+    opacity: 0.88;
+    font-weight: 500;
     padding: 4px 0;
   }
 
@@ -675,11 +733,23 @@
     align-items: center;
     gap: 8px;
     font-size: var(--text-caption-1);
-    color: var(--color-secondary-label);
+    color: var(--color-label);
+    opacity: 0.88;
   }
 
   .friends-status-label {
     font-size: var(--text-footnote);
+    color: var(--color-label);
+    opacity: 0.88;
+    font-weight: 500;
+  }
+
+  .launch-error-banner {
+    margin-bottom: 14px;
+    max-width: 680px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
   }
 
   /* Bottom Launch Dock */
@@ -766,11 +836,42 @@
     flex-shrink: 0;
   }
 
+  .tech-runtime-box {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 34px;
+    white-space: nowrap;
+  }
+
   .tech-runtime-text {
     font-size: var(--text-footnote);
     color: var(--color-secondary-label);
     font-family: var(--font-mono);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
     line-height: 32px;
+  }
+
+  .tech-status-badge {
+    font-size: 11px;
+    color: var(--color-secondary-label);
+  }
+
+  .tech-status-badge.running {
+    color: var(--color-system-green);
+    font-weight: 600;
+  }
+
+  .running-indicator-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--color-system-green);
+    margin-right: 6px;
+    box-shadow: 0 0 6px rgba(48, 209, 88, 0.6);
   }
 
   .dock-primary-action {
@@ -791,5 +892,12 @@
 
   .dock-cancel-action {
     flex-shrink: 0;
+  }
+
+  :global([data-reduce-transparency="true"]) .launch-dock,
+  :global([data-reduce-transparency="true"]) .glass-card {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--color-secondary-system-background) !important;
   }
 </style>

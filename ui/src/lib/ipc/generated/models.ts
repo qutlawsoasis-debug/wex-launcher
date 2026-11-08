@@ -20,6 +20,8 @@ export type TunnelConfigResponseDto = { secret: string | null, public_address: s
 
 export type NetOpenRoomDto = { id: string, name: string, host_name: string, game_version: string, player_count: number, max_players: number, address: string | null, status: string, };;
 
+export type LanWorldDto = { motd: string, address: string, port: number, };;
+
 export type ModManifestEntryDto = { id: string, name: string, version: string, enabled: boolean, };;
 
 export type ModMismatchTypeDto = "Disabled" | "Missing" | "Extra" | { "Version": { player_version: string, host_version: string, } };;
@@ -37,6 +39,8 @@ export type SkinModelDto = "Classic" | "Slim";;
 export type SkinValidationResultDto = { is_valid: boolean, error: string | null, width: number, height: number, };;
 
 export type WardrobeItemDto = { id: string, item_type: string, name: string, hash: string, model: string, relative_path: string, created_utc: string, };;
+
+export type WardrobeStateDto = { nickname: string, skin_name: string, skin_base64: string | null, model: SkinModelDto, cape_id: string, cape_name: string, cape_base64: string | null, };;
 
 export type DiscordActivityDto = "InLauncher" | { "Playing": { version: string, world_name: string | null, mod_count: number | null, start_timestamp: bigint | null, } } | { "InLobby": { lobby_code: string | null, player_count: number, host_name: string | null, } };;
 

@@ -580,7 +580,6 @@ pub async fn install_full_environment(
     ))
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn prepare_and_launch(
     paths: &WexPaths,
     config: &LauncherConfig,
@@ -589,7 +588,6 @@ pub async fn prepare_and_launch(
     events: Arc<dyn EventHandler>,
     concurrency: usize,
     extra_jvm_args: &[String],
-    quick_play_multiplayer: Option<&str>,
 ) -> Result<GameProcess> {
     let (mojang_java, client_jar, vanilla_libs, fabric_libs, asset_index_id) =
         install_full_environment(paths, version, client, events.as_ref(), concurrency).await?;
@@ -614,7 +612,7 @@ pub async fn prepare_and_launch(
         fabric_libraries: &fabric_libs,
         asset_index_id: &asset_index_id,
         extra_jvm_args,
-        quick_play_multiplayer,
+        quick_play_multiplayer: config.quick_play_multiplayer.as_deref(),
     };
 
     launch_game_process(launch_opts, events).await
@@ -811,5 +809,38 @@ mod tests {
 
         assert!(args.iter().any(|a| a == "-Dwex.qa.background=true"));
         assert!(args.iter().any(|a| a == "-Daura.client.hiddenWindow=true"));
+    }
+
+    #[test]
+    fn test_quick_play_multiplayer_argument_injection() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let config = LauncherConfig::default();
+
+        let java_bin = PathBuf::from("java.exe");
+        let client_jar = PathBuf::from("client.jar");
+        let vanilla_libs = Vec::new();
+        let fabric_libs = Vec::new();
+
+        let launch_opts = LaunchOptions {
+            paths: &paths,
+            config: &config,
+            version: "1.21.1",
+            java_binary: &java_bin,
+            client_jar: &client_jar,
+            vanilla_libraries: &vanilla_libs,
+            fabric_libraries: &fabric_libs,
+            asset_index_id: "6",
+            extra_jvm_args: &[],
+            quick_play_multiplayer: Some("192.168.1.42:54321"),
+        };
+
+        let args = build_launch_args(&launch_opts);
+        let qp_pos = args.iter().position(|a| a == "--quickPlayMultiplayer");
+        assert!(
+            qp_pos.is_some(),
+            "--quickPlayMultiplayer must be present in launch args"
+        );
+        assert_eq!(args[qp_pos.unwrap() + 1], "192.168.1.42:54321");
     }
 }

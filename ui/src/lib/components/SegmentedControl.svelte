@@ -20,6 +20,7 @@
     value?: string;
     disabled?: boolean;
     size?: 'small' | 'regular';
+    ariaLabel?: string;
     onchange?: (val: string) => void;
   }
 
@@ -28,6 +29,7 @@
     value = $bindable(''),
     disabled = false,
     size = 'regular',
+    ariaLabel,
     onchange,
   }: Props = $props();
 
@@ -42,22 +44,27 @@
     )
   );
 
-  function select(optValue: string) {
+  let buttonEls: HTMLButtonElement[] = $state([]);
+
+  function select(optValue: string, focusIndex?: number) {
     if (disabled) return;
     value = optValue;
     onchange?.(optValue);
+    if (focusIndex !== undefined && buttonEls[focusIndex]) {
+      buttonEls[focusIndex].focus();
+    }
   }
 
-  function handleKeyDown(event: KeyboardEvent, index: number) {
+  function handleKeyDown(event: KeyboardEvent) {
     if (disabled) return;
     if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
       event.preventDefault();
-      const nextIndex = (index + 1) % normalizedOptions.length;
-      select(normalizedOptions[nextIndex].value);
+      const nextIndex = (activeIndex + 1) % normalizedOptions.length;
+      select(normalizedOptions[nextIndex].value, nextIndex);
     } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
       event.preventDefault();
-      const prevIndex = (index - 1 + normalizedOptions.length) % normalizedOptions.length;
-      select(normalizedOptions[prevIndex].value);
+      const prevIndex = (activeIndex - 1 + normalizedOptions.length) % normalizedOptions.length;
+      select(normalizedOptions[prevIndex].value, prevIndex);
     }
   }
 </script>
@@ -66,6 +73,7 @@
   class="apple-segmented-control {size}"
   class:disabled
   role="tablist"
+  aria-label={ariaLabel}
   aria-orientation="horizontal"
 >
   <!-- Sliding active pill -->
@@ -77,17 +85,18 @@
     "
   ></div>
 
-  {#each normalizedOptions as opt, i}
+  {#each normalizedOptions as opt, i (opt.value)}
     {@const isSelected = opt.value === value || (i === 0 && !value)}
     <button
       type="button"
+      bind:this={buttonEls[i]}
       role="tab"
       class="segment-button"
       class:selected={isSelected}
       aria-selected={isSelected}
       tabindex={isSelected ? 0 : -1}
-      onclick={() => select(opt.value)}
-      onkeydown={(e) => handleKeyDown(e, i)}
+      onclick={() => select(opt.value, i)}
+      onkeydown={handleKeyDown}
     >
       <span class="segment-label">{opt.label}</span>
     </button>
@@ -170,9 +179,23 @@
     outline: none;
   }
 
+  .segment-button:hover:not(.selected) {
+    color: var(--color-label);
+  }
+
+  .segment-button:active {
+    opacity: 0.75;
+  }
+
   .segment-button:focus-visible {
     border-radius: calc(var(--radius-sm) - 2px);
-    box-shadow: 0 0 0 2px var(--color-system-blue);
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 1px;
+    box-shadow: 0 0 0 2px rgba(0, 145, 255, 0.3);
+  }
+
+  .apple-segmented-control.small .segment-button:focus-visible {
+    border-radius: calc(var(--radius-xs) - 2px);
   }
 
   .segment-button.selected {
@@ -184,5 +207,17 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .active-pill,
+    .segment-button {
+      transition: none !important;
+    }
+  }
+
+  :global([data-reduce-motion="true"]) .active-pill,
+  :global([data-reduce-motion="true"]) .segment-button {
+    transition: none !important;
   }
 </style>
