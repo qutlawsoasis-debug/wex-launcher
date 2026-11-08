@@ -27,6 +27,8 @@
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Toggle from '../components/Toggle.svelte';
   import Icon from '../components/icons/Icon.svelte';
+  import ErrorState from '../components/ErrorState.svelte';
+  import { formatError } from '../design/errors';
   import { t, i18n } from '../i18n';
   import type { WorldItemDto, WorldBackupItemDto, ScreenshotItemDto } from '../ipc/generated';
 
@@ -77,6 +79,7 @@
   let resourcePacks = $state<ResourcePackItem[]>([]);
   let shaderPacks = $state<ShaderPackItem[]>([]);
   let isLoading = $state(false);
+  let sheetError = $state<unknown>(null);
 
   // Hidden file input for adding ZIP packs
   let fileInputEl: HTMLInputElement | null = null;
@@ -263,7 +266,8 @@
       });
       notify('success', 'Резервная копия создана', backup.file_name);
     } catch (err) {
-      notify('error', 'Ошибка создания резервной копии', String(err));
+      const formatted = formatError(err, 'workshop');
+      notify('error', formatted.title, formatted.description);
     } finally {
       isBackingUp = { ...isBackingUp, [world.folder_name]: false };
     }
@@ -272,6 +276,7 @@
   async function openBackupsSheet(world: WorldItemDto) {
     selectedWorldForBackups = world;
     backups = [];
+    sheetError = null;
     backupsSheetOpen = true;
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -282,12 +287,15 @@
       });
       backups = list || [];
     } catch (err) {
-      notify('error', 'Не удалось загрузить резервные копии', String(err));
+      sheetError = err;
+      const formatted = formatError(err, 'workshop');
+      notify('error', formatted.title, formatted.description);
     }
   }
 
   function promptRestore(backup: WorldBackupItemDto) {
     backupToRestore = backup;
+    sheetError = null;
     restoreSheetOpen = true;
   }
 
@@ -306,7 +314,9 @@
       backupsSheetOpen = false;
       await loadWorlds();
     } catch (err) {
-      notify('error', 'Ошибка восстановления мира', String(err));
+      sheetError = err;
+      const formatted = formatError(err, 'workshop');
+      notify('error', formatted.title, formatted.description);
     } finally {
       isRestoring = false;
     }
@@ -314,6 +324,7 @@
 
   function promptDelete(world: WorldItemDto) {
     worldToDelete = world;
+    sheetError = null;
     deleteSheetOpen = true;
   }
 
@@ -330,7 +341,9 @@
       worldToDelete = null;
       await loadWorlds();
     } catch (err) {
-      notify('error', 'Ошибка удаления мира', String(err));
+      sheetError = err;
+      const formatted = formatError(err, 'workshop');
+      notify('error', formatted.title, formatted.description);
     } finally {
       isDeleting = false;
     }
@@ -457,7 +470,8 @@
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('workshop_open_path', { path });
     } catch (err) {
-      notify('warning', 'Не удалось открыть в проводнике', String(err));
+      const formatted = formatError(err, 'workshop');
+      notify('error', formatted.title, formatted.description);
     }
   }
 
@@ -565,7 +579,7 @@
           <div class="empty-icon-wrap">
             <Icon name="folder" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h3 class="empty-title">{t('workshop.worlds_empty_title')}</h3>
+          <h2 class="empty-title">{t('workshop.worlds_empty_title')}</h2>
           <p class="empty-description">
             {t('workshop.worlds_empty_desc', { version: currentVersion })}, {i18n.locale === 'en' ? 'to manage it here.' : 'чтобы управлять им здесь.'}
           </p>
@@ -659,7 +673,7 @@
           <div class="empty-icon-wrap">
             <Icon name="folder" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h3 class="empty-title">{t('workshop.resourcepacks_empty_title')}</h3>
+          <h2 class="empty-title">{t('workshop.resourcepacks_empty_title')}</h2>
           <p class="empty-description">
             {t('workshop.resourcepacks_empty_desc')}
           </p>
@@ -725,6 +739,7 @@
                 <div class="toggle-wrap" title={pack.is_enabled ? 'Отключить ресурс-пак' : 'Включить ресурс-пак'}>
                   <Toggle
                     checked={pack.is_enabled}
+                    ariaLabel={`Включить ресурс-пак ${pack.name}`}
                     onchange={(checked: boolean) => handleToggleResourcePack(pack, checked)}
                   />
                 </div>
@@ -753,7 +768,7 @@
           <div class="empty-icon-wrap">
             <Icon name="sun" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h3 class="empty-title">{t('workshop.shaders_empty_title')}</h3>
+          <h2 class="empty-title">{t('workshop.shaders_empty_title')}</h2>
           <p class="empty-description">
             {t('workshop.shaders_empty_desc')}
           </p>
@@ -887,7 +902,7 @@
           <div class="empty-icon-wrap">
             <Icon name="sun" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h3 class="empty-title">{t('workshop.screenshots_empty_title')}</h3>
+          <h2 class="empty-title">{t('workshop.screenshots_empty_title')}</h2>
           <p class="empty-description">
             {t('workshop.screenshots_empty_desc')}
           </p>
@@ -1095,6 +1110,17 @@
       Копии для мира <strong>«{selectedWorldForBackups?.display_name}»</strong>:
     </p>
 
+    {#if sheetError}
+      <div style="margin-bottom: 12px;">
+        <ErrorState
+          error={sheetError}
+          domain="workshop"
+          compact={true}
+          onclose={() => (sheetError = null)}
+        />
+      </div>
+    {/if}
+
     {#if backups.length === 0}
       <div class="empty-modal-state">
         <Icon name="info" size={24} color="var(--color-secondary-label)" />
@@ -1186,8 +1212,8 @@
     justify-content: space-between;
     padding: 12px 24px;
     border-bottom: 1px solid var(--glass-border);
-    backdrop-filter: var(--glass-blur-header);
-    -webkit-backdrop-filter: var(--glass-blur-header);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
     background-color: var(--glass-surface-overlay);
     gap: 16px;
     flex-shrink: 0;
@@ -1231,8 +1257,11 @@
     margin: 40px auto;
     max-width: 460px;
     border-radius: var(--radius-lg);
-    background-color: var(--glass-surface-translucent);
+    background-color: var(--card-bg);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
     border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
   }
 
   .empty-icon-wrap {
@@ -1251,6 +1280,7 @@
     font-size: var(--text-subheadline);
     line-height: 1.5;
     color: var(--color-secondary-label);
+    font-weight: 500;
     margin: 0;
   }
 

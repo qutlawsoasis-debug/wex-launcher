@@ -7,6 +7,7 @@
   import './lib/design/tokens.css';
   import { theme } from './lib/design/theme.svelte';
   import { network } from './lib/design/network.svelte';
+  import { formatError } from './lib/design/errors';
   import { i18n, t } from './lib/i18n';
   import Sidebar, { type SidebarItem } from './lib/components/Sidebar.svelte';
   import Toolbar from './lib/components/Toolbar.svelte';
@@ -64,6 +65,8 @@
   let progressStage = $state('Готов к запуску');
   let progressDetail = $state('Нажмите «Играть» для старта');
   let progressSpeed = $state('');
+  let launchError = $state<unknown>(null);
+  let showImportWizard = $state(false);
 
   // Dynamic background based on theme and time of day
   let currentHour = new Date().getHours();
@@ -173,6 +176,7 @@
   async function handleLaunch() {
     if (isLaunching || isGameRunning) return;
     isLaunching = true;
+    launchError = null;
     cancelLaunchSimulation = false;
     progressPercentage = 0;
     progressStage = 'Подготовка к запуску...';
@@ -190,7 +194,18 @@
       isGameRunning = true;
       clientStatus = 'Minecraft запущен';
       addToast('success', 'Minecraft запущен', result);
-    } catch {
+    } catch (err: any) {
+      const isTauri =
+        typeof window !== 'undefined' &&
+        ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+      if (isTauri) {
+        isLaunching = false;
+        launchError = err;
+        const formatted = formatError(err, 'launch');
+        addToast('error', formatted.title, formatted.description);
+        return;
+      }
+
       // Fallback in-browser progress simulation
       const steps = [
         { stage: 'Проверка клиента Wex', pct: 15, detail: 'Проверка целостности jar-файлов', speed: '' },
@@ -258,8 +273,14 @@
       const screen = params.get('screen') || params.get('tab');
       const t = params.get('theme');
 
-      if (screen && ['play', 'servers', 'lobby', 'friends', 'mods', 'settings', 'showcase'].includes(screen)) {
+      if (screen && ['play', 'servers', 'lobby', 'friends', 'workshop', 'mods', 'settings', 'showcase'].includes(screen)) {
         activeTab = screen;
+      }
+      if (screen === 'import' || params.get('import') === 'true') {
+        activeTab = 'play';
+        showImportWizard = true;
+      } else {
+        showImportWizard = false;
       }
       if (t === 'light' || t === 'dark') {
         theme.setAppearance(t);
@@ -368,6 +389,7 @@
             } else if (s.state === 'running') {
               isLaunching = false;
               isGameRunning = true;
+              launchError = null;
               addToast('success', 'Minecraft запущен', s.message);
             } else if (s.state === 'cancelled') {
               isLaunching = false;
@@ -376,7 +398,9 @@
             } else if (s.state === 'error') {
               isLaunching = false;
               isGameRunning = false;
-              addToast('error', 'Ошибка запуска', s.message);
+              launchError = s.message;
+              const formatted = formatError(s.message, 'launch');
+              addToast('error', formatted.title, formatted.description);
             } else if (s.state === 'idle') {
               isLaunching = false;
               isGameRunning = false;
@@ -486,9 +510,14 @@
           {progressStage}
           {progressDetail}
           {progressSpeed}
+          bind:launchError
+          initialShowImportWizard={showImportWizard}
           onlaunch={handleLaunch}
           oncancel={handleCancelLaunch}
           onstop={handleStopGame}
+          onopensettings={() => {
+            activeTab = 'settings';
+          }}
         />
       {:else if activeTab === 'servers'}
         <ServersScreen />

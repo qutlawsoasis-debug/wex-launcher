@@ -15,6 +15,7 @@
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Icon from '../components/icons/Icon.svelte';
   import OfflineState from '../components/OfflineState.svelte';
+  import ErrorState from '../components/ErrorState.svelte';
   import { network } from '../design/network.svelte';
   import { t, i18n } from '../i18n';
 
@@ -226,27 +227,20 @@
           <p class="status-text">{t('common.loading')}</p>
         </div>
       {:else if cloudError}
-        <!-- Honest "Service Unavailable" State without fake data -->
-        <div class="cloud-status-card error">
-          <div class="status-icon-circle error">
-            <Icon name="info" size={24} color="var(--color-system-orange)" />
-          </div>
-          <h3 class="status-title">{t('lobby.service_unavailable')}</h3>
-          <p class="status-desc">
-            {i18n.locale === 'en' ? 'Could not connect to multiplayer rooms server. Check your connection or try again later.' : 'Не удалось связаться с сервером сетевых комнат. Проверьте подключение к интернету или повторите попытку позже.'}
-          </p>
-          <div class="status-actions">
-            <Button variant="secondary" size="regular" onclick={fetchCloudRooms} loading={isLoadingCloudRooms}>
-              {t('lobby.retry_button')}
-            </Button>
-          </div>
+        <!-- Honest Service Error State via ErrorState -->
+        <div class="cloud-error-wrap">
+          <ErrorState
+            error={cloudError}
+            domain="lobby"
+            onaction={fetchCloudRooms}
+          />
         </div>
       {:else if cloudRooms.length === 0}
         <div class="cloud-status-card empty">
           <div class="status-icon-circle neutral">
             <Icon name="server" size={24} color="var(--color-secondary-label)" />
           </div>
-          <h3 class="status-title">{t('lobby.no_open_rooms')}</h3>
+          <h2 class="status-title">{t('lobby.no_open_rooms')}</h2>
           <p class="status-desc">
             {i18n.locale === 'en' ? 'There are currently no public rooms available. You can host your singleplayer world in LAN & Tunnels.' : 'В данный момент нет доступных публичных комнат. Вы можете открыть свой мир во вкладке «LAN и Туннели».'}
           </p>
@@ -402,7 +396,7 @@
             <Icon name="friends" size={20} color="var(--color-system-blue)" />
           </div>
           <div class="card-headings">
-            <h3 class="card-heading">{t('lobby.title_connect')}</h3>
+            <h2 class="card-heading">{t('lobby.title_connect')}</h2>
             <p class="card-caption">{i18n.locale === 'en' ? 'Enter room code received from a friend' : 'Введите код комнаты, полученный от друга'}</p>
           </div>
         </div>
@@ -421,7 +415,17 @@
           </div>
 
           {#if errorMessage}
-            <p class="error-text">{errorMessage}</p>
+            <div class="lobby-error-wrapper">
+              <ErrorState
+                error={errorMessage}
+                domain="lobby"
+                compact={true}
+                onaction={handleJoinRoom}
+                onclose={() => {
+                  errorMessage = '';
+                }}
+              />
+            </div>
           {/if}
 
           <Button
@@ -444,7 +448,7 @@
             <Icon name="play" size={20} color="var(--color-system-green)" />
           </div>
           <div class="card-headings">
-            <h3 class="card-heading">{t('lobby.host_title')}</h3>
+            <h2 class="card-heading">{t('lobby.host_title')}</h2>
             <p class="card-caption">{i18n.locale === 'en' ? 'Host a room via automatic Playit tunnel' : 'Создайте комнату через автоматический Playit-туннель'}</p>
           </div>
         </div>
@@ -510,10 +514,22 @@
     width: 100%;
   }
 
+  .cloud-error-wrap {
+    width: 100%;
+  }
+
+  .lobby-error-wrapper {
+    margin-bottom: 8px;
+    width: 100%;
+  }
+
   .cloud-status-card {
     background-color: var(--card-bg);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
+    box-shadow: var(--glass-shadow);
     padding: 40px 24px;
     display: flex;
     flex-direction: column;
@@ -534,10 +550,6 @@
     margin-bottom: 4px;
   }
 
-  .status-icon-circle.error {
-    background-color: rgba(255, 159, 10, 0.12);
-  }
-
   .status-icon-circle.neutral {
     background-color: var(--color-quaternary-system-fill);
   }
@@ -552,6 +564,7 @@
   .status-desc {
     font-size: var(--text-subheadline);
     color: var(--color-secondary-label);
+    font-weight: 500;
     margin: 0;
     max-width: 420px;
     line-height: 1.4;
@@ -613,6 +626,8 @@
 
   .lobby-card {
     background-color: var(--card-bg);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
     padding: 24px;
@@ -660,6 +675,7 @@
   .card-caption {
     font-size: var(--text-subheadline);
     color: var(--color-secondary-label);
+    font-weight: 500;
     margin: 0;
   }
 
@@ -695,13 +711,6 @@
     border-color: var(--color-system-blue);
     box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
     background-color: var(--card-bg);
-  }
-
-  .error-text {
-    font-size: var(--text-footnote);
-    color: var(--color-system-red);
-    margin: 0;
-    text-align: center;
   }
 
   .world-picker {

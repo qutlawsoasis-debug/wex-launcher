@@ -231,7 +231,7 @@
     {:else}
       <div class="empty-state-card">
         <Icon name="server" size={44} color="var(--color-tertiary-label)" />
-        <h3 class="empty-title">{t('servers.empty_title')}</h3>
+        <h2 class="empty-title">{t('servers.empty_title')}</h2>
         <p class="empty-desc">
           {searchQuery
             ? t('servers.empty_search', { query: searchQuery })

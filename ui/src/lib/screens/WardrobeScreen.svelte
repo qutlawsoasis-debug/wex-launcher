@@ -31,7 +31,7 @@
   let selectedCapeId = $state<string>('none');
 
   // Active Skin state
-  let skinName = $state('Steve (Классический)');
+  let skinName = $state('Стандартный скин');
   let skinBase64 = $state<string | null>(null);
   let customCapeBase64 = $state<string | null>(null);
 
@@ -41,9 +41,25 @@
   let isValidating = $state(false);
   let errorMessage = $state<string | null>(null);
 
+  // 3D / 2D Canvas References & State
   let fileInputRef: HTMLInputElement | null = null;
   let capeInputRef: HTMLInputElement | null = null;
-  let canvasRef: HTMLCanvasElement | null = null;
+  let canvas2dRef: HTMLCanvasElement | null = null;
+  let canvas3dRef: HTMLCanvasElement | null = null;
+  let renderer3d: Skin3DRenderer | null = null;
+  let hasWebGL = $state(false);
+  let displayMode = $state<'3d' | '2d'>('3d');
+
+  import {
+    Skin3DRenderer,
+    isWebGLSupported,
+    createDefaultSkinCanvas,
+  } from '../design/skin3d';
+
+  let displayModeOptions = $derived([
+    { value: '3d', label: i18n.locale === 'en' ? '3D Model' : '3D модель' },
+    { value: '2d', label: i18n.locale === 'en' ? '2D View' : '2D вид' },
+  ]);
 
   let modelOptions = $derived([
     { value: 'default', label: t('wardrobe.model_default') },
@@ -57,8 +73,6 @@
 
   let capeOptions = $derived([
     { id: 'none', name: t('wardrobe.cape_none'), desc: t('wardrobe.cape_none_desc') },
-    { id: 'cyan', name: t('wardrobe.cape_cyan'), desc: t('wardrobe.cape_cyan_desc') },
-    { id: 'silver', name: t('wardrobe.cape_silver'), desc: t('wardrobe.cape_silver_desc') },
     { id: 'custom', name: t('wardrobe.cape_custom'), desc: t('wardrobe.cape_custom_desc') },
   ]);
 
@@ -74,30 +88,95 @@
   onMount(() => {
     loadActiveState();
     loadHistory();
-    renderPreview();
+
+    hasWebGL = isWebGLSupported(canvas3dRef);
+    if (hasWebGL && canvas3dRef) {
+      try {
+        renderer3d = new Skin3DRenderer({
+          canvas: canvas3dRef,
+          model: selectedModel,
+        });
+        update3DTexture();
+      } catch {
+        hasWebGL = false;
+        displayMode = '2d';
+      }
+    } else {
+      displayMode = '2d';
+    }
+
+    render2DPreview();
+
+    return () => {
+      renderer3d?.destroy();
+      renderer3d = null;
+    };
   });
 
   $effect(() => {
-    // Re-render preview whenever skin, cape, model, or view changes
+    // Re-render preview whenever skin, cape, model, view, or mode changes
     const _skin = skinBase64;
     const _cape = selectedCapeId;
     const _model = selectedModel;
     const _view = selectedView;
-    renderPreview();
+    const _customCape = customCapeBase64;
+    const _mode = displayMode;
+
+    render2DPreview();
+    if (hasWebGL && renderer3d) {
+      update3DTexture();
+    }
   });
+
+  function update3DTexture() {
+    if (!renderer3d) return;
+
+    renderer3d.updateModelGeometry(selectedModel);
+
+    // 1. Skin Texture
+    if (skinBase64) {
+      const img = new Image();
+      img.onload = () => {
+        renderer3d?.setSkinImage(img);
+      };
+      img.src = skinBase64.startsWith('data:') ? skinBase64 : `data:image/png;base64,${skinBase64}`;
+    } else {
+      const defSkinCanvas = createDefaultSkinCanvas(selectedModel);
+      renderer3d.setSkinImage(defSkinCanvas);
+    }
+
+    // 2. Cape Texture
+    if (selectedCapeId === 'none') {
+      renderer3d.setHasCape(false);
+    } else if (selectedCapeId === 'custom' && customCapeBase64) {
+      const capeImg = new Image();
+      capeImg.onload = () => {
+        renderer3d?.setCapeImage(capeImg);
+      };
+      capeImg.src = customCapeBase64.startsWith('data:')
+        ? customCapeBase64
+        : `data:image/png;base64,${customCapeBase64}`;
+    } else {
+      renderer3d.setHasCape(false);
+    }
+  }
 
   async function loadActiveState() {
     try {
       const state = await callTauri<WardrobeStateDto>(COMMANDS.WARDROBE_GET_STATE);
       if (state) {
-        skinName = state.skin_name || 'Steve (Классический)';
+        skinName =
+          state.skin_name && state.skin_name !== 'Steve (Классический)'
+            ? state.skin_name
+            : 'Стандартный скин';
         skinBase64 = state.skin_base64 || null;
         selectedModel = state.model === 'Slim' ? 'slim' : 'default';
         selectedCapeId = state.cape_id || 'none';
         customCapeBase64 = state.cape_base64 || null;
       }
     } catch {
-      // Offline fallback: Steve default
+      // Offline fallback: Standard skin
+      skinName = 'Стандартный скин';
     }
   }
 
@@ -114,15 +193,15 @@
     }
   }
 
-  function renderPreview() {
-    if (!canvasRef) return;
-    const ctx = canvasRef.getContext('2d');
+  function render2DPreview() {
+    if (!canvas2dRef) return;
+    const ctx = canvas2dRef.getContext('2d');
     if (!ctx) return;
 
     const width = 160;
     const height = 320;
-    canvasRef.width = width;
-    canvasRef.height = height;
+    canvas2dRef.width = width;
+    canvas2dRef.height = height;
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, width, height);
 
@@ -239,21 +318,7 @@
   }
 
   function drawCape(ctx: CanvasRenderingContext2D, dx: number, dy: number, dw: number, dh: number) {
-    if (selectedCapeId === 'cyan') {
-      ctx.fillStyle = '#0A84FF'; // Apple systemBlue / Aura Cyan
-      ctx.fillRect(dx, dy, dw, dh);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(dx + 30, dy + 50, 40, 10);
-      ctx.fillStyle = '#005BB5';
-      ctx.fillRect(dx, dy + dh - 10, dw, 10);
-    } else if (selectedCapeId === 'silver') {
-      ctx.fillStyle = '#8E8E93'; // Apple systemGray / Aura Silver
-      ctx.fillRect(dx, dy, dw, dh);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(dx + 30, dy + 50, 40, 10);
-      ctx.fillStyle = '#3A3A3C';
-      ctx.fillRect(dx, dy + dh - 10, dw, 10);
-    } else if (selectedCapeId === 'custom' && customCapeBase64) {
+    if (selectedCapeId === 'custom' && customCapeBase64) {
       const capeImg = new Image();
       capeImg.onload = () => {
         try {
@@ -436,12 +501,12 @@
 
   function handleResetDefault() {
     skinBase64 = null;
-    skinName = 'Steve (Классический)';
+    skinName = 'Стандартный скин';
     selectedModel = 'default';
     selectedCapeId = 'none';
     customCapeBase64 = null;
     errorMessage = null;
-    ontoast?.('info', 'Сброс выполнен', 'Восстановлен стандартный скин Steve');
+    ontoast?.('info', 'Сброс выполнен', 'Восстановлен стандартный скин');
   }
 
   function selectHistorySkin(item: WardrobeItemDto) {
@@ -521,19 +586,48 @@
     <div class="preview-column">
       <div class="preview-card">
         <div class="preview-header">
-          <SegmentedControl
-            options={viewOptions}
-            bind:value={selectedView}
-            size="small"
-          />
+          {#if hasWebGL}
+            <SegmentedControl
+              options={displayModeOptions}
+              bind:value={displayMode}
+              size="small"
+            />
+          {/if}
+          {#if displayMode === '2d' || !hasWebGL}
+            <SegmentedControl
+              options={viewOptions}
+              bind:value={selectedView}
+              size="small"
+            />
+          {:else}
+            <button
+              class="reset-angle-btn"
+              onclick={() => renderer3d?.resetOrientation()}
+              title="Сбросить угол обзора"
+              type="button"
+            >
+              Сброс угла
+            </button>
+          {/if}
         </div>
 
         <div class="canvas-container">
           <canvas
-            bind:this={canvasRef}
-            class="character-canvas"
+            bind:this={canvas3dRef}
+            class="character-canvas character-canvas-3d"
+            class:hidden={!hasWebGL || displayMode !== '3d'}
+            aria-label="3D интерактивная модель персонажа"
+          ></canvas>
+          <canvas
+            bind:this={canvas2dRef}
+            class="character-canvas character-canvas-2d"
+            class:hidden={hasWebGL && displayMode === '3d'}
             aria-label="2D предпросмотр персонажа"
           ></canvas>
+
+          {#if hasWebGL && displayMode === '3d'}
+            <span class="rotation-hint">Потяните мышью для вращения</span>
+          {/if}
         </div>
 
         <div class="preview-status">
@@ -605,11 +699,7 @@
           >
             {#snippet trailing()}
               <div class="cape-row-accessory">
-                {#if cape.id === 'cyan'}
-                  <span class="cape-chip cyan" title="Лазурный плащ Aura"></span>
-                {:else if cape.id === 'silver'}
-                  <span class="cape-chip silver" title="Серебристый плащ Aura"></span>
-                {:else if cape.id === 'custom'}
+                {#if cape.id === 'custom'}
                   <button
                     type="button"
                     class="upload-cape-link"
@@ -618,7 +708,9 @@
                       capeInputRef?.click();
                     }}
                   >
-                    {i18n.locale === 'en' ? 'Browse...' : 'Обзор...'}
+                    {customCapeBase64
+                      ? (i18n.locale === 'en' ? 'Change...' : 'Сменить...')
+                      : (i18n.locale === 'en' ? 'Browse...' : 'Обзор...')}
                   </button>
                 {/if}
 
@@ -718,21 +810,64 @@
   .preview-header {
     width: 100%;
     display: flex;
-    justify-content: center;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
     margin-bottom: 12px;
   }
 
   .canvas-container {
-    width: 160px;
-    height: 320px;
+    width: 100%;
+    min-height: 320px;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    position: relative;
   }
 
   .character-canvas {
     image-rendering: pixelated;
     image-rendering: crisp-edges;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .character-canvas-3d {
+    cursor: grab;
+  }
+
+  .character-canvas-3d:active {
+    cursor: grabbing;
+  }
+
+  .character-canvas.hidden {
+    display: none;
+  }
+
+  .rotation-hint {
+    font-size: 11px;
+    color: var(--color-tertiary-label);
+    margin-top: 6px;
+    letter-spacing: -0.01em;
+  }
+
+  .reset-angle-btn {
+    appearance: none;
+    background: transparent;
+    border: none;
+    font-size: 12px;
+    color: var(--color-system-blue);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-weight: 500;
+    transition: background 0.15s ease;
+  }
+
+  .reset-angle-btn:hover {
+    background: var(--color-fill-secondary);
   }
 
   .preview-status {
@@ -794,23 +929,6 @@
     display: flex;
     align-items: center;
     gap: 12px;
-  }
-
-  .cape-chip {
-    width: 14px;
-    height: 20px;
-    border-radius: 2px;
-    display: inline-block;
-  }
-
-  .cape-chip.cyan {
-    background-color: var(--color-system-blue);
-    border: 1px solid rgba(0, 0, 0, 0.15);
-  }
-
-  .cape-chip.silver {
-    background-color: var(--color-system-gray);
-    border: 1px solid rgba(0, 0, 0, 0.15);
   }
 
   .upload-cape-link {
