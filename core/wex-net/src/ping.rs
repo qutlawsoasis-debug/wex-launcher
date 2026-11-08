@@ -161,16 +161,26 @@ pub async fn resolve_minecraft_address(address: &str) -> (String, u16) {
     let srv_domain = format!("_minecraft._tcp.{}.", address.trim_end_matches('.'));
     if let Ok(resolver) = TokioResolver::builder_tokio().and_then(|builder| builder.build()) {
         if let Ok(response) = resolver.srv_lookup(&srv_domain).await {
-            if let Some(record) = response.iter().next() {
-                let target = record.target().to_string();
-                let clean_target = target.trim_end_matches('.').to_string();
-                let port = record.port();
-                return (clean_target, port);
+            if let Some(target) = srv_target(&response) {
+                return target;
             }
         }
     }
 
     (address.to_string(), 25565)
+}
+
+fn srv_target(response: &hickory_resolver::lookup::Lookup) -> Option<(String, u16)> {
+    response.answers().iter().find_map(|answer| {
+        if let hickory_resolver::proto::rr::RData::SRV(record) = &answer.data {
+            Some((
+                record.target.to_string().trim_end_matches('.').to_string(),
+                record.port,
+            ))
+        } else {
+            None
+        }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -325,6 +335,69 @@ mod tests {
     use super::*;
     use std::io::Cursor;
     use tokio::io::duplex;
+
+    #[test]
+    fn test_srv_target_filters_other_answers_and_preserves_first_srv_port() {
+        use hickory_resolver::{
+            lookup::Lookup,
+            proto::{
+                op::Query,
+                rr::{
+                    rdata::{A, SRV},
+                    Name, RData, Record, RecordType,
+                },
+            },
+        };
+        let name = Name::from_ascii("_minecraft._tcp.fixture.invalid.").unwrap();
+        let query = Query::query(name.clone(), RecordType::SRV);
+        let response = Lookup::new_with_max_ttl(
+            query,
+            [
+                Record::from_rdata(name.clone(), 60, RData::A(A::new(127, 0, 0, 1))),
+                Record::from_rdata(
+                    name.clone(),
+                    60,
+                    RData::SRV(SRV::new(
+                        0,
+                        0,
+                        25570,
+                        Name::from_ascii("first.fixture.invalid.").unwrap(),
+                    )),
+                ),
+                Record::from_rdata(
+                    name,
+                    60,
+                    RData::SRV(SRV::new(
+                        0,
+                        0,
+                        25571,
+                        Name::from_ascii("second.fixture.invalid.").unwrap(),
+                    )),
+                ),
+            ],
+        );
+        assert_eq!(
+            srv_target(&response),
+            Some(("first.fixture.invalid".into(), 25570))
+        );
+    }
+
+    #[test]
+    fn test_srv_target_without_srv_answers_returns_none() {
+        use hickory_resolver::{
+            lookup::Lookup,
+            proto::{
+                op::Query,
+                rr::{rdata::A, Name, RData, Record, RecordType},
+            },
+        };
+        let name = Name::from_ascii("fixture.invalid.").unwrap();
+        let response = Lookup::new_with_max_ttl(
+            Query::query(name.clone(), RecordType::SRV),
+            [Record::from_rdata(name, 60, RData::A(A::new(127, 0, 0, 1)))],
+        );
+        assert_eq!(srv_target(&response), None);
+    }
 
     #[tokio::test]
     async fn test_varint_roundtrip() {
