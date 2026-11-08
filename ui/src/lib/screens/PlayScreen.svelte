@@ -1,7 +1,7 @@
 <!--
   Wex Launcher — Screen «Играть» (Иммерсивный дизайн Apple HIG)
   Specification:
-  - Real in-game scenery background (Aura client sky/world), crisp without blur.
+  - Real in-game scenery background, crisp without blur.
   - Floating Liquid Glass launch dock and info cards.
   - Left-aligned typography (Apple scale, natural Russian, no marketing fluff).
   - Version selector with full label visibility (no truncation).
@@ -361,10 +361,11 @@
               <input
                 type="text"
                 bind:value={playerName}
-                placeholder="Никнейм"
+                placeholder="Имя игрока"
                 class="player-name-input nickname-input"
                 maxlength={16}
                 disabled={isLaunching || isRunning}
+                aria-label="Имя игрока"
               />
             </div>
           </div>
@@ -659,7 +660,7 @@
 
   .empty-status-text {
     font-size: var(--text-footnote);
-    color: var(--color-tertiary-label);
+    color: var(--color-secondary-label);
     padding: 4px 0;
   }
 
@@ -674,7 +675,7 @@
     align-items: center;
     gap: 8px;
     font-size: var(--text-caption-1);
-    color: var(--color-tertiary-label);
+    color: var(--color-secondary-label);
   }
 
   .friends-status-label {
@@ -742,11 +743,12 @@
     padding: 0 10px;
     height: 32px;
     box-sizing: border-box;
-    transition: all 0.2s ease;
+    transition: border-color var(--motion-duration-short) ease, box-shadow var(--motion-duration-short) ease, background-color var(--motion-duration-short) ease;
   }
 
   .nickname-field-box:focus-within {
     border-color: var(--color-system-blue);
+    box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
     background: var(--color-system-background);
   }
 

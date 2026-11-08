@@ -16,6 +16,7 @@
   import ServersScreen from './lib/screens/ServersScreen.svelte';
   import LobbyScreen from './lib/screens/LobbyScreen.svelte';
   import FriendsScreen from './lib/screens/FriendsScreen.svelte';
+  import WardrobeScreen from './lib/screens/WardrobeScreen.svelte';
   import ModsScreen from './lib/screens/ModsScreen.svelte';
   import WorkshopScreen from './lib/screens/WorkshopScreen.svelte';
   import SettingsScreen from './lib/screens/SettingsScreen.svelte';
@@ -30,6 +31,20 @@
   // Crash report modal state
   let crashSheetOpen = $state(false);
   let currentCrashDiagnosis = $state<CrashDiagnosisDto | null>(null);
+
+  $effect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      if (tabParam && sidebarItems.some((i) => i.id === tabParam)) {
+        activeTab = tabParam;
+      }
+      const themeParam = params.get('theme');
+      if (themeParam === 'light' || themeParam === 'dark') {
+        theme.setAppearance(themeParam);
+      }
+    }
+  });
 
   // Launch state
   let selectedVersion = $state('1.21.1');
@@ -74,6 +89,7 @@
     { id: 'servers', label: 'Серверы', icon: 'server' },
     { id: 'lobby', label: 'Лобби', icon: 'lobby' },
     { id: 'friends', label: 'Друзья', icon: 'friends' },
+    { id: 'wardrobe', label: 'Гардероб', icon: 'wardrobe' },
     { id: 'workshop', label: 'Мастерская', icon: 'workshop' },
     { id: 'mods', label: 'Моды', icon: 'mods' },
     { id: 'settings', label: 'Настройки', icon: 'settings' },
@@ -84,6 +100,7 @@
     servers: 'Серверы',
     lobby: 'Кооператив и Лобби',
     friends: 'Друзья',
+    wardrobe: 'Гардероб',
     workshop: 'Мастерская',
     mods: 'Моды и шейдеры',
     settings: 'Настройки',
@@ -425,6 +442,8 @@
         <LobbyScreen />
       {:else if activeTab === 'friends'}
         <FriendsScreen />
+      {:else if activeTab === 'wardrobe'}
+        <WardrobeScreen {playerName} ontoast={addToast} />
       {:else if activeTab === 'workshop'}
         <WorkshopScreen {selectedVersion} ontoast={addToast} />
       {:else if activeTab === 'mods'}

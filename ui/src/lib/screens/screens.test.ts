@@ -9,6 +9,7 @@ import LobbyScreen from './LobbyScreen.svelte';
 import FriendsScreen from './FriendsScreen.svelte';
 import ModsScreen from './ModsScreen.svelte';
 import SettingsScreen from './SettingsScreen.svelte';
+import WardrobeScreen from './WardrobeScreen.svelte';
 import WorkshopScreen from './WorkshopScreen.svelte';
 import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
 import CrashSheet from '../components/CrashSheet.svelte';
@@ -447,6 +448,38 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Tauri 2');
     expect(target.textContent).not.toContain('.minecraft');
     expect(target.textContent).toContain('Wex');
+    unmount(comp);
+  });
+
+  it('renders WardrobeScreen with 2D character preview, model selector, capes, and authentic empty history', () => {
+    const comp = mount(WardrobeScreen, {
+      target,
+      props: {
+        playerName: 'Steve',
+      },
+    });
+
+    // Check preview and model controls
+    expect(target.querySelector('canvas.character-canvas')).not.toBeNull();
+    expect(target.textContent).toContain('Классическая (4 px)');
+    expect(target.textContent).toContain('Тонкая (3 px)');
+    expect(target.textContent).toContain('Спереди');
+    expect(target.textContent).toContain('Сзади');
+
+    // Check cape options per SPEC 1.6
+    expect(target.textContent).toContain('Без плаща');
+    expect(target.textContent).toContain('Aura Cyan');
+    expect(target.textContent).toContain('Aura Silver');
+    expect(target.textContent).toContain('Пользовательский');
+
+    // Check action buttons
+    expect(target.textContent).toContain('Загрузить скин (PNG)');
+    expect(target.textContent).toContain('Сбросить на стандартный');
+    expect(target.textContent).toContain('Применить к игре');
+
+    // Check authentic empty state
+    expect(target.textContent).toContain('История гардероба пуста');
+
     unmount(comp);
   });
 
