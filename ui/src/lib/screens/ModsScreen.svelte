@@ -373,6 +373,7 @@
                 {/if}
 
                 <Toggle
+                  ariaLabel={`Включить мод ${m.name}`}
                   checked={m.enabled}
                   onchange={(checked) => handleToggleMod(m, checked)}
                 />
@@ -533,5 +534,6 @@
   .empty-subtitle {
     font-size: var(--text-subheadline);
     color: var(--color-secondary-label);
+    font-weight: 500;
   }
 </style>
