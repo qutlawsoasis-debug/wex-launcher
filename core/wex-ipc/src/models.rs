@@ -540,6 +540,8 @@ impl From<wex_extras::Activity> for DiscordActivityDto {
                 player_count,
                 host_name,
             },
+            #[allow(unreachable_patterns)]
+            _ => Self::InLauncher,
         }
     }
 }
