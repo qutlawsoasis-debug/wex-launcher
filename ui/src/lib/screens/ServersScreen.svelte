@@ -194,7 +194,7 @@
             {#snippet trailing()}
               <div class="server-metrics">
                 {#if s.isPinging}
-                  <span class="ping-pill loading">{i18n.locale === 'en' ? 'Pinging...' : 'Пинг...'}</span>
+                  <span class="ping-pill loading">{i18n.locale === 'en' ? 'Checking connection…' : 'Пинг...'}</span>
                 {:else if s.ping_ms !== null && s.ping_ms !== undefined}
                   <span class="ping-pill" class:fast={s.ping_ms < 60} class:medium={s.ping_ms >= 60 && s.ping_ms < 150} class:slow={s.ping_ms >= 150}>
                     <span class="dot"></span>

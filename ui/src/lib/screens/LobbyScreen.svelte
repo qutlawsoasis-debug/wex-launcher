@@ -309,7 +309,7 @@
           </div>
           <h2 class="status-title">{t('lobby.no_open_rooms')}</h2>
           <p class="status-desc">
-            {i18n.locale === 'en' ? 'There are currently no public rooms available. You can host your singleplayer world in LAN & Tunnels.' : 'В данный момент нет доступных публичных комнат. Вы можете открыть свой мир во вкладке «LAN и Туннели».'}
+            {i18n.locale === 'en' ? 'No public lobbies are available. Share a single-player world from LAN & Tunnels.' : 'В данный момент нет доступных публичных комнат. Вы можете открыть свой мир во вкладке «LAN и Туннели».'}
           </p>
           <div class="status-actions">
             <Button variant="secondary" size="regular" onclick={fetchCloudRooms} loading={isLoadingCloudRooms}>
@@ -482,7 +482,7 @@
           </div>
           <div class="card-headings">
             <h2 class="card-heading">{t('lobby.title_connect')}</h2>
-            <p class="card-caption">{i18n.locale === 'en' ? 'Enter room code received from a friend' : 'Введите код комнаты, полученный от друга'}</p>
+            <p class="card-caption">{i18n.locale === 'en' ? 'Enter the lobby code your friend shared.' : 'Введите код комнаты, полученный от друга'}</p>
           </div>
         </div>
 
@@ -495,7 +495,7 @@
               maxlength={6}
               class="code-input"
               onkeydown={(e) => e.key === 'Enter' && handleJoinRoom()}
-              aria-label={i18n.locale === 'en' ? 'Room code' : 'Код комнаты'}
+              aria-label={i18n.locale === 'en' ? 'Lobby code' : 'Код комнаты'}
             />
           </div>
 
@@ -521,7 +521,7 @@
             loading={isConnecting}
             disabled={!guestCode.trim()}
           >
-            <span>{i18n.locale === 'en' ? 'Join Room' : 'Войти в комнату'}</span>
+            <span>{i18n.locale === 'en' ? 'Join Lobby' : 'Войти в комнату'}</span>
           </Button>
         </div>
       </div>
@@ -534,7 +534,7 @@
           </div>
           <div class="card-headings">
             <h2 class="card-heading">{t('lobby.host_title')}</h2>
-            <p class="card-caption">{i18n.locale === 'en' ? 'Host a room via automatic Playit tunnel' : 'Создайте комнату через автоматический Playit-туннель'}</p>
+            <p class="card-caption">{i18n.locale === 'en' ? 'Share a world with friends through a Playit tunnel.' : 'Создайте комнату через автоматический Playit-туннель'}</p>
           </div>
         </div>
 

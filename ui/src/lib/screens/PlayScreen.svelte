@@ -397,7 +397,7 @@
           <!-- Java Environment & Core Status -->
           <div class="dock-block tech-block">
             <span class="dock-caption">
-              {isRunning ? (i18n.locale === 'en' ? 'Session Status' : 'Статус сессии') : (i18n.locale === 'en' ? 'Runtime Environment' : 'Среда выполнения')}
+              {isRunning ? (i18n.locale === 'en' ? 'Session Status' : 'Статус сессии') : (i18n.locale === 'en' ? 'Java Runtime' : 'Среда выполнения')}
             </span>
             <div class="tech-runtime-box">
               <span class="tech-runtime-text">{javaRuntime}</span>
@@ -416,10 +416,10 @@
                 variant="secondary"
                 size="large"
                 onclick={onstop}
-                title={i18n.locale === 'en' ? 'Stop Minecraft process' : 'Остановить процесс Minecraft'}
+                title={i18n.locale === 'en' ? 'Stop Minecraft' : 'Остановить процесс Minecraft'}
               >
                 <span class="running-indicator-dot"></span>
-                <span>{i18n.locale === 'en' ? 'Playing • Stop' : 'В игре • Остановить'}</span>
+                <span>{i18n.locale === 'en' ? 'Stop Minecraft' : 'В игре • Остановить'}</span>
               </Button>
             {:else}
               <Button

@@ -71,7 +71,7 @@ describe('i18n Reactive Manager & Translation Helper', () => {
     i18n.setLocale('en');
     expect(t('servers.ping_ms', { ms: 42 })).toBe('42 ms');
     expect(t('play.update_description', { version: '1.2.0' })).toBe(
-      'Version 1.2.0 is available. Click to update.'
+      'Version 1.2.0 is available.'
     );
   });
 
@@ -140,7 +140,7 @@ describe('i18n Reactive Manager & Translation Helper', () => {
     const compSettings = mount(SettingsScreen, { target });
     await tick();
     expect(target.textContent).toContain('Performance & Memory');
-    expect(target.textContent).toContain('Allocated Memory (RAM)');
+    expect(target.textContent).toContain('Memory for Minecraft');
     expect(target.textContent).toContain('Interface Language');
     expect(target.textContent).toContain('Reset to Defaults');
     unmount(compSettings);
@@ -216,7 +216,7 @@ describe('i18n Reactive Manager & Translation Helper', () => {
     expect(target.textContent).toContain('Requests');
     expect(target.textContent).toContain('Achievements');
     expect(target.textContent).toContain('Add Friend');
-    expect(target.textContent).toContain('Friend list is empty');
+    expect(target.textContent).toContain('No Friends Yet');
     unmount(compFriends);
     target.remove();
 

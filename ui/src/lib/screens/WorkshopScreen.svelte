@@ -524,7 +524,7 @@
           variant="secondary"
           size="small"
           onclick={() => triggerAddPack('resourcepack')}
-          title={i18n.locale === 'en' ? 'Add ZIP resource pack archive' : 'Добавить ZIP файл ресурс-пака'}
+          title={i18n.locale === 'en' ? 'Add a resource pack ZIP file' : 'Добавить ZIP файл ресурс-пака'}
         >
           <Icon name="folder" size={14} color="var(--color-label)" />
           <span>{t('workshop.add_pack')}</span>
@@ -533,7 +533,7 @@
           variant="ghost"
           size="small"
           onclick={() => openFolderForType('resourcepack')}
-          title={i18n.locale === 'en' ? 'Open resource packs folder in Explorer' : 'Открыть папку ресурс-паков в проводнике'}
+          title={i18n.locale === 'en' ? 'Open resource packs folder' : 'Открыть папку ресурс-паков в проводнике'}
         >
           <span>{t('workshop.folder_packs')}</span>
         </Button>
@@ -542,7 +542,7 @@
           variant="secondary"
           size="small"
           onclick={() => triggerAddPack('shaderpack')}
-          title={i18n.locale === 'en' ? 'Add ZIP shader pack archive' : 'Добавить ZIP файл шейдеров'}
+          title={i18n.locale === 'en' ? 'Add a shader pack ZIP file' : 'Добавить ZIP файл шейдеров'}
         >
           <Icon name="folder" size={14} color="var(--color-label)" />
           <span>{t('workshop.add_pack')}</span>
@@ -551,7 +551,7 @@
           variant="ghost"
           size="small"
           onclick={() => openFolderForType('shaderpack')}
-          title={i18n.locale === 'en' ? 'Open shader packs folder in Explorer' : 'Открыть папку шейдеров в проводнике'}
+          title={i18n.locale === 'en' ? 'Open shader packs folder' : 'Открыть папку шейдеров в проводнике'}
         >
           <span>{t('workshop.folder_shaders')}</span>
         </Button>
@@ -581,7 +581,7 @@
           </div>
           <h2 class="empty-title">{t('workshop.worlds_empty_title')}</h2>
           <p class="empty-description">
-            {t('workshop.worlds_empty_desc', { version: currentVersion })}, {i18n.locale === 'en' ? 'to manage it here.' : 'чтобы управлять им здесь.'}
+            {t('workshop.worlds_empty_desc', { version: currentVersion })}, {i18n.locale === 'en' ? 'then manage it here.' : 'чтобы управлять им здесь.'}
           </p>
         </div>
       {:else}

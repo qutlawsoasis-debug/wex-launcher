@@ -326,7 +326,7 @@
 
   <!-- Mods List Area -->
   <div class="mods-content">
-    <List header={i18n.locale === 'en' ? `Installed Mods (version ${selectedVersion}) • ${filteredMods.length} of ${mods.length}` : `Установленные моды (версия ${selectedVersion}) • ${filteredMods.length} из ${mods.length}`}>
+    <List header={i18n.locale === 'en' ? `Installed Mods — Minecraft ${selectedVersion} · ${filteredMods.length} of ${mods.length}` : `Установленные моды (версия ${selectedVersion}) • ${filteredMods.length} из ${mods.length}`}>
       {#if loading}
         <div class="empty-state">
           <Icon name="refresh" size={28} color="var(--color-tertiary-label)" />
@@ -388,7 +388,7 @@
               {searchQuery ? t('mods.empty_search', { query: searchQuery }) : t('mods.empty_title')}
             </span>
             <span class="empty-subtitle">
-              {searchQuery ? (i18n.locale === 'en' ? 'Try changing your search query or filter tab' : 'Попробуйте изменить поисковый запрос или категорию') : t('mods.empty_default')}
+              {searchQuery ? (i18n.locale === 'en' ? 'Try a different search or filter.' : 'Попробуйте изменить поисковый запрос или категорию') : t('mods.empty_default')}
             </span>
           </div>
         {/each}
