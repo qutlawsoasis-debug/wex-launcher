@@ -15,6 +15,9 @@ import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
 vi.mock('@tauri-apps/api/core', () => {
   return {
     invoke: vi.fn(async (cmd: string, args?: Record<string, any>) => {
+      if (cmd === 'list_open_rooms') {
+        throw new Error('Сервис недоступен');
+      }
       if (cmd === 'list_mods') {
         if (args?.version === '1.20.1') {
           return [];
@@ -326,6 +329,27 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Повторить попытку');
     expect(target.textContent).not.toContain('mc.wexmc.net');
     expect(target.textContent).not.toContain('Aura Official');
+
+    unmount(comp);
+  });
+
+  it('renders LobbyScreen cloud mode with empty rooms state when API responds with empty list', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    (invoke as any).mockResolvedValueOnce([]);
+
+    const comp = mount(LobbyScreen, { target });
+
+    const cloudBtn = Array.from(target.querySelectorAll('button')).find(
+      (b) => b.textContent?.includes('Облачные миры')
+    );
+    expect(cloudBtn).not.toBeUndefined();
+    cloudBtn?.click();
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(target.textContent).toContain('Нет открытых комнат');
+    expect(target.textContent).toContain('Обновить');
+    expect(target.textContent).not.toContain('Сервис недоступен');
 
     unmount(comp);
   });
