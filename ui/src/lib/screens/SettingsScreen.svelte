@@ -30,7 +30,7 @@
   let playerName = $state('Player');
   let totalMemoryMb = $state(16384);
   let ramMb = $state(4096);
-  let gameDir = $state('C:\\Users\\User\\AppData\\Roaming\\Wex');
+  let gameDir = $state('');
   let graphicsPreset = $state('High');
   let javaMode = $state('auto');
   let customJavaPath = $state('');
@@ -332,7 +332,7 @@
     <List header="Папки и файлы данных">
       <Row
         title="Рабочая папка игры"
-        subtitle={gameDir}
+        subtitle={gameDir || 'Не определена'}
       >
         {#snippet trailing()}
           <div class="dir-actions">

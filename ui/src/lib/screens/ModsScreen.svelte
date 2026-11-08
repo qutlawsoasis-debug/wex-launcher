@@ -47,64 +47,10 @@
   let searchQuery = $state('');
   let filterTab = $state('all');
   let isAdding = $state(false);
+  let loading = $state(true);
   let fileInputRef = $state<HTMLInputElement | null>(null);
 
-  let mods = $state<ModEntryModel[]>([
-    {
-      id: 'wex-client',
-      name: 'Wex Client',
-      version: '2.0.0-release',
-      description: 'Ядро интерфейса, OpenGL 3.3 рендер, Dual Kawase размытие, 3D эффекты',
-      file_name: 'wex-client-2.0.0.jar',
-      enabled: true,
-      is_pack_mod: true,
-    },
-    {
-      id: 'sodium',
-      name: 'Sodium',
-      version: '0.6.9',
-      description: 'Современный движок рендеринга блоков и чанков, высокий FPS',
-      file_name: 'sodium-fabric-0.6.9.jar',
-      enabled: true,
-      is_pack_mod: true,
-    },
-    {
-      id: 'iris',
-      name: 'Iris Shaders',
-      version: '1.8.0',
-      description: 'Поддержка современных шейдеров без потерь производительности',
-      file_name: 'iris-fabric-1.8.0.jar',
-      enabled: true,
-      is_pack_mod: true,
-    },
-    {
-      id: 'fabric-api',
-      name: 'Fabric API',
-      version: '0.102.0',
-      description: 'Базовый набор библиотек для экосистемы модов Fabric',
-      file_name: 'fabric-api-0.102.0.jar',
-      enabled: true,
-      is_pack_mod: true,
-    },
-    {
-      id: 'voice-chat',
-      name: 'Simple Voice Chat',
-      version: '2.5.20',
-      description: 'Позиционный голосовой чат для командной игры',
-      file_name: 'voicechat-fabric-2.5.20.jar',
-      enabled: false,
-      is_pack_mod: false,
-    },
-    {
-      id: 'mod-menu',
-      name: 'Mod Menu',
-      version: '11.0.2',
-      description: 'Список модов и управление их настройками в меню игры',
-      file_name: 'modmenu-11.0.2.jar',
-      enabled: true,
-      is_pack_mod: true,
-    },
-  ]);
+  let mods = $state<ModEntryModel[]>([]);
 
   const versionOptions = [
     { value: '1.21.1', label: '1.21.1 (Wex Client)' },
@@ -138,14 +84,20 @@
   );
 
   async function loadMods(version: string) {
+    loading = true;
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const res = await invoke<ModEntryModel[]>('list_mods', { version });
       if (Array.isArray(res)) {
         mods = res;
+      } else {
+        mods = [];
       }
     } catch {
-      // In-browser mock fallback
+      // In-browser without Tauri: clean empty list
+      mods = [];
+    } finally {
+      loading = false;
     }
   }
 
@@ -326,55 +278,62 @@
   <!-- Mods List Area -->
   <div class="mods-content">
     <List header="Установленные моды (версия {selectedVersion}) • {filteredMods.length} из {mods.length}">
-      {#each filteredMods as m (m.file_name)}
-        <Row
-          title="{m.name} {m.version}"
-          subtitle={m.description || m.file_name}
-        >
-          {#snippet leading()}
-            <div class="mod-icon">
-              <Icon
-                name="mods"
-                size={18}
-                color={m.enabled ? 'var(--color-system-blue)' : 'var(--color-tertiary-label)'}
-              />
-            </div>
-          {/snippet}
-
-          {#snippet trailing()}
-            <div class="mod-controls">
-              {#if m.is_pack_mod}
-                <span class="pack-badge" title="Мод входит в официальную сборку Wex и защищён от удаления">Пак Wex</span>
-              {:else}
-                <button
-                  type="button"
-                  class="delete-btn"
-                  onclick={() => handleDeleteMod(m)}
-                  title="Удалить пользовательский мод"
-                  aria-label="Удалить {m.name}"
-                >
-                  <Icon name="trash" size={14} color="var(--color-system-red)" />
-                </button>
-              {/if}
-
-              <Toggle
-                checked={m.enabled}
-                onchange={(checked) => handleToggleMod(m, checked)}
-              />
-            </div>
-          {/snippet}
-        </Row>
-      {:else}
+      {#if loading}
         <div class="empty-state">
-          <Icon name="mods" size={32} color="var(--color-tertiary-label)" />
-          <span class="empty-title">
-            {searchQuery ? `По запросу «${searchQuery}» ничего не найдено` : 'В папке инстанса пока нет модов'}
-          </span>
-          <span class="empty-subtitle">
-            {searchQuery ? 'Попробуйте изменить поисковый запрос или категорию' : 'Нажмите «Добавить мод...», чтобы установить первый мод'}
-          </span>
+          <Icon name="refresh" size={28} color="var(--color-tertiary-label)" />
+          <span class="empty-title">Загрузка модов...</span>
         </div>
-      {/each}
+      {:else}
+        {#each filteredMods as m (m.file_name)}
+          <Row
+            title="{m.name} {m.version}"
+            subtitle={m.description || m.file_name}
+          >
+            {#snippet leading()}
+              <div class="mod-icon">
+                <Icon
+                  name="mods"
+                  size={18}
+                  color={m.enabled ? 'var(--color-system-blue)' : 'var(--color-tertiary-label)'}
+                />
+              </div>
+            {/snippet}
+
+            {#snippet trailing()}
+              <div class="mod-controls">
+                {#if m.is_pack_mod}
+                  <span class="pack-badge" title="Мод входит в официальную сборку Wex и защищён от удаления">Пак Wex</span>
+                {:else}
+                  <button
+                    type="button"
+                    class="delete-btn"
+                    onclick={() => handleDeleteMod(m)}
+                    title="Удалить пользовательский мод"
+                    aria-label="Удалить {m.name}"
+                  >
+                    <Icon name="trash" size={14} color="var(--color-system-red)" />
+                  </button>
+                {/if}
+
+                <Toggle
+                  checked={m.enabled}
+                  onchange={(checked) => handleToggleMod(m, checked)}
+                />
+              </div>
+            {/snippet}
+          </Row>
+        {:else}
+          <div class="empty-state">
+            <Icon name="mods" size={32} color="var(--color-tertiary-label)" />
+            <span class="empty-title">
+              {searchQuery ? `По запросу «${searchQuery}» ничего не найдено` : 'Моды не найдены'}
+            </span>
+            <span class="empty-subtitle">
+              {searchQuery ? 'Попробуйте изменить поисковый запрос или категорию' : 'В папке инстанса пока нет модов. Нажмите «Добавить мод...», чтобы установить первый мод'}
+            </span>
+          </div>
+        {/each}
+      {/if}
     </List>
   </div>
 </div>

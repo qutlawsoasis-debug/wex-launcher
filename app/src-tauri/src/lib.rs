@@ -47,17 +47,6 @@ impl Default for AppState {
 }
 
 // ---------------------------------------------------------------------------
-// Social News (SPEC.md 1.3)
-// ---------------------------------------------------------------------------
-
-#[tauri::command]
-fn social_get_news(state: State<'_, PlayState>) -> Vec<wex_social::ReleaseNoteVersion> {
-    let cache_dir = state.paths.root.join("news");
-    let mgr = wex_social::NewsManager::new(cache_dir);
-    mgr.load_cached_or_default()
-}
-
-// ---------------------------------------------------------------------------
 // Servers Management (powered by core/wex-net)
 // ---------------------------------------------------------------------------
 
@@ -283,8 +272,9 @@ pub fn run() {
         .setup(|app| {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();
-            let play_state = PlayState::new_real(paths, app.handle().clone());
+            let play_state = PlayState::new_real(paths.clone(), app.handle().clone());
             app.manage(play_state);
+            app.manage(commands::friends::FriendsState::new(paths));
             app.manage(AppState::default());
             Ok(())
         })
@@ -316,8 +306,14 @@ pub fn run() {
             commands::mods::add_custom_mod,
             commands::mods::delete_custom_mod,
             commands::mods::open_mods_dir,
-            // Social news
-            social_get_news,
+            // Overview & Social/Extras commands
+            commands::overview::social_get_news,
+            commands::overview::overview_get_news,
+            commands::overview::social_check_launcher_update,
+            commands::overview::overview_check_update,
+            commands::overview::extras_detect_old_launcher,
+            commands::overview::extras_import_old_launcher,
+            commands::overview::extras_apply_import,
             // Servers commands
             list_servers,
             ping_server,
@@ -328,6 +324,31 @@ pub fn run() {
             join_lobby_room,
             get_lobby_status,
             close_lobby_room,
+            // Friends & Social commands
+            commands::friends::social_login,
+            commands::friends::social_get_friends,
+            commands::friends::social_send_friend_request,
+            commands::friends::social_accept_friend_request,
+            commands::friends::social_decline_friend_request,
+            commands::friends::social_sync,
+            commands::friends::social_send_lobby_invite,
+            commands::friends::social_respond_lobby_invite,
+            commands::friends::social_set_presence,
+            commands::friends::social_list_achievements,
+            commands::friends::social_report_achievement_progress,
+            // Workshop commands (SPEC 1.7)
+            commands::workshop::workshop_list_worlds,
+            commands::workshop::social_list_worlds,
+            commands::workshop::workshop_create_world_backup,
+            commands::workshop::social_create_world_backup,
+            commands::workshop::workshop_list_world_backups,
+            commands::workshop::social_list_world_backups,
+            commands::workshop::workshop_restore_world_backup,
+            commands::workshop::social_restore_world_backup,
+            commands::workshop::workshop_delete_world,
+            commands::workshop::workshop_list_screenshots,
+            commands::workshop::social_list_screenshots,
+            commands::workshop::workshop_open_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

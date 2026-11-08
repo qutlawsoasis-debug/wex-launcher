@@ -20,6 +20,7 @@ pub use news::{
     get_bundled_release_notes, NewsManager, NoteCategory, ReleaseNoteItem, ReleaseNoteVersion,
 };
 pub use workshop::{
-    create_world_backup, list_screenshots, list_world_backups, list_worlds, parse_world_folder,
-    restore_world_backup, GameMode, ScreenshotItem, WorkshopError, WorldBackupItem, WorldItem,
+    create_world_backup, delete_world, list_screenshots, list_world_backups, list_worlds,
+    parse_world_folder, restore_world_backup, GameMode, ScreenshotItem, WorkshopError,
+    WorldBackupItem, WorldItem,
 };
