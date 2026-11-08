@@ -28,6 +28,7 @@
   import CrashSheet from './lib/components/CrashSheet.svelte';
   import MusicDiskWidget from './lib/components/MusicDiskWidget.svelte';
   import type { CrashDiagnosisDto } from './lib/ipc/generated/models';
+  import { initIdleManager, setGameRunning, createIdleInterval } from './lib/design/idleManager';
 
   // Navigation state
   let activeTab = $state('play');
@@ -66,6 +67,9 @@
   let clientStatus = $state('Клиент Wex готов');
   let isLaunching = $state(false);
   let isGameRunning = $state(false);
+  $effect(() => {
+    setGameRunning(isGameRunning);
+  });
   let isOnline = $state(true);
   let skinHeadUrl = $state<string | undefined>(undefined);
   let progressPercentage = $state(0);
@@ -373,6 +377,8 @@
       })(),
     ]);
 
+    const cleanupIdle = initIdleManager();
+
     if (typeof window !== 'undefined') {
       window.addEventListener('online', checkNetwork);
       window.addEventListener('offline', () => {
@@ -380,7 +386,7 @@
       });
     }
 
-    const netInterval = setInterval(checkNetwork, 30000);
+    const cleanupNet = createIdleInterval(checkNetwork, 30000);
 
     // Tauri 2 Event Listeners (install-progress & launch-status as per SPEC.md)
     let unlistenProgress: (() => void) | undefined;
@@ -477,11 +483,12 @@
     }
 
     return () => {
+      cleanupIdle?.();
       window.removeEventListener('hashchange', applyHashRoute);
       if (typeof window !== 'undefined') {
         window.removeEventListener('online', checkNetwork);
       }
-      clearInterval(netInterval);
+      cleanupNet();
       unlistenProgress?.();
       unlistenStatus?.();
       unlistenAchievement?.();

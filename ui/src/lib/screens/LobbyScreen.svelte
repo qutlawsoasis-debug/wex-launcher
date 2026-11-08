@@ -17,6 +17,7 @@
   import OfflineState from '../components/OfflineState.svelte';
   import ErrorState from '../components/ErrorState.svelte';
   import { network } from '../design/network.svelte';
+  import { createIdleInterval } from '../design/idleManager';
   import { t, i18n } from '../i18n';
 
   interface LobbyPlayer {
@@ -180,15 +181,15 @@
       fetchCloudRooms();
     } else if (mode === 'lan') {
       fetchLanWorlds();
-      const interval = setInterval(fetchLanWorlds, 3000);
-      return () => clearInterval(interval);
+      const cleanupLan = createIdleInterval(fetchLanWorlds, 3000);
+      return () => cleanupLan();
     }
   });
 
   // Polling room status while inside an active room session
   $effect(() => {
     if (!activeRoom) return;
-    const interval = setInterval(async () => {
+    const cleanupRoom = createIdleInterval(async () => {
       const current = activeRoom;
       if (!current) return;
       try {
@@ -208,7 +209,7 @@
         }
       }
     }, 4000);
-    return () => clearInterval(interval);
+    return () => cleanupRoom();
   });
 
   export async function handleCreateRoom() {

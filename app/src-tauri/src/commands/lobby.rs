@@ -71,7 +71,7 @@ impl LobbyState {
             });
 
         let lan_discovery = Arc::new(LanDiscoveryService::default());
-        std::mem::drop(lan_discovery.clone().spawn_listener());
+        lan_discovery.clone().spawn_listener();
 
         Self {
             client,
