@@ -19,6 +19,7 @@
   import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
   import ErrorState from '../components/ErrorState.svelte';
   import { theme } from '../design/theme.svelte';
+  import type { ScreenshotItemDto } from '../ipc/generated';
 
   interface ReleaseNoteItem {
     category?: string;
@@ -60,6 +61,7 @@
     oncancel?: () => void;
     onstop?: () => void;
     onopensettings?: () => void;
+    onopenworkshop?: (subtab?: string) => void;
   }
 
   let {
@@ -80,6 +82,7 @@
     oncancel,
     onstop,
     onopensettings,
+    onopenworkshop,
   }: Props = $props();
 
   const versions = [
@@ -135,6 +138,42 @@
 
   // Recent server state from IPC
   let recentServer = $state<{ name: string; address: string; ping_ms?: number } | null>(null);
+
+  // Latest screenshot from Workshop (Parity Item 10)
+  let latestScreenshot = $state<ScreenshotItemDto | null>(null);
+
+  function getSafeAssetUrl(filePath: string | null): string | null {
+    if (!filePath) return null;
+    try {
+      return (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+        ? `https://asset.localhost/${encodeURIComponent(filePath.replace(/\\/g, '/'))}`
+        : filePath;
+    } catch {
+      return filePath;
+    }
+  }
+
+  async function loadLatestScreenshot() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const list = await invoke<ScreenshotItemDto[]>('workshop_list_screenshots', {
+        version: selectedVersion,
+      });
+      if (list && list.length > 0) {
+        latestScreenshot = list[0];
+      } else {
+        latestScreenshot = null;
+      }
+    } catch {
+      latestScreenshot = null;
+    }
+  }
+
+  $effect(() => {
+    if (selectedVersion) {
+      loadLatestScreenshot();
+    }
+  });
 
   // Unobtrusive update notification banner state
   let fetchedUpdateInfo = $state<UpdateInfo | null>(null);
@@ -203,6 +242,9 @@
     } catch {
       // Ignore if localStorage unavailable
     }
+
+    // 5. Load latest screenshot from Workshop
+    loadLatestScreenshot();
   });
 
   function handleImportCompleted(result: {
@@ -326,6 +368,43 @@
           <span class="friends-status-label">Нет друзей в игре</span>
         </div>
       </div>
+
+      <!-- Recent Screenshot Glance (Parity Item 10) -->
+      {#if latestScreenshot}
+        <div class="glass-card screenshot-glance-card" data-testid="latest-screenshot-card">
+          <div class="card-title-row">
+            <Icon name="sun" size={15} color="var(--color-system-orange)" />
+            <span class="card-title">Свежий скриншот</span>
+            <span class="card-meta">
+              {latestScreenshot.file_name}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            class="screenshot-glance-btn"
+            onclick={() => {
+              if (onopenworkshop) {
+                onopenworkshop('screenshots');
+              }
+            }}
+            title="Нажмите, чтобы открыть в Мастерской"
+          >
+            <div class="glance-img-container">
+              <img
+                src={getSafeAssetUrl(latestScreenshot.file_path) || ''}
+                alt={latestScreenshot.file_name}
+                class="glance-img"
+                loading="lazy"
+              />
+              <div class="glance-hover-hint">
+                <Icon name="folder" size={15} color="#ffffff" />
+                <span>Открыть в Мастерской</span>
+              </div>
+            </div>
+          </button>
+        </div>
+      {/if}
     </div>
 
     <!-- Launch Error Banner (Apple HIG Alert State) -->
@@ -610,6 +689,69 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
+  }
+
+  .screenshot-glance-card {
+    flex: 0 1 240px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .screenshot-glance-btn {
+    all: unset;
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    display: block;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .screenshot-glance-btn:hover {
+    transform: scale(1.02);
+  }
+
+  .screenshot-glance-btn:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 2px;
+  }
+
+  .glance-img-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--color-secondary-system-fill);
+    border-radius: var(--radius-md);
+  }
+
+  .screenshot-glance-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .glance-hover-hint {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #ffffff;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .screenshot-glance-btn:hover .glance-hover-hint {
+    opacity: 1;
   }
 
   .card-title-row {

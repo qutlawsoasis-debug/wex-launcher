@@ -284,6 +284,32 @@ pub async fn workshop_open_path(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Copies the image at the given path directly into the system clipboard as bitmap data.
+#[tauri::command]
+pub async fn workshop_copy_screenshot_image(path: String) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    if !p.exists() || !p.is_file() {
+        return Err(format!("Файл скриншота не найден: {}", path));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let script = format!(
+            "Add-Type -AssemblyName System.Windows.Forms; $img = [System.Drawing.Image]::FromFile('{}'); [System.Windows.Forms.Clipboard]::SetImage($img); $img.Dispose()",
+            path.replace('\'', "''")
+        );
+        let status = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .status()
+            .map_err(|e| format!("Ошибка копирования изображения: {}", e))?;
+        if !status.success() {
+            return Err("Не удалось скопировать изображение в буфер обмена".to_string());
+        }
+    }
+
+    Ok(())
+}
+
 // ============================================================================
 // Unit Tests
 // ============================================================================
@@ -394,5 +420,28 @@ mod tests {
     async fn test_workshop_open_nonexistent_path() {
         let res = workshop_open_path("C:\\nonexistent_dir_12345_67890".to_string()).await;
         assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_workshop_copy_screenshot_nonexistent() {
+        let res =
+            workshop_copy_screenshot_image("C:\\nonexistent_screen_123.png".to_string()).await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_workshop_copy_screenshot_valid_png() {
+        let tmp = tempdir().unwrap();
+        let shot_file = tmp.path().join("shot.png");
+        let png_bytes = [
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
+            0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+        ];
+        fs::write(&shot_file, &png_bytes).unwrap();
+        let res = workshop_copy_screenshot_image(shot_file.to_string_lossy().to_string()).await;
+        assert!(res.is_ok());
     }
 }

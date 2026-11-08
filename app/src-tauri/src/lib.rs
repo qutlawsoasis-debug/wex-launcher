@@ -290,6 +290,7 @@ pub fn run() {
             commands::workshop::workshop_list_screenshots,
             commands::workshop::social_list_screenshots,
             commands::workshop::workshop_open_path,
+            commands::workshop::workshop_copy_screenshot_image,
             // Workshop packs and shaders commands (SPEC 1.7)
             commands::workshop_packs::workshop_list_resource_packs,
             commands::workshop_packs::workshop_toggle_resource_pack,
