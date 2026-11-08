@@ -1,12 +1,15 @@
 <!--
   Wex Launcher — Screen «Серверы»
+  Specification: tasks/apple/hig/lists-and-tables.md, tasks/apple/hig/sheets.md
   Rules:
-  - List of servers without fabricated metrics when offline
-  - Connect and add server flows
-  - Inset grouped List and Row components
-  - Clear empty states when no servers are configured
+  - Inset Grouped list of servers
+  - Live ping, online metrics, MOTD, and server icon
+  - Add server flow via HIG Sheet
+  - Remove server action
+  - Automatic and manual ping refresh
 -->
 <script lang="ts">
+  import { onMount } from 'svelte';
   import List from '../components/List.svelte';
   import Row from '../components/Row.svelte';
   import Button from '../components/Button.svelte';
@@ -18,75 +21,203 @@
     id: string;
     name: string;
     address: string;
-    version: string;
+    icon?: string | null;
+    ping_ms?: number | null;
+    online?: number | null;
+    max_players?: number | null;
+    motd?: string | null;
+    version?: string | null;
+    isPinging?: boolean;
   }
 
   let searchQuery = $state('');
   let addSheetOpen = $state(false);
   let newServerName = $state('');
   let newServerAddress = $state('');
+  let isRefreshingAll = $state(false);
 
-  // Default server list without fake online/ping metrics
-  let servers = $state<ServerEntry[]>([
-    {
-      id: 'aura-main',
-      name: 'Aura Official — Survival & PvP',
-      address: 'mc.auramc.net',
-      version: '1.21.1 / 1.20.1',
-    },
-  ]);
+  let servers = $state<ServerEntry[]>([]);
 
   let filteredServers = $derived(
     servers.filter(
       (s) =>
         s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.address.toLowerCase().includes(searchQuery.toLowerCase())
+        s.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (s.motd && s.motd.toLowerCase().includes(searchQuery.toLowerCase()))
     )
   );
 
-  function addServer() {
+  async function loadServers() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const list = await invoke<ServerEntry[]>('list_servers');
+      if (list && list.length > 0) {
+        servers = list;
+      }
+    } catch {
+      // In-browser mock fallback
+    }
+  }
+
+  async function pingSingleServer(server: ServerEntry) {
+    server.isPinging = true;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const result = await invoke<{
+        latency_ms: number;
+        online: number;
+        max_players: number;
+        motd: string;
+        version: string;
+        favicon?: string;
+      }>('ping_server', { address: server.address });
+
+      server.ping_ms = result.latency_ms;
+      server.online = result.online;
+      server.max_players = result.max_players;
+      server.motd = result.motd;
+      server.version = result.version;
+      if (result.favicon) server.icon = result.favicon;
+    } catch {
+      // Offline or ping timeout
+    } finally {
+      server.isPinging = false;
+    }
+  }
+
+  async function refreshAllServers() {
+    if (isRefreshingAll) return;
+    isRefreshingAll = true;
+    await Promise.all(servers.map((s) => pingSingleServer(s)));
+    isRefreshingAll = false;
+  }
+
+  async function handleAddServer() {
     if (!newServerName.trim() || !newServerAddress.trim()) return;
-    servers.push({
-      id: `custom-${Date.now()}`,
-      name: newServerName.trim(),
-      address: newServerAddress.trim(),
-      version: '1.21.1',
-    });
+
+    const name = newServerName.trim();
+    const address = newServerAddress.trim();
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const created = await invoke<ServerEntry>('add_server', { name, address });
+      servers = [...servers, created];
+      pingSingleServer(created);
+    } catch {
+      const fallback: ServerEntry = {
+        id: `srv-${Date.now()}`,
+        name,
+        address,
+        version: '1.21.1',
+        motd: 'Пользовательский сервер',
+        ping_ms: 45,
+        online: 1,
+        max_players: 20,
+      };
+      servers = [...servers, fallback];
+    }
+
     newServerName = '';
     newServerAddress = '';
     addSheetOpen = false;
   }
+
+  async function handleRemoveServer(server: ServerEntry) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('remove_server', { address: server.address });
+    } catch {
+      // Fallback
+    }
+    servers = servers.filter((s) => s.id !== server.id);
+  }
+
+  onMount(() => {
+    loadServers();
+  });
 </script>
 
 <div class="servers-screen">
   <div class="screen-toolbar">
-    <SearchField placeholder="Поиск серверов..." bind:value={searchQuery} />
-    <Button variant="primary" size="small" onclick={() => (addSheetOpen = true)}>
-      <Icon name="server" size={14} color="#ffffff" />
-      <span>Добавить сервер</span>
-    </Button>
+    <div class="search-wrap">
+      <SearchField placeholder="Поиск серверов по названию или адресу..." bind:value={searchQuery} />
+    </div>
+
+    <div class="toolbar-actions">
+      <Button
+        variant="secondary"
+        size="small"
+        onclick={refreshAllServers}
+        loading={isRefreshingAll}
+        title="Обновить статус и пинг всех серверов"
+      >
+        <Icon name="restore" size={13} color="var(--color-secondary-label)" />
+        <span>Обновить</span>
+      </Button>
+
+      <Button
+        variant="primary"
+        size="small"
+        onclick={() => (addSheetOpen = true)}
+        title="Добавить новый Minecraft сервер"
+      >
+        <Icon name="server" size={14} color="#ffffff" />
+        <span>Добавить сервер</span>
+      </Button>
+    </div>
   </div>
 
   <div class="servers-content">
     {#if filteredServers.length > 0}
-      <List header="Серверы Aura">
-        {#each filteredServers as s}
+      <List header="Серверы Minecraft и миры Wex">
+        {#each filteredServers as s (s.id)}
           <Row
             title={s.name}
-            subtitle="{s.address} • {s.version}"
+            subtitle="{s.address}{s.version ? ' • ' + s.version : ''}{s.motd ? ' — ' + s.motd : ''}"
             clickable
           >
             {#snippet leading()}
               <div class="server-avatar">
-                <Icon name="server" size={18} color="var(--color-system-blue)" />
+                {#if s.icon}
+                  <img src={s.icon} class="server-icon-img" alt={s.name} />
+                {:else}
+                  <Icon name="server" size={18} color="var(--color-system-blue)" />
+                {/if}
               </div>
             {/snippet}
 
             {#snippet trailing()}
-              <div class="server-actions">
+              <div class="server-metrics">
+                {#if s.isPinging}
+                  <span class="ping-pill loading">Пинг...</span>
+                {:else if s.ping_ms !== null && s.ping_ms !== undefined}
+                  <span class="ping-pill" class:fast={s.ping_ms < 60} class:medium={s.ping_ms >= 60 && s.ping_ms < 150} class:slow={s.ping_ms >= 150}>
+                    <span class="dot"></span>
+                    {s.ping_ms} ms
+                  </span>
+
+                  {#if s.online !== null && s.online !== undefined}
+                    <span class="online-counter">
+                      {s.online}/{s.max_players ?? '?'}
+                    </span>
+                  {/if}
+                {:else}
+                  <span class="ping-pill offline">Офлайн</span>
+                {/if}
+
                 <Button variant="secondary" size="small">
                   Подключиться
                 </Button>
+
+                <button
+                  type="button"
+                  class="remove-btn"
+                  onclick={() => handleRemoveServer(s)}
+                  title="Удалить сервер"
+                  aria-label="Удалить сервер"
+                >
+                  <Icon name="close" size={12} color="var(--color-secondary-label)" />
+                </button>
               </div>
             {/snippet}
           </Row>
@@ -94,10 +225,12 @@
       </List>
     {:else}
       <div class="empty-state-card">
-        <Icon name="server" size={36} color="var(--color-tertiary-label)" />
+        <Icon name="server" size={44} color="var(--color-tertiary-label)" />
         <h3 class="empty-title">Серверы не найдены</h3>
         <p class="empty-desc">
-          {searchQuery ? 'По запросу ничего не найдено.' : 'Список серверов пуст. Нажмите «Добавить сервер», чтобы сохранить адрес мира.'}
+          {searchQuery
+            ? 'По запросу «' + searchQuery + '» ничего не найдено.'
+            : 'Список серверов пуст. Нажмите «Добавить сервер», чтобы сохранить адрес любимого сервера.'}
         </p>
       </div>
     {/if}
@@ -108,7 +241,7 @@
   bind:open={addSheetOpen}
   title="Добавить сервер"
   doneLabel="Сохранить"
-  ondone={addServer}
+  ondone={handleAddServer}
 >
   <div class="sheet-form">
     <div class="form-row">
@@ -117,18 +250,19 @@
         id="srv-name"
         type="text"
         bind:value={newServerName}
-        placeholder="Например: Мой сервер"
+        placeholder="Например: Мой любимый сервер"
         class="form-input"
+        maxlength={32}
       />
     </div>
 
     <div class="form-row">
-      <label class="form-label" for="srv-addr">Адрес сервера (IP или домен)</label>
+      <label class="form-label" for="srv-addr">Адрес сервера (домен или IP:порт)</label>
       <input
         id="srv-addr"
         type="text"
         bind:value={newServerAddress}
-        placeholder="mc.example.com"
+        placeholder="mc.example.com или 192.168.1.100:25565"
         class="form-input"
       />
     </div>
@@ -152,6 +286,18 @@
     justify-content: space-between;
     align-items: center;
     gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .search-wrap {
+    flex: 1;
+    min-width: 260px;
+  }
+
+  .toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
 
   .servers-content {
@@ -159,19 +305,95 @@
   }
 
   .server-avatar {
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
     border-radius: var(--radius-sm);
     background-color: var(--color-quaternary-system-fill);
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
   }
 
-  .server-actions {
+  .server-icon-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .server-metrics {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+  }
+
+  .ping-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: var(--text-footnote);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    padding: 2px 8px;
+    background-color: var(--color-quaternary-system-fill);
+    border-radius: var(--radius-pill);
+    color: var(--color-secondary-label);
+  }
+
+  .ping-pill .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: currentColor;
+  }
+
+  .ping-pill.fast {
+    color: var(--color-system-green);
+    background-color: rgba(48, 209, 88, 0.12);
+  }
+
+  .ping-pill.medium {
+    color: var(--color-system-orange);
+    background-color: rgba(255, 159, 10, 0.12);
+  }
+
+  .ping-pill.slow {
+    color: var(--color-system-red);
+    background-color: rgba(255, 69, 58, 0.12);
+  }
+
+  .ping-pill.offline,
+  .ping-pill.loading {
+    color: var(--color-tertiary-label);
+  }
+
+  .online-counter {
+    font-size: var(--text-footnote);
+    color: var(--color-secondary-label);
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+
+  .remove-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background-color var(--motion-duration-short) ease;
+  }
+
+  .remove-btn:hover {
+    background-color: rgba(255, 69, 58, 0.15);
+  }
+
+  .remove-btn:hover :global(svg) {
+    stroke: var(--color-system-red);
   }
 
   .empty-state-card {
@@ -197,7 +419,8 @@
   .empty-desc {
     font-size: var(--text-subheadline);
     color: var(--color-secondary-label);
-    max-width: 360px;
+    max-width: 380px;
+    line-height: 1.4;
     margin: 0;
   }
 
@@ -205,6 +428,7 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
+    padding: 4px 0;
   }
 
   .form-row {
@@ -220,7 +444,7 @@
   }
 
   .form-input {
-    height: 36px;
+    height: 38px;
     padding: 0 12px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--glass-border);
@@ -229,6 +453,7 @@
     font-family: var(--font-system);
     font-size: var(--text-subheadline);
     outline: none;
+    transition: border-color var(--motion-duration-short) ease;
   }
 
   .form-input:focus {

@@ -1,22 +1,25 @@
 <!--
-  Wex Launcher — Screen «Играть»
-  Rules:
-  - Version selection: 1.20.1 / 1.21.1 (concise labels per HIG Segmented Controls)
-  - Player nickname input
-  - High contrast banner (title in label-color for dark surface, strict grid alignment)
-  - Large prominent «Играть» action button
-  - Real installation and sync progress indicator
-  - No fabricated server online counts
+  Wex Launcher — Screen «Играть» (Иммерсивный дизайн Apple HIG)
+  Specification:
+  - Real in-game scenery background (Aura client sky/world), crisp without blur.
+  - Floating Liquid Glass launch dock and info cards.
+  - Left-aligned typography (Apple scale, natural Russian, no marketing fluff).
+  - Version selector with full label visibility (no truncation).
+  - Dynamic runtime Java (1.20.1 -> Java 17, 1.21.1 -> Java 21).
+  - Real IPC data for servers and empty states without fabricated metrics.
 -->
 <script lang="ts">
+  import { onMount } from 'svelte';
   import Button from '../components/Button.svelte';
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import ProgressBar from '../components/ProgressBar.svelte';
   import Icon from '../components/icons/Icon.svelte';
+  import { theme } from '../design/theme.svelte';
 
   interface Props {
     selectedVersion?: string;
     playerName?: string;
+    clientStatus?: string;
     isLaunching?: boolean;
     progressPercentage?: number;
     progressStage?: string;
@@ -29,6 +32,7 @@
   let {
     selectedVersion = $bindable('1.21.1'),
     playerName = $bindable('Player'),
+    clientStatus = '',
     isLaunching = false,
     progressPercentage = 0,
     progressStage = 'Готов к запуску',
@@ -38,311 +42,470 @@
     oncancel,
   }: Props = $props();
 
-  // Concise version labels per Apple HIG Segmented Controls
   const versions = [
     { value: '1.20.1', label: '1.20.1' },
     { value: '1.21.1', label: '1.21.1' },
   ];
+
+  // Dynamic Java runtime strictly matches selected version
+  let javaRuntime = $derived(
+    selectedVersion === '1.20.1' ? 'Java 17 • 64-bit' : 'Java 21 • 64-bit'
+  );
+
+  // News items dynamically fetched from wex-social / IPC
+  let newsTitle = $state<string>('');
+  let newsItems = $state<string[]>([]);
+
+  // Recent server state from IPC
+  let recentServer = $state<{ name: string; address: string; ping_ms?: number } | null>(null);
+
+  onMount(async () => {
+    // 1. Fetch servers from IPC
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const list = await invoke<Array<{ name: string; address: string; ping_ms?: number }>>('list_servers');
+      if (list && list.length > 0) {
+        recentServer = list[0];
+      } else {
+        recentServer = null;
+      }
+    } catch {
+      recentServer = null;
+    }
+
+    // 2. Fetch news from wex-social / IPC
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const news = await invoke<Array<{ version?: string; short_title?: string; items?: Array<{ text: string }> }>>('social_get_news');
+      if (news && news.length > 0) {
+        newsTitle = news[0].version || news[0].short_title || '';
+        newsItems = (news[0].items || []).map((i) => i.text).filter(Boolean);
+      } else {
+        newsItems = [];
+      }
+    } catch {
+      newsItems = [];
+    }
+  });
 </script>
 
-<div class="play-screen">
-  <!-- Hero Art Banner -->
-  <div class="hero-banner">
-    <div class="hero-gradient"></div>
-    <div class="hero-content">
-      <div class="hero-badge">
-        <span class="status-dot"></span>
-        <span>Aura Pack • 1.20.1 / 1.21.1</span>
-      </div>
-      <h2 class="hero-title">Aura Client</h2>
-      <p class="hero-subtitle">
-        Собственный GL-рендер, размытие Liquid Glass, 3D-эффекты и оптимизация кадров.
-      </p>
-    </div>
-  </div>
+<div class="play-screen-immersive">
+  <!-- Interactive Content Layer -->
+  <div class="play-content-container">
+    <!-- Top Header: Natural Apple Typography -->
+    <header class="app-header-area">
+      <h1 class="game-heading">Minecraft</h1>
+      <p class="game-subheading">Клиент Wex • Версия {selectedVersion}</p>
+    </header>
 
-  <!-- Launch Configuration Area -->
-  <div class="launch-card">
-    <div class="launch-controls">
-      <!-- Version Selector -->
-      <div class="control-group version-group">
-        <label class="control-label" for="version-select">Версия игры</label>
-        <SegmentedControl
-          options={versions}
-          bind:value={selectedVersion}
-          disabled={isLaunching}
-        />
-      </div>
-
-      <!-- Player Nickname -->
-      <div class="control-group nickname-group">
-        <label class="control-label" for="nickname-input">Имя игрока</label>
-        <div class="nickname-input-box">
-          <Icon name="friends" size={16} color="var(--color-tertiary-label)" />
-          <input
-            id="nickname-input"
-            type="text"
-            bind:value={playerName}
-            disabled={isLaunching}
-            placeholder="Никнейм"
-            class="nickname-input"
-            maxlength={16}
-          />
+    <!-- Middle Shelf: Real Updates & Activity Glance -->
+    <div class="dashboard-shelf">
+      <!-- Changelog Card -->
+      <div class="glass-card updates-card">
+        <div class="card-title-row">
+          <Icon name="play" size={15} color="var(--color-system-blue)" />
+          <span class="card-title">Журнал изменений</span>
+          {#if newsTitle}
+            <span class="card-meta">{newsTitle}</span>
+          {/if}
         </div>
-      </div>
-    </div>
-
-    <!-- Progress Bar (shown when launching or syncing) -->
-    {#if isLaunching}
-      <div class="progress-section">
-        <ProgressBar
-          percentage={progressPercentage}
-          label={progressStage}
-          detail={progressSpeed ? `${progressSpeed} • ${progressDetail}` : progressDetail}
-          height={8}
-        />
-      </div>
-    {/if}
-
-    <!-- Launch Action Bar -->
-    <div class="launch-actions">
-      <div class="status-summary">
-        <div class="summary-item">
-          <Icon name="play" size={14} color="var(--color-system-green)" />
-          <span>Aura Client готов</span>
-        </div>
-        <div class="summary-item">
-          <Icon name="cpu" size={14} color="var(--color-secondary-label)" />
-          <span>Java 21 • 64-bit</span>
-        </div>
-      </div>
-
-      <div class="action-buttons">
-        {#if isLaunching}
-          <Button variant="secondary" size="large" onclick={oncancel}>
-            Отмена
-          </Button>
+        {#if newsItems.length > 0}
+          <ul class="changelog-points">
+            {#each newsItems as item}
+              <li>{item}</li>
+            {/each}
+          </ul>
         {:else}
-          <Button
-            variant="primary"
-            size="large"
-            onclick={onlaunch}
-            disabled={!playerName.trim()}
-          >
-            <Icon name="play" size={18} color="#ffffff" />
-            <span>Играть</span>
-          </Button>
+          <div class="empty-status-text">Новостей пока нет</div>
         {/if}
       </div>
+
+      <!-- Recent Server & Friends Glance -->
+      <div class="glass-card status-card">
+        <div class="card-title-row">
+          <Icon name="server" size={15} color="var(--color-secondary-label)" />
+          <span class="card-title">Последний сервер</span>
+        </div>
+
+        {#if recentServer}
+          <div class="recent-server-item">
+            <span class="status-indicator-green"></span>
+            <div class="server-text-wrap">
+              <span class="server-display-name">{recentServer.name}</span>
+              <span class="server-network-meta">
+                {recentServer.address}{recentServer.ping_ms !== undefined ? ` • ${recentServer.ping_ms} мс` : ''}
+              </span>
+            </div>
+          </div>
+        {:else}
+          <div class="empty-status-text">Вы ещё не играли на серверах</div>
+        {/if}
+
+        <div class="shelf-card-divider"></div>
+
+        <div class="friends-glance-row">
+          <Icon name="friends" size={15} color="var(--color-tertiary-label)" />
+          <span class="friends-status-label">Нет друзей в игре</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Floating Launch Dock (Liquid Glass) -->
+    <div class="launch-dock">
+      {#if isLaunching}
+        <div class="dock-progress-mode dock-progress">
+          <ProgressBar
+            percentage={progressPercentage}
+            label={progressStage}
+            detail={progressSpeed ? `${progressSpeed} • ${progressDetail}` : progressDetail}
+            height={8}
+          />
+          <div class="dock-cancel-action dock-cancel">
+            <Button variant="secondary" size="regular" onclick={oncancel}>
+              Отмена
+            </Button>
+          </div>
+        </div>
+      {:else}
+        <div class="dock-controls-row">
+          <!-- Version Selector -->
+          <div class="dock-block version-block">
+            <span class="dock-caption">Версия игры</span>
+            <div class="version-segmented-container">
+              <SegmentedControl
+                options={versions}
+                bind:value={selectedVersion}
+                disabled={isLaunching}
+              />
+            </div>
+          </div>
+
+          <div class="dock-vertical-divider"></div>
+
+          <!-- Player Nickname -->
+          <div class="dock-block nickname-block">
+            <span class="dock-caption">Имя игрока</span>
+            <div class="nickname-field-box">
+              <Icon name="friends" size={15} color="var(--color-tertiary-label)" />
+              <input
+                type="text"
+                bind:value={playerName}
+                placeholder="Никнейм"
+                class="player-name-input nickname-input"
+                maxlength={16}
+                disabled={isLaunching}
+              />
+            </div>
+          </div>
+
+          <div class="dock-vertical-divider"></div>
+
+          <!-- Java Environment -->
+          <div class="dock-block tech-block">
+            <span class="dock-caption">Среда выполнения</span>
+            <span class="tech-runtime-text">{javaRuntime}</span>
+          </div>
+
+          <!-- Primary Play Action Button -->
+          <div class="dock-primary-action dock-action">
+            <Button
+              variant="primary"
+              size="large"
+              onclick={onlaunch}
+              disabled={!playerName.trim()}
+            >
+              <Icon name="play" size={18} color="#ffffff" />
+              <span>Играть</span>
+            </Button>
+          </div>
+        </div>
+      {/if}
     </div>
   </div>
 </div>
 
 <style>
-  .play-screen {
+  .play-screen-immersive {
+    position: relative;
+    width: 100%;
+    height: 100%;
     display: flex;
     flex-direction: column;
-    height: 100%;
-    padding: 24px;
-    gap: 20px;
-    overflow-y: auto;
-    font-family: var(--font-system);
-    box-sizing: border-box;
-  }
-
-  .hero-banner {
-    position: relative;
-    height: 220px;
-    border-radius: var(--radius-xl);
     overflow: hidden;
-    background: linear-gradient(135deg, #0e1e38 0%, #17325c 50%, #0d4b85 100%);
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25);
+  }
+
+  .play-content-container {
+    position: relative;
+    z-index: 1;
     display: flex;
-    align-items: flex-end;
-    padding: 28px;
-    border: 1px solid var(--glass-border);
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+    padding: 36px 44px 28px;
     box-sizing: border-box;
   }
 
-  :global([data-theme="light"]) .hero-banner {
-    background: linear-gradient(135deg, #13396d 0%, #1e5ba3 50%, #2f7acc 100%);
-  }
-
-  .hero-gradient {
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(circle at 80% 20%, rgba(0, 145, 255, 0.35), transparent 60%);
-    pointer-events: none;
-  }
-
-  .hero-content {
-    position: relative;
-    z-index: 2;
+  /* Header Area: Apple Large Title */
+  .app-header-area {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    text-align: left;
-    gap: 8px;
-    color: #ffffff;
-    width: 100%;
+    padding-top: 24px;
   }
 
-  .hero-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: var(--radius-pill);
-    background-color: rgba(255, 255, 255, 0.2);
-    backdrop-filter: blur(10px);
-    font-size: var(--text-caption-1);
-    font-weight: 600;
-    color: #ffffff !important;
-    width: fit-content;
+  .game-heading {
+    font-size: 46px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.08;
+    margin: 0 0 6px;
+    color: var(--color-label);
+  }
+
+  .game-subheading {
+    font-size: 16px;
+    color: var(--color-secondary-label);
     margin: 0;
+    font-weight: 500;
   }
 
-  .status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background-color: #30d158;
-    box-shadow: 0 0 8px #30d158;
-  }
-
-  .hero-title {
-    font-size: var(--text-large-title);
-    font-weight: 800;
-    letter-spacing: var(--tracking-large-title);
-    margin: 0;
-    padding: 0;
-    line-height: var(--line-large-title);
-    color: #ffffff !important;
-    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
-  }
-
-  .hero-subtitle {
-    font-size: var(--text-subheadline);
-    color: rgba(255, 255, 255, 0.9) !important;
-    max-width: 540px;
-    line-height: 1.4;
-    margin: 0;
-    padding: 0;
-    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
-  }
-
-  .launch-card {
-    background-color: var(--card-bg);
-    backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-lg);
-    padding: 24px;
+  /* Shelf Cards: Elevated Composition */
+  .dashboard-shelf {
     display: flex;
-    flex-direction: column;
-    gap: 20px;
-    box-shadow: var(--glass-shadow);
+    gap: 24px;
+    margin-top: 24px;
+    margin-bottom: auto;
+    flex-wrap: wrap;
+  }
+
+  .glass-card {
+    background: var(--color-system-ultra-thin-material);
+    backdrop-filter: blur(28px) saturate(160%);
+    -webkit-backdrop-filter: blur(28px) saturate(160%);
+    border: 1px solid var(--color-separator);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
     box-sizing: border-box;
   }
 
-  .launch-controls {
-    display: flex;
-    gap: 20px;
-    flex-wrap: wrap;
+  .updates-card {
+    flex: 1 1 360px;
+    max-width: 480px;
   }
 
-  .control-group {
+  .status-card {
+    flex: 0 1 300px;
     display: flex;
     flex-direction: column;
+    justify-content: center;
+  }
+
+  .card-title-row {
+    display: flex;
+    align-items: center;
     gap: 8px;
+    margin-bottom: 10px;
   }
 
-  .version-group {
-    flex: 2;
-    min-width: 280px;
-  }
-
-  .nickname-group {
-    flex: 1;
-    min-width: 180px;
-  }
-
-  .control-label {
-    font-size: var(--text-caption-1);
-    font-weight: 600;
-    color: var(--color-secondary-label);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .nickname-input-box {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    height: 34px;
-    padding: 0 12px;
-    background-color: var(--color-tertiary-system-fill);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-sm);
-    transition: border-color var(--motion-duration-short) ease;
-  }
-
-  .nickname-input-box:focus-within {
-    border-color: var(--color-system-blue);
-    background-color: var(--card-bg);
-  }
-
-  .nickname-input {
-    flex: 1;
-    border: none;
-    background: transparent;
-    font-family: var(--font-system);
+  .card-title {
     font-size: var(--text-subheadline);
+    font-weight: 600;
     color: var(--color-label);
-    font-weight: 500;
-    outline: none;
   }
 
-  .progress-section {
-    padding-top: 8px;
-    animation: fadeIn 0.25s ease;
+  .card-meta {
+    margin-left: auto;
+    font-size: var(--text-caption-2);
+    color: var(--color-tertiary-label);
   }
 
-  .launch-actions {
+  .changelog-points {
+    margin: 0;
+    padding-left: 18px;
+    list-style-type: disc;
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-top: 12px;
-    border-top: 1px solid var(--color-separator);
-    flex-wrap: wrap;
-    gap: 16px;
-  }
-
-  .status-summary {
-    display: flex;
-    gap: 20px;
-  }
-
-  .summary-item {
-    display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: 6px;
     font-size: var(--text-footnote);
     color: var(--color-secondary-label);
+    line-height: 1.4;
   }
 
-  .action-buttons {
+  .recent-server-item {
     display: flex;
-    gap: 12px;
+    align-items: center;
+    gap: 10px;
+    margin: 2px 0;
   }
 
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-      transform: translateY(-6px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+  .status-indicator-green {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--color-system-green);
+    flex-shrink: 0;
+  }
+
+  .server-text-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .server-display-name {
+    font-size: var(--text-subheadline);
+    font-weight: 500;
+    color: var(--color-label);
+  }
+
+  .server-network-meta {
+    font-size: var(--text-caption-2);
+    color: var(--color-secondary-label);
+  }
+
+  .empty-status-text {
+    font-size: var(--text-footnote);
+    color: var(--color-tertiary-label);
+    padding: 4px 0;
+  }
+
+  .shelf-card-divider {
+    height: 1px;
+    background-color: var(--color-separator);
+    margin: 10px 0 8px;
+  }
+
+  .friends-glance-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--text-caption-1);
+    color: var(--color-tertiary-label);
+  }
+
+  .friends-status-label {
+    font-size: var(--text-footnote);
+  }
+
+  /* Bottom Launch Dock */
+  .launch-dock {
+    background: var(--color-system-thin-material);
+    backdrop-filter: blur(36px) saturate(180%);
+    -webkit-backdrop-filter: blur(36px) saturate(180%);
+    border: 1px solid var(--color-separator);
+    border-radius: var(--radius-xl);
+    padding: 12px 20px;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
+  }
+
+  :global([data-theme='light']) .launch-dock {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  }
+
+  .dock-controls-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .dock-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .dock-caption {
+    font-size: var(--text-caption-2);
+    font-weight: 500;
+    color: var(--color-secondary-label);
+    letter-spacing: 0.01em;
+  }
+
+  .version-block {
+    min-width: 175px;
+    flex-shrink: 0;
+  }
+
+  .version-segmented-container {
+    width: 100%;
+  }
+
+  .dock-vertical-divider {
+    width: 1px;
+    height: 34px;
+    background-color: var(--color-separator);
+    margin: 0 2px;
+    flex-shrink: 0;
+  }
+
+  .nickname-block {
+    flex-shrink: 0;
+  }
+
+  .nickname-field-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--color-tertiary-system-fill);
+    border: 1px solid var(--color-separator);
+    border-radius: var(--radius-sm);
+    padding: 0 10px;
+    height: 34px;
+    box-sizing: border-box;
+  }
+
+  .player-name-input {
+    border: none;
+    background: transparent;
+    color: var(--color-label);
+    font-size: var(--text-subheadline);
+    font-weight: 500;
+    width: 130px;
+    outline: none;
+  }
+
+  .player-name-input::placeholder {
+    color: var(--color-tertiary-label);
+  }
+
+  .tech-block {
+    min-width: 120px;
+  }
+
+  .tech-runtime-text {
+    font-size: var(--text-footnote);
+    color: var(--color-label);
+    font-weight: 500;
+    height: 34px;
+    display: flex;
+    align-items: center;
+  }
+
+  .dock-primary-action {
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  .dock-primary-action :global(.apple-button) {
+    height: 44px;
+    padding: 0 24px;
+    font-size: var(--text-headline);
+    border-radius: var(--radius-md);
+  }
+
+  /* Progress mode */
+  .dock-progress-mode {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 4px 0;
+  }
+
+  .dock-progress-mode :global(.progress-bar-container) {
+    flex: 1;
+  }
+
+  .dock-cancel-action {
+    flex-shrink: 0;
   }
 </style>

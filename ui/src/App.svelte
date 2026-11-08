@@ -14,6 +14,7 @@
 
   import PlayScreen from './lib/screens/PlayScreen.svelte';
   import ServersScreen from './lib/screens/ServersScreen.svelte';
+  import LobbyScreen from './lib/screens/LobbyScreen.svelte';
   import FriendsScreen from './lib/screens/FriendsScreen.svelte';
   import ModsScreen from './lib/screens/ModsScreen.svelte';
   import SettingsScreen from './lib/screens/SettingsScreen.svelte';
@@ -26,11 +27,26 @@
   // Launch state
   let selectedVersion = $state('1.21.1');
   let playerName = $state('Player');
+  let clientStatus = $state('Клиент Wex готов');
   let isLaunching = $state(false);
   let progressPercentage = $state(0);
   let progressStage = $state('Готов к запуску');
   let progressDetail = $state('Нажмите «Играть» для старта');
   let progressSpeed = $state('');
+
+  // Dynamic background based on theme and time of day
+  let currentHour = new Date().getHours();
+  let bgImage = $derived.by(() => {
+    if (theme.isDark) {
+      return currentHour >= 22 || currentHour < 5
+        ? '/backgrounds/night.jpg'
+        : '/backgrounds/sunset.jpg';
+    } else {
+      return currentHour >= 6 && currentHour < 12
+        ? '/backgrounds/morning.jpg'
+        : '/backgrounds/day.jpg';
+    }
+  });
 
   // Toast stack
   let toasts = $state<ToastMessage[]>([]);
@@ -44,10 +60,11 @@
     toasts = toasts.filter((t) => t.id !== id);
   }
 
-  // Sidebar navigation destinations (no fake badges without real data)
+  // Sidebar navigation destinations per SPEC.md 1.2
   const sidebarItems: SidebarItem[] = [
     { id: 'play', label: 'Играть', icon: 'play' },
     { id: 'servers', label: 'Серверы', icon: 'server' },
+    { id: 'lobby', label: 'Лобби', icon: 'lobby' },
     { id: 'friends', label: 'Друзья', icon: 'friends' },
     { id: 'mods', label: 'Моды', icon: 'mods' },
     { id: 'settings', label: 'Настройки', icon: 'settings' },
@@ -56,6 +73,7 @@
   const screenTitles: Record<string, string> = {
     play: 'Играть',
     servers: 'Серверы',
+    lobby: 'Кооператив и Лобби',
     friends: 'Друзья',
     mods: 'Моды и шейдеры',
     settings: 'Настройки',
@@ -115,8 +133,8 @@
     } catch {
       // Fallback in-browser progress simulation
       const steps = [
-        { stage: 'Проверка клиента Aura', pct: 15, detail: 'Проверка целостности jar-файлов', speed: '' },
-        { stage: 'Синхронизация Aura-Pack', pct: 40, detail: 'Загрузка манифеста модов (142 мода)', speed: '14.8 МБ/с' },
+        { stage: 'Проверка клиента Wex', pct: 15, detail: 'Проверка целостности jar-файлов', speed: '' },
+        { stage: 'Синхронизация сборки Wex', pct: 40, detail: 'Загрузка манифеста модов (142 мода)', speed: '14.8 МБ/с' },
         { stage: 'Проверка Java Runtime', pct: 75, detail: 'OpenJDK 21 HotSpot готов к старту', speed: '8.2 МБ/с' },
         { stage: 'Запуск Minecraft', pct: 100, detail: 'Инициализация графической сессии...', speed: '' },
       ];
@@ -163,10 +181,10 @@
       const hash = window.location.hash.replace(/^#/, '');
       if (!hash) return;
       const params = new URLSearchParams(hash);
-      const screen = params.get('screen');
+      const screen = params.get('screen') || params.get('tab');
       const t = params.get('theme');
 
-      if (screen && ['play', 'servers', 'friends', 'mods', 'settings', 'showcase'].includes(screen)) {
+      if (screen && ['play', 'servers', 'lobby', 'friends', 'mods', 'settings', 'showcase'].includes(screen)) {
         activeTab = screen;
       }
       if (t === 'light' || t === 'dark') {
@@ -208,6 +226,7 @@
           exit_code?: number;
         }>('launch-status', (event) => {
           const s = event.payload;
+          clientStatus = s.message;
           if (s.state === 'running') {
             isLaunching = false;
             addToast('success', 'Minecraft запущен', s.message);
@@ -233,6 +252,11 @@
 </script>
 
 <div class="wex-shell" data-theme={theme.isDark ? 'dark' : 'light'}>
+  <!-- Real Game Scenery Backdrop under entire app shell -->
+  <div class="scenery-canvas" style="background-image: url('{bgImage}');">
+    <div class="scenery-vignette"></div>
+  </div>
+
   <!-- Liquid Glass Sidebar -->
   <Sidebar
     items={sidebarItems}
@@ -240,16 +264,6 @@
   >
     {#snippet footer()}
       <div class="sidebar-footer-controls">
-        <button
-          type="button"
-          class="showcase-nav-btn"
-          class:active={activeTab === 'showcase'}
-          onclick={() => (activeTab = 'showcase')}
-        >
-          <Icon name="cpu" size={16} color="var(--color-secondary-label)" />
-          <span>Компоненты HIG</span>
-        </button>
-
         <div class="theme-quick-toggle">
           <Button
             variant="ghost"
@@ -282,6 +296,7 @@
         <PlayScreen
           bind:selectedVersion
           bind:playerName
+          {clientStatus}
           {isLaunching}
           {progressPercentage}
           {progressStage}
@@ -292,6 +307,8 @@
         />
       {:else if activeTab === 'servers'}
         <ServersScreen />
+      {:else if activeTab === 'lobby'}
+        <LobbyScreen />
       {:else if activeTab === 'friends'}
         <FriendsScreen />
       {:else if activeTab === 'mods'}
@@ -327,6 +344,38 @@
     box-sizing: border-box;
   }
 
+  .scenery-canvas {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center 30%;
+    transition: background-image 0.5s ease;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .scenery-vignette {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.40) 0%,
+      rgba(0, 0, 0, 0.15) 35%,
+      rgba(0, 0, 0, 0.50) 75%,
+      rgba(0, 0, 0, 0.82) 100%
+    );
+  }
+
+  :global([data-theme='light']) .scenery-vignette {
+    background: linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.65) 0%,
+      rgba(255, 255, 255, 0.30) 35%,
+      rgba(255, 255, 255, 0.65) 75%,
+      rgba(255, 255, 255, 0.88) 100%
+    );
+  }
+
   .wex-main {
     flex: 1;
     display: flex;
@@ -334,8 +383,9 @@
     height: 100%;
     min-width: 0;
     overflow: hidden;
-    background-color: var(--color-system-background);
+    background-color: transparent;
     box-sizing: border-box;
+    z-index: 1;
   }
 
   .screen-viewport {
@@ -344,38 +394,13 @@
     position: relative;
     overflow: hidden;
     box-sizing: border-box;
+    z-index: 1;
   }
 
   .sidebar-footer-controls {
     display: flex;
     flex-direction: column;
     gap: 8px;
-  }
-
-  .showcase-nav-btn {
-    width: 100%;
-    height: 32px;
-    padding: 0 10px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border: none;
-    border-radius: var(--radius-sm);
-    background-color: transparent;
-    cursor: pointer;
-    font-size: var(--text-footnote);
-    color: var(--color-secondary-label);
-    transition: background-color var(--motion-duration-short) ease;
-  }
-
-  .showcase-nav-btn:hover {
-    background-color: var(--color-quaternary-system-fill);
-  }
-
-  .showcase-nav-btn.active {
-    background-color: var(--color-system-fill);
-    color: var(--color-system-blue);
-    font-weight: 600;
   }
 
   .theme-quick-toggle {

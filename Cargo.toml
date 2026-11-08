@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "core/wex-net",
     "app/src-tauri",
 ]
 resolver = "2"

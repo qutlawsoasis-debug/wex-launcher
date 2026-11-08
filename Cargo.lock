@@ -4965,6 +4965,7 @@ dependencies = [
  "wex-extras",
  "wex-ipc",
  "wex-net",
+ "wex-social",
 ]
 
 [[package]]

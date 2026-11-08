@@ -17,6 +17,7 @@
     icon:
       | 'play'
       | 'server'
+      | 'lobby'
       | 'friends'
       | 'mods'
       | 'settings';

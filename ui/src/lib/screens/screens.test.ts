@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mount, unmount } from 'svelte';
 import PlayScreen from './PlayScreen.svelte';
+import Mockup1 from './mockups/Mockup1.svelte';
+import Mockup2 from './mockups/Mockup2.svelte';
+import Mockup3 from './mockups/Mockup3.svelte';
 import ServersScreen from './ServersScreen.svelte';
+import LobbyScreen from './LobbyScreen.svelte';
 import FriendsScreen from './FriendsScreen.svelte';
 import ModsScreen from './ModsScreen.svelte';
 import SettingsScreen from './SettingsScreen.svelte';
@@ -18,24 +22,45 @@ describe('Wex Launcher Screens', () => {
     target.remove();
   });
 
-  it('renders PlayScreen with version selector and Play button', () => {
+  it('renders PlayScreen with version selector, Play button, and dynamic Java 21 for 1.21.1', () => {
     const comp = mount(PlayScreen, {
       target,
       props: {
         selectedVersion: '1.21.1',
         playerName: 'Steve',
+        clientStatus: 'Клиент Wex готов',
         isLaunching: false,
       },
     });
 
-    expect(target.querySelector('.hero-title')?.textContent).toBe('Aura Client');
-    const playBtn = target.querySelector('.action-buttons button');
+    expect(target.textContent).toContain('Minecraft');
+    expect(target.textContent).toContain('Клиент Wex');
+    const playBtn = target.querySelector('.dock-action button');
     expect(playBtn).not.toBeNull();
     expect(playBtn?.textContent).toContain('Играть');
 
-    const nicknameInput = target.querySelector('#nickname-input') as HTMLInputElement;
+    const nicknameInput = target.querySelector('.nickname-input') as HTMLInputElement;
     expect(nicknameInput?.value).toBe('Steve');
 
+    // Java runtime must strictly be Java 21 for 1.21.1
+    expect(target.textContent).toContain('Java 21 • 64-bit');
+
+    unmount(comp);
+  });
+
+  it('renders PlayScreen with dynamic Java 17 for 1.20.1 and empty status fallback', () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.20.1',
+        playerName: 'Alex',
+        clientStatus: '',
+        isLaunching: false,
+      },
+    });
+
+    // Java runtime must strictly be Java 17 for 1.20.1
+    expect(target.textContent).toContain('Java 17 • 64-bit');
     unmount(comp);
   });
 
@@ -47,26 +72,96 @@ describe('Wex Launcher Screens', () => {
         playerName: 'Alex',
         isLaunching: true,
         progressPercentage: 55,
-        progressStage: 'Синхронизация Aura-Pack',
+        progressStage: 'Синхронизация сборки Wex',
         progressDetail: 'Загрузка шейдеров...',
       },
     });
 
-    const progress = target.querySelector('.progress-section');
+    const progress = target.querySelector('.dock-progress');
     expect(progress).not.toBeNull();
-    expect(target.querySelector('.progress-label')?.textContent).toBe('Синхронизация Aura-Pack');
+    expect(target.querySelector('.progress-label')?.textContent).toBe('Синхронизация сборки Wex');
 
-    const cancelBtn = target.querySelector('.action-buttons button');
+    const cancelBtn = target.querySelector('.dock-cancel button');
     expect(cancelBtn?.textContent).toContain('Отмена');
 
     unmount(comp);
   });
 
-  it('renders ServersScreen with official and custom servers', () => {
+  it('renders Mockup 2 (Editorial) with showcase banner, changelog, and servers', () => {
+    const comp = mount(Mockup2, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Alex',
+      },
+    });
+
+    expect(target.textContent).toContain('Wex 1.21.1');
+    expect(target.textContent).toContain('Новое в сборке');
+    expect(target.textContent).toContain('Журнал изменений');
+    expect(target.textContent).toContain('Быстрый вход');
+    expect(target.querySelector('.strip-right button')?.textContent).toContain('Играть');
+
+    unmount(comp);
+  });
+
+  it('renders Mockup 3 (Minimalist) with player capsule and quiet feed', () => {
+    const comp = mount(Mockup3, {
+      target,
+      props: {
+        selectedVersion: '1.20.1',
+        playerName: 'Steve',
+      },
+    });
+
+    expect(target.textContent).toContain('Minecraft');
+    expect(target.textContent).toContain('Клиент Wex • Fabric');
+    expect(target.textContent).toContain('Последние изменения');
+    expect(target.textContent).toContain('Java 17 • 64-bit');
+    expect(target.querySelector('.launch-btn-wrap button')?.textContent).toContain('Играть');
+
+    unmount(comp);
+  });
+
+  it('renders PlayScreen with authentic empty states for news and servers when without IPC data', () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+      },
+    });
+
+    // Without IPC, changelog must show authentic empty state: «Новостей пока нет»
+    expect(target.textContent).toContain('Новостей пока нет');
+    // Without IPC, recent server must show authentic empty state: «Вы ещё не играли на серверах»
+    expect(target.textContent).toContain('Вы ещё не играли на серверах');
+    // Zero hardcoded fabricated numbers or mock domains
+    expect(target.textContent).not.toContain('mc.wexmc.net');
+    expect(target.textContent).not.toContain('Сборка 2.4');
+
+    unmount(comp);
+  });
+
+  it('renders ServersScreen with empty state when without IPC data and has add server action', () => {
     const comp = mount(ServersScreen, { target });
-    const rows = target.querySelectorAll('.apple-row');
-    expect(rows.length).toBeGreaterThan(0);
-    expect(target.textContent).toContain('Aura Official');
+    expect(target.textContent).toContain('Список серверов пуст');
+    expect(target.textContent).toContain('Добавить сервер');
+    expect(target.textContent).not.toContain('mc.wexmc.net');
+    unmount(comp);
+  });
+
+  it('renders LobbyScreen with LAN/Cloud mode switch, guest code input, and world picker', () => {
+    const comp = mount(LobbyScreen, { target });
+    expect(target.textContent).toContain('LAN и Туннели');
+    expect(target.textContent).toContain('Облачные миры');
+    expect(target.textContent).toContain('Присоединиться по коду');
+    expect(target.textContent).toContain('Открыть локальный мир');
+
+    const codeInput = target.querySelector('.code-input') as HTMLInputElement;
+    expect(codeInput).not.toBeNull();
+    expect(codeInput.placeholder).toBe('#A7X9');
+
     unmount(comp);
   });
 
@@ -81,16 +176,22 @@ describe('Wex Launcher Screens', () => {
     const comp = mount(ModsScreen, { target });
     expect(target.textContent).toContain('Sodium');
     expect(target.textContent).toContain('Iris Shaders');
-    expect(target.textContent).toContain('Aura Client');
+    expect(target.textContent).toContain('Wex Client');
     unmount(comp);
   });
 
-  it('renders SettingsScreen with appearance options and RAM slider', () => {
+  it('renders SettingsScreen with RAM slider, graphics presets, appearance, and About Wex', () => {
     const comp = mount(SettingsScreen, { target });
     expect(target.textContent).toContain('Тема оформления');
     expect(target.textContent).toContain('Цветовой акцент');
-    expect(target.textContent).toContain('Reduce Motion');
-    expect(target.textContent).toContain('Reduce Transparency');
+    expect(target.textContent).toContain('Уменьшение движения');
+    expect(target.textContent).toContain('Уменьшение прозрачности');
+    expect(target.textContent).toContain('Выделение оперативной памяти');
+    expect(target.textContent).toContain('Графический пресет');
+    expect(target.textContent).toContain('О программе');
+    expect(target.textContent).toContain('Tauri 2');
+    expect(target.textContent).not.toContain('.minecraft');
+    expect(target.textContent).toContain('Wex');
     unmount(comp);
   });
 });
