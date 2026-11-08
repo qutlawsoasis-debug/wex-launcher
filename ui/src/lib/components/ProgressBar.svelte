@@ -129,4 +129,27 @@
       left: 100%;
     }
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    .progress-fill {
+      transition: none !important;
+    }
+    .progress-indeterminate {
+      animation: none !important;
+      left: 20% !important;
+      width: 60% !important;
+      opacity: 0.8;
+    }
+  }
+
+  :global([data-reduce-motion="true"]) .progress-fill {
+    transition: none !important;
+  }
+
+  :global([data-reduce-motion="true"]) .progress-indeterminate {
+    animation: none !important;
+    left: 20% !important;
+    width: 60% !important;
+    opacity: 0.8;
+  }
 </style>
