@@ -132,6 +132,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ReleaseNoteItemDto::decl(),
         ReleaseNoteVersionDto::decl(),
         UpdateCheckResultDto::decl(),
+        DeepLinkActionDto::decl(),
     ];
     for decl in models_decls {
         models_ts.push_str(&format!("export {};\n\n", decl));
@@ -144,6 +145,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
     cmd_ts.push_str("    AchievementDefinitionDto,\n");
     cmd_ts.push_str("    AchievementProgressDto,\n");
     cmd_ts.push_str("    CrashDiagnosisDto,\n");
+    cmd_ts.push_str("    DeepLinkActionDto,\n");
     cmd_ts.push_str("    DiscordActivityDto,\n");
     cmd_ts.push_str("    FriendItemDto,\n");
     cmd_ts.push_str("    FriendProfileDto,\n");
@@ -259,6 +261,9 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         SocialGetNewsRequest::decl(),
         SocialGetNewsResponse::decl(),
         SocialCheckLauncherUpdateRequest::decl(),
+        SocialCheckLauncherUpdateResponse::decl(),
+        ParseDeepLinkRequest::decl(),
+        ParseDeepLinkResponse::decl(),
     ];
     for decl in cmd_decls {
         cmd_ts.push_str(&format!("export {};\n\n", decl));
@@ -352,6 +357,9 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
             "SOCIAL_CHECK_LAUNCHER_UPDATE",
             CMD_SOCIAL_CHECK_LAUNCHER_UPDATE,
         ),
+        ("DEEP_LINK_PARSE", CMD_DEEP_LINK_PARSE),
+        ("DEEP_LINK_GET_PENDING", CMD_DEEP_LINK_GET_PENDING),
+        ("DEEP_LINK_CLEAR_PENDING", CMD_DEEP_LINK_CLEAR_PENDING),
     ];
     for (k, v) in command_names {
         cmd_ts.push_str(&format!("    {}: \"{}\",\n", k, v));

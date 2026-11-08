@@ -1202,3 +1202,13 @@ impl From<wex_social::UpdateCheckResult> for UpdateCheckResultDto {
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct DeepLinkActionDto {
+    pub kind: String,
+    pub target: String,
+    pub raw_uri: String,
+    pub title: String,
+    pub subtitle: String,
+    pub confirm_text: String,
+}

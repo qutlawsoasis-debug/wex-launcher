@@ -25,7 +25,8 @@
   import SettingsScreen from './lib/screens/SettingsScreen.svelte';
   import ShowcaseScreen from './lib/screens/ShowcaseScreen.svelte';
   import CrashSheet from './lib/components/CrashSheet.svelte';
-  import type { CrashDiagnosisDto } from './lib/ipc/generated/models';
+  import DeepLinkConfirmationModal from './lib/components/DeepLinkConfirmationModal.svelte';
+  import type { CrashDiagnosisDto, DeepLinkActionDto } from './lib/ipc/generated/models';
 
   // Navigation state
   let activeTab = $state('play');
@@ -35,6 +36,78 @@
   // Crash report modal state
   let crashSheetOpen = $state(false);
   let currentCrashDiagnosis = $state<CrashDiagnosisDto | null>(null);
+
+  // Deep link modal state (Apple HIG Alert / SPEC 2.11)
+  let deepLinkModalOpen = $state(false);
+  let pendingDeepLink = $state<DeepLinkActionDto | null>(null);
+
+  async function handleRawDeepLink(uri: string) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const parsed = await invoke<DeepLinkActionDto>('parse_deep_link_uri', { uri });
+      if (parsed) {
+        pendingDeepLink = parsed;
+        deepLinkModalOpen = true;
+      }
+    } catch (err: any) {
+      addToast('warning', 'Некорректная ссылка', typeof err === 'string' ? err : 'Ссылка не поддерживается');
+    }
+  }
+
+  async function handleConfirmDeepLink(action: DeepLinkActionDto) {
+    deepLinkModalOpen = false;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('clear_pending_deep_link');
+    } catch {}
+
+    if (action.kind === 'join') {
+      activeTab = 'lobby';
+      addToast('info', 'Подключение к лобби', `Код: ${action.target}`);
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('join_lobby_room', { code: action.target.toUpperCase(), playerName });
+      } catch (e: any) {
+        addToast('error', 'Не удалось подключиться к лобби', String(e));
+      }
+    } else if (action.kind === 'server') {
+      activeTab = 'play';
+      clientStatus = `Подключение к ${action.target}...`;
+      addToast('info', 'Подключение к серверу', action.target);
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('launch_game', {
+          version: selectedVersion,
+          nickname: playerName,
+          server: action.target,
+        });
+        isGameRunning = true;
+        clientStatus = 'Minecraft запущен';
+      } catch (e: any) {
+        addToast('error', 'Ошибка подключения к серверу', String(e));
+      }
+    } else if (action.kind === 'friend') {
+      activeTab = 'friends';
+      friendsSubtab = 'requests';
+      addToast('info', 'Запрос в друзья', `Отправка запроса: ${action.target}`);
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('social_send_friend_request', { friend_code: action.target });
+        addToast('success', 'Запрос отправлен', `Запрос для ${action.target} успешно отправлен`);
+      } catch (e: any) {
+        addToast('error', 'Не удалось отправить запрос в друзья', String(e));
+      }
+    }
+  }
+
+  async function handleCancelDeepLink() {
+    deepLinkModalOpen = false;
+    pendingDeepLink = null;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('clear_pending_deep_link');
+    } catch {}
+  }
 
   $effect(() => {
     if (typeof window !== 'undefined') {
@@ -342,12 +415,18 @@
         };
         crashSheetOpen = true;
       }
+
+      // Hash deeplink triggers for tests and previews
+      const deeplinkParam = params.get('deeplink') || params.get('uri');
+      if (deeplinkParam) {
+        handleRawDeepLink(deeplinkParam);
+      }
     }
 
     applyHashRoute();
     window.addEventListener('hashchange', applyHashRoute);
 
-    // Initial checks: parallelized network, profile, and active running game state
+    // Initial checks: parallelized network, profile, deep link and active running game state
     Promise.allSettled([
       checkNetwork(),
       loadProfile(),
@@ -358,6 +437,16 @@
           isGameRunning = running;
           if (running) {
             clientStatus = 'Minecraft запущен';
+          }
+        } catch {}
+      })(),
+      (async () => {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const pending = await invoke<DeepLinkActionDto | null>('get_pending_deep_link');
+          if (pending) {
+            pendingDeepLink = pending;
+            deepLinkModalOpen = true;
           }
         } catch {}
       })(),
@@ -378,6 +467,8 @@
     let unlistenAchievement: (() => void) | undefined;
     let unlistenInvite: (() => void) | undefined;
     let unlistenCrash: (() => void) | undefined;
+    let unlistenDeepLink: (() => void) | undefined;
+    let unlistenPluginDeepLink: (() => void) | undefined;
 
     if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
       import('@tauri-apps/api/event')
@@ -387,6 +478,23 @@
             crashSheetOpen = true;
           }).then((fn) => {
             unlistenCrash = fn;
+          });
+          listen<DeepLinkActionDto>('wex://deep-link', (event) => {
+            if (event.payload) {
+              pendingDeepLink = event.payload;
+              deepLinkModalOpen = true;
+            }
+          }).then((fn) => {
+            unlistenDeepLink = fn;
+          });
+          listen<string | string[]>('deep-link://new-url', async (event) => {
+            const urls = Array.isArray(event.payload) ? event.payload : [event.payload];
+            const firstUrl = urls.find((u) => typeof u === 'string' && (u.startsWith('wex://') || u.startsWith('aura://')));
+            if (firstUrl) {
+              await handleRawDeepLink(firstUrl);
+            }
+          }).then((fn) => {
+            unlistenPluginDeepLink = fn;
           });
           listen<{
             stage: string;
@@ -477,6 +585,8 @@
       unlistenAchievement?.();
       unlistenInvite?.();
       unlistenCrash?.();
+      unlistenDeepLink?.();
+      unlistenPluginDeepLink?.();
     };
   });
 </script>
@@ -588,6 +698,14 @@
       activeTab = tab;
     }}
     ontoast={addToast}
+  />
+
+  <!-- Deep Link Confirmation Modal (SPEC 2.11 / Apple HIG Alert) -->
+  <DeepLinkConfirmationModal
+    bind:open={deepLinkModalOpen}
+    action={pendingDeepLink}
+    onconfirm={handleConfirmDeepLink}
+    oncancel={handleCancelDeepLink}
   />
 </div>
 

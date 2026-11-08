@@ -539,3 +539,22 @@ pub struct SocialCheckLauncherUpdateRequest {
     pub current_version: String,
     pub target_platform: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct SocialCheckLauncherUpdateResponse {
+    pub update: UpdateCheckResultDto,
+}
+
+pub const CMD_DEEP_LINK_PARSE: &str = "deep_link_parse";
+pub const CMD_DEEP_LINK_GET_PENDING: &str = "deep_link_get_pending";
+pub const CMD_DEEP_LINK_CLEAR_PENDING: &str = "deep_link_clear_pending";
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct ParseDeepLinkRequest {
+    pub uri: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct ParseDeepLinkResponse {
+    pub action: DeepLinkActionDto,
+}

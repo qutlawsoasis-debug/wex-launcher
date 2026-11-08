@@ -173,6 +173,7 @@ fn remove_server(address: String, state: State<'_, AppState>) -> Result<(), Stri
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();
@@ -190,9 +191,51 @@ pub fn run() {
                 commands::lobby::DEFAULT_OLD_BACKEND_URL,
             );
             app.manage(lobby_state);
+            app.manage(commands::deeplink::DeepLinkState::new());
+
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let _ = app.deep_link().register_all();
+
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        let url_str = url.as_str();
+                        if let Some(state) = handle.try_state::<commands::deeplink::DeepLinkState>()
+                        {
+                            let _ = commands::deeplink::handle_incoming_deep_link(
+                                handle.clone(),
+                                url_str.to_string(),
+                                state,
+                            );
+                        }
+                    }
+                });
+
+                if let Ok(Some(urls)) = app.deep_link().get_current() {
+                    for url in urls {
+                        let url_str = url.as_str();
+                        if let Some(state) = app.try_state::<commands::deeplink::DeepLinkState>() {
+                            let _ = commands::deeplink::handle_incoming_deep_link(
+                                app.handle().clone(),
+                                url_str.to_string(),
+                                state,
+                            );
+                        }
+                    }
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Deep link commands (commands/deeplink.rs)
+            commands::deeplink::parse_deep_link_uri,
+            commands::deeplink::get_pending_deep_link,
+            commands::deeplink::clear_pending_deep_link,
+            commands::deeplink::handle_incoming_deep_link,
+            commands::deeplink::register_deep_link_schemes,
             // Network & Connectivity commands
             commands::network::get_network_status,
             // Standard wex-ipc commands

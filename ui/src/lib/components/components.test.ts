@@ -12,6 +12,8 @@ import Toast from './Toast.svelte';
 import ProfileBadge from './ProfileBadge.svelte';
 import Sheet from './Sheet.svelte';
 import Popover from './Popover.svelte';
+import DeepLinkConfirmationModal from './DeepLinkConfirmationModal.svelte';
+import type { DeepLinkActionDto } from '../ipc/generated/models';
 
 describe('Apple HIG Svelte 5 Components', () => {
   let target: HTMLElement;
@@ -506,5 +508,101 @@ describe('Apple HIG Svelte 5 Components', () => {
     btn.click();
     expect(rowClicked).toBe(true);
     unmount(comp);
+  });
+
+  it('renders DeepLinkConfirmationModal and responds to confirm and cancel actions', () => {
+    const action: DeepLinkActionDto = {
+      kind: 'join',
+      target: 'ABCD12',
+      raw_uri: 'wex://join/ABCD12',
+      title: 'Войти в лобби ABCD12?',
+      subtitle: 'Подключиться к игре хоста по ссылке?',
+      confirm_text: 'Войти',
+    };
+
+    let confirmed = false;
+    let cancelled = false;
+
+    const comp = mount(DeepLinkConfirmationModal, {
+      target,
+      props: {
+        open: true,
+        action,
+        onconfirm: (act) => {
+          if (act.target === 'ABCD12') confirmed = true;
+        },
+        oncancel: () => {
+          cancelled = true;
+        },
+      },
+    });
+
+    const dialog = target.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(target.textContent).toContain('Войти в лобби ABCD12?');
+    expect(target.textContent).toContain('ABCD12');
+    expect(target.textContent).toContain('Лобби P2P');
+    expect(target.textContent).toContain('wex://join/ABCD12');
+
+    // Test confirm button
+    const buttons = target.querySelectorAll('button');
+    expect(buttons.length).toBe(2);
+    // Button 0: Отмена, Button 1: Войти
+    const confirmBtn = buttons[1] as HTMLButtonElement;
+    expect(confirmBtn.textContent).toContain('Войти');
+    confirmBtn.click();
+    expect(confirmed).toBe(true);
+
+    // Test cancel button
+    const cancelBtn = buttons[0] as HTMLButtonElement;
+    cancelBtn.click();
+    expect(cancelled).toBe(true);
+
+    unmount(comp);
+  });
+
+  it('handles keyboard shortcuts in DeepLinkConfirmationModal', () => {
+    const serverAction: DeepLinkActionDto = {
+      kind: 'server',
+      target: 'mc.hypixel.net',
+      raw_uri: 'wex://server/mc.hypixel.net',
+      title: 'Подключиться к mc.hypixel.net?',
+      subtitle: 'Запустить Minecraft и войти на сервер?',
+      confirm_text: 'Подключиться',
+    };
+
+    let cancelled = false;
+    const comp1 = mount(DeepLinkConfirmationModal, {
+      target,
+      props: {
+        open: true,
+        action: serverAction,
+        oncancel: () => {
+          cancelled = true;
+        },
+      },
+    });
+
+    // Escape triggers cancel
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(cancelled).toBe(true);
+    unmount(comp1);
+
+    let confirmed = false;
+    const comp2 = mount(DeepLinkConfirmationModal, {
+      target,
+      props: {
+        open: true,
+        action: serverAction,
+        onconfirm: () => {
+          confirmed = true;
+        },
+      },
+    });
+
+    // Enter triggers confirm
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(confirmed).toBe(true);
+    unmount(comp2);
   });
 });

@@ -98,3 +98,5 @@ export type ReleaseNoteVersionDto = { version: string, internal_version: string,
 
 export type UpdateCheckResultDto = { update_available: boolean, current_version: string, latest_version: string | null, notes: string | null, download_url: string | null, signature: string | null, pub_date: string | null, };;
 
+export type DeepLinkActionDto = { kind: string, target: string, raw_uri: string, title: string, subtitle: string, confirm_text: string, };;
+

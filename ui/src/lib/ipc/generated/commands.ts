@@ -4,6 +4,7 @@ import type {
     AchievementDefinitionDto,
     AchievementProgressDto,
     CrashDiagnosisDto,
+    DeepLinkActionDto,
     DiscordActivityDto,
     FriendItemDto,
     FriendProfileDto,
@@ -192,6 +193,12 @@ export type SocialGetNewsResponse = { versions: Array<ReleaseNoteVersionDto>, };
 
 export type SocialCheckLauncherUpdateRequest = { manifest_url: string, current_version: string, target_platform: string | null, };;
 
+export type SocialCheckLauncherUpdateResponse = { update: UpdateCheckResultDto, };;
+
+export type ParseDeepLinkRequest = { uri: string, };;
+
+export type ParseDeepLinkResponse = { action: DeepLinkActionDto, };;
+
 export const COMMANDS = {
     CORE_GET_CONFIG: "core_get_config",
     CORE_SAVE_CONFIG: "core_save_config",
@@ -255,6 +262,9 @@ export const COMMANDS = {
     SOCIAL_LIST_SCREENSHOTS: "social_list_screenshots",
     SOCIAL_GET_NEWS: "social_get_news",
     SOCIAL_CHECK_LAUNCHER_UPDATE: "social_check_launcher_update",
+    DEEP_LINK_PARSE: "deep_link_parse",
+    DEEP_LINK_GET_PENDING: "deep_link_get_pending",
+    DEEP_LINK_CLEAR_PENDING: "deep_link_clear_pending",
 } as const;
 
 export type IpcCommandName = typeof COMMANDS[keyof typeof COMMANDS];
