@@ -16,6 +16,13 @@ pub struct LauncherConfig {
     pub reduce_transparency: bool,
     pub appearance: String, // "dark" | "light" | "auto"
     pub accent: String,     // "blue" | "mono" | etc.
+    #[serde(
+        default,
+        alias = "fastStartJvm",
+        alias = "fast_start_jvm",
+        alias = "prewarmGame"
+    )]
+    pub fast_start_jvm: bool,
 }
 
 impl Default for LauncherConfig {
@@ -28,6 +35,7 @@ impl Default for LauncherConfig {
             reduce_transparency: false,
             appearance: "dark".to_string(),
             accent: "blue".to_string(),
+            fast_start_jvm: false,
         }
     }
 }

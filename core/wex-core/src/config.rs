@@ -163,6 +163,14 @@ pub struct LauncherConfig {
 
     #[serde(default = "default_accent")]
     pub accent: String,
+
+    #[serde(
+        default,
+        alias = "fastStartJvm",
+        alias = "fast_start_jvm",
+        alias = "prewarmGame"
+    )]
+    pub fast_start_jvm: bool,
 }
 
 fn deserialize_ram<'de, D>(deserializer: D) -> std::result::Result<u32, D::Error>
@@ -230,6 +238,7 @@ impl Default for LauncherConfig {
             quick_play_multiplayer: None,
             appearance: default_appearance(),
             accent: default_accent(),
+            fast_start_jvm: false,
         }
     }
 }
@@ -255,6 +264,7 @@ impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
             quick_play_multiplayer: None,
             appearance: ipc.appearance,
             accent: ipc.accent,
+            fast_start_jvm: ipc.fast_start_jvm,
         }
     }
 }
@@ -269,6 +279,7 @@ impl From<LauncherConfig> for wex_ipc::models::LauncherConfig {
             reduce_transparency: core.reduce_transparency,
             appearance: core.appearance,
             accent: core.accent,
+            fast_start_jvm: core.fast_start_jvm,
         }
     }
 }

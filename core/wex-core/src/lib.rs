@@ -22,7 +22,7 @@ pub use event::{
 pub use ipc_adapter::WexLauncherCore;
 pub use launcher::{
     build_classpath, build_launch_command, install_full_environment, launch_game_process,
-    prepare_and_launch, GameProcess, LaunchOptions,
+    prepare_and_launch, prewarm_jvm, GameProcess, LaunchOptions,
 };
 pub use pack::{sync_aura_pack, sync_aura_pack_cancellable};
 pub use reqwest;

@@ -39,6 +39,7 @@
   let detectedJava21 = $state<string | null>(null);
   let discordRpc = $state(true);
   let backgroundMusic = $state(true);
+  let fastStartJvm = $state(false);
   let language = $state<string>(i18n.locale);
   let launcherVersion = $state('1.0.0');
   let osName = $state('windows');
@@ -142,6 +143,7 @@
         detected_java_17?: string | null;
         detected_java_21?: string | null;
         discord_rpc?: boolean;
+        fast_start_jvm?: boolean;
         language?: string;
         appearance?: string;
         accent?: string;
@@ -161,6 +163,7 @@
         if (cfg.detected_java_17 !== undefined) detectedJava17 = cfg.detected_java_17;
         if (cfg.detected_java_21 !== undefined) detectedJava21 = cfg.detected_java_21;
         if (cfg.discord_rpc !== undefined) discordRpc = cfg.discord_rpc;
+        if (cfg.fast_start_jvm !== undefined) fastStartJvm = cfg.fast_start_jvm;
         if (cfg.language === 'ru' || cfg.language === 'en') {
           language = cfg.language;
           i18n.setLocale(cfg.language);
@@ -218,6 +221,7 @@
           detected_java_17: detectedJava17,
           detected_java_21: detectedJava21,
           discord_rpc: discordRpc,
+          fast_start_jvm: fastStartJvm,
           language,
           appearance: theme.appearance,
           accent: theme.accent,
@@ -239,6 +243,7 @@
         java_mode?: string;
         custom_java_path?: string | null;
         discord_rpc?: boolean;
+        fast_start_jvm?: boolean;
         language?: string;
       }>('reset_settings');
 
@@ -248,6 +253,7 @@
         if (reset.java_mode) javaMode = reset.java_mode;
         customJavaPath = '';
         if (reset.discord_rpc !== undefined) discordRpc = reset.discord_rpc;
+        if (reset.fast_start_jvm !== undefined) fastStartJvm = reset.fast_start_jvm;
         if (reset.language === 'ru' || reset.language === 'en') {
           language = reset.language;
           i18n.setLocale(reset.language);
@@ -263,6 +269,7 @@
       javaMode = 'auto';
       customJavaPath = '';
       discordRpc = true;
+      fastStartJvm = false;
       language = 'ru';
       i18n.setLocale('ru');
     }
@@ -395,6 +402,22 @@
               onchange={handlePresetChange}
             />
           </div>
+        {/snippet}
+      </Row>
+
+      <Row
+        title="Быстрый запуск игры"
+        subtitle="Экспериментальный предварительный прогрев виртуальной машины Java (PrewarmGame)"
+      >
+        {#snippet trailing()}
+          <Toggle
+            ariaLabel="Быстрый запуск игры"
+            checked={fastStartJvm}
+            onchange={(checked) => {
+              fastStartJvm = checked;
+              saveConfig();
+            }}
+          />
         {/snippet}
       </Row>
     </List>

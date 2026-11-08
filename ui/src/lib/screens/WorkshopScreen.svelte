@@ -57,10 +57,11 @@
 
   interface Props {
     selectedVersion?: string;
+    initialTab?: string;
     ontoast?: (type: 'info' | 'success' | 'warning' | 'error', title: string, description?: string) => void;
   }
 
-  let { selectedVersion = '1.21.1', ontoast }: Props = $props();
+  let { selectedVersion = '1.21.1', initialTab = 'worlds', ontoast }: Props = $props();
 
   // Active section tab: 'worlds' | 'resourcepacks' | 'shaders' | 'screenshots'
   let activeTab = $state('worlds');
@@ -72,10 +73,19 @@
     }
   });
 
+  $effect(() => {
+    if (initialTab && initialTab !== 'worlds') {
+      activeTab = initialTab;
+      refreshCurrentTab();
+    }
+  });
+
   // Data state
   let worlds = $state<WorldItemDto[]>([]);
   let backups = $state<WorldBackupItemDto[]>([]);
   let screenshots = $state<ScreenshotItemDto[]>([]);
+  let previewScreenshot = $state<ScreenshotItemDto | null>(null);
+  let isScreenshotPreviewOpen = $state(false);
   let resourcePacks = $state<ResourcePackItem[]>([]);
   let shaderPacks = $state<ShaderPackItem[]>([]);
   let isLoading = $state(false);
@@ -244,6 +254,39 @@
       screenshots = [];
     } finally {
       isLoading = false;
+    }
+  }
+
+  async function handleCopyScreenshot(shot: ScreenshotItemDto, e?: Event) {
+    if (e) e.stopPropagation();
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('workshop_copy_screenshot_image', { path: shot.file_path });
+      if (ontoast) {
+        ontoast('success', 'Скриншот скопирован', 'Изображение скопировано в буфер обмена');
+      }
+    } catch {
+      try {
+        const assetUrl = getSafeAssetUrl(shot.file_path);
+        if (assetUrl) {
+          const res = await fetch(assetUrl);
+          const blob = await res.blob();
+          if (typeof navigator !== 'undefined' && navigator.clipboard && typeof window !== 'undefined' && (window as any).ClipboardItem) {
+            await navigator.clipboard.write([
+              new (window as any).ClipboardItem({ [blob.type || 'image/png']: blob }),
+            ]);
+            if (ontoast) {
+              ontoast('success', 'Скриншот скопирован', 'Изображение скопировано в буфер обмена');
+            }
+            return;
+          }
+        }
+        throw new Error('ClipboardItem unavailable');
+      } catch {
+        if (ontoast) {
+          ontoast('error', 'Ошибка копирования', 'Не удалось скопировать изображение в буфер обмена');
+        }
+      }
     }
   }
 
@@ -481,7 +524,11 @@
   }
 
   onMount(() => {
-    loadWorlds();
+    if (activeTab === 'worlds') {
+      loadWorlds();
+    } else {
+      refreshCurrentTab();
+    }
   });
 </script>
 
@@ -910,45 +957,127 @@
       {:else}
         <div class="screenshots-grid" data-testid="screenshots-grid">
           {#each screenshots as shot (shot.file_name)}
-            <button
-              type="button"
-              class="screenshot-card"
-              onclick={() => handleOpenPath(shot.file_path)}
-              title="Нажмите, чтобы открыть в проводнике"
-            >
-              <div class="screenshot-thumb-wrap">
-                <img
-                  src={getSafeAssetUrl(shot.file_path) || ''}
-                  alt={shot.file_name}
-                  class="screenshot-thumb"
-                  loading="lazy"
-                  onerror={(e) => {
-                    const el = e.currentTarget as HTMLElement;
-                    el.style.display = 'none';
-                    if (el.parentElement) {
-                      el.parentElement.classList.add('broken');
-                    }
-                  }}
-                />
-                <div class="thumb-hover-overlay">
-                  <Icon name="folder" size={18} color="#ffffff" />
-                  <span class="overlay-text">Открыть в проводнике</span>
+            <div class="screenshot-card" data-testid="screenshot-item">
+              <div
+                class="screenshot-thumb-btn"
+                role="button"
+                tabindex="0"
+                onclick={() => {
+                  previewScreenshot = shot;
+                  isScreenshotPreviewOpen = true;
+                }}
+                onkeydown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    previewScreenshot = shot;
+                    isScreenshotPreviewOpen = true;
+                  }
+                }}
+                title="Нажмите для полноразмерного просмотра"
+              >
+                <div class="screenshot-thumb-wrap">
+                  <img
+                    src={getSafeAssetUrl(shot.file_path) || ''}
+                    alt={shot.file_name}
+                    class="screenshot-thumb"
+                    loading="lazy"
+                    onerror={(e) => {
+                      const el = e.currentTarget as HTMLElement;
+                      el.style.display = 'none';
+                      if (el.parentElement) {
+                        el.parentElement.classList.add('broken');
+                      }
+                    }}
+                  />
+                  <div class="thumb-hover-overlay">
+                    <div class="overlay-actions">
+                      <button
+                        type="button"
+                        class="overlay-btn"
+                        onclick={(e) => handleCopyScreenshot(shot, e)}
+                        title="Скопировать изображение в буфер обмена"
+                        aria-label="Скопировать изображение"
+                      >
+                        <Icon name="copy" size={15} color="#ffffff" />
+                        <span>Копия</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="overlay-btn"
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          handleOpenPath(shot.file_path);
+                        }}
+                        title="Открыть в проводнике"
+                        aria-label="Открыть в проводнике"
+                      >
+                        <Icon name="folder" size={15} color="#ffffff" />
+                        <span>Файл</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="screenshot-caption">
+                  <span class="caption-name" title={shot.file_name}>{shot.file_name}</span>
+                  <span class="caption-meta">
+                    {formatBytes(shot.size_bytes)} • {formatIsoDate(shot.created_at)}
+                  </span>
                 </div>
               </div>
-
-              <div class="screenshot-caption">
-                <span class="caption-name" title={shot.file_name}>{shot.file_name}</span>
-                <span class="caption-meta">
-                  {formatBytes(shot.size_bytes)} • {formatIsoDate(shot.created_at)}
-                </span>
-              </div>
-            </button>
+            </div>
           {/each}
         </div>
       {/if}
     {/if}
   </div>
 </div>
+
+<!-- Modal Sheet: Screenshot Preview -->
+<Sheet
+  bind:open={isScreenshotPreviewOpen}
+  title={previewScreenshot?.file_name || 'Просмотр скриншота'}
+  cancelLabel="Закрыть"
+  showDone={false}
+  maxWidth="720px"
+>
+  {#if previewScreenshot}
+    <div class="screenshot-preview-dialog" data-testid="screenshot-preview-dialog">
+      <div class="preview-img-container">
+        <img
+          src={getSafeAssetUrl(previewScreenshot.file_path) || ''}
+          alt={previewScreenshot.file_name}
+          class="preview-img-full"
+        />
+      </div>
+
+      <div class="preview-meta-row">
+        <span>{formatBytes(previewScreenshot.size_bytes)}</span>
+        <span>•</span>
+        <span>{formatIsoDate(previewScreenshot.created_at)}</span>
+      </div>
+
+      <div class="preview-actions-bar">
+        <Button
+          variant="secondary"
+          size="regular"
+          onclick={() => handleCopyScreenshot(previewScreenshot!)}
+        >
+          <Icon name="copy" size={16} color="var(--color-primary-label)" />
+          <span>Скопировать в буфер</span>
+        </Button>
+        <Button
+          variant="secondary"
+          size="regular"
+          onclick={() => handleOpenPath(previewScreenshot!.file_path)}
+        >
+          <Icon name="folder" size={16} color="var(--color-primary-label)" />
+          <span>Открыть в проводнике</span>
+        </Button>
+      </div>
+    </div>
+  {/if}
+</Sheet>
 
 <!-- Modal Sheet: Add Pack File (Manual Path / Import) -->
 <Sheet
@@ -1602,6 +1731,80 @@
   .caption-meta {
     font-size: 11px;
     color: var(--color-secondary-label);
+  }
+
+  .screenshot-thumb-btn {
+    all: unset;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    cursor: pointer;
+  }
+
+  .overlay-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .overlay-btn {
+    all: unset;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    background-color: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.15s ease, transform 0.1s ease;
+  }
+
+  .overlay-btn:hover {
+    background-color: rgba(255, 255, 255, 0.35);
+    transform: scale(1.05);
+  }
+
+  .screenshot-preview-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 8px 0;
+  }
+
+  .preview-img-container {
+    width: 100%;
+    max-height: 400px;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background-color: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .preview-img-full {
+    width: 100%;
+    height: auto;
+    max-height: 400px;
+    object-fit: contain;
+  }
+
+  .preview-meta-row {
+    display: flex;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--color-secondary-label);
+    justify-content: center;
+  }
+
+  .preview-actions-bar {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
   }
 
   /* Modals Body */

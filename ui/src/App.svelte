@@ -33,6 +33,7 @@
   // Navigation state
   let activeTab = $state('play');
   let friendsSubtab = $state<'friends' | 'requests' | 'achievements'>('friends');
+  let workshopSubtab = $state<'worlds' | 'resourcepacks' | 'shaders' | 'screenshots'>('worlds');
   let isMaximized = $state(false);
 
   // Crash report modal state
@@ -585,6 +586,12 @@
             activeTab = screen as any;
           }}
           ontoast={(t) => addToast(t.type, t.title, t.message)}
+          onopenworkshop={(subtab) => {
+            activeTab = 'workshop';
+            if (subtab && ['worlds', 'resourcepacks', 'shaders', 'screenshots'].includes(subtab)) {
+              workshopSubtab = subtab as any;
+            }
+          }}
         />
       {:else if activeTab === 'servers'}
         <ServersScreen />
@@ -595,7 +602,7 @@
       {:else if activeTab === 'wardrobe'}
         <WardrobeScreen {playerName} ontoast={addToast} />
       {:else if activeTab === 'workshop'}
-        <WorkshopScreen {selectedVersion} ontoast={addToast} />
+        <WorkshopScreen {selectedVersion} initialTab={workshopSubtab} ontoast={addToast} />
       {:else if activeTab === 'mods'}
         <ModsScreen />
       {:else if activeTab === 'settings'}
