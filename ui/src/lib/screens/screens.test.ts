@@ -484,9 +484,10 @@ describe('Wex Launcher Screens', () => {
 
     // Check cape options per SPEC 1.6
     expect(target.textContent).toContain('Без плаща');
-    expect(target.textContent).toContain('Aura Cyan');
-    expect(target.textContent).toContain('Aura Silver');
-    expect(target.textContent).toContain('Пользовательский');
+    expect(target.textContent).toContain('Свой файл');
+    expect(target.textContent).not.toContain('Aura Cyan');
+    expect(target.textContent).not.toContain('Aura Silver');
+    expect(target.textContent).toContain('Стандартный скин');
 
     // Check action buttons
     expect(target.textContent).toContain('Загрузить скин (PNG)');
