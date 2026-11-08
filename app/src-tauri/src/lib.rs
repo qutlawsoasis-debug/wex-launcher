@@ -369,7 +369,6 @@ pub fn run() {
             commands::startup::startup_get_info,
             commands::startup::startup_verify_directories,
             commands::startup::startup_check_update,
-            commands::startup::social_check_launcher_update,
             commands::startup::startup_download_update,
             // Standard wex-ipc commands
             commands::launch::get_config,

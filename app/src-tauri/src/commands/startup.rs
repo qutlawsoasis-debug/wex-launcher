@@ -58,9 +58,7 @@ pub struct UpdateProgressPayload {
 
 /// Reads launcher configuration from %APPDATA%\Wex and verifies instance folders
 #[tauri::command]
-pub async fn startup_get_info(
-    state: State<'_, StartupState>,
-) -> Result<StartupInfoDto, String> {
+pub async fn startup_get_info(state: State<'_, StartupState>) -> Result<StartupInfoDto, String> {
     let dirs_ok = state.paths.ensure_dirs().is_ok();
     let config = LauncherConfig::load_or_default(&state.paths.config_file);
 
@@ -76,9 +74,7 @@ pub async fn startup_get_info(
 
 /// Verifies and creates base launcher directories
 #[tauri::command]
-pub async fn startup_verify_directories(
-    state: State<'_, StartupState>,
-) -> Result<bool, String> {
+pub async fn startup_verify_directories(state: State<'_, StartupState>) -> Result<bool, String> {
     state
         .paths
         .ensure_dirs()
@@ -108,33 +104,9 @@ pub async fn startup_check_update(
         .map_err(|e| format!("Ошибка проверки обновления: {e}"))
 }
 
-/// wex-ipc standard command compatibility for update checking
-#[tauri::command]
-pub async fn social_check_launcher_update(
-    request: wex_ipc::commands::SocialCheckLauncherUpdateRequest,
-    state: State<'_, StartupState>,
-) -> Result<UpdateCheckResultDto, String> {
-    let plat = request
-        .target_platform
-        .unwrap_or_else(|| DEFAULT_TARGET_PLATFORM.to_string());
-
-    check_update_from_url(
-        &state.client,
-        &request.current_version,
-        &plat,
-        &request.manifest_url,
-    )
-    .await
-    .map(UpdateCheckResultDto::from)
-    .map_err(|e| format!("Ошибка проверки обновления: {e}"))
-}
-
 /// Downloads and applies launcher update, reporting progress through IPC events
 #[tauri::command]
-pub async fn startup_download_update(
-    app: AppHandle,
-    download_url: String,
-) -> Result<(), String> {
+pub async fn startup_download_update(app: AppHandle, download_url: String) -> Result<(), String> {
     simulate_or_download_update(Some(&app), &download_url).await
 }
 
@@ -251,11 +223,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_startup_download_update_simulation() {
-        let res = simulate_or_download_update(
-            None,
-            "https://example.com/download/v1.2.0.zip",
-        )
-        .await;
+        let res =
+            simulate_or_download_update(None, "https://example.com/download/v1.2.0.zip").await;
         assert!(res.is_ok());
 
         let err_res = simulate_or_download_update(None, "  ").await;
