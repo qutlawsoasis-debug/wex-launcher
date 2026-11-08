@@ -5,13 +5,17 @@
   - https://developer.apple.com/design/human-interface-guidelines/lists-and-tables
   - https://developer.apple.com/design/human-interface-guidelines/collections
   - https://developer.apple.com/design/human-interface-guidelines/buttons
+  - https://developer.apple.com/design/human-interface-guidelines/toggles
   - https://developer.apple.com/design/human-interface-guidelines/sheets
   - https://developer.apple.com/design/human-interface-guidelines/content-view-empty-states
   Rules:
-  - Segmented control switches between «Миры» and «Скриншоты»
+  - Segmented control switches between «Миры», «Ресурс-паки», «Шейдеры» and «Скриншоты»
   - Inset Grouped list for single-player worlds with game mode, last played date, and size
+  - Resource packs list with on/off toggles, pack.mcmeta description, and pack.png icons
+  - Shaders list with active shader selection (Iris iris.properties) and disable option
+  - Add pack via ZIP file and open folders in system file manager
+  - Red destructive button for deleting custom packs with modal confirmation (Aura-Pack files protected)
   - Secondary button for creating compressed zip backups
-  - Destructive red button for deleting a world with modal confirmation
   - Modal sheet for backup restore confirmation
   - Uniform grid collection for screenshots with system file manager reveal
   - Authentic empty states without mock data or slogans
@@ -21,10 +25,34 @@
   import Button from '../components/Button.svelte';
   import Sheet from '../components/Sheet.svelte';
   import SegmentedControl from '../components/SegmentedControl.svelte';
+  import Toggle from '../components/Toggle.svelte';
   import Icon from '../components/icons/Icon.svelte';
   import ErrorState from '../components/ErrorState.svelte';
   import { formatError } from '../design/errors';
   import type { WorldItemDto, WorldBackupItemDto, ScreenshotItemDto } from '../ipc/generated';
+
+  export interface ResourcePackItem {
+    name: string;
+    file_name: string;
+    file_path: string;
+    size_bytes: number | bigint;
+    description: string | null;
+    pack_format: number | null;
+    icon_data_url: string | null;
+    is_enabled: boolean;
+    is_from_pack: boolean;
+  }
+
+  export interface ShaderPackItem {
+    name: string;
+    file_name: string;
+    file_path: string;
+    size_bytes: number | bigint;
+    description: string | null;
+    icon_data_url: string | null;
+    is_active: boolean;
+    is_from_pack: boolean;
+  }
 
   interface Props {
     selectedVersion?: string;
@@ -33,7 +61,7 @@
 
   let { selectedVersion = '1.21.1', ontoast }: Props = $props();
 
-  // Active section tab: 'worlds' | 'screenshots'
+  // Active section tab: 'worlds' | 'resourcepacks' | 'shaders' | 'screenshots'
   let activeTab = $state('worlds');
   let currentVersion = $state('1.21.1');
 
@@ -47,14 +75,21 @@
   let worlds = $state<WorldItemDto[]>([]);
   let backups = $state<WorldBackupItemDto[]>([]);
   let screenshots = $state<ScreenshotItemDto[]>([]);
+  let resourcePacks = $state<ResourcePackItem[]>([]);
+  let shaderPacks = $state<ShaderPackItem[]>([]);
   let isLoading = $state(false);
   let sheetError = $state<unknown>(null);
 
-  // Confirmation modals state
+  // Hidden file input for adding ZIP packs
+  let fileInputEl: HTMLInputElement | null = null;
+  let pendingAddType = $state<'resourcepack' | 'shaderpack'>('resourcepack');
+
+  // Confirmation modals state: World Delete
   let deleteSheetOpen = $state(false);
   let worldToDelete = $state<WorldItemDto | null>(null);
   let isDeleting = $state(false);
 
+  // Confirmation modals state: World Backups
   let backupsSheetOpen = $state(false);
   let selectedWorldForBackups = $state<WorldItemDto | null>(null);
 
@@ -63,6 +98,21 @@
   let isRestoring = $state(false);
 
   let isBackingUp = $state<Record<string, boolean>>({});
+
+  // Confirmation modal state: Pack Delete (Resource pack or Shader)
+  let deletePackSheetOpen = $state(false);
+  let packToDelete = $state<{
+    name: string;
+    file_name: string;
+    type: 'resourcepack' | 'shaderpack';
+    is_from_pack: boolean;
+  } | null>(null);
+  let isDeletingPack = $state(false);
+
+  // Add Pack Modal Sheet (fallback / manual path input)
+  let addPackSheetOpen = $state(false);
+  let manualPackPath = $state('');
+  let isAddingPack = $state(false);
 
   function notify(type: 'info' | 'success' | 'warning' | 'error', title: string, description?: string) {
     if (ontoast) {
@@ -123,12 +173,9 @@
     }
   }
 
-  // Convert local file path to Tauri asset URI if running in Tauri
   function getSafeAssetUrl(filePath: string | null): string | null {
     if (!filePath) return null;
     try {
-      // In Tauri 2, convertFileSrc converts windows/unix path to asset URL
-      // If window.__TAURI_INTERNALS__ is not present (tests), return raw path
       return (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
         ? `https://asset.localhost/${encodeURIComponent(filePath.replace(/\\/g, '/'))}`
         : filePath;
@@ -137,7 +184,8 @@
     }
   }
 
-  // Load Worlds
+  // --- Loader functions ---
+
   async function loadWorlds() {
     isLoading = true;
     try {
@@ -147,14 +195,42 @@
       });
       worlds = list || [];
     } catch {
-      // Offline fallback / in-test fallback
       worlds = [];
     } finally {
       isLoading = false;
     }
   }
 
-  // Load Screenshots
+  async function loadResourcePacks() {
+    isLoading = true;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const list = await invoke<ResourcePackItem[]>('workshop_list_resource_packs', {
+        version: currentVersion,
+      });
+      resourcePacks = list || [];
+    } catch {
+      resourcePacks = [];
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  async function loadShaderPacks() {
+    isLoading = true;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const list = await invoke<ShaderPackItem[]>('workshop_list_shader_packs', {
+        version: currentVersion,
+      });
+      shaderPacks = list || [];
+    } catch {
+      shaderPacks = [];
+    } finally {
+      isLoading = false;
+    }
+  }
+
   async function loadScreenshots() {
     isLoading = true;
     try {
@@ -170,7 +246,15 @@
     }
   }
 
-  // Create Backup
+  function refreshCurrentTab() {
+    if (activeTab === 'worlds') loadWorlds();
+    else if (activeTab === 'resourcepacks') loadResourcePacks();
+    else if (activeTab === 'shaders') loadShaderPacks();
+    else loadScreenshots();
+  }
+
+  // --- Worlds actions ---
+
   async function handleCreateBackup(world: WorldItemDto) {
     isBackingUp = { ...isBackingUp, [world.folder_name]: true };
     try {
@@ -188,7 +272,6 @@
     }
   }
 
-  // Open Backups Sheet
   async function openBackupsSheet(world: WorldItemDto) {
     selectedWorldForBackups = world;
     backups = [];
@@ -209,14 +292,12 @@
     }
   }
 
-  // Trigger Restore Confirmation
   function promptRestore(backup: WorldBackupItemDto) {
     backupToRestore = backup;
     sheetError = null;
     restoreSheetOpen = true;
   }
 
-  // Execute Restore
   async function handleConfirmRestore() {
     if (!backupToRestore || !selectedWorldForBackups) return;
     isRestoring = true;
@@ -240,14 +321,12 @@
     }
   }
 
-  // Trigger Delete Confirmation
   function promptDelete(world: WorldItemDto) {
     worldToDelete = world;
     sheetError = null;
     deleteSheetOpen = true;
   }
 
-  // Execute Delete
   async function handleConfirmDelete() {
     if (!worldToDelete) return;
     isDeleting = true;
@@ -269,7 +348,122 @@
     }
   }
 
-  // Open Path in Explorer
+  // --- Resource packs actions ---
+
+  async function handleToggleResourcePack(pack: ResourcePackItem, enabled: boolean) {
+    pack.is_enabled = enabled;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('workshop_toggle_resource_pack', {
+        fileName: pack.file_name,
+        enabled,
+        version: currentVersion,
+      });
+      notify('info', enabled ? 'Ресурс-пак включён' : 'Ресурс-пак отключён', pack.name);
+      await loadResourcePacks();
+    } catch (err) {
+      notify('error', 'Не удалось изменить состояние ресурс-пака', String(err));
+      pack.is_enabled = !enabled;
+    }
+  }
+
+  // --- Shaders actions ---
+
+  async function handleSelectShader(shader: ShaderPackItem | null) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('workshop_set_active_shader_pack', {
+        shaderFileName: shader ? shader.file_name : null,
+        version: currentVersion,
+      });
+      notify(
+        'success',
+        shader ? 'Шейдер-пак выбран' : 'Шейдеры отключены',
+        shader ? shader.name : 'Используется стандартный рендеринг'
+      );
+      await loadShaderPacks();
+    } catch (err) {
+      notify('error', 'Ошибка переключения шейдера', String(err));
+    }
+  }
+
+  // --- Common Pack Actions (Add & Delete & Open Folder) ---
+
+  function openFolderForType(type: 'resourcepack' | 'shaderpack') {
+    import('@tauri-apps/api/core').then(({ invoke }) => {
+      invoke('workshop_open_packs_folder', {
+        packType: type,
+        version: currentVersion,
+      }).catch((err) => {
+        notify('warning', 'Не удалось открыть папку', String(err));
+      });
+    });
+  }
+
+  function promptDeletePack(pack: { name: string; file_name: string; is_from_pack: boolean }, type: 'resourcepack' | 'shaderpack') {
+    if (pack.is_from_pack) {
+      notify('warning', 'Защита файлов Aura-Pack', 'Файлы, входящие в официальную сборку, нельзя удалить.');
+      return;
+    }
+    packToDelete = {
+      name: pack.name,
+      file_name: pack.file_name,
+      type,
+      is_from_pack: pack.is_from_pack,
+    };
+    deletePackSheetOpen = true;
+  }
+
+  async function handleConfirmDeletePack() {
+    if (!packToDelete) return;
+    isDeletingPack = true;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('workshop_delete_pack_file', {
+        fileName: packToDelete.file_name,
+        packType: packToDelete.type,
+        version: currentVersion,
+      });
+      notify('success', 'Файл удалён', packToDelete.name);
+      deletePackSheetOpen = false;
+      packToDelete = null;
+      if (activeTab === 'resourcepacks') await loadResourcePacks();
+      else if (activeTab === 'shaders') await loadShaderPacks();
+    } catch (err) {
+      notify('error', 'Ошибка удаления файла', String(err));
+    } finally {
+      isDeletingPack = false;
+    }
+  }
+
+  function triggerAddPack(type: 'resourcepack' | 'shaderpack') {
+    pendingAddType = type;
+    manualPackPath = '';
+    addPackSheetOpen = true;
+  }
+
+  async function handleConfirmAddPack() {
+    if (!manualPackPath.trim()) return;
+    isAddingPack = true;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const added = await invoke<string>('workshop_add_pack_file', {
+        sourcePath: manualPackPath.trim(),
+        packType: pendingAddType,
+        version: currentVersion,
+      });
+      notify('success', 'Пак успешно добавлен', added);
+      addPackSheetOpen = false;
+      manualPackPath = '';
+      if (pendingAddType === 'resourcepack') await loadResourcePacks();
+      else await loadShaderPacks();
+    } catch (err) {
+      notify('error', 'Ошибка добавления пака', String(err));
+    } finally {
+      isAddingPack = false;
+    }
+  }
+
   async function handleOpenPath(path: string) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -282,11 +476,7 @@
 
   function handleVersionChange(ver: string) {
     currentVersion = ver;
-    if (activeTab === 'worlds') {
-      loadWorlds();
-    } else {
-      loadScreenshots();
-    }
+    refreshCurrentTab();
   }
 
   onMount(() => {
@@ -302,13 +492,14 @@
         <SegmentedControl
           options={[
             { value: 'worlds', label: 'Миры' },
+            { value: 'resourcepacks', label: 'Ресурс-паки' },
+            { value: 'shaders', label: 'Шейдеры' },
             { value: 'screenshots', label: 'Скриншоты' },
           ]}
           bind:value={activeTab}
           onchange={(val: string) => {
             activeTab = val;
-            if (val === 'worlds') loadWorlds();
-            else loadScreenshots();
+            refreshCurrentTab();
           }}
         />
       </div>
@@ -327,10 +518,48 @@
         />
       </div>
 
+      {#if activeTab === 'resourcepacks'}
+        <Button
+          variant="secondary"
+          size="small"
+          onclick={() => triggerAddPack('resourcepack')}
+          title="Добавить ZIP файл ресурс-пака"
+        >
+          <Icon name="folder" size={14} color="var(--color-label)" />
+          <span>Добавить ZIP…</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="small"
+          onclick={() => openFolderForType('resourcepack')}
+          title="Открыть папку ресурс-паков в проводнике"
+        >
+          <span>Папка паков</span>
+        </Button>
+      {:else if activeTab === 'shaders'}
+        <Button
+          variant="secondary"
+          size="small"
+          onclick={() => triggerAddPack('shaderpack')}
+          title="Добавить ZIP файл шейдеров"
+        >
+          <Icon name="folder" size={14} color="var(--color-label)" />
+          <span>Добавить ZIP…</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="small"
+          onclick={() => openFolderForType('shaderpack')}
+          title="Открыть папку шейдеров в проводнике"
+        >
+          <span>Папка шейдеров</span>
+        </Button>
+      {/if}
+
       <Button
         variant="ghost"
         size="small"
-        onclick={() => (activeTab === 'worlds' ? loadWorlds() : loadScreenshots())}
+        onclick={refreshCurrentTab}
         loading={isLoading}
         title="Обновить список"
       >
@@ -343,7 +572,7 @@
   <!-- Main Content Area -->
   <div class="workshop-content">
     {#if activeTab === 'worlds'}
-      <!-- WORLDS TAB -->
+      <!-- TAB 1: WORLDS -->
       {#if worlds.length === 0 && !isLoading}
         <div class="empty-state-card" data-testid="empty-worlds">
           <div class="empty-icon-wrap">
@@ -435,8 +664,237 @@
           {/each}
         </div>
       {/if}
+
+    {:else if activeTab === 'resourcepacks'}
+      <!-- TAB 2: RESOURCE PACKS -->
+      {#if resourcePacks.length === 0 && !isLoading}
+        <div class="empty-state-card" data-testid="empty-resourcepacks">
+          <div class="empty-icon-wrap">
+            <Icon name="folder" size={36} color="var(--color-tertiary-label)" />
+          </div>
+          <h3 class="empty-title">Ресурс-паков пока нет</h3>
+          <p class="empty-description">
+            Поместите ZIP-архив с ресурс-паком в папку resourcepacks инстанса Minecraft {currentVersion} или нажмите кнопку «Добавить ZIP…».
+          </p>
+          <div style="margin-top: 16px;">
+            <Button variant="secondary" size="small" onclick={() => openFolderForType('resourcepack')}>
+              <span>Открыть папку ресурс-паков</span>
+            </Button>
+          </div>
+        </div>
+      {:else}
+        <div class="packs-list" data-testid="resourcepacks-list">
+          {#each resourcePacks as pack (pack.file_name)}
+            <div
+              class="pack-card"
+              class:enabled={pack.is_enabled}
+              data-testid="pack-row-{pack.file_name}"
+            >
+              <div class="pack-icon-wrap">
+                {#if pack.icon_data_url}
+                  <img
+                    src={pack.icon_data_url}
+                    alt={pack.name}
+                    class="pack-icon-img"
+                    onerror={(e) => {
+                      (e.currentTarget as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                {:else}
+                  <div class="pack-icon-placeholder">
+                    <Icon name="folder" size={24} color="var(--color-secondary-label)" />
+                  </div>
+                {/if}
+              </div>
+
+              <div class="pack-info">
+                <div class="pack-title-row">
+                  <span class="pack-title">{pack.name}</span>
+                  {#if pack.is_from_pack}
+                    <span class="pack-badge from-pack">В сборке</span>
+                  {/if}
+                  {#if pack.is_enabled}
+                    <span class="pack-badge active-badge">Включён</span>
+                  {/if}
+                </div>
+
+                {#if pack.description}
+                  <p class="pack-description" title={pack.description}>{pack.description}</p>
+                {/if}
+
+                <div class="pack-meta-row">
+                  <span class="meta-item">
+                    <span class="meta-label">Размер:</span>
+                    {formatBytes(pack.size_bytes)}
+                  </span>
+                  <span class="meta-dot">•</span>
+                  <span class="meta-item folder-name" title={pack.file_path}>
+                    {pack.file_name}
+                  </span>
+                </div>
+              </div>
+
+              <div class="pack-actions">
+                <div class="toggle-wrap" title={pack.is_enabled ? 'Отключить ресурс-пак' : 'Включить ресурс-пак'}>
+                  <Toggle
+                    checked={pack.is_enabled}
+                    onchange={(checked: boolean) => handleToggleResourcePack(pack, checked)}
+                  />
+                </div>
+
+                {#if !pack.is_from_pack}
+                  <Button
+                    variant="destructive"
+                    size="small"
+                    onclick={() => promptDeletePack(pack, 'resourcepack')}
+                    title="Удалить ресурс-пак"
+                  >
+                    <Icon name="close" size={13} color="#ffffff" />
+                    <span>Удалить</span>
+                  </Button>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+    {:else if activeTab === 'shaders'}
+      <!-- TAB 3: SHADERS -->
+      {#if shaderPacks.length === 0 && !isLoading}
+        <div class="empty-state-card" data-testid="empty-shaders">
+          <div class="empty-icon-wrap">
+            <Icon name="sun" size={36} color="var(--color-tertiary-label)" />
+          </div>
+          <h3 class="empty-title">Шейдер-паков пока нет</h3>
+          <p class="empty-description">
+            Поместите ZIP-архив с шейдерами в папку shaderpacks инстанса Minecraft {currentVersion} или нажмите кнопку «Добавить ZIP…».
+          </p>
+          <div style="margin-top: 16px;">
+            <Button variant="secondary" size="small" onclick={() => openFolderForType('shaderpack')}>
+              <span>Открыть папку шейдеров</span>
+            </Button>
+          </div>
+        </div>
+      {:else}
+        <div class="shaders-container" data-testid="shaders-list">
+          <!-- Standalone option: Shaders OFF -->
+          <div
+            class="shader-card off-card"
+            class:active={!shaderPacks.some((s) => s.is_active)}
+          >
+            <div class="shader-icon-wrap">
+              <Icon name="sun" size={22} color="var(--color-secondary-label)" />
+            </div>
+
+            <div class="shader-info">
+              <div class="shader-title-row">
+                <span class="shader-title">Без шейдеров (OFF)</span>
+                {#if !shaderPacks.some((s) => s.is_active)}
+                  <span class="pack-badge active-badge">Активен</span>
+                {/if}
+              </div>
+              <p class="shader-description">Стандартный быстрый рендеринг Minecraft без внешних шейдеров.</p>
+            </div>
+
+            <div class="shader-actions">
+              {#if !shaderPacks.some((s) => s.is_active)}
+                <span class="active-indicator">Выбрано</span>
+              {:else}
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onclick={() => handleSelectShader(null)}
+                >
+                  Выбрать
+                </Button>
+              {/if}
+            </div>
+          </div>
+
+          <!-- List of Shader Packs -->
+          <div class="shaders-list">
+            {#each shaderPacks as shader (shader.file_name)}
+              <div
+                class="shader-card"
+                class:active={shader.is_active}
+                data-testid="shader-row-{shader.file_name}"
+              >
+                <div class="shader-icon-wrap">
+                  {#if shader.icon_data_url}
+                    <img
+                      src={shader.icon_data_url}
+                      alt={shader.name}
+                      class="shader-icon-img"
+                      onerror={(e) => {
+                        (e.currentTarget as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                  {:else}
+                    <Icon name="sun" size={22} color="var(--color-secondary-label)" />
+                  {/if}
+                </div>
+
+                <div class="shader-info">
+                  <div class="shader-title-row">
+                    <span class="shader-title">{shader.name}</span>
+                    {#if shader.is_from_pack}
+                      <span class="pack-badge from-pack">В сборке</span>
+                    {/if}
+                    {#if shader.is_active}
+                      <span class="pack-badge active-badge">Активен</span>
+                    {/if}
+                  </div>
+
+                  {#if shader.description}
+                    <p class="shader-description" title={shader.description}>{shader.description}</p>
+                  {/if}
+
+                  <div class="shader-meta-row">
+                    <span class="meta-item">
+                      <span class="meta-label">Размер:</span>
+                      {formatBytes(shader.size_bytes)}
+                    </span>
+                    <span class="meta-dot">•</span>
+                    <span class="meta-item folder-name" title={shader.file_path}>
+                      {shader.file_name}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="shader-actions">
+                  {#if shader.is_active}
+                    <span class="active-indicator">Активен</span>
+                  {:else}
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      onclick={() => handleSelectShader(shader)}
+                    >
+                      Выбрать
+                    </Button>
+                  {/if}
+
+                  {#if !shader.is_from_pack}
+                    <Button
+                      variant="destructive"
+                      size="small"
+                      onclick={() => promptDeletePack(shader, 'shaderpack')}
+                      title="Удалить шейдер-пак"
+                    >
+                      <Icon name="close" size={13} color="#ffffff" />
+                      <span>Удалить</span>
+                    </Button>
+                  {/if}
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
     {:else}
-      <!-- SCREENSHOTS TAB -->
+      <!-- TAB 4: SCREENSHOTS -->
       {#if screenshots.length === 0 && !isLoading}
         <div class="empty-state-card" data-testid="empty-screenshots">
           <div class="empty-icon-wrap">
@@ -490,7 +948,109 @@
   </div>
 </div>
 
-<!-- Modal Sheet: Delete Confirmation (Apple HIG Alerts / Destructive Sheet) -->
+<!-- Modal Sheet: Add Pack File (Manual Path / Import) -->
+<Sheet
+  bind:open={addPackSheetOpen}
+  title={pendingAddType === 'resourcepack' ? 'Добавить ресурс-пак' : 'Добавить шейдер-пак'}
+  cancelLabel="Отмена"
+  doneLabel="Добавить"
+  showDone={false}
+  maxWidth="500px"
+>
+  <div class="modal-dialog-body" data-testid="add-pack-modal">
+    <p class="dialog-text">
+      Укажите абсолютный путь к ZIP-архиву
+      {pendingAddType === 'resourcepack' ? 'ресурс-пака' : 'шейдер-пака'} на вашем компьютере:
+    </p>
+
+    <div class="modal-input-wrap">
+      <input
+        type="text"
+        class="apple-text-field"
+        placeholder="C:\Downloads\Pack.zip"
+        bind:value={manualPackPath}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') handleConfirmAddPack();
+        }}
+        aria-label="Путь к ZIP-архиву"
+      />
+    </div>
+
+    <p class="dialog-subtext">
+      Файл будет скопирован в папку
+      {pendingAddType === 'resourcepack' ? 'resourcepacks' : 'shaderpacks'} инстанса {currentVersion}.
+    </p>
+
+    <div class="dialog-actions">
+      <Button
+        variant="ghost"
+        size="regular"
+        onclick={() => (addPackSheetOpen = false)}
+        disabled={isAddingPack}
+      >
+        Отмена
+      </Button>
+
+      <Button
+        variant="primary"
+        size="regular"
+        onclick={handleConfirmAddPack}
+        loading={isAddingPack}
+        disabled={!manualPackPath.trim()}
+      >
+        Добавить файл
+      </Button>
+    </div>
+  </div>
+</Sheet>
+
+<!-- Modal Sheet: Delete Pack Confirmation -->
+<Sheet
+  bind:open={deletePackSheetOpen}
+  title="Удаление пака"
+  cancelLabel="Отмена"
+  doneLabel="Удалить"
+  showDone={false}
+  maxWidth="460px"
+>
+  <div class="modal-dialog-body" data-testid="delete-pack-modal">
+    <div class="dialog-icon-destructive">
+      <Icon name="warning" size={32} color="var(--color-system-red)" />
+    </div>
+
+    <p class="dialog-text">
+      Вы действительно хотите удалить
+      {packToDelete?.type === 'resourcepack' ? 'ресурс-пак' : 'шейдер-пак'}
+      <strong>«{packToDelete?.name}»</strong>?
+    </p>
+
+    <p class="dialog-subtext">
+      Файл <code>{packToDelete?.file_name}</code> будет безвозвратно удалён из папки инстанса.
+    </p>
+
+    <div class="dialog-actions">
+      <Button
+        variant="ghost"
+        size="regular"
+        onclick={() => (deletePackSheetOpen = false)}
+        disabled={isDeletingPack}
+      >
+        Отмена
+      </Button>
+
+      <Button
+        variant="destructive"
+        size="regular"
+        onclick={handleConfirmDeletePack}
+        loading={isDeletingPack}
+      >
+        Удалить
+      </Button>
+    </div>
+  </div>
+</Sheet>
+
+<!-- Modal Sheet: Delete World Confirmation -->
 <Sheet
   bind:open={deleteSheetOpen}
   title="Удаление мира"
@@ -666,7 +1226,8 @@
   .header-right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
+    flex-wrap: wrap;
   }
 
   .workshop-content {
@@ -684,7 +1245,7 @@
     text-align: center;
     padding: 60px 24px;
     margin: 40px auto;
-    max-width: 440px;
+    max-width: 460px;
     border-radius: var(--radius-lg);
     background-color: var(--glass-surface-translucent);
     border: 1px solid var(--glass-border);
@@ -710,14 +1271,18 @@
   }
 
   /* Worlds List */
-  .worlds-list {
+  .worlds-list,
+  .packs-list,
+  .shaders-container {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    max-width: 900px;
+    max-width: 920px;
   }
 
-  .world-card {
+  .world-card,
+  .pack-card,
+  .shader-card {
     display: flex;
     align-items: center;
     gap: 16px;
@@ -728,12 +1293,22 @@
     transition: background-color 0.15s ease, border-color 0.15s ease;
   }
 
-  .world-card:hover {
+  .world-card:hover,
+  .pack-card:hover,
+  .shader-card:hover {
     background-color: var(--color-system-fill);
     border-color: rgba(255, 255, 255, 0.18);
   }
 
-  .world-icon-wrap {
+  .pack-card.enabled,
+  .shader-card.active {
+    background-color: rgba(10, 132, 255, 0.08);
+    border-color: rgba(10, 132, 255, 0.28);
+  }
+
+  .world-icon-wrap,
+  .pack-icon-wrap,
+  .shader-icon-wrap {
     width: 48px;
     height: 48px;
     border-radius: var(--radius-md);
@@ -746,20 +1321,25 @@
     justify-content: center;
   }
 
-  .world-icon-img {
+  .world-icon-img,
+  .pack-icon-img,
+  .shader-icon-img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     image-rendering: pixelated;
   }
 
-  .world-icon-placeholder {
+  .world-icon-placeholder,
+  .pack-icon-placeholder {
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
-  .world-info {
+  .world-info,
+  .pack-info,
+  .shader-info {
     flex: 1;
     min-width: 0;
     display: flex;
@@ -767,16 +1347,31 @@
     gap: 4px;
   }
 
-  .world-title-row {
+  .world-title-row,
+  .pack-title-row,
+  .shader-title-row {
     display: flex;
     align-items: center;
     gap: 10px;
   }
 
-  .world-title {
+  .world-title,
+  .pack-title,
+  .shader-title {
     font-size: var(--text-subheadline);
     font-weight: 600;
     color: var(--color-label);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pack-description,
+  .shader-description {
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--color-secondary-label);
+    margin: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -811,7 +1406,26 @@
     background-color: rgba(175, 82, 222, 0.15);
   }
 
-  .world-meta-row {
+  .pack-badge {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: var(--radius-sm);
+  }
+
+  .pack-badge.from-pack {
+    color: #bf5af2;
+    background-color: rgba(191, 90, 242, 0.15);
+  }
+
+  .pack-badge.active-badge {
+    color: #30d158;
+    background-color: rgba(48, 209, 88, 0.15);
+  }
+
+  .world-meta-row,
+  .pack-meta-row,
+  .shader-meta-row {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -836,11 +1450,32 @@
     opacity: 0.7;
   }
 
-  .world-actions {
+  .world-actions,
+  .pack-actions,
+  .shader-actions {
     display: flex;
     align-items: center;
     gap: 8px;
     flex-shrink: 0;
+  }
+
+  .toggle-wrap {
+    display: flex;
+    align-items: center;
+  }
+
+  .active-indicator {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-system-blue);
+    padding: 6px 12px;
+  }
+
+  .shaders-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 4px;
   }
 
   /* Screenshots Grid */
@@ -873,6 +1508,11 @@
 
   .screenshot-card:active {
     transform: scale(0.98);
+  }
+
+  .screenshot-card:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 2px;
   }
 
   .screenshot-thumb-wrap {
@@ -982,6 +1622,28 @@
     justify-content: flex-end;
     gap: 10px;
     margin-top: 16px;
+  }
+
+  .modal-input-wrap {
+    margin: 6px 0;
+  }
+
+  .apple-text-field {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    background-color: var(--color-secondary-system-fill);
+    border: 1px solid var(--glass-border);
+    color: var(--color-label);
+    font-size: var(--text-subheadline);
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  .apple-text-field:focus {
+    border-color: var(--color-system-blue);
+    box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
   }
 
   .modal-list {

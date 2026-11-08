@@ -1,7 +1,7 @@
 <!--
   Wex Launcher — Screen «Играть» (Иммерсивный дизайн Apple HIG)
   Specification:
-  - Real in-game scenery background (Aura client sky/world), crisp without blur.
+  - Real in-game scenery background, crisp without blur.
   - Floating Liquid Glass launch dock and info cards.
   - Left-aligned typography (Apple scale, natural Russian, no marketing fluff).
   - Version selector with full label visibility (no truncation).
@@ -58,6 +58,7 @@
     initialShowImportWizard?: boolean;
     onlaunch?: () => void;
     oncancel?: () => void;
+    onstop?: () => void;
     onopensettings?: () => void;
   }
 
@@ -77,6 +78,7 @@
     initialShowImportWizard = false,
     onlaunch,
     oncancel,
+    onstop,
     onopensettings,
   }: Props = $props();
 
@@ -382,33 +384,55 @@
               <input
                 type="text"
                 bind:value={playerName}
-                placeholder="Никнейм"
+                placeholder="Имя игрока"
                 class="player-name-input nickname-input"
                 maxlength={16}
                 disabled={isLaunching || isRunning}
+                aria-label="Имя игрока"
               />
             </div>
           </div>
 
           <div class="dock-vertical-divider"></div>
 
-          <!-- Java Environment -->
+          <!-- Java Environment & Core Status -->
           <div class="dock-block tech-block">
-            <span class="dock-caption">Среда выполнения</span>
-            <span class="tech-runtime-text">{javaRuntime}</span>
+            <span class="dock-caption">
+              {isRunning ? 'Статус сессии' : 'Среда выполнения'}
+            </span>
+            <div class="tech-runtime-box">
+              <span class="tech-runtime-text">{javaRuntime}</span>
+              {#if isRunning}
+                <span class="tech-status-badge running">• В игре</span>
+              {:else if clientStatus}
+                <span class="tech-status-badge">• {clientStatus}</span>
+              {/if}
+            </div>
           </div>
 
-          <!-- Primary Play Action Button -->
-          <div class="dock-primary-action dock-action">
-            <Button
-              variant="primary"
-              size="large"
-              onclick={onlaunch}
-              disabled={!playerName.trim() || isLaunching || isRunning}
-            >
-              <Icon name="play" size={18} color="#ffffff" />
-              <span>{isRunning ? 'В игре' : 'Играть'}</span>
-            </Button>
+          <!-- Action Button: Play (systemBlue) -> In Game / Stop (neutral) -->
+          <div class="dock-primary-action dock-action" class:is-running={isRunning}>
+            {#if isRunning}
+              <Button
+                variant="secondary"
+                size="large"
+                onclick={onstop}
+                title="Остановить процесс Minecraft"
+              >
+                <span class="running-indicator-dot"></span>
+                <span>В игре • Остановить</span>
+              </Button>
+            {:else}
+              <Button
+                variant="primary"
+                size="large"
+                onclick={onlaunch}
+                disabled={!playerName.trim() || isLaunching || isRunning}
+              >
+                <Icon name="play" size={18} color="#ffffff" />
+                <span>Играть</span>
+              </Button>
+            {/if}
           </div>
         </div>
       {/if}
@@ -680,7 +704,7 @@
 
   .empty-status-text {
     font-size: var(--text-footnote);
-    color: var(--color-tertiary-label);
+    color: var(--color-secondary-label);
     padding: 4px 0;
   }
 
@@ -695,7 +719,7 @@
     align-items: center;
     gap: 8px;
     font-size: var(--text-caption-1);
-    color: var(--color-tertiary-label);
+    color: var(--color-secondary-label);
   }
 
   .friends-status-label {
@@ -771,11 +795,12 @@
     padding: 0 10px;
     height: 32px;
     box-sizing: border-box;
-    transition: all 0.2s ease;
+    transition: border-color var(--motion-duration-short) ease, box-shadow var(--motion-duration-short) ease, background-color var(--motion-duration-short) ease;
   }
 
   .nickname-field-box:focus-within {
     border-color: var(--color-system-blue);
+    box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
     background: var(--color-system-background);
   }
 
@@ -793,11 +818,42 @@
     flex-shrink: 0;
   }
 
+  .tech-runtime-box {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 34px;
+    white-space: nowrap;
+  }
+
   .tech-runtime-text {
     font-size: var(--text-footnote);
     color: var(--color-secondary-label);
     font-family: var(--font-mono);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
     line-height: 32px;
+  }
+
+  .tech-status-badge {
+    font-size: 11px;
+    color: var(--color-secondary-label);
+  }
+
+  .tech-status-badge.running {
+    color: var(--color-system-green);
+    font-weight: 600;
+  }
+
+  .running-indicator-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--color-system-green);
+    margin-right: 6px;
+    box-shadow: 0 0 6px rgba(48, 209, 88, 0.6);
   }
 
   .dock-primary-action {

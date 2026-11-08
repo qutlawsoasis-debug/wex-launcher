@@ -322,6 +322,7 @@
               placeholder="C:\Program Files\Java\jdk-21\bin\javaw.exe"
               bind:value={customJavaPath}
               onchange={() => saveConfig()}
+              aria-label="Путь к javaw.exe"
             />
           </div>
         {/if}
@@ -533,6 +534,7 @@
 
   .apple-text-field:focus {
     border-color: var(--color-system-blue);
+    box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
   }
 
   .dir-actions {
@@ -548,8 +550,9 @@
   }
 
   .accent-dot {
-    width: 22px;
-    height: 22px;
+    position: relative;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
     border: 2px solid transparent;
     cursor: pointer;
@@ -559,6 +562,17 @@
     transition: transform var(--motion-duration-short) ease;
     outline: none;
     padding: 0;
+  }
+
+  .accent-dot::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+  }
+
+  .accent-dot:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 3px;
   }
 
   .accent-dot:hover {
