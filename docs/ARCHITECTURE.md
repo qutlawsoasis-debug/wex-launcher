@@ -1,6 +1,6 @@
 # Architecture and data flow
 
-This describes the implementation at main **afb981a (2026-11-08)**. [IPC.md](IPC.md) is the complete inventory of **101 registered Tauri commands**, their actual argument/result/error shapes, shared contract names that are not registered, and event producers. A generated TypeScript declaration or a UI listener is not evidence that a command or event producer exists.
+This describes the implementation at main **90c9e2d (2026-11-08)**, including the unified error layer. [IPC.md](IPC.md) is the complete inventory of **101 registered Tauri commands**, their actual argument/result/error shapes, shared contract names that are not registered, and event producers. A generated TypeScript declaration or a UI listener is not evidence that a command or event producer exists.
 
 ## Boundaries and workspaces
 
@@ -125,6 +125,8 @@ Five frontend event names have app-side producers: `install-progress`, `launch-s
 The app emits bare serde DTO payloads. The shared `IpcEvent` tagged enum `{event,payload}` is a separate representation, not the Tauri listener envelope. Numeric progress fields can represent counts per stage; the current launch adapter reports speed as zero. Events have no replay, delivery acknowledgement or exactly-once completion guarantee. UI should subscribe before starting work, unlisten on teardown, and reconcile with command results/state.
 
 Errors are also not uniform: most registered handlers return String, friends and low-level lobby/tunnel return IpcError, and get_data_dir returns a plain String. The generated IpcResult tagged union does not describe how a Tauri Result Promise resolves/rejects. These distinctions and exact top-level camelCase versus nested snake_case keys are documented in [IPC.md](IPC.md).
+
+The unified error layer adds `From<WexError> for IpcError` in core: install/launch now preserve error classes for Java, integrity/download failures, network, cancellation and process exit inside the core adapter. The app launch handler still converts errors to String or substitutes crash diagnosis, so this does not make every Tauri rejection structured. Generated ERROR_CODES is a presentation catalog and does not include every converter-produced code. In the UI, `formatError(unknown, domain)` in `ui/src/lib/design/errors.ts` extracts a code or infers one from text, then returns title/description/actions/technical for ErrorState. Screens supply action callbacks; displaying an error state does not automatically retry a mutating operation.
 
 Generated TypeScript covers `wex-ipc` declarations, not all app-local types or registry names. Drift tests compare those generated declarations, not frontend call arguments against every registered handler. ModEntry, LauncherSettingsDto, shell/network DTOs, ApplyImportRequest/Response and resource/shader pack DTOs are maintained in app source and currently need explicit UI synchronization.
 

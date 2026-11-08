@@ -1,6 +1,6 @@
 # IPC Wex: зарегистрированные команды, DTO и события
 
-Снимок: **08.11.2026, main afb981a**. Источник доступных вызовов — [`tauri::generate_handler!`](../app/src-tauri/src/lib.rs), а не только константы `wex-ipc`. Ниже перечислены **все 101 зарегистрированная команда**, включая 4 обработчика серверов в lib.rs. Новые функции в файле commands ещё не доступны UI, пока не добавлены в этот реестр. Схема потоков и владение состоянием: [ARCHITECTURE.md](ARCHITECTURE.md).
+Снимок: **08.11.2026, main 90c9e2d**, включая общий слой ошибок. Источник доступных вызовов — [`tauri::generate_handler!`](../app/src-tauri/src/lib.rs), а не только константы `wex-ipc`. Ниже перечислены **все 101 зарегистрированная команда**, включая 4 обработчика серверов в lib.rs. Новые функции в файле commands ещё не доступны UI, пока не добавлены в этот реестр. Схема потоков и владение состоянием: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Формат вызова и ответа
 
@@ -28,6 +28,24 @@
 | SkinError | SKIN_IMAGE_ERROR, SKIN_INVALID_PNG, SKIN_UNSUPPORTED_DIMENSIONS, SKIN_FILE_TOO_LARGE, IO_ERROR, SERIALIZATION_ERROR |
 
 Конвертеры определены в [`error.rs`](../core/wex-ipc/src/error.rs); наличие кода в этой таблице не означает, что конкретный String-handler его сохраняет. Generated ERROR_CODES сейчас не перечисляет SKIN_*; свойство code в IpcError остаётся String. Успешный best-effort вызов также не доказывает, что все побочные операции удались: подавление ошибок отмечено явно.
+
+### Общий слой ошибок, main 90c9e2d
+
+[`WexError → IpcError`](../core/wex-core/src/error.rs) теперь применяется core adapter при install/launch вместо оборачивания всех сбоев в INTERNAL_ERROR. Реальные коды конвертера:
+
+| Источник | Код |
+|---|---|
+| IO / JSON / ZIP | IO_* через стандартный конвертер / SERIALIZATION_ERROR / WORKSHOP_ZIP_ERROR |
+| HTTP timeout / прочая сеть | IO_TIMED_OUT / NETWORK_ERROR |
+| Несовпадение hash / size | INSTALL_HASH_MISMATCH / INSTALL_SIZE_MISMATCH |
+| Ошибка загрузки / структуры манифеста | INSTALL_DOWNLOAD_FAILED / INSTALL_MANIFEST_ERROR |
+| Неподдерживаемая версия / ошибка запуска | LAUNCH_FAILED |
+| Java: сообщение содержит not found/не найден, version/версия, прочее | JAVA_NOT_FOUND / JAVA_WRONG_VERSION / JAVA_RUNTIME_ERROR |
+| Ненулевой код процесса / отмена | LAUNCH_PROCESS_FAILED / OPERATION_CANCELLED |
+
+Generated ERROR_CODES также содержит LAUNCH_OFFLINE_FORBIDDEN, LAUNCH_ALREADY_RUNNING, INSTALL_FAILED, PACK_SYNC_FAILED, MODS_PROTECTED_PACK_MOD, MODS_INVALID_FILE, MODS_LOAD_FAILED, MODS_DELETE_FAILED. Это словарь UI, **не доказательство выдачи структурированного кода каждым handler**: start_game по-прежнему возвращает String, а duplicate/offline preflight — русские строки; launch crash diagnosis может заменить message. NETWORK_ERROR и OPERATION_CANCELLED выдаются core-конвертером, но пока отсутствуют в generated ERROR_CODES, как и SKIN_*.
+
+В UI [`formatError(error, domain)`](../ui/src/lib/design/errors.ts) принимает unknown/String/IpcError, извлекает явный код либо эвристически определяет его по тексту и домену, возвращает FormattedError для ErrorState. Поля presentation: code/title/description/primaryAction/secondaryAction/technical. Тип action и пользовательская подпись не запускают retry/открытие папки сами по себе: callback предоставляет экран. Эта нормализация не меняет wire-контракт Tauri; точный код по-прежнему предпочтительнее эвристики.
 
 ## Реестр команд
 
@@ -106,7 +124,7 @@
 | [`overview_check_update`](../app/src-tauri/src/commands/overview.rs#L279) | `{ manifestUrl?: String }` | `UpdateCheckResultDto` | `String` | HTTP/JSON/update errors → String при заданном URL; без URL возвращает update_available=false, не выполняя удалённую проверку; overview использует current_version=1.0.0. |
 | [`extras_detect_old_launcher`](../app/src-tauri/src/commands/overview.rs#L292) | `{}` | `Option<String>` | `String` | Определяет существующий старый каталог; отсутствие → null, сейчас всегда Ok. Сам перенос не выполняет. |
 | [`extras_import_old_launcher`](../app/src-tauri/src/commands/overview.rs#L297) | `{ request: ExtrasImportOldLauncherRequest }` | `OldLauncherDataDto` | `String` | Читает явный old_launcher_dir; ошибки чтения/импорта → String, не применяет выбранные настройки. |
-| [`extras_apply_import`](../app/src-tauri/src/commands/overview.rs#L304) | `{ request: ApplyImportRequest }` | `ApplyImportResponse` | `String` | Выборочный перенос в Wex; config failure → String; результат сообщает числа реально импортированных серверов/скинов. Входные flags с serde(default). |
+| [`extras_apply_import`](../app/src-tauri/src/commands/overview.rs#L304) | `{ request: ApplyImportRequest }` | `ApplyImportResponse` | `String` | Выборочный перенос в Wex; config failure → String; результат сообщает счётчики: servers=req.servers.len после успешного сохранения (не число новых после dedup), skins — успешные копирования. Входные flags с serde(default). |
 
 ### friends (11)
 
