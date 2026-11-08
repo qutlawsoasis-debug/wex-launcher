@@ -112,8 +112,6 @@ impl LauncherCore for WexLauncherCore {
             tokens.insert(request.version.clone(), cancel_token);
         }
 
-        let quick_play = request.server.as_deref();
-
         let res = match prepare_and_launch(
             &self.paths,
             &cfg,
@@ -122,7 +120,6 @@ impl LauncherCore for WexLauncherCore {
             events,
             8,
             &jvm_args,
-            quick_play,
         )
         .await
         {
