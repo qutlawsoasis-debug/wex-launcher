@@ -703,13 +703,14 @@ mod tests {
         paths.ensure_instance_dirs("1.20.1").unwrap();
 
         // Populate dummy log and crash files
-        let log_file = paths.instance_dir("1.20.1").join("logs").join("old.log.gz");
+        let log_dir = paths.instance_dir("1.20.1").join("logs");
+        std::fs::create_dir_all(&log_dir).unwrap();
+        let log_file = log_dir.join("old.log.gz");
         std::fs::write(&log_file, vec![0u8; 1024]).unwrap();
 
-        let crash_file = paths
-            .instance_dir("1.20.1")
-            .join("crash-reports")
-            .join("crash-2026.txt");
+        let crash_dir = paths.instance_dir("1.20.1").join("crash-reports");
+        std::fs::create_dir_all(&crash_dir).unwrap();
+        let crash_file = crash_dir.join("crash-2026.txt");
         std::fs::write(&crash_file, "error report details").unwrap();
 
         let result = cleanup_cache_impl(&paths);
