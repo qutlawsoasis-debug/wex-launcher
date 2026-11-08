@@ -271,6 +271,7 @@ pub fn run() {
             commands::wardrobe::extras_list_skin_history,
             commands::wardrobe::extras_generate_csl_config,
             commands::wardrobe::wardrobe_delete_history,
+            commands::wardrobe::wardrobe_get_skin,
             commands::wardrobe::wardrobe_get_state,
             commands::wardrobe::wardrobe_apply,
             // Music commands

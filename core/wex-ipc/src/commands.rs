@@ -295,6 +295,7 @@ pub const CMD_EXTRAS_APPLY_PRESET: &str = "extras_apply_preset";
 pub const CMD_WARDROBE_GET_STATE: &str = "wardrobe_get_state";
 pub const CMD_WARDROBE_APPLY: &str = "wardrobe_apply";
 pub const CMD_WARDROBE_DELETE_HISTORY: &str = "wardrobe_delete_history";
+pub const CMD_WARDROBE_GET_SKIN: &str = "wardrobe_get_skin";
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct ExtrasAnalyzeCrashRequest {
@@ -368,6 +369,18 @@ pub struct WardrobeDeleteHistoryRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct WardrobeDeleteHistoryResponse {
     pub success: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct WardrobeGetSkinRequest {
+    pub history_dir: String,
+    pub item_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct WardrobeGetSkinResponse {
+    pub item: WardrobeItemDto,
+    pub skin_bytes_base64: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS, PartialEq, Eq)]
