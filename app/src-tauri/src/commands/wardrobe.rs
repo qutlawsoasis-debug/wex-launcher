@@ -132,7 +132,9 @@ pub async fn wardrobe_delete_history(
     request: WardrobeDeleteHistoryRequest,
 ) -> Result<WardrobeDeleteHistoryResponse, String> {
     let mgr = SkinHistoryManager::new(&request.history_dir);
-    let success = mgr.remove_item(&request.item_id).map_err(|e| e.to_string())?;
+    let success = mgr
+        .remove_item(&request.item_id)
+        .map_err(|e| e.to_string())?;
 
     Ok(WardrobeDeleteHistoryResponse { success })
 }
@@ -167,8 +169,11 @@ pub async fn extras_generate_csl_config(
         "enableCape": true,
         "forceDisableCache": true
     });
-    fs::write(&target_path, serde_json::to_string_pretty(&config_json).map_err(|e| e.to_string())?)
-        .map_err(|e| e.to_string())?;
+    fs::write(
+        &target_path,
+        serde_json::to_string_pretty(&config_json).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -177,9 +182,7 @@ fn active_wardrobe_path(root: &Path) -> PathBuf {
 }
 
 #[tauri::command]
-pub async fn wardrobe_get_state(
-    state: State<'_, PlayState>,
-) -> Result<WardrobeStateDto, String> {
+pub async fn wardrobe_get_state(state: State<'_, PlayState>) -> Result<WardrobeStateDto, String> {
     let path = active_wardrobe_path(&state.paths.root);
     if path.exists() {
         if let Ok(content) = fs::read_to_string(&path) {
@@ -208,7 +211,11 @@ pub async fn wardrobe_apply(
 ) -> Result<WardrobeApplyResponse, String> {
     // 1. Resolve skin bytes
     let skin_bytes = if let Some(ref b64) = request.skin_base64 {
-        Some(BASE64.decode(b64).map_err(|e| format!("Ошибка skin base64: {}", e))?)
+        Some(
+            BASE64
+                .decode(b64)
+                .map_err(|e| format!("Ошибка skin base64: {}", e))?,
+        )
     } else {
         None
     };
@@ -219,7 +226,11 @@ pub async fn wardrobe_apply(
         "silver" => Some(generate_aura_silver_cape()),
         "custom" => {
             if let Some(ref b64) = request.cape_base64 {
-                Some(BASE64.decode(b64).map_err(|e| format!("Ошибка cape base64: {}", e))?)
+                Some(
+                    BASE64
+                        .decode(b64)
+                        .map_err(|e| format!("Ошибка cape base64: {}", e))?,
+                )
             } else {
                 None
             }
@@ -352,11 +363,9 @@ mod tests {
         .unwrap();
         assert!(del.success);
 
-        let list_after = extras_list_skin_history(ExtrasListSkinHistoryRequest {
-            history_dir,
-        })
-        .await
-        .unwrap();
+        let list_after = extras_list_skin_history(ExtrasListSkinHistoryRequest { history_dir })
+            .await
+            .unwrap();
         assert_eq!(list_after.items.len(), 0);
     }
 

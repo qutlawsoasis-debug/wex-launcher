@@ -256,22 +256,15 @@ impl From<wex_extras::SkinError> for IpcError {
     fn from(err: wex_extras::SkinError) -> Self {
         use wex_extras::SkinError;
         let (code, msg) = match &err {
-            SkinError::ImageError(_) => (
-                "SKIN_IMAGE_ERROR",
-                "Ошибка декодирования изображения скина",
-            ),
-            SkinError::InvalidPng(d) => (
-                "SKIN_INVALID_PNG",
-                d.as_str(),
-            ),
+            SkinError::ImageError(_) => {
+                ("SKIN_IMAGE_ERROR", "Ошибка декодирования изображения скина")
+            }
+            SkinError::InvalidPng(d) => ("SKIN_INVALID_PNG", d.as_str()),
             SkinError::UnsupportedDimensions { .. } => (
                 "SKIN_UNSUPPORTED_DIMENSIONS",
                 "Неподдерживаемый размер скина: требуется 64x64 или 64x32",
             ),
-            SkinError::FileTooLarge => (
-                "SKIN_FILE_TOO_LARGE",
-                "Размер файла скина превышает 2 МБ",
-            ),
+            SkinError::FileTooLarge => ("SKIN_FILE_TOO_LARGE", "Размер файла скина превышает 2 МБ"),
             SkinError::Io(_) => (
                 "IO_ERROR",
                 "Ошибка ввода-вывода при работе с файлами гардероба",
