@@ -272,13 +272,19 @@ pub fn run() {
         .setup(|app| {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();
-            let play_state = PlayState::new_real(paths.clone(), app.handle().clone());
+            let network_state = commands::network::NetworkState::new();
+            network_state.start_supervisor(app.handle().clone());
+            let play_state =
+                PlayState::new_real(paths.clone(), app.handle().clone(), network_state.clone());
             app.manage(play_state);
+            app.manage(network_state);
             app.manage(commands::friends::FriendsState::new(paths));
             app.manage(AppState::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Network & Connectivity commands
+            commands::network::get_network_status,
             // Standard wex-ipc commands
             commands::launch::get_config,
             commands::launch::save_config,

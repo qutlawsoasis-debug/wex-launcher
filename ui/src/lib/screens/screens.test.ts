@@ -494,4 +494,58 @@ describe('Wex Launcher Screens', () => {
 
     unmount(comp);
   });
+
+  it('renders ServersScreen in offline state when network is offline', async () => {
+    const { network } = await import('../design/network.svelte');
+    network.setOnlineForTesting(false);
+
+    const comp = mount(ServersScreen, { target });
+    expect(target.textContent).toContain('Нет подключения');
+    expect(target.textContent).toContain('Проверьте подключение к интернету или локальной сети');
+    expect(target.textContent).toContain('Повторить');
+
+    network.setOnlineForTesting(true);
+    unmount(comp);
+  });
+
+  it('renders LobbyScreen in offline state when network is offline', async () => {
+    const { network } = await import('../design/network.svelte');
+    network.setOnlineForTesting(false);
+
+    const comp = mount(LobbyScreen, { target });
+    expect(target.textContent).toContain('Нет подключения');
+    expect(target.textContent).toContain('Повторить');
+
+    network.setOnlineForTesting(true);
+    unmount(comp);
+  });
+
+  it('renders FriendsScreen in offline state when network is offline', async () => {
+    const { network } = await import('../design/network.svelte');
+    network.setOnlineForTesting(false);
+
+    const comp = mount(FriendsScreen, { target });
+    expect(target.textContent).toContain('Нет подключения');
+    expect(target.textContent).toContain('Повторить');
+
+    network.setOnlineForTesting(true);
+    unmount(comp);
+  });
+
+  it('renders PlayScreen with offline launch status message', () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        isLaunching: true,
+        progressPercentage: 10,
+        progressStage: 'Нет сети — запуск без обновления',
+        progressDetail: 'Запуск установленной версии 1.21.1',
+      },
+    });
+
+    expect(target.textContent).toContain('Нет сети — запуск без обновления');
+    unmount(comp);
+  });
 });
