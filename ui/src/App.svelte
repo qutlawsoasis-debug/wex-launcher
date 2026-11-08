@@ -557,10 +557,9 @@
       {:else if activeTab === 'lobby'}
         <LobbyScreen />
       {:else if activeTab === 'friends'}
-        <FriendsScreen />
+        <FriendsScreen tab={friendsSubtab} />
       {:else if activeTab === 'wardrobe'}
         <WardrobeScreen {playerName} ontoast={addToast} />
-        <FriendsScreen tab={friendsSubtab} />
       {:else if activeTab === 'workshop'}
         <WorkshopScreen {selectedVersion} ontoast={addToast} />
       {:else if activeTab === 'mods'}
