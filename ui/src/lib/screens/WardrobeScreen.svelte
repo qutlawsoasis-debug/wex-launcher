@@ -53,7 +53,6 @@
     Skin3DRenderer,
     isWebGLSupported,
     createDefaultSkinCanvas,
-    createAuraCapeCanvas,
   } from '../design/skin3d';
 
   const displayModeOptions = [
@@ -148,12 +147,6 @@
     // 2. Cape Texture
     if (selectedCapeId === 'none') {
       renderer3d.setHasCape(false);
-    } else if (selectedCapeId === 'cyan') {
-      const cyanCanvas = createAuraCapeCanvas('cyan');
-      renderer3d.setCapeImage(cyanCanvas);
-    } else if (selectedCapeId === 'silver') {
-      const silverCanvas = createAuraCapeCanvas('silver');
-      renderer3d.setCapeImage(silverCanvas);
     } else if (selectedCapeId === 'custom' && customCapeBase64) {
       const capeImg = new Image();
       capeImg.onload = () => {

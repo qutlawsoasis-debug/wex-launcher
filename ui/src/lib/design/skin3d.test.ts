@@ -8,7 +8,6 @@ import {
   buildCapeModelBuffer,
   isWebGLSupported,
   createDefaultSkinCanvas,
-  createAuraCapeCanvas,
   Mat4,
 } from './skin3d';
 
@@ -189,16 +188,6 @@ describe('Default Skin & Cape Texture Generators', () => {
     const alex = createDefaultSkinCanvas('slim');
     expect(alex.width).toBe(64);
     expect(alex.height).toBe(64);
-  });
-
-  it('generates 64x32 cape canvas for Aura Cyan and Aura Silver', () => {
-    const cyan = createAuraCapeCanvas('cyan');
-    expect(cyan.width).toBe(64);
-    expect(cyan.height).toBe(32);
-
-    const silver = createAuraCapeCanvas('silver');
-    expect(silver.width).toBe(64);
-    expect(silver.height).toBe(32);
   });
 });
 

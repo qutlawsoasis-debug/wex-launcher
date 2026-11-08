@@ -942,36 +942,3 @@ export function createDefaultSkinCanvas(model: ModelType): HTMLCanvasElement {
 
   return canvas;
 }
-
-/**
- * Creates an in-memory 64x32 canvas with official Aura cape textures.
- */
-export function createAuraCapeCanvas(type: 'cyan' | 'silver'): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 32;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return canvas;
-
-  ctx.imageSmoothingEnabled = false;
-
-  const baseColor = type === 'cyan' ? '#0A84FF' : '#8E8E93';
-  const trimColor = type === 'cyan' ? '#005BB5' : '#3A3A3C';
-
-  // Cape box (10x16x1)
-  // Fill entire cape region
-  ctx.fillStyle = baseColor;
-  ctx.fillRect(0, 0, 22, 17);
-
-  // Back face logo mark (X=1..11, Y=1..17)
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(4, 7, 4, 3);
-  ctx.fillRect(5, 6, 2, 5);
-
-  // Bottom border trim
-  ctx.fillStyle = trimColor;
-  ctx.fillRect(1, 14, 10, 3);
-  ctx.fillRect(12, 14, 10, 3);
-
-  return canvas;
-}
