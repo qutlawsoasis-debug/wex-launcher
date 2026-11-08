@@ -9,6 +9,7 @@ import LobbyScreen from './LobbyScreen.svelte';
 import FriendsScreen from './FriendsScreen.svelte';
 import ModsScreen from './ModsScreen.svelte';
 import SettingsScreen from './SettingsScreen.svelte';
+import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
 
 describe('Wex Launcher Screens', () => {
   let target: HTMLElement;
@@ -123,22 +124,94 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders PlayScreen with authentic empty states for news and servers when without IPC data', () => {
+  it('hides changelog card when news source is absent (spec: если источника нет, блок скрыт) and shows server empty state', () => {
     const comp = mount(PlayScreen, {
       target,
       props: {
         selectedVersion: '1.21.1',
         playerName: 'Steve',
+        initialNews: [],
       },
     });
 
-    // Without IPC, changelog must show authentic empty state: «Новостей пока нет»
-    expect(target.textContent).toContain('Новостей пока нет');
-    // Without IPC, recent server must show authentic empty state: «Вы ещё не играли на серверах»
+    // Without news data, the changelog block must be completely hidden (no fabricated cards)
+    expect(target.querySelector('.updates-card')).toBeNull();
+    expect(target.textContent).not.toContain('Журнал изменений');
+
+    // Recent server without data shows authentic empty state
     expect(target.textContent).toContain('Вы ещё не играли на серверах');
-    // Zero hardcoded fabricated numbers or mock domains
     expect(target.textContent).not.toContain('mc.wexmc.net');
-    expect(target.textContent).not.toContain('Сборка 2.4');
+
+    unmount(comp);
+  });
+
+  it('renders PlayScreen changelog block with Apple HIG badges when news source is present', () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        initialNews: [
+          {
+            version: 'v1.0.0',
+            date_text: '7 ноября 2026',
+            short_title: 'Новый Wex',
+            is_current: true,
+            items: [
+              { category: 'new', text: 'Полный переход на Tauri 2 + Rust + Svelte 5', raw: '[Новое] Полный переход на Tauri 2 + Rust + Svelte 5' },
+              { category: 'improved', text: 'Плавность интерфейса', raw: '[Улучшено] Плавность интерфейса' },
+              { category: 'fixed', text: 'Сбои в фоновом режиме', raw: '[Исправлено] Сбои в фоновом режиме' },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(target.querySelector('.updates-card')).not.toBeNull();
+    expect(target.textContent).toContain('Журнал изменений');
+    expect(target.textContent).toContain('v1.0.0');
+    expect(target.textContent).toContain('7 ноября 2026');
+    expect(target.textContent).toContain('Полный переход на Tauri 2 + Rust + Svelte 5');
+
+    // Badges must be rendered
+    const newBadge = target.querySelector('.badge-new');
+    expect(newBadge?.textContent).toBe('Новое');
+    const improvedBadge = target.querySelector('.badge-improved');
+    expect(improvedBadge?.textContent).toBe('Улучшено');
+    const fixedBadge = target.querySelector('.badge-fixed');
+    expect(fixedBadge?.textContent).toBe('Исправлено');
+
+    unmount(comp);
+  });
+
+  it('renders unobtrusive update notification banner when update is available and allows dismissing it', async () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        initialNews: [],
+        initialUpdateInfo: {
+          update_available: true,
+          current_version: '1.0.0',
+          latest_version: '1.1.0',
+          notes: 'Исправления ошибок и оптимизация',
+        },
+      },
+    });
+
+    const banner = target.querySelector('.update-banner');
+    expect(banner).not.toBeNull();
+    expect(banner?.textContent).toContain('Доступна новая версия Wex 1.1.0');
+    expect(banner?.textContent).toContain('Исправления ошибок и оптимизация');
+
+    // Close button dismisses the banner
+    const closeBtn = banner?.querySelector('.update-banner-close button') as HTMLButtonElement;
+    expect(closeBtn).not.toBeNull();
+    closeBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(target.querySelector('.update-banner')).toBeNull();
 
     unmount(comp);
   });
@@ -192,6 +265,52 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Tauri 2');
     expect(target.textContent).not.toContain('.minecraft');
     expect(target.textContent).toContain('Wex');
+    unmount(comp);
+  });
+
+  it('renders ImportWizardSheet with found old launcher data, non-destructive notice, and transfer toggles', () => {
+    const comp = mount(ImportWizardSheet, {
+      target,
+      props: {
+        open: true,
+        initialDir: 'C:\\Users\\Player\\AppData\\Roaming\\.aura',
+        initialData: {
+          nickname: 'AuraVeteran',
+          ram_mb: 6144,
+          selected_version: '1.20.1',
+          graphics_preset: 'High',
+          total_play_time_seconds: 50000n,
+          total_game_launches: 120,
+          servers: [
+            { name: 'Survival Server', ip: 'mc.aura.test', icon: null },
+            { name: 'MiniGames Server', ip: 'games.aura.test', icon: null },
+          ],
+          skins: [
+            { file_name: 'steve_warrior.png', path: 'c:/skins/steve_warrior.png', hash: '123', is_slim: false },
+          ],
+          capes: [],
+          wardrobe_history: [],
+        },
+      },
+    });
+
+    // Header & Title
+    expect(target.textContent).toContain('Импорт из старого лаунчера');
+
+    // Safe isolation notice
+    expect(target.textContent).toContain('Файлы старого лаунчера не будут изменены или удалены');
+
+    // Found items summary
+    expect(target.textContent).toContain('AuraVeteran');
+    expect(target.textContent).toContain('6 ГБ (6144 МБ)');
+    expect(target.textContent).toContain('1.20.1');
+    expect(target.textContent).toContain('2 сервер(-ов) найдено');
+    expect(target.textContent).toContain('1 скин(-ов) найдено');
+
+    // Transfer buttons
+    expect(target.textContent).toContain('Перенести');
+    expect(target.textContent).toContain('Пропустить');
+
     unmount(comp);
   });
 });
