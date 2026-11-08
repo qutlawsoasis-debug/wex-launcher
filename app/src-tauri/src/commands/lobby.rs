@@ -14,17 +14,19 @@ use tauri::State;
 use tokio::sync::Mutex;
 
 use wex_ipc::commands::{
-    NetListOpenRoomsRequest, NetListOpenRoomsResponse, NetLobbyCloseRequest, NetLobbyCreateRequest,
+    NetLanListDiscoveredRequest, NetLanListDiscoveredResponse, NetListOpenRoomsRequest,
+    NetListOpenRoomsResponse, NetLobbyCloseRequest, NetLobbyCreateRequest,
     NetLobbyHeartbeatRequest, NetLobbyJoinRequest, NetLobbyKickRequest, NetLobbyLeaveRequest,
     NetLobbyOpenRequest, NetLobbyStatusRequest, NetTunnelEnsureBinaryRequest,
     NetTunnelEnsureBinaryResponse, NetTunnelStartRequest, NetTunnelStartResponse,
 };
 use wex_ipc::error::{IpcError, IpcResult};
 use wex_ipc::models::{
-    LobbyCreateResponseDto, LobbyJoinResponseDto, LobbyStatusResponseDto, NetOpenRoomDto,
-    TunnelConfigResponseDto, TunnelStatusDto,
+    LanWorldDto, LobbyCreateResponseDto, LobbyJoinResponseDto, LobbyStatusResponseDto,
+    NetOpenRoomDto, TunnelConfigResponseDto, TunnelStatusDto,
 };
 use wex_net::events::{NetEventBus, TunnelStatus};
+use wex_net::lan::LanDiscoveryService;
 use wex_net::lobby::{HeartbeatHandle, LobbyApiClient, LobbyError};
 use wex_net::tunnel::{ensure_binary_downloaded, PlayitSupervisor};
 
@@ -53,6 +55,7 @@ pub struct LobbyState {
     pub current_tunnel_status: Arc<Mutex<TunnelStatus>>,
     pub tools_dir: PathBuf,
     pub old_backend_url: String,
+    pub lan_discovery: Arc<LanDiscoveryService>,
 }
 
 unsafe impl Send for LobbyState {}
@@ -67,6 +70,9 @@ impl LobbyState {
                     .expect("Failed to initialize default LobbyApiClient")
             });
 
+        let lan_discovery = Arc::new(LanDiscoveryService::default());
+        std::mem::drop(lan_discovery.clone().spawn_listener());
+
         Self {
             client,
             event_bus,
@@ -76,6 +82,7 @@ impl LobbyState {
             current_tunnel_status: Arc::new(Mutex::new(TunnelStatus::Inactive)),
             tools_dir,
             old_backend_url: old_backend_url.to_string(),
+            lan_discovery,
         }
     }
 }
@@ -749,6 +756,80 @@ pub async fn list_open_rooms(
     }
 }
 
+fn lan_world_to_dto(w: wex_net::DiscoveredLanWorld) -> LanWorldDto {
+    LanWorldDto {
+        motd: w.clean_motd,
+        address: w.address,
+        port: w.port,
+    }
+}
+
+#[tauri::command]
+pub async fn net_lan_list_discovered(
+    _request: NetLanListDiscoveredRequest,
+    state: State<'_, LobbyState>,
+) -> IpcResult<NetLanListDiscoveredResponse> {
+    let worlds = state.lan_discovery.get_discovered_worlds().await;
+    let list = worlds.into_iter().map(lan_world_to_dto).collect();
+    Ok(NetLanListDiscoveredResponse { worlds: list })
+}
+
+#[tauri::command]
+pub async fn list_lan_worlds(state: State<'_, LobbyState>) -> Result<Vec<LanWorldDto>, String> {
+    let worlds = state.lan_discovery.get_discovered_worlds().await;
+    Ok(worlds.into_iter().map(lan_world_to_dto).collect())
+}
+
+#[tauri::command]
+pub async fn record_lan_world(
+    packet: String,
+    sender_ip: String,
+    state: State<'_, LobbyState>,
+) -> Result<Option<LanWorldDto>, String> {
+    let world = state
+        .lan_discovery
+        .record_announcement(&packet, &sender_ip)
+        .await;
+    Ok(world.map(lan_world_to_dto))
+}
+
+#[tauri::command]
+pub async fn connect_lan_world(
+    address: String,
+    version: Option<String>,
+    nickname: Option<String>,
+    play_state: State<'_, crate::commands::launch::PlayState>,
+) -> Result<String, String> {
+    let cfg = wex_core::config::LauncherConfig::load_or_default(&play_state.paths.config_file);
+    let selected_ver = version.unwrap_or(cfg.selected_version);
+    let player_nick = nickname.unwrap_or(cfg.nickname);
+
+    let launch_req = wex_ipc::commands::LaunchGameRequest {
+        version: selected_ver.clone(),
+        nickname: player_nick.clone(),
+        jvm_args: None,
+        quick_play_multiplayer: Some(address.clone()),
+    };
+
+    match play_state.core.launch_game(launch_req).await {
+        Ok(resp) => {
+            play_state
+                .is_running
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            {
+                let mut v = play_state.running_version.lock().await;
+                *v = Some(selected_ver);
+            }
+            Ok(format!(
+                "Подключение к {} (PID {})",
+                address,
+                resp.pid.unwrap_or(0)
+            ))
+        }
+        Err(e) => Err(format!("Ошибка автоподключения к LAN-миру: {}", e.message)),
+    }
+}
+
 // ============================================================================
 // Unit Tests (Mock Core/Backend)
 // ============================================================================
@@ -987,5 +1068,33 @@ mod tests {
             .await
             .map_err(IpcError::from)?;
         Ok(res)
+    }
+
+    #[tokio::test]
+    async fn test_lan_world_discovery_service_integration() {
+        let tmp = tempdir().unwrap();
+        let state = LobbyState::new(
+            tmp.path().to_path_buf(),
+            DEFAULT_LOBBY_API_URL,
+            DEFAULT_OLD_BACKEND_URL,
+        );
+
+        let packet = "[MOTD]Steve's Underground Base[/MOTD][AD]51234[/AD]";
+        let discovered = state
+            .lan_discovery
+            .record_announcement(packet, "192.168.1.77")
+            .await
+            .expect("should record announcement");
+
+        assert_eq!(discovered.clean_motd, "Steve's Underground Base");
+        assert_eq!(discovered.address, "192.168.1.77:51234");
+        assert_eq!(discovered.port, 51234);
+
+        let list = state.lan_discovery.get_discovered_worlds().await;
+        assert_eq!(list.len(), 1);
+        let dto = lan_world_to_dto(list[0].clone());
+        assert_eq!(dto.motd, "Steve's Underground Base");
+        assert_eq!(dto.address, "192.168.1.77:51234");
+        assert_eq!(dto.port, 51234);
     }
 }

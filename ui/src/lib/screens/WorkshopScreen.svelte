@@ -1305,6 +1305,8 @@
     background-color: var(--glass-surface-translucent);
     border: 1px solid var(--glass-border);
     transition: background-color 0.15s ease, border-color 0.15s ease;
+    content-visibility: auto;
+    contain-intrinsic-size: 72px;
   }
 
   .world-card:hover,

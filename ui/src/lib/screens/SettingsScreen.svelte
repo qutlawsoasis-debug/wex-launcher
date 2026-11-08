@@ -436,7 +436,7 @@
       <Row title={t('settings.accent_title')} subtitle={t('settings.accent_subtitle')}>
         {#snippet trailing()}
           <div class="accent-picker" role="radiogroup" aria-label="Цветовой акцент">
-            {#each accents as acc}
+            {#each accents as acc (acc.key)}
               <button
                 type="button"
                 class="accent-dot"
