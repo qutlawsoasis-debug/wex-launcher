@@ -1,11 +1,17 @@
 <!--
   Wex Launcher — Screen «Моды»
+  Specification: tasks/apple/hig/lists-and-tables.md, tasks/apple/hig/toggles.md, tasks/apple/hig/search-fields.md, tasks/apple/hig/segmented-controls.md
   Rules:
-  - Mod management list with individual Toggle controls
-  - Filtering by category (Все / Включённые / Aura)
-  - Quick access to mods directory
+  - Mod management for the selected Minecraft instance (1.21.1 or 1.20.1)
+  - Full metadata from fabric.mod.json: name, version, description, status
+  - Individual Toggle controls with systemGreen (#30D158) for enabled/disabled state (.jar <-> .jar.disabled)
+  - Pack mods are marked with «Пак Wex» badge and protected from deletion
+  - User mods can be added via file picker and deleted via destructive action
+  - Fast search and categorized tabs (Все моды, Включённые, Пак Wex, Пользовательские)
+  - Quick access to open mods directory in system Explorer
 -->
 <script lang="ts">
+  import { onMount } from 'svelte';
   import List from '../components/List.svelte';
   import Row from '../components/Row.svelte';
   import Toggle from '../components/Toggle.svelte';
@@ -14,122 +20,320 @@
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Icon from '../components/icons/Icon.svelte';
 
-  interface ModItem {
+  export interface ModEntryModel {
     id: string;
     name: string;
     version: string;
     description: string;
+    file_name: string;
     enabled: boolean;
-    isCore?: boolean;
+    is_pack_mod: boolean;
+    icon?: string | null;
   }
 
+  interface Props {
+    initialVersion?: string;
+  }
+
+  let { initialVersion = '1.21.1' }: Props = $props();
+
+  let selectedVersion = $state('1.21.1');
+
+  $effect(() => {
+    if (initialVersion) {
+      selectedVersion = initialVersion;
+    }
+  });
   let searchQuery = $state('');
   let filterTab = $state('all');
+  let isAdding = $state(false);
+  let loading = $state(true);
+  let fileInputRef = $state<HTMLInputElement | null>(null);
 
-  let mods = $state<ModItem[]>([
-    {
-      id: 'wex-client',
-      name: 'Wex Client',
-      version: '2.0.0-release',
-      description: 'Ядро интерфейса, OpenGL 3.3 рендер, Dual Kawase размытие, 3D эффекты',
-      enabled: true,
-      isCore: true,
-    },
-    {
-      id: 'sodium',
-      name: 'Sodium',
-      version: '0.6.9',
-      description: 'Современный движок рендеринга блоков и чанков, высокий FPS',
-      enabled: true,
-    },
-    {
-      id: 'iris',
-      name: 'Iris Shaders',
-      version: '1.8.0',
-      description: 'Поддержка современных шейдеров без потерь производительности',
-      enabled: true,
-    },
-    {
-      id: 'fabric-api',
-      name: 'Fabric API',
-      version: '0.102.0',
-      description: 'Базовый набор библиотек для экосистемы модов Fabric',
-      enabled: true,
-      isCore: true,
-    },
-    {
-      id: 'voice-chat',
-      name: 'Simple Voice Chat',
-      version: '2.5.20',
-      description: 'Позиционный голосовой чат для командной игры',
-      enabled: false,
-    },
-    {
-      id: 'mod-menu',
-      name: 'Mod Menu',
-      version: '11.0.2',
-      description: 'Список модов и управление их настройками в меню игры',
-      enabled: true,
-    },
-  ]);
+  let mods = $state<ModEntryModel[]>([]);
+
+  const versionOptions = [
+    { value: '1.21.1', label: '1.21.1 (Wex Client)' },
+    { value: '1.20.1', label: '1.20.1 (Wex Client)' },
+  ];
+
+  const filterTabs = [
+    { value: 'all', label: 'Все моды' },
+    { value: 'enabled', label: 'Включённые' },
+    { value: 'pack', label: 'Пак Wex' },
+    { value: 'custom', label: 'Пользовательские' },
+  ];
 
   let filteredMods = $derived(
     mods.filter((m) => {
+      const q = searchQuery.toLowerCase().trim();
       const matchesSearch =
-        m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.description.toLowerCase().includes(searchQuery.toLowerCase());
+        !q ||
+        m.name.toLowerCase().includes(q) ||
+        m.description.toLowerCase().includes(q) ||
+        m.file_name.toLowerCase().includes(q) ||
+        m.id.toLowerCase().includes(q);
+
       if (!matchesSearch) return false;
+
       if (filterTab === 'enabled') return m.enabled;
-      if (filterTab === 'core') return m.isCore;
+      if (filterTab === 'pack') return m.is_pack_mod;
+      if (filterTab === 'custom') return !m.is_pack_mod;
       return true;
     })
   );
 
-  const tabs = [
-    { value: 'all', label: 'Все моды' },
-    { value: 'enabled', label: 'Включённые' },
-    { value: 'core', label: 'Wex Core' },
-  ];
+  async function loadMods(version: string) {
+    loading = true;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<ModEntryModel[]>('list_mods', { version });
+      if (Array.isArray(res)) {
+        mods = res;
+      } else {
+        mods = [];
+      }
+    } catch {
+      // In-browser without Tauri: clean empty list
+      mods = [];
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function handleToggleMod(mod: ModEntryModel, newEnabled: boolean) {
+    const oldEnabled = mod.enabled;
+    mod.enabled = newEnabled;
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const updated = await invoke<ModEntryModel>('toggle_mod', {
+        version: selectedVersion,
+        fileName: mod.file_name,
+        enabled: newEnabled,
+      });
+      if (updated) {
+        mod.file_name = updated.file_name;
+        mod.enabled = updated.enabled;
+      }
+    } catch {
+      // Revert on IPC failure
+      mod.enabled = oldEnabled;
+    }
+  }
+
+  async function handleOpenModsDir() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('open_mods_dir', { version: selectedVersion });
+    } catch {
+      // In-browser fallback
+    }
+  }
+
+  function handleTriggerAddMod() {
+    if (fileInputRef) {
+      fileInputRef.click();
+    }
+  }
+
+  async function handleFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+
+    const file = input.files[0];
+    if (!file.name.endsWith('.jar')) {
+      alert('Пожалуйста, выберите файл с расширением .jar');
+      return;
+    }
+
+    isAdding = true;
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      // If running inside Tauri and webkitRelativePath / path property exists:
+      const path = (file as unknown as { path?: string }).path;
+      if (path) {
+        const added = await invoke<ModEntryModel>('add_custom_mod', {
+          version: selectedVersion,
+          sourcePath: path,
+        });
+        if (added) {
+          mods = [added, ...mods.filter((m) => m.file_name !== added.file_name)];
+        }
+      } else {
+        // Fallback: local mockup representation
+        const newMod: ModEntryModel = {
+          id: file.name.replace('.jar', '').toLowerCase(),
+          name: file.name.replace('.jar', ''),
+          version: '1.0.0',
+          description: 'Пользовательский файл мода',
+          file_name: file.name,
+          enabled: true,
+          is_pack_mod: false,
+        };
+        mods = [newMod, ...mods];
+      }
+    } catch {
+      // Fallback: local representation
+      const newMod: ModEntryModel = {
+        id: file.name.replace('.jar', '').toLowerCase(),
+        name: file.name.replace('.jar', ''),
+        version: '1.0.0',
+        description: 'Пользовательский файл мода',
+        file_name: file.name,
+        enabled: true,
+        is_pack_mod: false,
+      };
+      mods = [newMod, ...mods];
+    } finally {
+      isAdding = false;
+      input.value = '';
+    }
+  }
+
+  async function handleDeleteMod(mod: ModEntryModel) {
+    if (mod.is_pack_mod) {
+      alert('Моды из официального пака Wex защищены от удаления.');
+      return;
+    }
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('delete_custom_mod', {
+        version: selectedVersion,
+        fileName: mod.file_name,
+      });
+      mods = mods.filter((m) => m.file_name !== mod.file_name);
+    } catch {
+      // In-browser mock fallback
+      mods = mods.filter((m) => m.file_name !== mod.file_name);
+    }
+  }
+
+  function handleVersionChange(newVer: string) {
+    selectedVersion = newVer;
+    loadMods(newVer);
+  }
+
+  onMount(() => {
+    loadMods(selectedVersion);
+  });
 </script>
 
 <div class="mods-screen">
-  <div class="screen-toolbar">
-    <SearchField placeholder="Поиск модов..." bind:value={searchQuery} />
-    <SegmentedControl options={tabs} bind:value={filterTab} size="small" />
-    <Button variant="secondary" size="small">
-      <Icon name="folder" size={14} color="var(--color-secondary-label)" />
-      <span>Папка с модами</span>
-    </Button>
+  <!-- Version switcher & Primary toolbar -->
+  <div class="screen-header">
+    <div class="header-left">
+      <div style="width: 280px;">
+        <SegmentedControl
+          options={versionOptions}
+          value={selectedVersion}
+          onchange={handleVersionChange}
+          size="small"
+        />
+      </div>
+    </div>
+
+    <div class="header-right">
+      <input
+        type="file"
+        accept=".jar"
+        class="hidden-file-input"
+        bind:this={fileInputRef}
+        onchange={handleFileSelected}
+      />
+      <Button
+        variant="primary"
+        size="small"
+        onclick={handleTriggerAddMod}
+        disabled={isAdding}
+      >
+        <Icon name="plus" size={13} color="#ffffff" />
+        <span>Добавить мод...</span>
+      </Button>
+
+      <Button
+        variant="secondary"
+        size="small"
+        onclick={handleOpenModsDir}
+        title="Открыть папку инстанса с модами в Проводнике"
+      >
+        <Icon name="folder" size={13} color="var(--color-secondary-label)" />
+        <span>Папка с модами</span>
+      </Button>
+    </div>
   </div>
 
-  <div class="mods-content">
-    <List header="Установленные моды (версия 1.21.1)">
-      {#each filteredMods as m}
-        <Row
-          title="{m.name} {m.version}"
-          subtitle={m.description}
-        >
-          {#snippet leading()}
-            <div class="mod-icon">
-              <Icon name="mods" size={18} color={m.enabled ? 'var(--color-system-blue)' : 'var(--color-tertiary-label)'} />
-            </div>
-          {/snippet}
+  <!-- Search & Category Filters -->
+  <div class="screen-filters">
+    <div class="search-wrap">
+      <SearchField placeholder="Поиск модов..." bind:value={searchQuery} />
+    </div>
+    <div class="tabs-wrap">
+      <SegmentedControl options={filterTabs} bind:value={filterTab} size="small" />
+    </div>
+  </div>
 
-          {#snippet trailing()}
-            <div class="mod-controls">
-              {#if m.isCore}
-                <span class="core-badge">Обязательный</span>
-              {:else}
-                <Toggle bind:checked={m.enabled} />
-              {/if}
-            </div>
-          {/snippet}
-        </Row>
-      {:else}
+  <!-- Mods List Area -->
+  <div class="mods-content">
+    <List header="Установленные моды (версия {selectedVersion}) • {filteredMods.length} из {mods.length}">
+      {#if loading}
         <div class="empty-state">
-          <span>Моды не найдены</span>
+          <Icon name="refresh" size={28} color="var(--color-tertiary-label)" />
+          <span class="empty-title">Загрузка модов...</span>
         </div>
-      {/each}
+      {:else}
+        {#each filteredMods as m (m.file_name)}
+          <Row
+            title="{m.name} {m.version}"
+            subtitle={m.description || m.file_name}
+          >
+            {#snippet leading()}
+              <div class="mod-icon">
+                <Icon
+                  name="mods"
+                  size={18}
+                  color={m.enabled ? 'var(--color-system-blue)' : 'var(--color-tertiary-label)'}
+                />
+              </div>
+            {/snippet}
+
+            {#snippet trailing()}
+              <div class="mod-controls">
+                {#if m.is_pack_mod}
+                  <span class="pack-badge" title="Мод входит в официальную сборку Wex и защищён от удаления">Пак Wex</span>
+                {:else}
+                  <button
+                    type="button"
+                    class="delete-btn"
+                    onclick={() => handleDeleteMod(m)}
+                    title="Удалить пользовательский мод"
+                    aria-label="Удалить {m.name}"
+                  >
+                    <Icon name="trash" size={14} color="var(--color-system-red)" />
+                  </button>
+                {/if}
+
+                <Toggle
+                  checked={m.enabled}
+                  onchange={(checked) => handleToggleMod(m, checked)}
+                />
+              </div>
+            {/snippet}
+          </Row>
+        {:else}
+          <div class="empty-state">
+            <Icon name="mods" size={32} color="var(--color-tertiary-label)" />
+            <span class="empty-title">
+              {searchQuery ? `По запросу «${searchQuery}» ничего не найдено` : 'Моды не найдены'}
+            </span>
+            <span class="empty-subtitle">
+              {searchQuery ? 'Попробуйте изменить поисковый запрос или категорию' : 'В папке инстанса пока нет модов. Нажмите «Добавить мод...», чтобы установить первый мод'}
+            </span>
+          </div>
+        {/each}
+      {/if}
     </List>
   </div>
 </div>
@@ -143,48 +347,121 @@
     gap: 16px;
     overflow-y: auto;
     font-family: var(--font-system);
+    box-sizing: border-box;
   }
 
-  .screen-toolbar {
+  .screen-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
     flex-wrap: wrap;
   }
 
-  .mods-content {
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .screen-filters {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .search-wrap {
     flex: 1;
+    min-width: 260px;
+    max-width: 420px;
+  }
+
+  .tabs-wrap {
+    flex-shrink: 0;
+  }
+
+  .mods-content {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 860px;
   }
 
   .mod-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: var(--radius-sm);
-    background-color: var(--color-quaternary-system-fill);
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    background-color: var(--color-tertiary-system-fill);
   }
 
   .mod-controls {
     display: flex;
     align-items: center;
+    gap: 12px;
   }
 
-  .core-badge {
-    font-size: var(--text-caption-2);
-    font-weight: 500;
-    color: var(--color-secondary-label);
-    background-color: var(--color-tertiary-system-fill);
+  .pack-badge {
+    font-size: 11px;
+    font-weight: 600;
     padding: 2px 8px;
     border-radius: var(--radius-pill);
+    background-color: var(--color-quaternary-system-fill);
+    color: var(--color-secondary-label);
+    letter-spacing: -0.2px;
+    user-select: none;
+  }
+
+  .delete-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    transition: background-color var(--motion-duration-short) ease;
+    padding: 0;
+  }
+
+  .delete-btn:hover {
+    background-color: rgba(255, 69, 58, 0.12);
+  }
+
+  .hidden-file-input {
+    display: none;
   }
 
   .empty-state {
-    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    gap: 8px;
     text-align: center;
-    color: var(--color-tertiary-label);
+  }
+
+  .empty-title {
+    font-size: var(--text-headline);
+    font-weight: 600;
+    color: var(--color-label);
+  }
+
+  .empty-subtitle {
     font-size: var(--text-subheadline);
+    color: var(--color-secondary-label);
   }
 </style>
