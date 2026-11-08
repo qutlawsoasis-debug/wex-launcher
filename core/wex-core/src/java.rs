@@ -188,6 +188,7 @@ pub async fn ensure_mojang_java(
             if let Some(raw) = &downloads.raw {
                 download_tasks.push(DownloadTask {
                     url: raw.url.clone(),
+                    fallback_url: None,
                     target_path,
                     size: Some(raw.size),
                     hash: Some((raw.sha1.clone(), HashType::Sha1)),

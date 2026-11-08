@@ -269,6 +269,7 @@ pub async fn install_vanilla_libraries(
 
                     download_tasks.push(DownloadTask {
                         url: artifact.url.clone(),
+                        fallback_url: None,
                         target_path,
                         size: Some(artifact.size),
                         hash: Some((artifact.sha1.clone(), HashType::Sha1)),
@@ -325,6 +326,7 @@ pub async fn install_vanilla_libraries(
 
                     download_tasks.push(DownloadTask {
                         url: item.url.clone(),
+                        fallback_url: None,
                         target_path,
                         size: Some(item.size),
                         hash: Some((item.sha1.clone(), HashType::Sha1)),
@@ -446,6 +448,7 @@ pub async fn install_assets(
             let url = format!("{}/{}/{}", MINECRAFT_RESOURCES_BASE_URL, prefix, hash);
             download_tasks.push(DownloadTask {
                 url,
+                fallback_url: None,
                 target_path,
                 size: Some(object.size),
                 hash: Some((hash.clone(), HashType::Sha1)),

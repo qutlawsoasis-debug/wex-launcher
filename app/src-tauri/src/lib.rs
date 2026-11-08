@@ -6,42 +6,8 @@ use std::sync::Mutex;
 use tauri::{Manager, State};
 
 use commands::launch::PlayState;
-use ipc::{LobbyPlayerModel, LobbyRoomModel, ServerEntryModel, ServerPingResult, SystemInfo};
+use ipc::{LobbyPlayerModel, LobbyRoomModel, ServerEntryModel, ServerPingResult};
 use wex_core::config::WexPaths;
-
-#[cfg(windows)]
-fn get_total_ram_mb() -> u32 {
-    use std::mem::zeroed;
-    #[repr(C)]
-    struct MemoryStatusEx {
-        length: u32,
-        memory_load: u32,
-        total_phys: u64,
-        avail_phys: u64,
-        total_page_file: u64,
-        avail_page_file: u64,
-        total_virtual: u64,
-        avail_virtual: u64,
-        avail_extended_virtual: u64,
-    }
-    extern "system" {
-        fn GlobalMemoryStatusEx(status: *mut MemoryStatusEx) -> i32;
-    }
-    unsafe {
-        let mut status: MemoryStatusEx = zeroed();
-        status.length = std::mem::size_of::<MemoryStatusEx>() as u32;
-        if GlobalMemoryStatusEx(&mut status) != 0 {
-            (status.total_phys / (1024 * 1024)) as u32
-        } else {
-            16384
-        }
-    }
-}
-
-#[cfg(not(windows))]
-fn get_total_ram_mb() -> u32 {
-    16384
-}
 
 pub struct AppState {
     pub servers: Mutex<Vec<ServerEntryModel>>,
@@ -78,62 +44,6 @@ impl Default for AppState {
             active_lobby: Mutex::new(None),
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// System Info & Telemetry
-// ---------------------------------------------------------------------------
-
-#[tauri::command]
-fn get_system_info(state: State<'_, PlayState>) -> SystemInfo {
-    SystemInfo {
-        total_memory_mb: get_total_ram_mb(),
-        os_name: std::env::consts::OS.to_string(),
-        launcher_version: "1.0.0".to_string(),
-        data_dir: state.paths.root.to_string_lossy().to_string(),
-    }
-}
-
-#[tauri::command]
-fn get_data_dir(state: State<'_, PlayState>) -> String {
-    state.paths.root.to_string_lossy().to_string()
-}
-
-#[tauri::command]
-fn open_data_dir(state: State<'_, PlayState>) -> Result<(), String> {
-    let path = &state.paths.root;
-    if !path.exists() {
-        let _ = std::fs::create_dir_all(path);
-    }
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("explorer")
-            .arg(path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
-#[tauri::command]
-fn social_get_news(state: State<'_, PlayState>) -> Vec<wex_social::ReleaseNoteVersion> {
-    let cache_dir = state.paths.root.join("news");
-    let mgr = wex_social::NewsManager::new(cache_dir);
-    mgr.load_cached_or_default()
 }
 
 // ---------------------------------------------------------------------------
@@ -379,14 +289,31 @@ pub fn run() {
             commands::launch::kill_game,
             // UI compatibility aliases
             commands::launch::launch_game,
-            commands::launch::get_launcher_config,
-            commands::launch::save_launcher_config,
             commands::launch::set_config,
-            // System info
-            get_system_info,
-            get_data_dir,
-            open_data_dir,
-            social_get_news,
+            // Settings commands (commands/settings.rs)
+            commands::settings::get_launcher_settings,
+            commands::settings::save_launcher_settings,
+            commands::settings::reset_settings,
+            commands::settings::open_game_data_dir,
+            commands::settings::get_system_info,
+            commands::settings::get_data_dir,
+            commands::settings::get_launcher_config,
+            commands::settings::save_launcher_config,
+            commands::settings::open_data_dir,
+            // Mods commands (commands/mods.rs)
+            commands::mods::list_mods,
+            commands::mods::toggle_mod,
+            commands::mods::add_custom_mod,
+            commands::mods::delete_custom_mod,
+            commands::mods::open_mods_dir,
+            // Overview & Social/Extras commands
+            commands::overview::social_get_news,
+            commands::overview::overview_get_news,
+            commands::overview::social_check_launcher_update,
+            commands::overview::overview_check_update,
+            commands::overview::extras_detect_old_launcher,
+            commands::overview::extras_import_old_launcher,
+            commands::overview::extras_apply_import,
             // Servers commands
             list_servers,
             ping_server,

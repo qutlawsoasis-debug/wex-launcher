@@ -167,7 +167,7 @@ impl PlayState {
 
         // Connect Discord RPC asynchronously in background
         let discord_clone = discord.clone();
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let client = DiscordRpcClient::connect_or_noop(DEFAULT_DISCORD_APP_ID).await;
             let mut lock = discord_clone.lock().await;
             *lock = Some(client);
@@ -245,17 +245,27 @@ pub async fn start_game(
         return Err("Игра уже запущена или выполняется запуск".to_string());
     }
 
-    // 2. Set Discord RPC activity
-    set_discord_rpc(
-        &state.discord,
-        Activity::Playing {
-            version: version.clone(),
-            world_name: None,
-            mod_count: None,
-            start_timestamp: Some(chrono::Utc::now().timestamp()),
-        },
-    )
-    .await;
+    // 2. Load launcher config to apply preset and check features
+    let cfg = wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file);
+
+    // Apply graphics preset before launch
+    let pool_dirs = vec![state.paths.root.join("shaderpacks_pool")];
+    let inst_dir = state.paths.instance_dir(&version);
+    let _ = wex_extras::presets::apply_preset(&inst_dir, &cfg.graphics_preset, &pool_dirs);
+
+    // Set Discord RPC activity if enabled
+    if cfg.discord_rpc {
+        set_discord_rpc(
+            &state.discord,
+            Activity::Playing {
+                version: version.clone(),
+                world_name: None,
+                mod_count: None,
+                start_timestamp: Some(chrono::Utc::now().timestamp()),
+            },
+        )
+        .await;
+    }
 
     // 3. Emit preparing launch status
     let _ = app.emit(
@@ -268,12 +278,32 @@ pub async fn start_game(
     );
 
     // 4. Launch game via LauncherCore
+    let mut actual_jvm_args = jvm_args.unwrap_or_default();
+    if std::env::var("WEX_QA_BACKGROUND").is_ok()
+        || std::env::var("WEX_QA_BACKGROUND")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false)
+    {
+        if !actual_jvm_args
+            .iter()
+            .any(|a| a.contains("wex.qa.background"))
+        {
+            actual_jvm_args.push("-Dwex.qa.background=true".to_string());
+        }
+        if !actual_jvm_args
+            .iter()
+            .any(|a| a.contains("aura.client.hiddenWindow"))
+        {
+            actual_jvm_args.push("-Daura.client.hiddenWindow=true".to_string());
+        }
+    }
+
     let launch_res = state
         .core
         .launch_game(LaunchGameRequest {
             version: version.clone(),
             nickname: nickname.clone(),
-            jvm_args,
+            jvm_args: Some(actual_jvm_args),
         })
         .await;
 
@@ -304,7 +334,7 @@ pub async fn start_game(
             let instance_dir = state.paths.instance_dir(&version);
             let version_clone = version.clone();
 
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 loop {
                     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     match core_clone.is_running(&version_clone).await {
@@ -449,19 +479,6 @@ pub async fn launch_game(
     start_game(app, version, nickname, None, state)
         .await
         .map(|r| r.message)
-}
-
-#[tauri::command]
-pub async fn get_launcher_config(state: State<'_, PlayState>) -> Result<LauncherConfig, String> {
-    get_config(state).await
-}
-
-#[tauri::command]
-pub async fn save_launcher_config(
-    new_config: LauncherConfig,
-    state: State<'_, PlayState>,
-) -> Result<(), String> {
-    save_config(new_config, state).await
 }
 
 #[tauri::command]
