@@ -359,6 +359,7 @@
       >
         {#snippet trailing()}
           <Toggle
+            ariaLabel="Discord Rich Presence"
             checked={discordRpc}
             onchange={(checked) => {
               discordRpc = checked;
@@ -377,6 +378,7 @@
             <SegmentedControl
               options={languageOptions}
               value={language}
+              ariaLabel="Язык интерфейса"
               onchange={handleLanguageChange}
               size="small"
             />
@@ -393,6 +395,7 @@
             <SegmentedControl
               options={appearanceOptions}
               value={theme.appearance}
+              ariaLabel="Тема оформления"
               onchange={(v) => {
                 theme.setAppearance(v as 'dark' | 'light' | 'auto');
                 saveConfig();
@@ -404,7 +407,7 @@
 
       <Row title="Цветовой акцент" subtitle="Основной цвет элементов интерфейса">
         {#snippet trailing()}
-          <div class="accent-picker">
+          <div class="accent-picker" role="radiogroup" aria-label="Цветовой акцент">
             {#each accents as acc}
               <button
                 type="button"
@@ -412,6 +415,8 @@
                 class:active={theme.accent === acc.key}
                 style="background-color: {acc.color};"
                 title={acc.title}
+                role="radio"
+                aria-checked={theme.accent === acc.key}
                 onclick={() => {
                   theme.setAccent(acc.key);
                   saveConfig();
@@ -436,6 +441,7 @@
       >
         {#snippet trailing()}
           <Toggle
+            ariaLabel="Уменьшение движения"
             checked={theme.reduceMotion}
             onchange={(checked) => {
               theme.setReduceMotion(checked);
@@ -451,6 +457,7 @@
       >
         {#snippet trailing()}
           <Toggle
+            ariaLabel="Уменьшение прозрачности"
             checked={theme.reduceTransparency}
             onchange={(checked) => {
               theme.setReduceTransparency(checked);
@@ -546,7 +553,7 @@
   .accent-picker {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 16px;
   }
 
   .accent-dot {
@@ -567,7 +574,7 @@
   .accent-dot::after {
     content: '';
     position: absolute;
-    inset: -4px;
+    inset: -10px;
   }
 
   .accent-dot:focus-visible {
@@ -577,6 +584,16 @@
 
   .accent-dot:hover {
     transform: scale(1.15);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .accent-dot:hover {
+      transform: none !important;
+    }
+  }
+
+  :global([data-reduce-motion="true"]) .accent-dot:hover {
+    transform: none !important;
   }
 
   .accent-dot.active {
