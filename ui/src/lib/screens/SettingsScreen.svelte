@@ -38,6 +38,7 @@
   let detectedJava17 = $state<string | null>(null);
   let detectedJava21 = $state<string | null>(null);
   let discordRpc = $state(true);
+  let backgroundMusic = $state(true);
   let language = $state<string>(i18n.locale);
   let launcherVersion = $state('1.0.0');
   let osName = $state('windows');
@@ -175,9 +176,27 @@
         theme.setReduceMotion(cfg.reduce_motion ?? false);
         theme.setReduceTransparency(cfg.reduce_transparency ?? false);
       }
+
+      const musicSettings = await invoke<{ enabled?: boolean }>('music_get_settings');
+      if (musicSettings && musicSettings.enabled !== undefined) {
+        backgroundMusic = musicSettings.enabled;
+      }
     } catch {
       // In-browser mock fallback
     }
+  }
+
+  async function saveMusicSettings() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('music_set_settings', {
+        settings: {
+          enabled: backgroundMusic,
+          volume: 75,
+          auto_pause_on_launch: true,
+        },
+      });
+    } catch {}
   }
 
   async function handleOpenDataDir() {
@@ -398,6 +417,22 @@
             onchange={(checked) => {
               discordRpc = checked;
               saveConfig();
+            }}
+          />
+        {/snippet}
+      </Row>
+
+      <Row
+        title={i18n.locale === 'en' ? 'Background Music' : 'Фоновая музыка'}
+        subtitle={i18n.locale === 'en' ? 'Play atmospheric soundtracks from Wex/music' : 'Воспроизведение саундтрека из папки Wex/music во время работы лаунчера'}
+      >
+        {#snippet trailing()}
+          <Toggle
+            ariaLabel={i18n.locale === 'en' ? 'Background music' : 'Фоновая музыка'}
+            checked={backgroundMusic}
+            onchange={(checked) => {
+              backgroundMusic = checked;
+              saveMusicSettings();
             }}
           />
         {/snippet}

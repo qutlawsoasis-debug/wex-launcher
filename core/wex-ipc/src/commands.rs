@@ -82,6 +82,7 @@ pub const CMD_NET_LOBBY_TUNNEL_CONFIG: &str = "net_lobby_tunnel_config";
 pub const CMD_NET_LOBBY_LIST_OPEN_ROOMS: &str = "net_lobby_list_open_rooms";
 pub const CMD_NET_LAN_LIST_DISCOVERED: &str = "net_lan_list_discovered";
 pub const CMD_NET_LAN_CONNECT: &str = "net_lan_connect";
+pub const CMD_NET_LAN_PUBLISH: &str = "net_lan_publish";
 pub const CMD_NET_COMPARE_MANIFESTS: &str = "net_compare_manifests";
 pub const CMD_NET_COMPUTE_MANIFEST_HASH: &str = "net_compute_manifest_hash";
 pub const CMD_NET_TUNNEL_START: &str = "net_tunnel_start";
@@ -214,6 +215,22 @@ pub struct NetLanConnectRequest {
 pub struct NetLanConnectResponse {
     pub success: bool,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetLanPublishRequest {
+    pub motd: String,
+    pub port: u16,
+    pub host_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetLanPublishResponse {
+    pub code: String,
+    pub host_name: String,
+    pub world_name: String,
+    pub tunnel_address: String,
+    pub port: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
@@ -538,4 +555,49 @@ pub struct SocialCheckLauncherUpdateRequest {
     pub manifest_url: String,
     pub current_version: String,
     pub target_platform: Option<String>,
+}
+
+// ============================================================================
+// Music Commands
+// ============================================================================
+
+pub const CMD_MUSIC_GET_PLAYLIST: &str = "music_get_playlist";
+pub const CMD_MUSIC_GET_TRACK_DATA: &str = "music_get_track_data";
+pub const CMD_MUSIC_OPEN_FOLDER: &str = "music_open_folder";
+pub const CMD_MUSIC_GET_SETTINGS: &str = "music_get_settings";
+pub const CMD_MUSIC_SET_SETTINGS: &str = "music_set_settings";
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicTrackDto {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub file_name: String,
+    pub cover_data_url: Option<String>,
+    pub duration_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicPlaylistResponse {
+    pub tracks: Vec<MusicTrackDto>,
+    pub music_dir: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicGetTrackDataRequest {
+    pub file_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicGetTrackDataResponse {
+    pub file_name: String,
+    pub mime_type: String,
+    pub audio_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicSettingsDto {
+    pub enabled: bool,
+    pub volume: u8,
+    pub auto_pause_on_launch: bool,
 }

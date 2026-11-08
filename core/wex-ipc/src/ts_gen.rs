@@ -108,6 +108,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ImportedSkinDto::decl(),
         ImportedCapeDto::decl(),
         ImportedWardrobeItemDto::decl(),
+        ImportedWorldDto::decl(),
         OldLauncherDataDto::decl(),
         PresetTierDto::decl(),
         GraphicsPresetDto::decl(),
@@ -208,6 +209,8 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         NetLanListDiscoveredResponse::decl(),
         NetLanConnectRequest::decl(),
         NetLanConnectResponse::decl(),
+        NetLanPublishRequest::decl(),
+        NetLanPublishResponse::decl(),
         NetCompareManifestsRequest::decl(),
         NetCompareManifestsResponse::decl(),
         NetComputeManifestHashRequest::decl(),
@@ -259,6 +262,12 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         SocialGetNewsRequest::decl(),
         SocialGetNewsResponse::decl(),
         SocialCheckLauncherUpdateRequest::decl(),
+        // Music
+        MusicTrackDto::decl(),
+        MusicPlaylistResponse::decl(),
+        MusicGetTrackDataRequest::decl(),
+        MusicGetTrackDataResponse::decl(),
+        MusicSettingsDto::decl(),
     ];
     for decl in cmd_decls {
         cmd_ts.push_str(&format!("export {};\n\n", decl));
@@ -294,6 +303,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ("NET_LOBBY_LIST_OPEN_ROOMS", CMD_NET_LOBBY_LIST_OPEN_ROOMS),
         ("NET_LAN_LIST_DISCOVERED", CMD_NET_LAN_LIST_DISCOVERED),
         ("NET_LAN_CONNECT", CMD_NET_LAN_CONNECT),
+        ("NET_LAN_PUBLISH", CMD_NET_LAN_PUBLISH),
         ("NET_COMPARE_MANIFESTS", CMD_NET_COMPARE_MANIFESTS),
         ("NET_COMPUTE_MANIFEST_HASH", CMD_NET_COMPUTE_MANIFEST_HASH),
         ("NET_TUNNEL_START", CMD_NET_TUNNEL_START),
@@ -352,6 +362,11 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
             "SOCIAL_CHECK_LAUNCHER_UPDATE",
             CMD_SOCIAL_CHECK_LAUNCHER_UPDATE,
         ),
+        ("MUSIC_GET_PLAYLIST", CMD_MUSIC_GET_PLAYLIST),
+        ("MUSIC_GET_TRACK_DATA", CMD_MUSIC_GET_TRACK_DATA),
+        ("MUSIC_OPEN_FOLDER", CMD_MUSIC_OPEN_FOLDER),
+        ("MUSIC_GET_SETTINGS", CMD_MUSIC_GET_SETTINGS),
+        ("MUSIC_SET_SETTINGS", CMD_MUSIC_SET_SETTINGS),
     ];
     for (k, v) in command_names {
         cmd_ts.push_str(&format!("    {}: \"{}\",\n", k, v));

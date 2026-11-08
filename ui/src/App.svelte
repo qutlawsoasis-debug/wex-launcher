@@ -27,6 +27,7 @@
   import SettingsScreen from './lib/screens/SettingsScreen.svelte';
   import ShowcaseScreen from './lib/screens/ShowcaseScreen.svelte';
   import CrashSheet from './lib/components/CrashSheet.svelte';
+  import MusicDiskWidget from './lib/components/MusicDiskWidget.svelte';
   import type { CrashDiagnosisDto } from './lib/ipc/generated/models';
 
   // Navigation state
@@ -508,6 +509,7 @@
   >
     {#snippet footer()}
       <div class="sidebar-footer-controls">
+        <MusicDiskWidget {isGameRunning} />
         <div class="theme-quick-toggle">
           <Button
             variant="ghost"
@@ -565,6 +567,10 @@
               onopensettings={() => {
                 activeTab = 'settings';
               }}
+              onnavigatescreen={(screen) => {
+                activeTab = screen as any;
+              }}
+              ontoast={(t) => addToast(t.type, t.title, t.message)}
             />
           {:else if activeTab === 'servers'}
             <ServersScreen />

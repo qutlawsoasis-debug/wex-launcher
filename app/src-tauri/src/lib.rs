@@ -230,6 +230,8 @@ pub fn run() {
             commands::overview::extras_detect_old_launcher,
             commands::overview::extras_import_old_launcher,
             commands::overview::extras_apply_import,
+            commands::overview::overview_get_playtime,
+            commands::overview::overview_record_playtime,
             // Servers commands
             list_servers,
             ping_server,
@@ -257,9 +259,11 @@ pub fn run() {
             commands::lobby::kick_lobby_player,
             commands::lobby::list_open_rooms,
             commands::lobby::net_lan_list_discovered,
+            commands::lobby::net_lan_publish,
             commands::lobby::list_lan_worlds,
             commands::lobby::record_lan_world,
             commands::lobby::connect_lan_world,
+            commands::lobby::publish_lan_world,
             // Wardrobe commands
             commands::wardrobe::extras_validate_skin,
             commands::wardrobe::extras_convert_skin,
@@ -269,6 +273,12 @@ pub fn run() {
             commands::wardrobe::wardrobe_delete_history,
             commands::wardrobe::wardrobe_get_state,
             commands::wardrobe::wardrobe_apply,
+            // Music commands
+            commands::music::music_get_playlist,
+            commands::music::music_get_track_data,
+            commands::music::music_open_folder,
+            commands::music::music_get_settings,
+            commands::music::music_set_settings,
             // Friends & Social commands
             commands::friends::social_login,
             commands::friends::social_get_friends,
@@ -316,6 +326,10 @@ pub fn run() {
             commands::shell::shell_minimize_window,
             commands::shell::shell_toggle_maximize_window,
             commands::shell::shell_close_window,
+            // Report commands (SPEC 2.10)
+            commands::report::report_get_preview,
+            commands::report::report_save_zip,
+            commands::report::report_copy_text,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
