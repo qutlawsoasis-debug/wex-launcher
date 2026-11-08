@@ -716,42 +716,65 @@
 
       <!-- Capes Selection Section -->
       <List header="Плащ игрока">
-        {#each capeOptions as cape}
+        {#each capeOptions as cape (cape.id)}
           {@const isSelected = selectedCapeId === cape.id}
-          <Row
-            title={cape.name}
-            subtitle={cape.desc}
-            clickable
-            onclick={() => {
-              selectedCapeId = cape.id;
-              if (cape.id === 'custom' && !customCapeBase64) {
-                capeInputRef?.click();
-              }
-            }}
-          >
-            {#snippet trailing()}
-              <div class="cape-row-accessory">
-                {#if cape.id === 'custom'}
-                  <button
-                    type="button"
-                    class="upload-cape-link"
-                    onclick={(e) => {
-                      e.stopPropagation();
+          {#if cape.id === 'custom'}
+            <Row
+              title={cape.name}
+              subtitle={cape.desc}
+            >
+              {#snippet trailing()}
+                <div class="cape-row-accessory">
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    onclick={() => {
                       capeInputRef?.click();
                     }}
                   >
                     {customCapeBase64 ? 'Сменить...' : 'Обзор...'}
-                  </button>
-                {/if}
+                  </Button>
 
-                {#if isSelected}
-                  <span class="check-mark" aria-label="Выбрано">
-                    <Icon name="check" size={16} color="var(--color-system-blue)" />
-                  </span>
-                {/if}
-              </div>
-            {/snippet}
-          </Row>
+                  <Button
+                    variant={isSelected ? 'primary' : 'secondary'}
+                    size="small"
+                    role="radio"
+                    ariaChecked={isSelected}
+                    ariaLabel={`Выбрать ${cape.name}`}
+                    onclick={() => {
+                      selectedCapeId = cape.id;
+                      if (!customCapeBase64) {
+                        capeInputRef?.click();
+                      }
+                    }}
+                  >
+                    {isSelected ? 'Выбрано' : 'Выбрать'}
+                  </Button>
+                </div>
+              {/snippet}
+            </Row>
+          {:else}
+            <Row
+              title={cape.name}
+              subtitle={cape.desc}
+              clickable
+              role="radio"
+              ariaChecked={isSelected}
+              onclick={() => {
+                selectedCapeId = cape.id;
+              }}
+            >
+              {#snippet trailing()}
+                <div class="cape-row-accessory">
+                  {#if isSelected}
+                    <span class="check-mark" aria-label="Выбрано">
+                      <Icon name="check" size={16} color="var(--color-system-blue)" />
+                    </span>
+                  {/if}
+                </div>
+              {/snippet}
+            </Row>
+          {/if}
         {/each}
       </List>
 
@@ -762,13 +785,11 @@
             <span class="empty-text">История гардероба пуста</span>
           </div>
         {:else}
-          {#each historyItems as item}
+          {#each historyItems as item (item.id || item.created_utc)}
             {@const isSelected = skinName === item.name}
             <Row
               title={item.name}
               subtitle={`${item.model === 'slim' ? 'Тонкая' : 'Классическая'} • ${item.created_utc.slice(0, 10)}`}
-              clickable
-              onclick={() => selectHistorySkin(item)}
             >
               {#snippet trailing()}
                 <div class="history-actions">
@@ -777,14 +798,22 @@
                       <Icon name="check" size={14} color="var(--color-system-blue)" />
                     </span>
                   {/if}
-                  <button
-                    type="button"
-                    class="delete-item-btn"
+                  <Button
+                    variant={isSelected ? 'primary' : 'secondary'}
+                    size="small"
+                    onclick={() => selectHistorySkin(item)}
+                  >
+                    {isSelected ? 'Выбран' : 'Выбрать'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="small"
                     title="Удалить скин"
+                    ariaLabel="Удалить из истории"
                     onclick={(e) => deleteHistorySkin(item, e)}
                   >
                     <Icon name="close" size={14} color="var(--color-secondary-label)" />
-                  </button>
+                  </Button>
                 </div>
               {/snippet}
             </Row>
@@ -834,6 +863,8 @@
 
   .preview-card {
     background-color: var(--glass-card-bg);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
     padding: 16px;
@@ -946,6 +977,7 @@
   .status-subtitle {
     font-size: var(--text-footnote);
     color: var(--color-secondary-label);
+    font-weight: 500;
     margin-top: 2px;
   }
 
@@ -986,20 +1018,7 @@
   .cape-row-accessory {
     display: flex;
     align-items: center;
-    gap: 12px;
-  }
-
-  .upload-cape-link {
-    font-size: var(--text-caption-1);
-    color: var(--color-system-blue);
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-  }
-
-  .upload-cape-link:hover {
-    text-decoration: underline;
+    gap: 8px;
   }
 
   .check-mark {
@@ -1010,14 +1029,17 @@
   .empty-history {
     padding: 24px 16px;
     text-align: center;
-    background-color: var(--glass-card-bg);
+    background-color: var(--card-bg);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-md);
   }
 
   .empty-text {
     font-size: var(--text-subheadline);
-    color: var(--color-tertiary-label);
+    color: var(--color-secondary-label);
+    font-weight: 500;
   }
 
   .history-actions {
@@ -1031,20 +1053,6 @@
     align-items: center;
   }
 
-  .delete-item-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 4px;
-    border-radius: var(--radius-sm);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .delete-item-btn:hover {
-    background-color: var(--color-quaternary-fill);
-  }
 
   .apply-bar {
     margin-top: 8px;

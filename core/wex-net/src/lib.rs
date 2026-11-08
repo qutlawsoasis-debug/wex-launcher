@@ -9,6 +9,7 @@
 //! - `events`: Event bus and channel for real-time network and status progress.
 
 pub mod events;
+pub mod lan;
 pub mod lobby;
 pub mod modsync;
 pub mod ping;
@@ -16,6 +17,10 @@ pub mod servers;
 pub mod tunnel;
 
 pub use events::{NetEvent, NetEventBus, TunnelStatus};
+pub use lan::{
+    format_lan_announcement, parse_lan_announcement, strip_minecraft_formatting,
+    DiscoveredLanWorld, LanDiscoveryService, LanWorldAnnouncement,
+};
 pub use lobby::{LobbyApiClient, LobbyError};
 pub use modsync::{
     compare_manifests, compute_manifest_hash, ModManifestEntry, ModMismatchItem, ModMismatchType,

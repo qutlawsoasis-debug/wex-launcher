@@ -58,13 +58,14 @@
 
   <nav class="sidebar-nav">
     <ul class="nav-list">
-      {#each items as item}
+      {#each items as item (item.id)}
         {@const isActive = item.id === activeId}
         <li>
           <button
             type="button"
             class="nav-item"
             class:active={isActive}
+            aria-current={isActive ? 'page' : undefined}
             onclick={() => selectItem(item.id)}
             title={collapsed ? item.label : undefined}
           >
@@ -170,8 +171,9 @@
   }
 
   .nav-item {
+    position: relative;
     width: 100%;
-    height: 36px;
+    height: 38px;
     padding: 0 10px;
     display: flex;
     align-items: center;
@@ -189,6 +191,20 @@
       background-color var(--motion-duration-short) ease,
       transform var(--motion-duration-short) var(--motion-spring-ease);
     outline: none;
+  }
+
+  .nav-item::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    left: 0;
+    right: 0;
+  }
+
+  .nav-item:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: -2px;
   }
 
   .nav-item:hover:not(.active) {
