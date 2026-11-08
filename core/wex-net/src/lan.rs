@@ -188,7 +188,10 @@ impl LanDiscoveryService {
         let std_socket = match std::net::UdpSocket::bind(bind_addr) {
             Ok(s) => s,
             Err(e) => {
-                debug!("LAN discovery bind on 0.0.0.0:{} failed (may be already bound or blocked): {}", MINECRAFT_LAN_PORT, e);
+                debug!(
+                    "LAN discovery bind on 0.0.0.0:{} failed (may be already bound or blocked): {}",
+                    MINECRAFT_LAN_PORT, e
+                );
                 return;
             }
         };
