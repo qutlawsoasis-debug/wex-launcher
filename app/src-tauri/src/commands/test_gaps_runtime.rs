@@ -1,5 +1,82 @@
 use super::*;
 
+fn host_session() -> lobby::ActiveLobbySession {
+    lobby::ActiveLobbySession {
+        code: "ABC123".into(),
+        host_token: Some("fixture".into()),
+        host_name: "Host".into(),
+        world_name: "Fixture".into(),
+        player_name: "Host".into(),
+        is_host: true,
+        tunnel_address: None,
+    }
+}
+#[tokio::test]
+async fn join_lobby_room_success_normalizes_code_and_saves_guest_session() {
+    let f = Fixture::new().await;
+    f.respond("/api/lobby/join", 200, json!({"success":true,"code":"ABC123","status":"open","tunnelAddress":"localhost:25565","playerCount":2})).await;
+    f.respond("/api/lobby/status", 200, room_status()).await;
+    let room = lobby::join_lobby_room("#ABC123".into(), Some("Guest".into()), f.room())
+        .await
+        .unwrap();
+    assert!(!room.is_host);
+    assert_eq!(room.code, "#ABC123");
+    assert_eq!(
+        f.room()
+            .active_session
+            .lock()
+            .await
+            .as_ref()
+            .unwrap()
+            .player_name,
+        "Guest"
+    );
+    f.respond("/api/lobby/leave", 200, json!({})).await;
+    lobby::close_lobby_room(room.code, f.room()).await.unwrap();
+}
+#[tokio::test]
+async fn kick_lobby_player_success_uses_host_token() {
+    let f = Fixture::new().await;
+    *f.room().active_session.lock().await = Some(host_session());
+    Mock::given(path("/api/lobby/kick"))
+        .and(body_json(
+            json!({"code":"ABC123","hostToken":"fixture","player":"Remote"}),
+        ))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&f.server)
+        .await;
+    assert!(
+        lobby::kick_lobby_player("#ABC123".into(), "Remote".into(), f.room())
+            .await
+            .unwrap()
+    );
+}
+#[tokio::test]
+async fn get_lobby_status_error_when_kicked_discards_stale_session() {
+    let f = Fixture::new().await;
+    *f.room().active_session.lock().await = Some(host_session());
+    let mut response = room_status();
+    response["kicked"] = json!(true);
+    f.respond("/api/lobby/status", 200, response).await;
+    assert!(
+        lobby::get_lobby_status("ABC123".into(), Some("Host".into()), f.room())
+            .await
+            .is_err()
+    );
+    assert!(f.room().active_session.lock().await.is_none());
+}
+#[tokio::test]
+async fn close_lobby_room_remote_error_is_currently_suppressed() {
+    let f = Fixture::new().await;
+    *f.room().active_session.lock().await = Some(host_session());
+    f.respond("/api/lobby/close", 401, json!({})).await;
+    lobby::close_lobby_room("ABC123".into(), f.room())
+        .await
+        .unwrap();
+    assert!(f.room().active_session.lock().await.is_none());
+}
+
 #[tokio::test]
 async fn net_tunnel_start_success_uses_disposable_test_process_and_stop_releases_it() {
     let f = Fixture::new().await;
