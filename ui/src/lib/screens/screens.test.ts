@@ -20,6 +20,18 @@ vi.mock('@tauri-apps/api/core', () => {
       if (cmd === 'list_open_rooms') {
         throw new Error('Сервис недоступен');
       }
+      if (cmd === 'list_lan_worlds') {
+        return [
+          {
+            motd: 'Alex - Creative Studio',
+            address: '192.168.1.105:54321',
+            port: 54321,
+          },
+        ];
+      }
+      if (cmd === 'connect_lan_world') {
+        return `Подключение к ${args?.address} (PID 12345)`;
+      }
       if (cmd === 'list_mods') {
         if (args?.version === '1.20.1') {
           return [];
@@ -528,6 +540,42 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Нет открытых комнат');
     expect(target.textContent).toContain('Обновить');
     expect(target.textContent).not.toContain('Сервис недоступен');
+
+    unmount(comp);
+  });
+
+  it('renders LobbyScreen LAN section with discovered worlds and connect action', async () => {
+    const comp = mount(LobbyScreen, { target });
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(target.textContent).toContain('Локальные миры в сети (LAN)');
+    expect(target.textContent).toContain('Alex - Creative Studio');
+    expect(target.textContent).toContain('192.168.1.105:54321');
+
+    const connectBtn = Array.from(target.querySelectorAll('button')).find(
+      (b) => b.textContent?.includes('Подключиться') && b.closest('.lan-worlds-section')
+    );
+    expect(connectBtn).not.toBeUndefined();
+    connectBtn?.click();
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(target.textContent).toContain('Подключение к 192.168.1.105:54321');
+
+    unmount(comp);
+  });
+
+  it('renders LobbyScreen LAN section with clean empty state when no LAN worlds found', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    (invoke as any).mockImplementationOnce(async (cmd: string) => {
+      if (cmd === 'list_lan_worlds') return [];
+      return [];
+    });
+
+    const comp = mount(LobbyScreen, { target });
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(target.textContent).toContain('Локальные миры не найдены');
+    expect(target.textContent).toContain('Когда другой игрок в вашей локальной сети откроет');
 
     unmount(comp);
   });
