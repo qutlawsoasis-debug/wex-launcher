@@ -578,7 +578,7 @@
           <div class="empty-icon-wrap">
             <Icon name="folder" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h3 class="empty-title">Сохранённых миров нет</h3>
+          <h2 class="empty-title">Сохранённых миров нет</h2>
           <p class="empty-description">
             Создайте одиночный мир в игре Minecraft {currentVersion}, чтобы управлять им здесь.
           </p>
@@ -672,7 +672,7 @@
           <div class="empty-icon-wrap">
             <Icon name="folder" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h3 class="empty-title">Ресурс-паков пока нет</h3>
+          <h2 class="empty-title">Ресурс-паков пока нет</h2>
           <p class="empty-description">
             Поместите ZIP-архив с ресурс-паком в папку resourcepacks инстанса Minecraft {currentVersion} или нажмите кнопку «Добавить ZIP…».
           </p>
@@ -738,6 +738,7 @@
                 <div class="toggle-wrap" title={pack.is_enabled ? 'Отключить ресурс-пак' : 'Включить ресурс-пак'}>
                   <Toggle
                     checked={pack.is_enabled}
+                    ariaLabel={`Включить ресурс-пак ${pack.name}`}
                     onchange={(checked: boolean) => handleToggleResourcePack(pack, checked)}
                   />
                 </div>
@@ -766,7 +767,7 @@
           <div class="empty-icon-wrap">
             <Icon name="sun" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h3 class="empty-title">Шейдер-паков пока нет</h3>
+          <h2 class="empty-title">Шейдер-паков пока нет</h2>
           <p class="empty-description">
             Поместите ZIP-архив с шейдерами в папку shaderpacks инстанса Minecraft {currentVersion} или нажмите кнопку «Добавить ZIP…».
           </p>
@@ -900,7 +901,7 @@
           <div class="empty-icon-wrap">
             <Icon name="sun" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h3 class="empty-title">Снимков экрана пока нет</h3>
+          <h2 class="empty-title">Снимков экрана пока нет</h2>
           <p class="empty-description">
             Нажмите клавишу F2 во время игры, чтобы сделать снимок экрана в Minecraft {currentVersion}.
           </p>
@@ -1210,8 +1211,8 @@
     justify-content: space-between;
     padding: 12px 24px;
     border-bottom: 1px solid var(--glass-border);
-    backdrop-filter: var(--glass-blur-header);
-    -webkit-backdrop-filter: var(--glass-blur-header);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
     background-color: var(--glass-surface-overlay);
     gap: 16px;
     flex-shrink: 0;
@@ -1255,8 +1256,11 @@
     margin: 40px auto;
     max-width: 460px;
     border-radius: var(--radius-lg);
-    background-color: var(--glass-surface-translucent);
+    background-color: var(--card-bg);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
     border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
   }
 
   .empty-icon-wrap {
@@ -1275,6 +1279,7 @@
     font-size: var(--text-subheadline);
     line-height: 1.5;
     color: var(--color-secondary-label);
+    font-weight: 500;
     margin: 0;
   }
 
