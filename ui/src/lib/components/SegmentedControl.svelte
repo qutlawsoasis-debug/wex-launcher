@@ -85,7 +85,7 @@
     "
   ></div>
 
-  {#each normalizedOptions as opt, i}
+  {#each normalizedOptions as opt, i (opt.value)}
     {@const isSelected = opt.value === value || (i === 0 && !value)}
     <button
       type="button"

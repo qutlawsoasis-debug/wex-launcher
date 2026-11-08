@@ -78,7 +78,7 @@
       class:online={isOnline}
       class:offline={!isOnline}
       title={isOnline ? 'В сети' : 'Не в сети (офлайн)'}
-      aria-label={isOnline ? 'В сети' : 'Офлайн'}
+      aria-hidden="true"
     ></span>
   </div>
 
@@ -192,6 +192,10 @@
   }
 
   .profile-status-caption.online {
+    color: #248a3d;
+  }
+
+  :global([data-theme="dark"]) .profile-status-caption.online {
     color: var(--color-system-green);
   }
 </style>

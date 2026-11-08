@@ -251,7 +251,7 @@
         </div>
       {:else}
         <List header="Открытые комнаты ({cloudRooms.length})">
-          {#each cloudRooms as room}
+          {#each cloudRooms as room (room.id)}
             <Row
               title={room.name}
               subtitle="Организатор: {room.host_name} • Версия {room.game_version}"
@@ -350,7 +350,7 @@
       <!-- Players in Room List -->
       <div class="players-list-wrap">
         <List header="Игроки в комнате ({activeRoom.players.length})">
-          {#each activeRoom.players as p}
+          {#each activeRoom.players as p (p.name)}
             <Row
               title={p.name}
               subtitle={p.is_host ? 'Организатор комнаты (Хост)' : 'Гость'}
@@ -455,7 +455,7 @@
         <div class="world-picker">
           <label class="picker-label" for="world-select">Выберите мир для кооператива</label>
           <div class="world-options" id="world-select">
-            {#each localWorlds as w}
+            {#each localWorlds as w (w.id || w.name)}
               <button
                 type="button"
                 class="world-opt-btn"
