@@ -16,6 +16,8 @@
   import SearchField from '../components/SearchField.svelte';
   import Sheet from '../components/Sheet.svelte';
   import Icon from '../components/icons/Icon.svelte';
+  import OfflineState from '../components/OfflineState.svelte';
+  import { network } from '../design/network.svelte';
 
   interface ServerEntry {
     id: string;
@@ -168,7 +170,9 @@
   </div>
 
   <div class="servers-content">
-    {#if filteredServers.length > 0}
+    {#if !network.isOnline}
+      <OfflineState onretry={loadServers} />
+    {:else if filteredServers.length > 0}
       <List header="Серверы Minecraft и миры Wex">
         {#each filteredServers as s (s.id)}
           <Row

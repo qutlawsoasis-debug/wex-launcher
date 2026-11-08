@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
 import PlayScreen from './PlayScreen.svelte';
 import Mockup1 from './mockups/Mockup1.svelte';
@@ -11,6 +11,53 @@ import ModsScreen from './ModsScreen.svelte';
 import SettingsScreen from './SettingsScreen.svelte';
 import WorkshopScreen from './WorkshopScreen.svelte';
 import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
+
+vi.mock('@tauri-apps/api/core', () => {
+  return {
+    invoke: vi.fn(async (cmd: string, args?: Record<string, any>) => {
+      if (cmd === 'list_mods') {
+        if (args?.version === '1.20.1') {
+          return [];
+        }
+        return [
+          {
+            id: 'fabric-api',
+            name: 'Fabric API',
+            version: '0.102.0',
+            description: 'Базовый набор библиотек для экосистемы модов Fabric',
+            file_name: 'fabric-api-0.102.0.jar',
+            enabled: true,
+            is_pack_mod: true,
+          },
+          {
+            id: 'minimap',
+            name: 'Xaero Minimap',
+            version: '24.1.0',
+            description: 'Пользовательский мод миникарты',
+            file_name: 'xaero-minimap-24.1.0.jar',
+            enabled: false,
+            is_pack_mod: false,
+          },
+        ];
+      }
+      if (cmd === 'get_launcher_settings') {
+        return {
+          selected_version: '1.21.1',
+          player_name: 'Player',
+          ram_mb: 4096,
+          total_memory_mb: 16384,
+          game_dir: 'C:\\Users\\User\\AppData\\Roaming\\Wex',
+          graphics_preset: 'High',
+          java_mode: 'auto',
+          custom_java_path: null,
+          discord_rpc: true,
+          language: 'ru',
+        };
+      }
+      return [];
+    }),
+  };
+});
 
 describe('Wex Launcher Screens', () => {
   let target: HTMLElement;
@@ -89,7 +136,7 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders PlayScreen with running state (neutral Stop button, hidden progress bar, and onstop callback)', async () => {
+  it('locks inputs and transforms Play button to neutral stop action when Minecraft is running', async () => {
     let stopped = false;
     const comp = mount(PlayScreen, {
       target,
@@ -108,10 +155,14 @@ describe('Wex Launcher Screens', () => {
     // In peace/running, progress bar must be hidden
     expect(target.querySelector('.dock-progress')).toBeNull();
 
+    // Inputs are locked
+    const nicknameInput = target.querySelector('.nickname-input') as HTMLInputElement;
+    expect(nicknameInput.disabled).toBe(true);
+
     // The primary action transforms to neutral button with «В игре • Остановить»
     const stopBtn = target.querySelector('.dock-action button') as HTMLButtonElement;
     expect(stopBtn).not.toBeNull();
-    expect(stopBtn.textContent).toContain('В игре • Остановить');
+    expect(stopBtn.textContent).toContain('В игре');
     expect(stopBtn.classList.contains('secondary')).toBe(true);
 
     // Clicking calls onstop
@@ -120,6 +171,9 @@ describe('Wex Launcher Screens', () => {
 
     // Shows session status
     expect(target.textContent).toContain('В игре');
+
+    unmount(comp);
+  });
 
     unmount(comp);
   });
@@ -325,15 +379,33 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders ModsScreen with mod list and status toggles', () => {
+  it('renders ModsScreen with real IPC mod data, pack badges, add button, and status toggles', async () => {
     const comp = mount(ModsScreen, { target });
-    expect(target.textContent).toContain('Sodium');
-    expect(target.textContent).toContain('Iris Shaders');
-    expect(target.textContent).toContain('Wex Client');
+    await tick();
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(target.textContent).toContain('Fabric API');
+    expect(target.textContent).toContain('Xaero Minimap');
+    expect(target.textContent).toContain('Добавить мод...');
+    expect(target.textContent).toContain('Папка с модами');
+    expect(target.textContent).toContain('Пак Wex');
     unmount(comp);
   });
 
-  it('renders SettingsScreen with RAM slider, graphics presets, appearance, and About Wex', () => {
+  it('renders ModsScreen with authentic empty state when no mods exist', async () => {
+    const comp = mount(ModsScreen, {
+      target,
+      props: { initialVersion: '1.20.1' },
+    });
+    await tick();
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(target.textContent).toContain('Моды не найдены');
+    expect(target.textContent).toContain('В папке инстанса пока нет модов');
+    unmount(comp);
+  });
+
+  it('renders SettingsScreen with RAM slider, Java options, Discord RPC, graphics presets, and About Wex', () => {
     const comp = mount(SettingsScreen, { target });
     expect(target.textContent).toContain('Тема оформления');
     expect(target.textContent).toContain('Цветовой акцент');
@@ -341,6 +413,9 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Уменьшение прозрачности');
     expect(target.textContent).toContain('Выделение оперативной памяти');
     expect(target.textContent).toContain('Графический пресет');
+    expect(target.textContent).toContain('Выбор исполняемого файла Java');
+    expect(target.textContent).toContain('Discord Rich Presence');
+    expect(target.textContent).toContain('Язык интерфейса');
     expect(target.textContent).toContain('О программе');
     expect(target.textContent).toContain('Tauri 2');
     expect(target.textContent).not.toContain('.minecraft');
@@ -437,6 +512,60 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Перенести');
     expect(target.textContent).toContain('Пропустить');
 
+    unmount(comp);
+  });
+
+  it('renders ServersScreen in offline state when network is offline', async () => {
+    const { network } = await import('../design/network.svelte');
+    network.setOnlineForTesting(false);
+
+    const comp = mount(ServersScreen, { target });
+    expect(target.textContent).toContain('Нет подключения');
+    expect(target.textContent).toContain('Проверьте подключение к интернету или локальной сети');
+    expect(target.textContent).toContain('Повторить');
+
+    network.setOnlineForTesting(true);
+    unmount(comp);
+  });
+
+  it('renders LobbyScreen in offline state when network is offline', async () => {
+    const { network } = await import('../design/network.svelte');
+    network.setOnlineForTesting(false);
+
+    const comp = mount(LobbyScreen, { target });
+    expect(target.textContent).toContain('Нет подключения');
+    expect(target.textContent).toContain('Повторить');
+
+    network.setOnlineForTesting(true);
+    unmount(comp);
+  });
+
+  it('renders FriendsScreen in offline state when network is offline', async () => {
+    const { network } = await import('../design/network.svelte');
+    network.setOnlineForTesting(false);
+
+    const comp = mount(FriendsScreen, { target });
+    expect(target.textContent).toContain('Нет подключения');
+    expect(target.textContent).toContain('Повторить');
+
+    network.setOnlineForTesting(true);
+    unmount(comp);
+  });
+
+  it('renders PlayScreen with offline launch status message', () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        isLaunching: true,
+        progressPercentage: 10,
+        progressStage: 'Нет сети — запуск без обновления',
+        progressDetail: 'Запуск установленной версии 1.21.1',
+      },
+    });
+
+    expect(target.textContent).toContain('Нет сети — запуск без обновления');
     unmount(comp);
   });
 });

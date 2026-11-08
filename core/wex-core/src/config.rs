@@ -18,7 +18,9 @@ pub struct WexPaths {
 impl WexPaths {
     pub fn new(custom_root: Option<PathBuf>) -> Self {
         let root = custom_root.unwrap_or_else(|| {
-            if let Ok(app_data) = std::env::var("APPDATA") {
+            if let Ok(custom_data_dir) = std::env::var("WEX_DATA_DIR") {
+                PathBuf::from(custom_data_dir)
+            } else if let Ok(app_data) = std::env::var("APPDATA") {
                 PathBuf::from(app_data).join("Wex")
             } else if let Some(base_dirs) = directories::BaseDirs::new() {
                 base_dirs.data_dir().join("Wex")
@@ -120,6 +122,26 @@ pub struct LauncherConfig {
     #[serde(default, alias = "jvm_args")]
     pub jvm_args: Vec<String>,
 
+    #[serde(
+        default = "default_graphics_preset",
+        alias = "graphicsPreset",
+        alias = "graphics_preset"
+    )]
+    pub graphics_preset: String,
+
+    #[serde(
+        default = "default_discord_rpc",
+        alias = "discordRpc",
+        alias = "discord_rpc"
+    )]
+    pub discord_rpc: bool,
+
+    #[serde(default = "default_language")]
+    pub language: String,
+
+    #[serde(default = "default_java_mode", alias = "javaMode", alias = "java_mode")]
+    pub java_mode: String,
+
     #[serde(default, alias = "reduceMotion")]
     pub reduce_motion: bool,
 
@@ -165,6 +187,22 @@ fn default_accent() -> String {
     "blue".to_string()
 }
 
+fn default_graphics_preset() -> String {
+    "High".to_string()
+}
+
+fn default_discord_rpc() -> bool {
+    true
+}
+
+fn default_language() -> String {
+    "ru".to_string()
+}
+
+fn default_java_mode() -> String {
+    "auto".to_string()
+}
+
 impl Default for LauncherConfig {
     fn default() -> Self {
         Self {
@@ -173,6 +211,10 @@ impl Default for LauncherConfig {
             max_memory_mb: default_memory(),
             custom_java_path: None,
             jvm_args: Vec::new(),
+            graphics_preset: default_graphics_preset(),
+            discord_rpc: default_discord_rpc(),
+            language: default_language(),
+            java_mode: default_java_mode(),
             reduce_motion: false,
             reduce_transparency: false,
             appearance: default_appearance(),
@@ -193,6 +235,10 @@ impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
             },
             custom_java_path: None,
             jvm_args: Vec::new(),
+            graphics_preset: default_graphics_preset(),
+            discord_rpc: default_discord_rpc(),
+            language: default_language(),
+            java_mode: default_java_mode(),
             reduce_motion: ipc.reduce_motion,
             reduce_transparency: ipc.reduce_transparency,
             appearance: ipc.appearance,
@@ -256,6 +302,17 @@ mod tests {
         assert!(paths.instance_dir("1.20.1").join("mods").exists());
         assert!(paths.instance_dir("1.21.1").join("mods").exists());
         assert!(paths.assets_indexes_dir().exists());
+    }
+
+    #[test]
+    fn test_wex_paths_env_override() {
+        let tmp = tempdir().unwrap();
+        let custom_dir = tmp.path().join("WexCustom");
+        std::env::set_var("WEX_DATA_DIR", &custom_dir);
+
+        let paths = WexPaths::new(None);
+        assert_eq!(paths.root, custom_dir);
+        std::env::remove_var("WEX_DATA_DIR");
     }
 
     #[test]

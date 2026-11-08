@@ -405,7 +405,7 @@
                 variant="primary"
                 size="large"
                 onclick={onlaunch}
-                disabled={!playerName.trim()}
+                disabled={!playerName.trim() || isLaunching || isRunning}
               >
                 <Icon name="play" size={18} color="#ffffff" />
                 <span>Играть</span>

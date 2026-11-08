@@ -13,6 +13,8 @@
   import Button from '../components/Button.svelte';
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Icon from '../components/icons/Icon.svelte';
+  import OfflineState from '../components/OfflineState.svelte';
+  import { network } from '../design/network.svelte';
 
   interface LobbyPlayer {
     name: string;
@@ -155,7 +157,9 @@
     </div>
   </div>
 
-  {#if activeRoom}
+  {#if !network.isOnline}
+    <OfflineState onretry={() => network.check()} />
+  {:else if activeRoom}
     <!-- Active Room Session View -->
     <div class="room-session-card">
       <div class="room-session-header">
