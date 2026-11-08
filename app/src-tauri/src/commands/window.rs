@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::Ordering;
-use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, State, WebviewWindow};
+use tauri::{
+    Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, State, WebviewWindow,
+};
 
 use crate::commands::launch::PlayState;
 use wex_core::config::{LauncherConfig as CoreConfig, WexPaths};
