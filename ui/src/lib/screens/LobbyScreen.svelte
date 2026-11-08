@@ -415,6 +415,7 @@
               maxlength={6}
               class="code-input"
               onkeydown={(e) => e.key === 'Enter' && handleJoinRoom()}
+              aria-label="Код комнаты"
             />
           </div>
 
@@ -691,6 +692,7 @@
 
   .code-input:focus {
     border-color: var(--color-system-blue);
+    box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
     background-color: var(--card-bg);
   }
 
@@ -734,6 +736,11 @@
 
   .world-opt-btn:hover {
     background-color: var(--color-quaternary-system-fill);
+  }
+
+  .world-opt-btn:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 2px;
   }
 
   .world-opt-btn.selected {

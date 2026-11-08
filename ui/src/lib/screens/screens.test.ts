@@ -9,6 +9,7 @@ import LobbyScreen from './LobbyScreen.svelte';
 import FriendsScreen from './FriendsScreen.svelte';
 import ModsScreen from './ModsScreen.svelte';
 import SettingsScreen from './SettingsScreen.svelte';
+import WardrobeScreen from './WardrobeScreen.svelte';
 import WorkshopScreen from './WorkshopScreen.svelte';
 import SplashScreen from './SplashScreen.svelte';
 import { theme } from '../design/theme.svelte';
@@ -141,24 +142,41 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('locks Play button and inputs when Minecraft is running', () => {
+  it('locks inputs and transforms Play button to neutral stop action when Minecraft is running', async () => {
+    let stopped = false;
     const comp = mount(PlayScreen, {
       target,
       props: {
         selectedVersion: '1.21.1',
         playerName: 'Steve',
+        clientStatus: 'Сессия активна',
         isLaunching: false,
         isRunning: true,
+        onstop: () => {
+          stopped = true;
+        },
       },
     });
 
-    const playBtn = target.querySelector('.dock-action button') as HTMLButtonElement;
-    expect(playBtn).not.toBeNull();
-    expect(playBtn.disabled).toBe(true);
-    expect(playBtn.textContent).toContain('В игре');
+    // In peace/running, progress bar must be hidden
+    expect(target.querySelector('.dock-progress')).toBeNull();
 
+    // Inputs are locked
     const nicknameInput = target.querySelector('.nickname-input') as HTMLInputElement;
     expect(nicknameInput.disabled).toBe(true);
+
+    // The primary action transforms to neutral button with «В игре • Остановить»
+    const stopBtn = target.querySelector('.dock-action button') as HTMLButtonElement;
+    expect(stopBtn).not.toBeNull();
+    expect(stopBtn.textContent).toContain('В игре');
+    expect(stopBtn.classList.contains('secondary')).toBe(true);
+
+    // Clicking calls onstop
+    stopBtn.click();
+    expect(stopped).toBe(true);
+
+    // Shows session status
+    expect(target.textContent).toContain('В игре');
 
     unmount(comp);
   });
@@ -389,7 +407,7 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Постоялец');
     expect(target.textContent).toContain('Сто часов');
     expect(target.textContent).toContain('Хост');
-    expect(target.textContent).toContain('СПИСОК ДОСТИЖЕНИЙ');
+    expect(target.textContent).toContain('Список достижений');
 
     unmount(comp);
   });
@@ -451,6 +469,38 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  it('renders WardrobeScreen with 2D character preview, model selector, capes, and authentic empty history', () => {
+    const comp = mount(WardrobeScreen, {
+      target,
+      props: {
+        playerName: 'Steve',
+      },
+    });
+
+    // Check preview and model controls
+    expect(target.querySelector('canvas.character-canvas')).not.toBeNull();
+    expect(target.textContent).toContain('Классическая (4 px)');
+    expect(target.textContent).toContain('Тонкая (3 px)');
+    expect(target.textContent).toContain('Спереди');
+    expect(target.textContent).toContain('Сзади');
+
+    // Check cape options per SPEC 1.6
+    expect(target.textContent).toContain('Без плаща');
+    expect(target.textContent).toContain('Aura Cyan');
+    expect(target.textContent).toContain('Aura Silver');
+    expect(target.textContent).toContain('Пользовательский');
+
+    // Check action buttons
+    expect(target.textContent).toContain('Загрузить скин (PNG)');
+    expect(target.textContent).toContain('Сбросить на стандартный');
+    expect(target.textContent).toContain('Применить к игре');
+
+    // Check authentic empty state
+    expect(target.textContent).toContain('История гардероба пуста');
+
+    unmount(comp);
+  });
+
   it('renders WorkshopScreen with tabs, version selector, and authentic empty states', () => {
     const comp = mount(WorkshopScreen, {
       target,
@@ -461,6 +511,8 @@ describe('Wex Launcher Screens', () => {
 
     // Check tabs
     expect(target.textContent).toContain('Миры');
+    expect(target.textContent).toContain('Ресурс-паки');
+    expect(target.textContent).toContain('Шейдеры');
     expect(target.textContent).toContain('Скриншоты');
     expect(target.textContent).toContain('1.21.1');
     expect(target.textContent).toContain('1.20.1');
@@ -493,6 +545,52 @@ describe('Wex Launcher Screens', () => {
 
     expect(target.textContent).toContain('Снимков экрана пока нет');
     expect(target.textContent).toContain('Нажмите клавишу F2');
+
+    unmount(comp);
+  });
+
+  it('renders WorkshopScreen with resource packs empty state and header actions when switched to resourcepacks tab', async () => {
+    const comp = mount(WorkshopScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+      },
+    });
+
+    const buttons = Array.from(target.querySelectorAll('button'));
+    const packsBtn = buttons.find((b) => b.textContent?.includes('Ресурс-паки'));
+    expect(packsBtn).toBeDefined();
+
+    packsBtn?.click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(target.textContent).toContain('Ресурс-паков пока нет');
+    expect(target.textContent).toContain('Поместите ZIP-архив с ресурс-паком');
+    expect(target.textContent).toContain('Добавить ZIP…');
+    expect(target.textContent).toContain('Папка паков');
+
+    unmount(comp);
+  });
+
+  it('renders WorkshopScreen with shaders empty state and header actions when switched to shaders tab', async () => {
+    const comp = mount(WorkshopScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+      },
+    });
+
+    const buttons = Array.from(target.querySelectorAll('button'));
+    const shadersBtn = buttons.find((b) => b.textContent?.includes('Шейдеры'));
+    expect(shadersBtn).toBeDefined();
+
+    shadersBtn?.click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(target.textContent).toContain('Шейдер-паков пока нет');
+    expect(target.textContent).toContain('Поместите ZIP-архив с шейдерами');
+    expect(target.textContent).toContain('Добавить ZIP…');
+    expect(target.textContent).toContain('Папка шейдеров');
 
     unmount(comp);
   });
@@ -572,7 +670,6 @@ describe('Wex Launcher Screens', () => {
     theme.setReduceMotion(false);
     unmount(comp);
   });
-
   it('renders ImportWizardSheet with found old launcher data, non-destructive notice, and transfer toggles', () => {
     const comp = mount(ImportWizardSheet, {
       target,

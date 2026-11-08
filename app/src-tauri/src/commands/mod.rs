@@ -5,5 +5,8 @@ pub mod mods;
 pub mod network;
 pub mod overview;
 pub mod settings;
+pub mod shell;
 pub mod startup;
+pub mod wardrobe;
 pub mod workshop;
+pub mod workshop_packs;

@@ -10,6 +10,7 @@ import SearchField from './SearchField.svelte';
 import ProgressBar from './ProgressBar.svelte';
 import Toast from './Toast.svelte';
 import Logo from './Logo.svelte';
+import ProfileBadge from './ProfileBadge.svelte';
 
 describe('Apple HIG Svelte 5 Components', () => {
   let target: HTMLElement;
@@ -252,6 +253,42 @@ describe('Apple HIG Svelte 5 Components', () => {
     expect(target.textContent).toContain('Wex');
     expect(target.textContent).toContain('Minecraft Launcher');
     expect(target.querySelector('.wex-brand.large')).not.toBeNull();
+    unmount(comp);
+  });
+
+  it('renders ProfileBadge in offline mode with initial letter avatar and offline dot', () => {
+    const comp = mount(ProfileBadge, {
+      target,
+      props: {
+        playerName: 'Steve',
+        isOnline: false,
+      },
+    });
+
+    expect(target.querySelector('.profile-nickname')?.textContent).toBe('Steve');
+    const fallback = target.querySelector('.avatar-letter-fallback');
+    expect(fallback).not.toBeNull();
+    expect(fallback?.textContent?.trim()).toBe('S');
+    expect(target.querySelector('.network-status-dot.offline')).not.toBeNull();
+    expect(target.textContent).toContain('Офлайн');
+    unmount(comp);
+  });
+
+  it('renders ProfileBadge in online mode with online indicator dot and head image attempt', () => {
+    const comp = mount(ProfileBadge, {
+      target,
+      props: {
+        playerName: 'Alex',
+        isOnline: true,
+      },
+    });
+
+    expect(target.querySelector('.profile-nickname')?.textContent).toBe('Alex');
+    expect(target.querySelector('.network-status-dot.online')).not.toBeNull();
+    expect(target.textContent).toContain('В сети');
+    const img = target.querySelector('.avatar-head-image') as HTMLImageElement;
+    expect(img).not.toBeNull();
+    expect(img.src).toContain('Alex');
     unmount(comp);
   });
 });
