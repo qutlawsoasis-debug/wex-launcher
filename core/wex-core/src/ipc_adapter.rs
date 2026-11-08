@@ -10,18 +10,23 @@ use wex_ipc::error::{IpcError, IpcResult};
 use wex_ipc::models::{InstalledVersion, LauncherConfig as IpcConfig};
 
 use crate::config::{LauncherConfig as CoreConfig, WexPaths};
-use crate::event::NoopEventHandler;
+use crate::event::{EventHandler, NoopEventHandler};
 use crate::launcher::{install_full_environment, prepare_and_launch, GameProcess};
 
 pub struct WexLauncherCore {
     paths: WexPaths,
     client: reqwest::Client,
+    event_handler: Arc<dyn EventHandler>,
     running_processes: Arc<Mutex<HashMap<String, GameProcess>>>,
     active_cancel_tokens: Arc<Mutex<HashMap<String, CancellationToken>>>,
 }
 
 impl WexLauncherCore {
     pub fn new(paths: WexPaths) -> Self {
+        Self::with_event_handler(paths, Arc::new(NoopEventHandler))
+    }
+
+    pub fn with_event_handler(paths: WexPaths, events: Arc<dyn EventHandler>) -> Self {
         let client = reqwest::Client::builder()
             .user_agent("WexLauncher/0.1.0")
             .build()
@@ -29,6 +34,7 @@ impl WexLauncherCore {
         Self {
             paths,
             client,
+            event_handler: events,
             running_processes: Arc::new(Mutex::new(HashMap::new())),
             active_cancel_tokens: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -71,8 +77,8 @@ impl LauncherCore for WexLauncherCore {
         &self,
         request: InstallInstanceRequest,
     ) -> IpcResult<InstallInstanceResponse> {
-        let events = NoopEventHandler;
-        match install_full_environment(&self.paths, &request.version, &self.client, &events, 8).await {
+        let events = self.event_handler.clone();
+        match install_full_environment(&self.paths, &request.version, &self.client, events.as_ref(), 8).await {
             Ok(_) => Ok(InstallInstanceResponse {
                 success: true,
                 version: request.version,
@@ -91,10 +97,16 @@ impl LauncherCore for WexLauncherCore {
         cfg.selected_version = request.version.clone();
         let _ = cfg.save(&self.paths.config_file);
 
-        let events = Arc::new(NoopEventHandler);
+        let events = self.event_handler.clone();
         let jvm_args = request.jvm_args.unwrap_or_default();
 
-        match prepare_and_launch(
+        let cancel_token = CancellationToken::new();
+        {
+            let mut tokens = self.active_cancel_tokens.lock().await;
+            tokens.insert(request.version.clone(), cancel_token);
+        }
+
+        let res = match prepare_and_launch(
             &self.paths,
             &cfg,
             &request.version,
@@ -120,7 +132,14 @@ impl LauncherCore for WexLauncherCore {
                 format!("Launch failed: {}", e),
                 Some(e.to_string()),
             )),
+        };
+
+        {
+            let mut tokens = self.active_cancel_tokens.lock().await;
+            tokens.remove(&request.version);
         }
+
+        res
     }
 
     async fn cancel_launch(&self) -> IpcResult<()> {
