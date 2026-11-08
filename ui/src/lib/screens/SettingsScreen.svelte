@@ -451,7 +451,7 @@
       <Row title="Цветовой акцент" subtitle="Основной цвет элементов интерфейса">
         {#snippet trailing()}
           <div class="accent-picker" role="radiogroup" aria-label="Цветовой акцент">
-            {#each accents as acc}
+            {#each accents as acc (acc.key)}
               <button
                 type="button"
                 class="accent-dot"

@@ -1,3 +1,4 @@
+pub mod crash;
 pub mod friends;
 pub mod launch;
 pub mod lobby;
