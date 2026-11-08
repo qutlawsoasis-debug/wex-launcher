@@ -8,6 +8,7 @@
   import { theme } from './lib/design/theme.svelte';
   import Sidebar, { type SidebarItem } from './lib/components/Sidebar.svelte';
   import Toolbar from './lib/components/Toolbar.svelte';
+  import ProfileBadge from './lib/components/ProfileBadge.svelte';
   import Toast, { type ToastMessage } from './lib/components/Toast.svelte';
   import Button from './lib/components/Button.svelte';
   import Icon from './lib/components/icons/Icon.svelte';
@@ -30,6 +31,9 @@
   let playerName = $state('Player');
   let clientStatus = $state('Клиент Wex готов');
   let isLaunching = $state(false);
+  let isRunning = $state(false);
+  let isOnline = $state(true);
+  let skinHeadUrl = $state<string | undefined>(undefined);
   let progressPercentage = $state(0);
   let progressStage = $state('Готов к запуску');
   let progressDetail = $state('Нажмите «Играть» для старта');
@@ -112,11 +116,34 @@
     }
   }
 
+  // Real Network & Profile state management
+  async function checkNetwork() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<{ is_online: boolean; latency_ms?: number; status_text: string }>('shell_check_network');
+      isOnline = res.is_online;
+    } catch {
+      isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    }
+  }
+
+  async function loadProfile() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const prof = await invoke<{ nickname: string; initials: string; is_online: boolean; skin_head_url?: string }>('shell_get_profile', { nickname: playerName });
+      if (prof.skin_head_url) {
+        skinHeadUrl = prof.skin_head_url;
+      }
+    } catch {
+      skinHeadUrl = undefined;
+    }
+  }
+
   // Launch Game Action
   let cancelLaunchSimulation = false;
 
   async function handleLaunch() {
-    if (isLaunching) return;
+    if (isLaunching || isRunning) return;
     isLaunching = true;
     cancelLaunchSimulation = false;
     progressPercentage = 0;
@@ -132,6 +159,8 @@
         nickname: playerName,
       });
       isLaunching = false;
+      isRunning = true;
+      clientStatus = 'Minecraft запущен';
       addToast('success', 'Minecraft запущен', result);
     } catch {
       // Fallback in-browser progress simulation
@@ -161,6 +190,7 @@
       }
 
       isLaunching = false;
+      isRunning = true;
       progressStage = 'Minecraft запущен';
       progressDetail = `Сессия ${selectedVersion} активна`;
       progressSpeed = '';
@@ -175,6 +205,19 @@
       await invoke('cancel_launch');
     } catch {
       // Handled by simulation flag
+    }
+  }
+
+  async function handleStopGame() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('shell_stop_game', { version: selectedVersion });
+      isRunning = false;
+      isLaunching = false;
+      clientStatus = 'Игра остановлена';
+      addToast('info', 'Minecraft остановлен');
+    } catch (e) {
+      addToast('error', 'Ошибка остановки игры', String(e));
     }
   }
 
@@ -197,6 +240,33 @@
 
     applyHashRoute();
     window.addEventListener('hashchange', applyHashRoute);
+
+    // Initial checks: network, profile, and active running game state
+    checkNetwork();
+    loadProfile();
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', checkNetwork);
+      window.addEventListener('offline', () => {
+        isOnline = false;
+      });
+    }
+
+    const netInterval = setInterval(checkNetwork, 30000);
+
+    // Synchronize initial running state
+    import('@tauri-apps/api/core')
+      .then(({ invoke }) => {
+        invoke<boolean>('is_game_running')
+          .then((running) => {
+            isRunning = running;
+            if (running) {
+              clientStatus = 'Minecraft запущен';
+            }
+          })
+          .catch(() => {});
+      })
+      .catch(() => {});
 
     // Tauri 2 Event Listeners (install-progress & launch-status as per SPEC.md)
     let unlistenProgress: (() => void) | undefined;
@@ -235,13 +305,19 @@
             clientStatus = s.message;
             if (s.state === 'running') {
               isLaunching = false;
+              isRunning = true;
               addToast('success', 'Minecraft запущен', s.message);
             } else if (s.state === 'cancelled') {
               isLaunching = false;
+              isRunning = false;
               addToast('warning', 'Запуск отменён', s.message);
             } else if (s.state === 'error') {
               isLaunching = false;
+              isRunning = false;
               addToast('error', 'Ошибка запуска', s.message);
+            } else if (s.state === 'idle') {
+              isLaunching = false;
+              isRunning = false;
             }
           }).then((fn) => {
             unlistenStatus = fn;
@@ -275,6 +351,10 @@
 
     return () => {
       window.removeEventListener('hashchange', applyHashRoute);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', checkNetwork);
+      }
+      clearInterval(netInterval);
       unlistenProgress?.();
       unlistenStatus?.();
       unlistenAchievement?.();
@@ -313,14 +393,22 @@
 
   <!-- Main View Area -->
   <main class="wex-main">
-    <!-- Window Toolbar -->
+    <!-- Window Toolbar with Apple Profile Badge & Window Controls -->
     <Toolbar
       title={screenTitles[activeTab] || 'Wex'}
       {isMaximized}
       onminimize={minimizeWindow}
       onmaximize={toggleMaximizeWindow}
       onclose={closeWindow}
-    />
+    >
+      {#snippet trailing()}
+        <ProfileBadge
+          {playerName}
+          {isOnline}
+          {skinHeadUrl}
+        />
+      {/snippet}
+    </Toolbar>
 
     <!-- Active Screen -->
     <div class="screen-viewport">
@@ -330,12 +418,14 @@
           bind:playerName
           {clientStatus}
           {isLaunching}
+          {isRunning}
           {progressPercentage}
           {progressStage}
           {progressDetail}
           {progressSpeed}
           onlaunch={handleLaunch}
           oncancel={handleCancelLaunch}
+          onstop={handleStopGame}
         />
       {:else if activeTab === 'servers'}
         <ServersScreen />

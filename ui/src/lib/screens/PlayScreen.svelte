@@ -21,12 +21,14 @@
     playerName?: string;
     clientStatus?: string;
     isLaunching?: boolean;
+    isRunning?: boolean;
     progressPercentage?: number;
     progressStage?: string;
     progressDetail?: string;
     progressSpeed?: string;
     onlaunch?: () => void;
     oncancel?: () => void;
+    onstop?: () => void;
   }
 
   let {
@@ -34,12 +36,14 @@
     playerName = $bindable('Player'),
     clientStatus = '',
     isLaunching = false,
+    isRunning = false,
     progressPercentage = 0,
     progressStage = 'Готов к запуску',
     progressDetail = 'Нажмите «Играть» для старта',
     progressSpeed = '',
     onlaunch,
     oncancel,
+    onstop,
   }: Props = $props();
 
   const versions = [
@@ -175,7 +179,7 @@
               <SegmentedControl
                 options={versions}
                 bind:value={selectedVersion}
-                disabled={isLaunching}
+                disabled={isLaunching || isRunning}
               />
             </div>
           </div>
@@ -193,30 +197,51 @@
                 placeholder="Никнейм"
                 class="player-name-input nickname-input"
                 maxlength={16}
-                disabled={isLaunching}
+                disabled={isLaunching || isRunning}
               />
             </div>
           </div>
 
           <div class="dock-vertical-divider"></div>
 
-          <!-- Java Environment -->
+          <!-- Java Environment & Core Status -->
           <div class="dock-block tech-block">
-            <span class="dock-caption">Среда выполнения</span>
-            <span class="tech-runtime-text">{javaRuntime}</span>
+            <span class="dock-caption">
+              {isRunning ? 'Статус сессии' : 'Среда выполнения'}
+            </span>
+            <div class="tech-runtime-box">
+              <span class="tech-runtime-text">{javaRuntime}</span>
+              {#if isRunning}
+                <span class="tech-status-badge running">• В игре</span>
+              {:else if clientStatus}
+                <span class="tech-status-badge">• {clientStatus}</span>
+              {/if}
+            </div>
           </div>
 
-          <!-- Primary Play Action Button -->
-          <div class="dock-primary-action dock-action">
-            <Button
-              variant="primary"
-              size="large"
-              onclick={onlaunch}
-              disabled={!playerName.trim()}
-            >
-              <Icon name="play" size={18} color="#ffffff" />
-              <span>Играть</span>
-            </Button>
+          <!-- Action Button: Play (systemBlue) -> In Game / Stop (neutral) -->
+          <div class="dock-primary-action dock-action" class:is-running={isRunning}>
+            {#if isRunning}
+              <Button
+                variant="secondary"
+                size="large"
+                onclick={onstop}
+                title="Остановить процесс Minecraft"
+              >
+                <span class="running-indicator-dot"></span>
+                <span>В игре • Остановить</span>
+              </Button>
+            {:else}
+              <Button
+                variant="primary"
+                size="large"
+                onclick={onlaunch}
+                disabled={!playerName.trim()}
+              >
+                <Icon name="play" size={18} color="#ffffff" />
+                <span>Играть</span>
+              </Button>
+            {/if}
           </div>
         </div>
       {/if}
@@ -472,13 +497,40 @@
     min-width: 120px;
   }
 
+  .tech-runtime-box {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 34px;
+    white-space: nowrap;
+  }
+
   .tech-runtime-text {
     font-size: var(--text-footnote);
     color: var(--color-label);
     font-weight: 500;
-    height: 34px;
     display: flex;
     align-items: center;
+  }
+
+  .tech-status-badge {
+    font-size: 11px;
+    color: var(--color-secondary-label);
+  }
+
+  .tech-status-badge.running {
+    color: var(--color-system-green);
+    font-weight: 600;
+  }
+
+  .running-indicator-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--color-system-green);
+    margin-right: 6px;
+    box-shadow: 0 0 6px rgba(48, 209, 88, 0.6);
   }
 
   .dock-primary-action {

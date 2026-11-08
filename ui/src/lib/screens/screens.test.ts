@@ -88,6 +88,41 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  it('renders PlayScreen with running state (neutral Stop button, hidden progress bar, and onstop callback)', async () => {
+    let stopped = false;
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        clientStatus: 'Сессия активна',
+        isLaunching: false,
+        isRunning: true,
+        onstop: () => {
+          stopped = true;
+        },
+      },
+    });
+
+    // In peace/running, progress bar must be hidden
+    expect(target.querySelector('.dock-progress')).toBeNull();
+
+    // The primary action transforms to neutral button with «В игре • Остановить»
+    const stopBtn = target.querySelector('.dock-action button') as HTMLButtonElement;
+    expect(stopBtn).not.toBeNull();
+    expect(stopBtn.textContent).toContain('В игре • Остановить');
+    expect(stopBtn.classList.contains('secondary')).toBe(true);
+
+    // Clicking calls onstop
+    stopBtn.click();
+    expect(stopped).toBe(true);
+
+    // Shows session status
+    expect(target.textContent).toContain('В игре');
+
+    unmount(comp);
+  });
+
   it('renders Mockup 2 (Editorial) with showcase banner, changelog, and servers', () => {
     const comp = mount(Mockup2, {
       target,
