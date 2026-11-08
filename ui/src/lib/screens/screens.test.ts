@@ -614,9 +614,6 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-    unmount(comp);
-  });
-
   it('renders WorkshopScreen with tabs, version selector, and authentic empty states', () => {
     const comp = mount(WorkshopScreen, {
       target,
