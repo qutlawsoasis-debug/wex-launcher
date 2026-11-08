@@ -65,7 +65,8 @@ pub fn check_network_connectivity(timeout_ms: u64) -> (bool, Option<u64>) {
     ];
 
     for target in targets {
-        if let Ok(_stream) = TcpStream::connect_timeout(&target, Duration::from_millis(timeout_ms)) {
+        if let Ok(_stream) = TcpStream::connect_timeout(&target, Duration::from_millis(timeout_ms))
+        {
             let latency = start.elapsed().as_millis() as u64;
             return (true, Some(latency));
         }
@@ -111,11 +112,9 @@ pub fn resolve_player_skin(paths: &WexPaths, nickname: &str) -> (bool, Option<St
 /// Perform real network check for online / offline state.
 #[tauri::command]
 pub async fn shell_check_network() -> Result<NetworkStatusDto, String> {
-    let (is_online, latency_ms) = tokio::task::spawn_blocking(|| {
-        check_network_connectivity(1500)
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+    let (is_online, latency_ms) = tokio::task::spawn_blocking(|| check_network_connectivity(1500))
+        .await
+        .map_err(|e| e.to_string())?;
 
     let status_text = if is_online {
         if let Some(ms) = latency_ms {
@@ -141,11 +140,9 @@ pub async fn shell_get_profile(
     state: State<'_, PlayState>,
 ) -> Result<ShellProfileDto, String> {
     let initials = get_profile_initials(&nickname);
-    let (is_online, _) = tokio::task::spawn_blocking(|| {
-        check_network_connectivity(1000)
-    })
-    .await
-    .unwrap_or((false, None));
+    let (is_online, _) = tokio::task::spawn_blocking(|| check_network_connectivity(1000))
+        .await
+        .unwrap_or((false, None));
 
     let (has_custom_skin, skin_head_url) = resolve_player_skin(&state.paths, &nickname);
 
@@ -268,7 +265,11 @@ mod tests {
         assert!(skin_url.unwrap().contains("mc-heads.net/avatar/Steve/32"));
 
         // 2. With CustomSkinLoader local skin file
-        let csl_dir = paths.instance_dir("1.21.1").join("CustomSkinLoader").join("LocalSkin").join("skins");
+        let csl_dir = paths
+            .instance_dir("1.21.1")
+            .join("CustomSkinLoader")
+            .join("LocalSkin")
+            .join("skins");
         fs::create_dir_all(&csl_dir).unwrap();
         let skin_path = csl_dir.join("Alex.png");
         fs::write(&skin_path, b"fake_png_data").unwrap();
