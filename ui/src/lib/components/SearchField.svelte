@@ -50,14 +50,15 @@
   }
 </script>
 
-<div class="apple-search-field" class:disabled class:has-value={!!value}>
+<div class="apple-search-field" class:disabled class:has-value={!!value} role="search">
   <span class="search-icon">
     <Icon name="search" size={15} color="var(--color-tertiary-label)" />
   </span>
 
   <input
     bind:this={inputEl}
-    type="text"
+    type="search"
+    aria-label="Поле поиска"
     {placeholder}
     {value}
     {disabled}
@@ -73,7 +74,6 @@
       class="clear-btn"
       title="Очистить"
       onclick={clear}
-      tabindex="-1"
       aria-label="Очистить поиск"
     >
       <Icon name="clear" size={11} color="var(--color-tertiary-label)" />
@@ -99,9 +99,15 @@
       border-color var(--motion-duration-short) ease;
   }
 
+  .apple-search-field:hover:not(:focus-within):not(.disabled) {
+    background-color: var(--color-tertiary-system-fill);
+  }
+
   .apple-search-field:focus-within {
     background-color: var(--card-bg);
     border-color: var(--color-system-blue);
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 1px;
     box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
   }
 
@@ -146,10 +152,34 @@
     cursor: pointer;
     flex-shrink: 0;
     margin-left: 4px;
-    transition: background-color var(--motion-duration-short) ease;
+    outline: none;
+    transition:
+      background-color var(--motion-duration-short) ease,
+      box-shadow var(--motion-duration-short) ease;
   }
 
   .clear-btn:hover {
     background-color: var(--color-secondary-system-fill);
+  }
+
+  .clear-btn:active {
+    background-color: var(--color-system-fill);
+  }
+
+  .clear-btn:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 1px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .apple-search-field,
+    .clear-btn {
+      transition: none !important;
+    }
+  }
+
+  :global([data-reduce-motion="true"]) .apple-search-field,
+  :global([data-reduce-motion="true"]) .clear-btn {
+    transition: none !important;
   }
 </style>

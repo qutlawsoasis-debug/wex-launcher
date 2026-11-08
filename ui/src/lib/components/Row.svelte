@@ -123,6 +123,7 @@
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
+    min-height: 44px;
     background-color: transparent;
     font-family: var(--font-system);
     user-select: none;
@@ -131,6 +132,7 @@
     border-bottom: 1px solid var(--color-separator);
     width: 100%;
     text-align: left;
+    outline: none;
   }
 
   .apple-row:last-child {
@@ -147,6 +149,12 @@
 
   .apple-row.clickable:active:not(.disabled) {
     background-color: var(--color-tertiary-system-fill);
+  }
+
+  .apple-row.clickable:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: -2px;
+    z-index: 1;
   }
 
   .apple-row.disabled {
@@ -207,5 +215,15 @@
   .chevron {
     display: flex;
     align-items: center;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .apple-row {
+      transition: none !important;
+    }
+  }
+
+  :global([data-reduce-motion="true"]) .apple-row {
+    transition: none !important;
   }
 </style>

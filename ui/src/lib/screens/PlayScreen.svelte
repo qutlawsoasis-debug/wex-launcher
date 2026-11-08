@@ -17,6 +17,7 @@
   import ProgressBar from '../components/ProgressBar.svelte';
   import Icon from '../components/icons/Icon.svelte';
   import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
+  import ErrorState from '../components/ErrorState.svelte';
   import { theme } from '../design/theme.svelte';
 
   interface ReleaseNoteItem {
@@ -51,12 +52,14 @@
     progressStage?: string;
     progressDetail?: string;
     progressSpeed?: string;
+    launchError?: unknown;
     initialNews?: ReleaseNoteVersion[];
     initialUpdateInfo?: UpdateInfo | null;
     initialShowImportWizard?: boolean;
     onlaunch?: () => void;
     oncancel?: () => void;
     onstop?: () => void;
+    onopensettings?: () => void;
   }
 
   let {
@@ -69,12 +72,14 @@
     progressStage = 'Готов к запуску',
     progressDetail = 'Нажмите «Играть» для старта',
     progressSpeed = '',
+    launchError = $bindable<unknown>(null),
     initialNews = undefined,
     initialUpdateInfo = null,
     initialShowImportWizard = false,
     onlaunch,
     oncancel,
     onstop,
+    onopensettings,
   }: Props = $props();
 
   const versions = [
@@ -323,6 +328,22 @@
       </div>
     </div>
 
+    <!-- Launch Error Banner (Apple HIG Alert State) -->
+    {#if launchError}
+      <div class="launch-error-banner" role="alert">
+        <ErrorState
+          error={launchError}
+          domain="launch"
+          compact={true}
+          onaction={onlaunch}
+          onsecondaryaction={onopensettings}
+          onclose={() => {
+            launchError = null;
+          }}
+        />
+      </div>
+    {/if}
+
     <!-- Bottom Floating Launch Dock (Liquid Glass) -->
     <div class="launch-dock">
       {#if isLaunching}
@@ -531,13 +552,26 @@
     line-height: 1.08;
     margin: 0 0 4px;
     color: var(--color-label);
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
   }
 
   .game-subheading {
     font-size: 16px;
-    color: var(--color-secondary-label);
+    color: var(--color-label);
+    opacity: 0.94;
     margin: 0;
-    font-weight: 500;
+    font-weight: 600;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  :global([data-theme="light"]) .game-heading {
+    text-shadow: 0 1px 8px rgba(255, 255, 255, 0.8);
+  }
+
+  :global([data-theme="light"]) .game-subheading {
+    color: #1c1c1e;
+    opacity: 1;
+    text-shadow: 0 1px 8px rgba(255, 255, 255, 0.8);
   }
 
   .header-tools {
@@ -556,13 +590,14 @@
   }
 
   .glass-card {
-    background: var(--color-system-ultra-thin-material);
+    background: var(--color-system-ultra-thin-material, var(--card-bg));
     backdrop-filter: blur(28px) saturate(160%);
     -webkit-backdrop-filter: blur(28px) saturate(160%);
     border: 1px solid var(--color-separator);
     border-radius: var(--radius-lg);
     padding: 16px 20px;
     box-sizing: border-box;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
   }
 
   .updates-card {
@@ -683,7 +718,9 @@
 
   .empty-status-text {
     font-size: var(--text-footnote);
-    color: var(--color-secondary-label);
+    color: var(--color-label);
+    opacity: 0.88;
+    font-weight: 500;
     padding: 4px 0;
   }
 
@@ -698,11 +735,23 @@
     align-items: center;
     gap: 8px;
     font-size: var(--text-caption-1);
-    color: var(--color-secondary-label);
+    color: var(--color-label);
+    opacity: 0.88;
   }
 
   .friends-status-label {
     font-size: var(--text-footnote);
+    color: var(--color-label);
+    opacity: 0.88;
+    font-weight: 500;
+  }
+
+  .launch-error-banner {
+    margin-bottom: 14px;
+    max-width: 680px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
   }
 
   /* Bottom Launch Dock */
@@ -845,5 +894,12 @@
 
   .dock-cancel-action {
     flex-shrink: 0;
+  }
+
+  :global([data-reduce-transparency="true"]) .launch-dock,
+  :global([data-reduce-transparency="true"]) .glass-card {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--color-secondary-system-background) !important;
   }
 </style>

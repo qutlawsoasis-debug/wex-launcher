@@ -32,6 +32,14 @@
     "targets": ["nsis", "msi"],
     "icon": [
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["Russian", "English"],
+        "displayLanguageSelector": true,
+        "installerHooks": "installer-hooks.nsh"
+      }
+    }
   }
 }
