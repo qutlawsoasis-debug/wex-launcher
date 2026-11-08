@@ -958,6 +958,7 @@
         onkeydown={(e) => {
           if (e.key === 'Enter') handleConfirmAddPack();
         }}
+        aria-label="Путь к ZIP-архиву"
       />
     </div>
 
@@ -1484,6 +1485,11 @@
     transform: scale(0.98);
   }
 
+  .screenshot-card:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 2px;
+  }
+
   .screenshot-thumb-wrap {
     position: relative;
     width: 100%;
@@ -1612,6 +1618,7 @@
 
   .apple-text-field:focus {
     border-color: var(--color-system-blue);
+    box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
   }
 
   .modal-list {
