@@ -25,6 +25,8 @@
       | 'sun'
       | 'moon'
       | 'folder'
+      | 'plus'
+      | 'trash'
       | 'cpu';
     size?: number;
     color?: string;
@@ -125,6 +127,13 @@
     <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
   {:else if name === 'folder'}
     <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"></path>
+  {:else if name === 'plus'}
+    <line x1="12" y1="5" x2="12" y2="19"></line>
+    <line x1="5" y1="12" x2="19" y2="12"></line>
+  {:else if name === 'trash'}
+    <path d="M3 6h18"></path>
+    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
   {:else if name === 'cpu'}
     <rect x="4" y="4" width="16" height="16" rx="2"></rect>
     <rect x="9" y="9" width="6" height="6"></rect>

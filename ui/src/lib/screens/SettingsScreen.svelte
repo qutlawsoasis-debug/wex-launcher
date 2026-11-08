@@ -1,14 +1,17 @@
 <!--
   Wex Launcher — Screen «Настройки»
-  Specification: tasks/apple/hig/settings.md, tasks/apple/hig/sliders.md, tasks/apple/hig/toggles.md
+  Specification: tasks/apple/hig/settings.md, tasks/apple/hig/sliders.md, tasks/apple/hig/toggles.md, tasks/apple/hig/segmented-controls.md
   Rules:
-  - RAM allocation: slider with 512 MB step, upper bound based on system memory
-  - Game data directory selector
-  - Graphics preset: Low / Medium / High / Ultra
+  - Java runtime: auto-detection (Java 17 for 1.20.1, Java 21 for 1.21.1) or custom executable path
+  - RAM allocation: slider with 512 MB step, contextual Apple HIG hint based on system memory
+  - Graphics presets: wex-extras presets (Low, Medium, High, Ultra)
+  - Data directory: path display and open in Explorer
+  - Discord RPC: systemGreen toggle with live status preview
+  - Language: RU / EN selection
   - Appearance: Dark / Light / Auto & Accent picker
   - Accessibility: Reduce Motion and Reduce Transparency toggles
-  - About Wex section
-  - Bidirectional sync via get_launcher_config / save_launcher_config
+  - About Wex: authentic version and system telemetry
+  - Bidirectional sync via get_launcher_settings / save_launcher_settings / reset_settings
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -23,10 +26,18 @@
   import { AccentPresets, type AccentColor } from '../design/colors';
 
   // System & configuration state
+  let selectedVersion = $state('1.21.1');
+  let playerName = $state('Player');
   let totalMemoryMb = $state(16384);
   let ramMb = $state(4096);
   let gameDir = $state('C:\\Users\\User\\AppData\\Roaming\\Wex');
   let graphicsPreset = $state('High');
+  let javaMode = $state('auto');
+  let customJavaPath = $state('');
+  let detectedJava17 = $state<string | null>(null);
+  let detectedJava21 = $state<string | null>(null);
+  let discordRpc = $state(true);
+  let language = $state('ru');
   let launcherVersion = $state('1.0.0');
   let osName = $state('windows');
 
@@ -35,6 +46,16 @@
     { value: 'Medium', label: 'Средний' },
     { value: 'High', label: 'Высокий' },
     { value: 'Ultra', label: 'Ультра' },
+  ];
+
+  const javaModeOptions = [
+    { value: 'auto', label: 'Автоматически' },
+    { value: 'custom', label: 'Свой путь' },
+  ];
+
+  const languageOptions = [
+    { value: 'ru', label: 'Русский (RU)' },
+    { value: 'en', label: 'English (EN)' },
   ];
 
   const appearanceOptions = [
@@ -56,6 +77,32 @@
     return `${gb} ГБ (${val} МБ)`;
   }
 
+  let ramHint = $derived.by(() => {
+    const totalGb = Math.round(totalMemoryMb / 1024);
+    if (ramMb <= 4096) {
+      return `Рекомендуется для базовой игры и лёгких модов • Всего в системе: ${totalGb} ГБ`;
+    } else if (ramMb <= 8192) {
+      return `Оптимально для сборки Wex, шейдеров Iris и стабильного FPS • Всего в системе: ${totalGb} ГБ`;
+    } else if (ramMb <= totalMemoryMb * 0.75) {
+      return `Для ресурс-паков высокого разрешения и дальней прорисовки • Всего в системе: ${totalGb} ГБ`;
+    } else {
+      return `Внимание: выделение более 75% ОЗУ может замедлить систему • Всего в системе: ${totalGb} ГБ`;
+    }
+  });
+
+  let activeJavaDisplay = $derived.by(() => {
+    if (javaMode === 'custom') {
+      return customJavaPath ? customJavaPath : 'Путь к javaw.exe не указан';
+    }
+    const detected = selectedVersion === '1.20.1' ? detectedJava17 : detectedJava21;
+    if (detected) {
+      return detected;
+    }
+    return selectedVersion === '1.20.1'
+      ? 'Mojang JRE 17 (java-runtime-gamma) • Автоматически'
+      : 'Mojang JRE 21 (java-runtime-delta) • Автоматически';
+  });
+
   async function loadConfig() {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -68,19 +115,37 @@
       }
 
       const cfg = await invoke<{
-        ram_mb: number;
-        game_dir: string;
-        graphics_preset: string;
-        appearance: string;
-        accent: string;
-        reduce_motion: boolean;
-        reduce_transparency: boolean;
-      }>('get_launcher_config');
+        selected_version?: string;
+        player_name?: string;
+        ram_mb?: number;
+        total_memory_mb?: number;
+        game_dir?: string;
+        graphics_preset?: string;
+        java_mode?: string;
+        custom_java_path?: string | null;
+        detected_java_17?: string | null;
+        detected_java_21?: string | null;
+        discord_rpc?: boolean;
+        language?: string;
+        appearance?: string;
+        accent?: string;
+        reduce_motion?: boolean;
+        reduce_transparency?: boolean;
+      }>('get_launcher_settings');
 
       if (cfg) {
-        ramMb = cfg.ram_mb || 4096;
+        if (cfg.selected_version) selectedVersion = cfg.selected_version;
+        if (cfg.player_name) playerName = cfg.player_name;
+        if (cfg.ram_mb) ramMb = cfg.ram_mb;
+        if (cfg.total_memory_mb) totalMemoryMb = cfg.total_memory_mb;
         if (cfg.game_dir) gameDir = cfg.game_dir;
         if (cfg.graphics_preset) graphicsPreset = cfg.graphics_preset;
+        if (cfg.java_mode) javaMode = cfg.java_mode;
+        if (cfg.custom_java_path) customJavaPath = cfg.custom_java_path;
+        if (cfg.detected_java_17 !== undefined) detectedJava17 = cfg.detected_java_17;
+        if (cfg.detected_java_21 !== undefined) detectedJava21 = cfg.detected_java_21;
+        if (cfg.discord_rpc !== undefined) discordRpc = cfg.discord_rpc;
+        if (cfg.language) language = cfg.language;
         if (cfg.appearance) theme.setAppearance(cfg.appearance as 'dark' | 'light' | 'auto');
         if (cfg.accent) theme.setAccent(cfg.accent as AccentColor);
         theme.setReduceMotion(cfg.reduce_motion ?? false);
@@ -103,13 +168,20 @@
   async function saveConfig() {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('save_launcher_config', {
-        newConfig: {
-          selected_version: '1.21.1',
-          player_name: 'Player',
+      await invoke('save_launcher_settings', {
+        newSettings: {
+          selected_version: selectedVersion,
+          player_name: playerName,
           ram_mb: ramMb,
+          total_memory_mb: totalMemoryMb,
           game_dir: gameDir,
           graphics_preset: graphicsPreset,
+          java_mode: javaMode,
+          custom_java_path: customJavaPath ? customJavaPath : null,
+          detected_java_17: detectedJava17,
+          detected_java_21: detectedJava21,
+          discord_rpc: discordRpc,
+          language,
           appearance: theme.appearance,
           accent: theme.accent,
           reduce_motion: theme.reduceMotion,
@@ -117,8 +189,45 @@
         },
       });
     } catch {
-      // Ignored
+      // Ignored in browser preview
     }
+  }
+
+  async function handleResetDefaults() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const reset = await invoke<{
+        ram_mb?: number;
+        graphics_preset?: string;
+        java_mode?: string;
+        custom_java_path?: string | null;
+        discord_rpc?: boolean;
+        language?: string;
+      }>('reset_settings');
+
+      if (reset) {
+        if (reset.ram_mb) ramMb = reset.ram_mb;
+        if (reset.graphics_preset) graphicsPreset = reset.graphics_preset;
+        if (reset.java_mode) javaMode = reset.java_mode;
+        customJavaPath = '';
+        if (reset.discord_rpc !== undefined) discordRpc = reset.discord_rpc;
+        if (reset.language) language = reset.language;
+      }
+    } catch {
+      // Browser reset fallback
+      ramMb = 4096;
+      graphicsPreset = 'High';
+      javaMode = 'auto';
+      customJavaPath = '';
+      discordRpc = true;
+      language = 'ru';
+    }
+
+    theme.setAppearance('dark');
+    theme.setAccent('blue');
+    theme.setReduceMotion(false);
+    theme.setReduceTransparency(false);
+    saveConfig();
   }
 
   function handleRamChange(newVal: number) {
@@ -128,6 +237,16 @@
 
   function handlePresetChange(val: string) {
     graphicsPreset = val;
+    saveConfig();
+  }
+
+  function handleJavaModeChange(val: string) {
+    javaMode = val;
+    saveConfig();
+  }
+
+  function handleLanguageChange(val: string) {
+    language = val;
     saveConfig();
   }
 
@@ -142,7 +261,7 @@
     <List header="Производительность и память">
       <Row
         title="Выделение оперативной памяти"
-        subtitle="Шаг 512 МБ • Верхняя граница ограничена памятью системы ({Math.round(totalMemoryMb / 1024)} ГБ)"
+        subtitle={ramHint}
       >
         <div class="slider-wrapper">
           <Slider
@@ -159,7 +278,7 @@
 
       <Row
         title="Графический пресет"
-        subtitle="Настройки шейдеров Iris и оптимизатора Sodium"
+        subtitle="Оптимизация шейдеров Iris и настроек Sodium для вашей видеокарты"
       >
         {#snippet trailing()}
           <div style="width: 320px;">
@@ -173,7 +292,43 @@
       </Row>
     </List>
 
-    <!-- Data Directory -->
+    <!-- Java Runtime -->
+    <List header="Среда выполнения Java">
+      <Row
+        title="Выбор исполняемого файла Java"
+        subtitle="1.20.1 требует Java 17, 1.21.1 требует Java 21"
+      >
+        {#snippet trailing()}
+          <div style="width: 260px;">
+            <SegmentedControl
+              options={javaModeOptions}
+              value={javaMode}
+              onchange={handleJavaModeChange}
+              size="small"
+            />
+          </div>
+        {/snippet}
+      </Row>
+
+      <Row
+        title={javaMode === 'auto' ? 'Используемый рантайм Java' : 'Путь к javaw.exe'}
+        subtitle={activeJavaDisplay}
+      >
+        {#if javaMode === 'custom'}
+          <div class="custom-java-input-wrap">
+            <input
+              type="text"
+              class="apple-text-field"
+              placeholder="C:\Program Files\Java\jdk-21\bin\javaw.exe"
+              bind:value={customJavaPath}
+              onchange={() => saveConfig()}
+            />
+          </div>
+        {/if}
+      </Row>
+    </List>
+
+    <!-- Data Directory & Network -->
     <List header="Папки и файлы данных">
       <Row
         title="Рабочая папка игры"
@@ -187,9 +342,43 @@
               onclick={handleOpenDataDir}
               title="Открыть папку данных в Проводнике"
             >
-              <Icon name="restore" size={13} color="var(--color-secondary-label)" />
+              <Icon name="folder" size={13} color="var(--color-secondary-label)" />
               <span>Открыть</span>
             </Button>
+          </div>
+        {/snippet}
+      </Row>
+    </List>
+
+    <!-- Integrations & Localization -->
+    <List header="Интеграции и язык">
+      <Row
+        title="Discord Rich Presence"
+        subtitle="Отображение текущей версии Wex Client, статуса игры и длительности сессии в Discord"
+      >
+        {#snippet trailing()}
+          <Toggle
+            checked={discordRpc}
+            onchange={(checked) => {
+              discordRpc = checked;
+              saveConfig();
+            }}
+          />
+        {/snippet}
+      </Row>
+
+      <Row
+        title="Язык интерфейса"
+        subtitle="Локализация меню лаунчера и игровых подсказок"
+      >
+        {#snippet trailing()}
+          <div style="width: 260px;">
+            <SegmentedControl
+              options={languageOptions}
+              value={language}
+              onchange={handleLanguageChange}
+              size="small"
+            />
           </div>
         {/snippet}
       </Row>
@@ -280,7 +469,7 @@
       />
       <Row
         title="Технологический стек"
-        subtitle="Tauri 2 • Svelte 5 • TypeScript 5.8 • Rust (core/wex-net)"
+        subtitle="Tauri 2 • Svelte 5 • TypeScript 5.8 • Rust (core/wex-core, wex-extras)"
         trailingText="v1.0.0"
       />
     </List>
@@ -289,15 +478,7 @@
     <div class="actions-section">
       <Button
         variant="secondary"
-        onclick={() => {
-          theme.setAppearance('dark');
-          theme.setAccent('blue');
-          theme.setReduceMotion(false);
-          theme.setReduceTransparency(false);
-          ramMb = 4096;
-          graphicsPreset = 'High';
-          saveConfig();
-        }}
+        onclick={handleResetDefaults}
       >
         Сбросить настройки по умолчанию
       </Button>
@@ -328,6 +509,30 @@
   .slider-wrapper {
     width: 100%;
     padding: 10px 0 4px;
+  }
+
+  .custom-java-input-wrap {
+    width: 100%;
+    padding: 8px 0 4px;
+  }
+
+  .apple-text-field {
+    width: 100%;
+    height: 32px;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-separator);
+    background-color: var(--color-secondary-system-grouped-background);
+    color: var(--color-label);
+    font-family: var(--font-system);
+    font-size: var(--text-subheadline);
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color var(--motion-duration-short) ease;
+  }
+
+  .apple-text-field:focus {
+    border-color: var(--color-system-blue);
   }
 
   .dir-actions {

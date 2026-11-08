@@ -20,6 +20,7 @@ tokio = { version = "1.0", features = ["time", "sync", "rt", "macros"] }
 async-trait = "0.1"
 tracing = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
 wex-core = { path = "../../core/wex-core" }
 wex-ipc = { path = "../../core/wex-ipc" }
 wex-extras = { path = "../../core/wex-extras" }

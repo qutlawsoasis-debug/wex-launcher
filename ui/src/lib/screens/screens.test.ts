@@ -172,15 +172,18 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders ModsScreen with mod list and status toggles', () => {
+  it('renders ModsScreen with mod list, pack badges, add button, and status toggles', () => {
     const comp = mount(ModsScreen, { target });
     expect(target.textContent).toContain('Sodium');
     expect(target.textContent).toContain('Iris Shaders');
     expect(target.textContent).toContain('Wex Client');
+    expect(target.textContent).toContain('Добавить мод...');
+    expect(target.textContent).toContain('Папка с модами');
+    expect(target.textContent).toContain('Пак Wex');
     unmount(comp);
   });
 
-  it('renders SettingsScreen with RAM slider, graphics presets, appearance, and About Wex', () => {
+  it('renders SettingsScreen with RAM slider, Java options, Discord RPC, graphics presets, and About Wex', () => {
     const comp = mount(SettingsScreen, { target });
     expect(target.textContent).toContain('Тема оформления');
     expect(target.textContent).toContain('Цветовой акцент');
@@ -188,6 +191,9 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Уменьшение прозрачности');
     expect(target.textContent).toContain('Выделение оперативной памяти');
     expect(target.textContent).toContain('Графический пресет');
+    expect(target.textContent).toContain('Выбор исполняемого файла Java');
+    expect(target.textContent).toContain('Discord Rich Presence');
+    expect(target.textContent).toContain('Язык интерфейса');
     expect(target.textContent).toContain('О программе');
     expect(target.textContent).toContain('Tauri 2');
     expect(target.textContent).not.toContain('.minecraft');
