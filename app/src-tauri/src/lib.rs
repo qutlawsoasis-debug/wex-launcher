@@ -129,12 +129,6 @@ fn open_data_dir(state: State<'_, PlayState>) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-fn social_get_news(state: State<'_, PlayState>) -> Vec<wex_social::ReleaseNoteVersion> {
-    let cache_dir = state.paths.root.join("news");
-    let mgr = wex_social::NewsManager::new(cache_dir);
-    mgr.load_cached_or_default()
-}
 
 // ---------------------------------------------------------------------------
 // Servers Management (powered by core/wex-net)
@@ -385,7 +379,14 @@ pub fn run() {
             get_system_info,
             get_data_dir,
             open_data_dir,
-            social_get_news,
+            // Overview & Social/Extras commands
+            commands::overview::social_get_news,
+            commands::overview::overview_get_news,
+            commands::overview::social_check_launcher_update,
+            commands::overview::overview_check_update,
+            commands::overview::extras_detect_old_launcher,
+            commands::overview::extras_import_old_launcher,
+            commands::overview::extras_apply_import,
             // Servers commands
             list_servers,
             ping_server,
