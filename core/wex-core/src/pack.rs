@@ -210,20 +210,22 @@ pub async fn sync_aura_pack(
             }
         }
 
-        let download_url = if let Some(custom_url) = &file.url {
-            custom_url.clone()
+        let escaped_segments: Vec<String> = clean_path.split('/').map(urlencoding_encode).collect();
+        let escaped_path = escaped_segments.join("/");
+        let raw_pack_url = format!(
+            "https://raw.githubusercontent.com/{}/{}/{}{}",
+            repo, branch, repo_prefix, escaped_path
+        );
+
+        let (download_url, fallback_url) = if let Some(custom_url) = &file.url {
+            (custom_url.clone(), Some(raw_pack_url))
         } else {
-            let escaped_segments: Vec<String> =
-                clean_path.split('/').map(urlencoding_encode).collect();
-            let escaped_path = escaped_segments.join("/");
-            format!(
-                "https://raw.githubusercontent.com/{}/{}/{}{}",
-                repo, branch, repo_prefix, escaped_path
-            )
+            (raw_pack_url, None)
         };
 
         download_tasks.push(DownloadTask {
             url: download_url,
+            fallback_url,
             target_path,
             size: Some(file.size),
             hash: Some((file.sha256.clone(), HashType::Sha256)),
@@ -574,6 +576,103 @@ mod tests {
         assert!(
             !download_needed,
             "Synced file matching size and hash must not re-download (0 files to download)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pack_download_fallback_url_404_raw_ok() {
+        use sha2::Digest;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let payload = b"simulated mod jar binary content";
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(payload);
+        let expected_hash = hex::encode(hasher.finalize());
+
+        // Primary URL returns 404
+        Mock::given(method("GET"))
+            .and(path("/release/mod.jar"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        // Fallback raw URL returns 200 with payload
+        Mock::given(method("GET"))
+            .and(path("/raw/mods/mod.jar"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(payload.to_vec()))
+            .mount(&mock_server)
+            .await;
+
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("mods").join("mod.jar");
+        let client = reqwest::Client::new();
+        let events = crate::event::NoopEventHandler;
+
+        let primary_url = format!("{}/release/mod.jar", mock_server.uri());
+        let fallback_url = format!("{}/raw/mods/mod.jar", mock_server.uri());
+
+        let task = DownloadTask {
+            url: primary_url,
+            fallback_url: Some(fallback_url),
+            target_path: target.clone(),
+            size: Some(payload.len() as u64),
+            hash: Some((expected_hash.clone(), HashType::Sha256)),
+        };
+
+        let pool_res = download_pool(&client, vec![task], 2, &events, "Test Fallback").await;
+        assert!(pool_res.is_ok(), "Download pool must succeed via fallback");
+        assert!(target.exists(), "Target file must be written to disk");
+
+        let disk_hash = crate::download::compute_file_hash(&target, HashType::Sha256).unwrap();
+        assert_eq!(
+            disk_hash, expected_hash,
+            "Hash on disk must match expected sha256"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pack_download_fallback_both_404_returns_error() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Primary URL returns 404
+        Mock::given(method("GET"))
+            .and(path("/release/mod.jar"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        // Fallback raw URL also returns 404
+        Mock::given(method("GET"))
+            .and(path("/raw/mods/mod.jar"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("mods").join("mod.jar");
+        let client = reqwest::Client::new();
+        let events = crate::event::NoopEventHandler;
+
+        let primary_url = format!("{}/release/mod.jar", mock_server.uri());
+        let fallback_url = format!("{}/raw/mods/mod.jar", mock_server.uri());
+
+        let task = DownloadTask {
+            url: primary_url,
+            fallback_url: Some(fallback_url),
+            target_path: target,
+            size: Some(1024),
+            hash: Some(("abcdef".to_string(), HashType::Sha256)),
+        };
+
+        let pool_res = download_pool(&client, vec![task], 2, &events, "Test Fallback").await;
+        assert!(
+            pool_res.is_err(),
+            "Download pool must fail when both primary and fallback return 404"
         );
     }
 }

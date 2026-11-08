@@ -18,7 +18,9 @@ pub struct WexPaths {
 impl WexPaths {
     pub fn new(custom_root: Option<PathBuf>) -> Self {
         let root = custom_root.unwrap_or_else(|| {
-            if let Ok(app_data) = std::env::var("APPDATA") {
+            if let Ok(custom_data_dir) = std::env::var("WEX_DATA_DIR") {
+                PathBuf::from(custom_data_dir)
+            } else if let Ok(app_data) = std::env::var("APPDATA") {
                 PathBuf::from(app_data).join("Wex")
             } else if let Some(base_dirs) = directories::BaseDirs::new() {
                 base_dirs.data_dir().join("Wex")
@@ -259,13 +261,26 @@ mod tests {
     }
 
     #[test]
+    fn test_wex_paths_env_override() {
+        let tmp = tempdir().unwrap();
+        let custom_dir = tmp.path().join("WexCustom");
+        std::env::set_var("WEX_DATA_DIR", &custom_dir);
+
+        let paths = WexPaths::new(None);
+        assert_eq!(paths.root, custom_dir);
+        std::env::remove_var("WEX_DATA_DIR");
+    }
+
+    #[test]
     fn test_config_serialization() {
         let tmp = tempdir().unwrap();
         let config_path = tmp.path().join("config.json");
 
-        let mut cfg = LauncherConfig::default();
-        cfg.nickname = "TestUser".to_string();
-        cfg.max_memory_mb = 8192;
+        let cfg = LauncherConfig {
+            nickname: "TestUser".to_string(),
+            max_memory_mb: 8192,
+            ..Default::default()
+        };
         cfg.save(&config_path).unwrap();
 
         let loaded = LauncherConfig::load_or_default(&config_path);
