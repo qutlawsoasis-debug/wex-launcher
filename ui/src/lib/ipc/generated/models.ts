@@ -20,6 +20,8 @@ export type TunnelConfigResponseDto = { secret: string | null, public_address: s
 
 export type NetOpenRoomDto = { id: string, name: string, host_name: string, game_version: string, player_count: number, max_players: number, address: string | null, status: string, };;
 
+export type LanWorldDto = { motd: string, address: string, port: number, };;
+
 export type ModManifestEntryDto = { id: string, name: string, version: string, enabled: boolean, };;
 
 export type ModMismatchTypeDto = "Disabled" | "Missing" | "Extra" | { "Version": { player_version: string, host_version: string, } };;

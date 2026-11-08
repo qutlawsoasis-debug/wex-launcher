@@ -206,6 +206,13 @@ pub struct NetOpenRoomDto {
     pub status: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct LanWorldDto {
+    pub motd: String,
+    pub address: String,
+    pub port: u16,
+}
+
 impl From<wex_net::lobby::TunnelConfigResponse> for TunnelConfigResponseDto {
     fn from(r: wex_net::lobby::TunnelConfigResponse) -> Self {
         Self {
@@ -540,6 +547,8 @@ impl From<wex_extras::Activity> for DiscordActivityDto {
                 player_count,
                 host_name,
             },
+            #[allow(unreachable_patterns)]
+            _ => Self::InLauncher,
         }
     }
 }

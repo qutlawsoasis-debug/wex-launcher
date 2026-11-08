@@ -19,6 +19,10 @@
     loading?: boolean;
     fullWidth?: boolean;
     type?: 'button' | 'submit' | 'reset';
+    role?: string;
+    ariaLabel?: string;
+    ariaChecked?: boolean;
+    ariaPressed?: boolean;
     onclick?: (event: MouseEvent) => void;
     children?: Snippet;
   }
@@ -31,6 +35,10 @@
     loading = false,
     fullWidth = false,
     type = 'button',
+    role,
+    ariaLabel,
+    ariaChecked,
+    ariaPressed,
     onclick,
     children,
   }: Props = $props();
@@ -39,6 +47,10 @@
 <button
   {type}
   {title}
+  {role}
+  aria-label={ariaLabel || title}
+  aria-checked={ariaChecked}
+  aria-pressed={ariaPressed}
   class="apple-button {variant} {size}"
   class:loading
   class:full-width={fullWidth}
@@ -77,7 +89,9 @@
   }
 
   .apple-button:focus-visible {
-    box-shadow: 0 0 0 3px var(--color-system-blue);
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.3);
   }
 
   /* Sizes */
@@ -207,5 +221,31 @@
     to {
       transform: rotate(360deg);
     }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .apple-button {
+      transition: none !important;
+    }
+    .apple-button:active:not(:disabled) {
+      transform: none !important;
+    }
+    .spinner {
+      animation: none !important;
+      opacity: 0.85;
+    }
+  }
+
+  :global([data-reduce-motion="true"]) .apple-button {
+    transition: none !important;
+  }
+
+  :global([data-reduce-motion="true"]) .apple-button:active:not(:disabled) {
+    transform: none !important;
+  }
+
+  :global([data-reduce-motion="true"]) .spinner {
+    animation: none !important;
+    opacity: 0.85;
   }
 </style>

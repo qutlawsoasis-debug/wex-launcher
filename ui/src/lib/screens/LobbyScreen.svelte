@@ -15,6 +15,7 @@
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Icon from '../components/icons/Icon.svelte';
   import OfflineState from '../components/OfflineState.svelte';
+  import ErrorState from '../components/ErrorState.svelte';
   import { network } from '../design/network.svelte';
 
   interface LobbyPlayer {
@@ -86,9 +87,76 @@
     }
   }
 
+  interface LanWorld {
+    motd: string;
+    address: string;
+    port: number;
+  }
+
+  let lanWorlds = $state<LanWorld[]>([]);
+  let isLoadingLan = $state(false);
+  let isConnectingLan = $state(false);
+  let lanConnectMessage = $state('');
+  let copiedTunnel = $state(false);
+  let copiedCode = $state(false);
+
+  export async function fetchLanWorlds() {
+    isLoadingLan = true;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const list = await invoke<LanWorld[]>('list_lan_worlds');
+      lanWorlds = list || [];
+    } catch {
+      lanWorlds = [];
+    } finally {
+      isLoadingLan = false;
+    }
+  }
+
+  export async function handleConnectLanWorld(address: string) {
+    isConnectingLan = true;
+    errorMessage = '';
+    lanConnectMessage = '';
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const msg = await invoke<string>('connect_lan_world', { address });
+      lanConnectMessage = msg || 'Подключение запущено...';
+    } catch (e: any) {
+      errorMessage = typeof e === 'string' ? e : e?.message || 'Не удалось подключиться к LAN-миру';
+    } finally {
+      isConnectingLan = false;
+    }
+  }
+
+  export async function handleCopyTunnelAddress(address: string) {
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(address);
+      copiedTunnel = true;
+      setTimeout(() => (copiedTunnel = false), 2000);
+    } catch {
+      // ignore
+    }
+  }
+
+  export async function handleCopyCode(code: string) {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      copiedCode = true;
+      setTimeout(() => (copiedCode = false), 2000);
+    } catch {
+      // ignore
+    }
+  }
+
   $effect(() => {
     if (mode === 'cloud') {
       fetchCloudRooms();
+    } else if (mode === 'lan') {
+      fetchLanWorlds();
+      const interval = setInterval(fetchLanWorlds, 3000);
+      return () => clearInterval(interval);
     }
   });
 
@@ -225,27 +293,20 @@
           <p class="status-text">Загрузка открытых комнат...</p>
         </div>
       {:else if cloudError}
-        <!-- Honest "Service Unavailable" State without fake data -->
-        <div class="cloud-status-card error">
-          <div class="status-icon-circle error">
-            <Icon name="info" size={24} color="var(--color-system-orange)" />
-          </div>
-          <h3 class="status-title">Сервис недоступен</h3>
-          <p class="status-desc">
-            Не удалось связаться с сервером сетевых комнат. Проверьте подключение к интернету или повторите попытку позже.
-          </p>
-          <div class="status-actions">
-            <Button variant="secondary" size="regular" onclick={fetchCloudRooms} loading={isLoadingCloudRooms}>
-              Повторить попытку
-            </Button>
-          </div>
+        <!-- Honest Service Error State via ErrorState -->
+        <div class="cloud-error-wrap">
+          <ErrorState
+            error={cloudError}
+            domain="lobby"
+            onaction={fetchCloudRooms}
+          />
         </div>
       {:else if cloudRooms.length === 0}
         <div class="cloud-status-card empty">
           <div class="status-icon-circle neutral">
             <Icon name="server" size={24} color="var(--color-secondary-label)" />
           </div>
-          <h3 class="status-title">Нет открытых комнат</h3>
+          <h2 class="status-title">Нет открытых комнат</h2>
           <p class="status-desc">
             В данный момент нет доступных публичных комнат. Вы можете открыть свой мир во вкладке «LAN и Туннели».
           </p>
@@ -257,7 +318,7 @@
         </div>
       {:else}
         <List header="Открытые комнаты ({cloudRooms.length})">
-          {#each cloudRooms as room}
+          {#each cloudRooms as room (room.id)}
             <Row
               title={room.name}
               subtitle="Организатор: {room.host_name} • Версия {room.game_version}"
@@ -297,6 +358,14 @@
           <div class="room-code-badge">
             <span class="code-label">Код комнаты</span>
             <span class="code-value">{activeRoom.code}</span>
+            <button
+              type="button"
+              class="copy-badge-btn"
+              onclick={() => handleCopyCode(activeRoom?.code || '')}
+              title="Скопировать код комнаты"
+            >
+              <span>{copiedCode ? 'Скопировано' : 'Копировать код'}</span>
+            </button>
           </div>
 
           <div class="room-meta">
@@ -309,6 +378,16 @@
                   ? `Туннель активен: ${activeRoom.tunnel_address}`
                   : 'Запуск туннеля...'}
               </span>
+              {#if activeRoom.tunnel_address}
+                <button
+                  type="button"
+                  class="copy-pill-btn"
+                  onclick={() => handleCopyTunnelAddress(activeRoom?.tunnel_address || '')}
+                  title="Скопировать адрес Playit-туннеля"
+                >
+                  <span>{copiedTunnel ? 'Скопировано!' : 'Копировать адрес туннеля'}</span>
+                </button>
+              {/if}
             </div>
           </div>
         </div>
@@ -356,7 +435,7 @@
       <!-- Players in Room List -->
       <div class="players-list-wrap">
         <List header="Игроки в комнате ({activeRoom.players.length})">
-          {#each activeRoom.players as p}
+          {#each activeRoom.players as p (p.name)}
             <Row
               title={p.name}
               subtitle={p.is_host ? 'Организатор комнаты (Хост)' : 'Гость'}
@@ -401,7 +480,7 @@
             <Icon name="friends" size={20} color="var(--color-system-blue)" />
           </div>
           <div class="card-headings">
-            <h3 class="card-heading">Присоединиться по коду</h3>
+            <h2 class="card-heading">Присоединиться по коду</h2>
             <p class="card-caption">Введите код комнаты, полученный от друга</p>
           </div>
         </div>
@@ -420,7 +499,17 @@
           </div>
 
           {#if errorMessage}
-            <p class="error-text">{errorMessage}</p>
+            <div class="lobby-error-wrapper">
+              <ErrorState
+                error={errorMessage}
+                domain="lobby"
+                compact={true}
+                onaction={handleJoinRoom}
+                onclose={() => {
+                  errorMessage = '';
+                }}
+              />
+            </div>
           {/if}
 
           <Button
@@ -443,7 +532,7 @@
             <Icon name="play" size={20} color="var(--color-system-green)" />
           </div>
           <div class="card-headings">
-            <h3 class="card-heading">Открыть локальный мир</h3>
+            <h2 class="card-heading">Открыть локальный мир</h2>
             <p class="card-caption">Создайте комнату через автоматический Playit-туннель</p>
           </div>
         </div>
@@ -451,7 +540,7 @@
         <div class="world-picker">
           <label class="picker-label" for="world-select">Выберите мир для кооператива</label>
           <div class="world-options" id="world-select">
-            {#each localWorlds as w}
+            {#each localWorlds as w (w.id || w.name)}
               <button
                 type="button"
                 class="world-opt-btn"
@@ -476,6 +565,73 @@
           <span>Открыть мир для друзей</span>
         </Button>
       </div>
+    </div>
+
+    <!-- Discovered LAN Worlds Section (SPEC 1.4) -->
+    <div class="lan-worlds-section">
+      <div class="section-header-row">
+        <div class="section-title-wrap">
+          <h3 class="section-title">Локальные миры в сети (LAN)</h3>
+          <p class="section-subtitle">Миры игроков в вашей локальной сети, открытые через «Открыть для сети»</p>
+        </div>
+        <Button
+          variant="secondary"
+          size="small"
+          onclick={fetchLanWorlds}
+          loading={isLoadingLan}
+        >
+          <span>Обновить</span>
+        </Button>
+      </div>
+
+      {#if lanConnectMessage}
+        <div class="status-notice success">
+          <span>{lanConnectMessage}</span>
+        </div>
+      {/if}
+
+      {#if lanWorlds.length > 0}
+        <List header="Обнаруженные миры ({lanWorlds.length})">
+          {#each lanWorlds as world}
+            <Row
+              title={world.motd}
+              subtitle="Локальный адрес: {world.address}"
+            >
+              {#snippet leading()}
+                <div class="room-item-icon lan">
+                  <Icon name="server" size={16} color="var(--color-system-green)" />
+                </div>
+              {/snippet}
+
+              {#snippet trailing()}
+                <Button
+                  variant="primary"
+                  size="small"
+                  onclick={() => handleConnectLanWorld(world.address)}
+                  loading={isConnectingLan}
+                >
+                  <span>Подключиться</span>
+                </Button>
+              {/snippet}
+            </Row>
+          {/each}
+        </List>
+      {:else}
+        <div class="cloud-status-card empty lan-empty">
+          <div class="status-icon-circle neutral">
+            <Icon name="server" size={24} color="var(--color-secondary-label)" />
+          </div>
+          <h3 class="status-title">Локальные миры не найдены</h3>
+          <p class="status-desc">
+            Когда другой игрок в вашей локальной сети откроет одиночный мир для сети, он появится здесь автоматически.
+          </p>
+          <div class="status-actions">
+            <Button variant="secondary" size="regular" onclick={fetchLanWorlds} loading={isLoadingLan}>
+              Обновить
+            </Button>
+          </div>
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
@@ -509,10 +665,22 @@
     width: 100%;
   }
 
+  .cloud-error-wrap {
+    width: 100%;
+  }
+
+  .lobby-error-wrapper {
+    margin-bottom: 8px;
+    width: 100%;
+  }
+
   .cloud-status-card {
     background-color: var(--card-bg);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
+    box-shadow: var(--glass-shadow);
     padding: 40px 24px;
     display: flex;
     flex-direction: column;
@@ -533,10 +701,6 @@
     margin-bottom: 4px;
   }
 
-  .status-icon-circle.error {
-    background-color: rgba(255, 159, 10, 0.12);
-  }
-
   .status-icon-circle.neutral {
     background-color: var(--color-quaternary-system-fill);
   }
@@ -551,6 +715,7 @@
   .status-desc {
     font-size: var(--text-subheadline);
     color: var(--color-secondary-label);
+    font-weight: 500;
     margin: 0;
     max-width: 420px;
     line-height: 1.4;
@@ -612,6 +777,8 @@
 
   .lobby-card {
     background-color: var(--card-bg);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
     padding: 24px;
@@ -659,6 +826,7 @@
   .card-caption {
     font-size: var(--text-subheadline);
     color: var(--color-secondary-label);
+    font-weight: 500;
     margin: 0;
   }
 
@@ -694,13 +862,6 @@
     border-color: var(--color-system-blue);
     box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
     background-color: var(--card-bg);
-  }
-
-  .error-text {
-    font-size: var(--text-footnote);
-    color: var(--color-system-red);
-    margin: 0;
-    text-align: center;
   }
 
   .world-picker {
@@ -940,5 +1101,76 @@
     font-size: var(--text-footnote);
     font-variant-numeric: tabular-nums;
     color: var(--color-secondary-label);
+  }
+
+  .lan-worlds-section {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  .section-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4px;
+  }
+
+  .section-title-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .section-title {
+    font-size: var(--text-headline);
+    font-weight: 600;
+    color: var(--color-label);
+    margin: 0;
+  }
+
+  .section-subtitle {
+    font-size: var(--text-caption-1);
+    color: var(--color-secondary-label);
+    margin: 0;
+  }
+
+  .room-item-icon.lan {
+    background-color: rgba(48, 209, 88, 0.12);
+  }
+
+  .copy-badge-btn,
+  .copy-pill-btn {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: var(--text-caption-2);
+    font-weight: 500;
+    color: var(--color-system-blue);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    transition: background-color 0.15s ease;
+  }
+
+  .copy-badge-btn:hover,
+  .copy-pill-btn:hover {
+    background-color: var(--color-quaternary-system-fill);
+  }
+
+  .status-notice {
+    padding: 8px 14px;
+    border-radius: var(--radius-md);
+    font-size: var(--text-subheadline);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .status-notice.success {
+    background-color: rgba(48, 209, 88, 0.12);
+    color: var(--color-system-green);
+    border: 1px solid rgba(48, 209, 88, 0.25);
   }
 </style>

@@ -1,6 +1,6 @@
 /**
  * Apple HIG Motion & Animation Specifications.
- * Sourced from tasks/apple/hig/motion.md and Aura spring models
+ * Sourced from tasks/apple/hig/motion.md and Wex spring models
  */
 
 export interface SpringConfig {
