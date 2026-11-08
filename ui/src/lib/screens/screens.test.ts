@@ -12,12 +12,25 @@ import SettingsScreen from './SettingsScreen.svelte';
 import WardrobeScreen from './WardrobeScreen.svelte';
 import WorkshopScreen from './WorkshopScreen.svelte';
 import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
+import CrashSheet from '../components/CrashSheet.svelte';
 
 vi.mock('@tauri-apps/api/core', () => {
   return {
     invoke: vi.fn(async (cmd: string, args?: Record<string, any>) => {
       if (cmd === 'list_open_rooms') {
         throw new Error('Сервис недоступен');
+      }
+      if (cmd === 'list_lan_worlds') {
+        return [
+          {
+            motd: 'Alex - Creative Studio',
+            address: '192.168.1.105:54321',
+            port: 54321,
+          },
+        ];
+      }
+      if (cmd === 'connect_lan_world') {
+        return `Подключение к ${args?.address} (PID 12345)`;
       }
       if (cmd === 'list_mods') {
         if (args?.version === '1.20.1') {
@@ -369,6 +382,42 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Нет открытых комнат');
     expect(target.textContent).toContain('Обновить');
     expect(target.textContent).not.toContain('Сервис недоступен');
+
+    unmount(comp);
+  });
+
+  it('renders LobbyScreen LAN section with discovered worlds and connect action', async () => {
+    const comp = mount(LobbyScreen, { target });
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(target.textContent).toContain('Локальные миры в сети (LAN)');
+    expect(target.textContent).toContain('Alex - Creative Studio');
+    expect(target.textContent).toContain('192.168.1.105:54321');
+
+    const connectBtn = Array.from(target.querySelectorAll('button')).find(
+      (b) => b.textContent?.includes('Подключиться') && b.closest('.lan-worlds-section')
+    );
+    expect(connectBtn).not.toBeUndefined();
+    connectBtn?.click();
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(target.textContent).toContain('Подключение к 192.168.1.105:54321');
+
+    unmount(comp);
+  });
+
+  it('renders LobbyScreen LAN section with clean empty state when no LAN worlds found', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    (invoke as any).mockImplementationOnce(async (cmd: string) => {
+      if (cmd === 'list_lan_worlds') return [];
+      return [];
+    });
+
+    const comp = mount(LobbyScreen, { target });
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(target.textContent).toContain('Локальные миры не найдены');
+    expect(target.textContent).toContain('Когда другой игрок в вашей локальной сети откроет');
 
     unmount(comp);
   });
@@ -725,6 +774,28 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  it('renders CrashSheet with honest unknown diagnosis without fake reasons', () => {
+    const comp = mount(CrashSheet, {
+      target,
+      props: {
+        open: true,
+        version: '1.21.1',
+        diagnosis: {
+          kind: { Unknown: { exit_code: -1 } },
+          title: 'Игра завершилась с ошибкой (код -1)',
+          user_advice: 'Причина сбоя не определена.',
+          technical_summary: 'Process finished with exit code -1',
+        },
+      },
+    });
+
+    expect(target.textContent).toContain('Причина не определена');
+    expect(target.textContent).toContain('Process finished with exit code -1');
+    expect(target.textContent).toContain('Скопировать отчёт');
+    expect(target.textContent).toContain('Открыть лог');
+    unmount(comp);
+  });
+
   it('renders PlayScreen with launch ErrorState banner and actionable buttons', async () => {
     let launchRetried = false;
     let settingsOpened = false;
@@ -773,6 +844,20 @@ describe('Wex Launcher Screens', () => {
     // Pack mod should not have a delete button, or if triggered internally:
     expect(target.textContent).toContain('Пак Wex');
 
+    unmount(comp);
+  });
+
+  it('opens ImportWizardSheet on PlayScreen when initialShowImportWizard is true', () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        initialShowImportWizard: true,
+      },
+    });
+
+    expect(target.textContent).toContain('Импорт из старого лаунчера');
     unmount(comp);
   });
 });

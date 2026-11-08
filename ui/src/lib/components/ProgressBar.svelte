@@ -116,17 +116,19 @@
     position: absolute;
     top: 0;
     bottom: 0;
+    left: 0;
     width: 40%;
     border-radius: var(--radius-pill);
     animation: indeterminateSlide 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    will-change: transform;
   }
 
   @keyframes indeterminateSlide {
     0% {
-      left: -40%;
+      transform: translateX(-100%);
     }
     100% {
-      left: 100%;
+      transform: translateX(350%);
     }
   }
 
