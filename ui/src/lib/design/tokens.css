@@ -247,6 +247,14 @@
   scroll-behavior: auto !important;
 }
 
+/* Idle & Energy Conservation: Freeze all animations when minimized or during gameplay */
+:root.app-idle *,
+:root.app-idle *::before,
+:root.app-idle *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
 /* Global Reset & Base */
 *, *::before, *::after {
   box-sizing: border-box;
