@@ -206,4 +206,23 @@
       opacity: 1;
     }
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sheet-scrim {
+      animation: none !important;
+    }
+    .sheet-card {
+      animation: none !important;
+      transform: none !important;
+    }
+  }
+
+  :global([data-reduce-motion="true"]) .sheet-scrim {
+    animation: none !important;
+  }
+
+  :global([data-reduce-motion="true"]) .sheet-card {
+    animation: none !important;
+    transform: none !important;
+  }
 </style>

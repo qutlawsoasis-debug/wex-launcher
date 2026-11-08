@@ -110,8 +110,14 @@
     transition: transform var(--motion-duration-short) ease;
   }
 
+  .apple-toggle-wrapper:hover:not(.disabled) .track {
+    border-color: var(--color-opaque-separator);
+  }
+
   .apple-toggle:focus-visible {
-    box-shadow: 0 0 0 3px var(--color-system-blue);
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.35);
   }
 
   .apple-toggle:active:not([aria-disabled="true"]) .thumb {
@@ -174,5 +180,30 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .apple-toggle,
+    .track,
+    .thumb {
+      transition: none !important;
+    }
+    .apple-toggle:active:not([aria-disabled="true"]) .thumb,
+    .apple-toggle.checked:active:not([aria-disabled="true"]) .thumb {
+      width: 20px !important;
+      margin-left: 0 !important;
+    }
+  }
+
+  :global([data-reduce-motion="true"]) .apple-toggle,
+  :global([data-reduce-motion="true"]) .track,
+  :global([data-reduce-motion="true"]) .thumb {
+    transition: none !important;
+  }
+
+  :global([data-reduce-motion="true"]) .apple-toggle:active:not([aria-disabled="true"]) .thumb,
+  :global([data-reduce-motion="true"]) .apple-toggle.checked:active:not([aria-disabled="true"]) .thumb {
+    width: 20px !important;
+    margin-left: 0 !important;
   }
 </style>

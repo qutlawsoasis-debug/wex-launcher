@@ -157,12 +157,24 @@
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    transition: background-color var(--motion-duration-short) ease;
+    outline: none;
+    transition:
+      background-color var(--motion-duration-short) ease,
+      box-shadow var(--motion-duration-short) ease;
     flex-shrink: 0;
   }
 
   .dismiss-btn:hover {
     background-color: var(--color-quaternary-system-fill);
+  }
+
+  .dismiss-btn:active {
+    background-color: var(--color-tertiary-system-fill);
+  }
+
+  .dismiss-btn:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 1px;
   }
 
   @keyframes toastSlideDown {
@@ -174,5 +186,17 @@
       opacity: 1;
       transform: translateY(0) scale(1);
     }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .apple-toast {
+      animation: none !important;
+      transform: none !important;
+    }
+  }
+
+  :global([data-reduce-motion="true"]) .apple-toast {
+    animation: none !important;
+    transform: none !important;
   }
 </style>
