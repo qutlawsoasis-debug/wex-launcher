@@ -425,9 +425,8 @@ mod tests {
         let aura_path = dir.path();
 
         // Write config with UTF-8 BOM (\u{feff})
-        let config_str = format!(
-            "\u{feff}{{\"Nickname\": \"BomPlayer\", \"RamMb\": 4096, \"SelectedVersion\": \"1.20.1\"}}"
-        );
+        let config_str =
+            "\u{feff}{\"Nickname\": \"BomPlayer\", \"RamMb\": 4096, \"SelectedVersion\": \"1.20.1\"}";
         fs::write(aura_path.join("config.json"), config_str.as_bytes()).unwrap();
 
         let imported = import_from_dir(aura_path).unwrap();
