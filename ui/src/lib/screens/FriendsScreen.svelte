@@ -23,6 +23,8 @@
   import Toast, { type ToastMessage } from '../components/Toast.svelte';
   import Icon from '../components/icons/Icon.svelte';
   import OfflineState from '../components/OfflineState.svelte';
+  import ErrorState from '../components/ErrorState.svelte';
+  import { formatError } from '../design/errors';
   import { network } from '../design/network.svelte';
 
   interface FriendItem {
@@ -83,6 +85,7 @@
   let requests = $state<FriendRequestItem[]>([]);
   let invites = $state<LobbyInviteItem[]>([]);
   let isSubmitting = $state(false);
+  let socialError = $state<unknown>(null);
 
   // Achievements state
   let achievements = $state<AchievementItem[]>([
@@ -197,9 +200,11 @@
       await invoke('social_send_friend_request', { target_friend_code: code });
       friendCodeInput = '';
       addToast('success', 'Заявка отправлена', `Заявка в друзья по коду ${code} успешно передана`);
+      socialError = null;
     } catch (e: any) {
-      const errMsg = e?.message || 'Не удалось отправить заявку в друзья';
-      addToast('error', 'Ошибка отправки', errMsg);
+      const formatted = formatError(e, 'friends');
+      socialError = e;
+      addToast('error', formatted.title, formatted.description);
     } finally {
       isSubmitting = false;
     }
@@ -220,8 +225,11 @@
         },
       ];
       addToast('success', 'Заявка принята', `${request.from_nick} теперь в списке ваших друзей`);
+      socialError = null;
     } catch (e: any) {
-      addToast('error', 'Ошибка', e?.message || 'Не удалось принять заявку');
+      const formatted = formatError(e, 'friends');
+      socialError = e;
+      addToast('error', formatted.title, formatted.description);
     }
   }
 
@@ -232,8 +240,11 @@
       await invoke('social_decline_friend_request', { request_id: request.id });
       requests = requests.filter((r) => r.id !== request.id);
       addToast('info', 'Заявка отклонена', `Заявка от ${request.from_nick} отклонена`);
+      socialError = null;
     } catch (e: any) {
-      addToast('error', 'Ошибка', e?.message || 'Не удалось отклонить заявку');
+      const formatted = formatError(e, 'friends');
+      socialError = e;
+      addToast('error', formatted.title, formatted.description);
     }
   }
 
@@ -373,6 +384,24 @@
     </div>
   </div>
 
+  <!-- Social Error Banner -->
+  {#if socialError}
+    <div class="social-error-banner" role="alert">
+      <ErrorState
+        error={socialError}
+        domain="friends"
+        compact={true}
+        onaction={() => {
+          loadSocialData();
+          socialError = null;
+        }}
+        onclose={() => {
+          socialError = null;
+        }}
+      />
+    </div>
+  {/if}
+
   <!-- Tab 1: Friends List -->
   {#if activeTab === 'friends'}
     {#if !network.isOnline}
@@ -384,7 +413,7 @@
         </div>
 
         {#if filteredFriends.length > 0}
-          <List header="СПИСОК ДРУЗЕЙ ({filteredFriends.length})">
+          <List header="Список друзей ({filteredFriends.length})">
             {#each filteredFriends as friend (friend.id)}
               <Row
                 title={friend.nick}
@@ -446,7 +475,7 @@
     {:else}
       <div class="tab-pane">
         {#if requests.length > 0}
-          <List header="ВХОДЯЩИЕ ЗАЯВКИ В ДРУЗЬЯ ({requests.length})">
+          <List header="Входящие заявки в друзья ({requests.length})">
             {#each requests as req (req.id)}
               <Row
                 title={req.from_nick}
@@ -508,7 +537,7 @@
       </div>
 
       <List
-        header="СПИСОК ДОСТИЖЕНИЙ"
+        header="Список достижений"
         footer="Прогресс отслеживается автоматически и сохраняется в каталоге лаунчера."
       >
         {#each achievements as ach (ach.id)}
@@ -580,6 +609,10 @@
     flex: 1;
     min-width: 280px;
     max-width: 420px;
+  }
+
+  .social-error-banner {
+    width: 100%;
   }
 
   .friend-add-bar {

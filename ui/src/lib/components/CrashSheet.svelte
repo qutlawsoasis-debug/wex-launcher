@@ -406,7 +406,6 @@
     font-weight: 600;
     padding: 2px 8px;
     border-radius: var(--radius-sm);
-    letter-spacing: 0.2px;
   }
 
   .category-badge.oom {
@@ -487,8 +486,6 @@
     font-size: 12px;
     font-weight: 600;
     color: var(--color-secondary-label);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
   }
 
   .copy-link {

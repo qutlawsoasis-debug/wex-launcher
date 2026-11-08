@@ -141,24 +141,41 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('locks Play button and inputs when Minecraft is running', () => {
+  it('locks inputs and transforms Play button to neutral stop action when Minecraft is running', async () => {
+    let stopped = false;
     const comp = mount(PlayScreen, {
       target,
       props: {
         selectedVersion: '1.21.1',
         playerName: 'Steve',
+        clientStatus: 'Сессия активна',
         isLaunching: false,
         isRunning: true,
+        onstop: () => {
+          stopped = true;
+        },
       },
     });
 
-    const playBtn = target.querySelector('.dock-action button') as HTMLButtonElement;
-    expect(playBtn).not.toBeNull();
-    expect(playBtn.disabled).toBe(true);
-    expect(playBtn.textContent).toContain('В игре');
+    // In peace/running, progress bar must be hidden
+    expect(target.querySelector('.dock-progress')).toBeNull();
 
+    // Inputs are locked
     const nicknameInput = target.querySelector('.nickname-input') as HTMLInputElement;
     expect(nicknameInput.disabled).toBe(true);
+
+    // The primary action transforms to neutral button with «В игре • Остановить»
+    const stopBtn = target.querySelector('.dock-action button') as HTMLButtonElement;
+    expect(stopBtn).not.toBeNull();
+    expect(stopBtn.textContent).toContain('В игре');
+    expect(stopBtn.classList.contains('secondary')).toBe(true);
+
+    // Clicking calls onstop
+    stopBtn.click();
+    expect(stopped).toBe(true);
+
+    // Shows session status
+    expect(target.textContent).toContain('В игре');
 
     unmount(comp);
   });
@@ -389,7 +406,7 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Постоялец');
     expect(target.textContent).toContain('Сто часов');
     expect(target.textContent).toContain('Хост');
-    expect(target.textContent).toContain('СПИСОК ДОСТИЖЕНИЙ');
+    expect(target.textContent).toContain('Список достижений');
 
     unmount(comp);
   });
@@ -696,6 +713,44 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Process finished with exit code -1');
     expect(target.textContent).toContain('Скопировать отчёт');
     expect(target.textContent).toContain('Открыть лог');
+    unmount(comp);
+  });
+
+  it('renders PlayScreen with launch ErrorState banner and actionable buttons', async () => {
+    let launchRetried = false;
+    let settingsOpened = false;
+
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        launchError: 'Java runtime error: java binary not found in PATH',
+        onlaunch: () => {
+          launchRetried = true;
+        },
+        onopensettings: () => {
+          settingsOpened = true;
+        },
+      },
+    });
+
+    await tick();
+
+    // Must display human-friendly Apple HIG error
+    expect(target.textContent).toContain('Не найдена среда Java');
+    expect(target.textContent).toContain('Укажите путь к Java в настройках');
+
+    // Action button
+    const settingsBtn = target.querySelector('.launch-error-banner .error-actions-row button') as HTMLButtonElement;
+    expect(settingsBtn).not.toBeNull();
+    expect(settingsBtn.textContent).toContain('Настройки');
+
+    settingsBtn.click();
+    expect(settingsOpened || launchRetried).toBe(true);
+
+    unmount(comp);
+  });
     unmount(comp);
   });
 });

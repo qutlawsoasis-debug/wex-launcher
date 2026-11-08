@@ -6,8 +6,11 @@
   import { onMount } from 'svelte';
   import './lib/design/tokens.css';
   import { theme } from './lib/design/theme.svelte';
+  import { network } from './lib/design/network.svelte';
+  import { formatError } from './lib/design/errors';
   import Sidebar, { type SidebarItem } from './lib/components/Sidebar.svelte';
   import Toolbar from './lib/components/Toolbar.svelte';
+  import ProfileBadge from './lib/components/ProfileBadge.svelte';
   import Toast, { type ToastMessage } from './lib/components/Toast.svelte';
   import Button from './lib/components/Button.svelte';
   import Icon from './lib/components/icons/Icon.svelte';
@@ -26,6 +29,7 @@
 
   // Navigation state
   let activeTab = $state('play');
+  let friendsSubtab = $state<'friends' | 'requests' | 'achievements'>('friends');
   let isMaximized = $state(false);
 
   // Crash report modal state
@@ -38,6 +42,10 @@
       const tabParam = params.get('tab');
       if (tabParam && sidebarItems.some((i) => i.id === tabParam)) {
         activeTab = tabParam;
+      }
+      const subtabParam = params.get('subtab');
+      if (subtabParam === 'friends' || subtabParam === 'requests' || subtabParam === 'achievements') {
+        friendsSubtab = subtabParam;
       }
       const themeParam = params.get('theme');
       if (themeParam === 'light' || themeParam === 'dark') {
@@ -52,10 +60,14 @@
   let clientStatus = $state('Клиент Wex готов');
   let isLaunching = $state(false);
   let isGameRunning = $state(false);
+  let isOnline = $state(true);
+  let skinHeadUrl = $state<string | undefined>(undefined);
   let progressPercentage = $state(0);
   let progressStage = $state('Готов к запуску');
   let progressDetail = $state('Нажмите «Играть» для старта');
   let progressSpeed = $state('');
+  let launchError = $state<unknown>(null);
+  let showImportWizard = $state(false);
 
   // Dynamic background based on theme and time of day
   let currentHour = new Date().getHours();
@@ -136,12 +148,36 @@
     }
   }
 
+  // Real Network & Profile state management
+  async function checkNetwork() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<{ is_online: boolean; latency_ms?: number; status_text: string }>('shell_check_network');
+      isOnline = res.is_online;
+    } catch {
+      isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    }
+  }
+
+  async function loadProfile() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const prof = await invoke<{ nickname: string; initials: string; is_online: boolean; skin_head_url?: string }>('shell_get_profile', { nickname: playerName });
+      if (prof.skin_head_url) {
+        skinHeadUrl = prof.skin_head_url;
+      }
+    } catch {
+      skinHeadUrl = undefined;
+    }
+  }
+
   // Launch Game Action
   let cancelLaunchSimulation = false;
 
   async function handleLaunch() {
     if (isLaunching || isGameRunning) return;
     isLaunching = true;
+    launchError = null;
     cancelLaunchSimulation = false;
     progressPercentage = 0;
     progressStage = 'Подготовка к запуску...';
@@ -156,8 +192,21 @@
         nickname: playerName,
       });
       isLaunching = false;
+      isGameRunning = true;
+      clientStatus = 'Minecraft запущен';
       addToast('success', 'Minecraft запущен', result);
-    } catch {
+    } catch (err: any) {
+      const isTauri =
+        typeof window !== 'undefined' &&
+        ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+      if (isTauri) {
+        isLaunching = false;
+        launchError = err;
+        const formatted = formatError(err, 'launch');
+        addToast('error', formatted.title, formatted.description);
+        return;
+      }
+
       // Fallback in-browser progress simulation
       const steps = [
         { stage: 'Проверка клиента Wex', pct: 15, detail: 'Проверка целостности jar-файлов', speed: '' },
@@ -203,6 +252,19 @@
     }
   }
 
+  async function handleStopGame() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('shell_stop_game', { version: selectedVersion });
+      isGameRunning = false;
+      isLaunching = false;
+      clientStatus = 'Игра остановлена';
+      addToast('info', 'Minecraft остановлен');
+    } catch (e) {
+      addToast('error', 'Ошибка остановки игры', String(e));
+    }
+  }
+
   onMount(() => {
     // Hash routing for screenshot automation: #screen=servers, #theme=light, #screen=showcase
     function applyHashRoute() {
@@ -212,8 +274,14 @@
       const screen = params.get('screen') || params.get('tab');
       const t = params.get('theme');
 
-      if (screen && ['play', 'servers', 'lobby', 'friends', 'mods', 'settings', 'showcase'].includes(screen)) {
+      if (screen && ['play', 'servers', 'lobby', 'friends', 'workshop', 'mods', 'settings', 'showcase'].includes(screen)) {
         activeTab = screen;
+      }
+      if (screen === 'import' || params.get('import') === 'true') {
+        activeTab = 'play';
+        showImportWizard = true;
+      } else {
+        showImportWizard = false;
       }
       if (t === 'light' || t === 'dark') {
         theme.setAppearance(t);
@@ -279,6 +347,33 @@
     applyHashRoute();
     window.addEventListener('hashchange', applyHashRoute);
 
+    // Initial checks: network, profile, and active running game state
+    checkNetwork();
+    loadProfile();
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', checkNetwork);
+      window.addEventListener('offline', () => {
+        isOnline = false;
+      });
+    }
+
+    const netInterval = setInterval(checkNetwork, 30000);
+
+    // Synchronize initial running state
+    import('@tauri-apps/api/core')
+      .then(({ invoke }) => {
+        invoke<boolean>('is_game_running')
+          .then((running) => {
+            isGameRunning = running;
+            if (running) {
+              clientStatus = 'Minecraft запущен';
+            }
+          })
+          .catch(() => {});
+      })
+      .catch(() => {});
+
     // Tauri 2 Event Listeners (install-progress & launch-status as per SPEC.md)
     let unlistenProgress: (() => void) | undefined;
     let unlistenStatus: (() => void) | undefined;
@@ -326,6 +421,7 @@
             } else if (s.state === 'running') {
               isLaunching = false;
               isGameRunning = true;
+              launchError = null;
               addToast('success', 'Minecraft запущен', s.message);
             } else if (s.state === 'cancelled') {
               isLaunching = false;
@@ -334,7 +430,9 @@
             } else if (s.state === 'error') {
               isLaunching = false;
               isGameRunning = false;
-              addToast('error', 'Ошибка запуска', s.message);
+              launchError = s.message;
+              const formatted = formatError(s.message, 'launch');
+              addToast('error', formatted.title, formatted.description);
             } else if (s.state === 'idle') {
               isLaunching = false;
               isGameRunning = false;
@@ -372,6 +470,10 @@
 
     return () => {
       window.removeEventListener('hashchange', applyHashRoute);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', checkNetwork);
+      }
+      clearInterval(netInterval);
       unlistenProgress?.();
       unlistenStatus?.();
       unlistenAchievement?.();
@@ -411,14 +513,22 @@
 
   <!-- Main View Area -->
   <main class="wex-main">
-    <!-- Window Toolbar -->
+    <!-- Window Toolbar with Apple Profile Badge & Window Controls -->
     <Toolbar
       title={screenTitles[activeTab] || 'Wex'}
       {isMaximized}
       onminimize={minimizeWindow}
       onmaximize={toggleMaximizeWindow}
       onclose={closeWindow}
-    />
+    >
+      {#snippet trailing()}
+        <ProfileBadge
+          {playerName}
+          isOnline={network.isOnline}
+          {skinHeadUrl}
+        />
+      {/snippet}
+    </Toolbar>
 
     <!-- Active Screen -->
     <div class="screen-viewport">
@@ -433,8 +543,14 @@
           {progressStage}
           {progressDetail}
           {progressSpeed}
+          bind:launchError
+          initialShowImportWizard={showImportWizard}
           onlaunch={handleLaunch}
           oncancel={handleCancelLaunch}
+          onstop={handleStopGame}
+          onopensettings={() => {
+            activeTab = 'settings';
+          }}
         />
       {:else if activeTab === 'servers'}
         <ServersScreen />
@@ -444,6 +560,7 @@
         <FriendsScreen />
       {:else if activeTab === 'wardrobe'}
         <WardrobeScreen {playerName} ontoast={addToast} />
+        <FriendsScreen tab={friendsSubtab} />
       {:else if activeTab === 'workshop'}
         <WorkshopScreen {selectedVersion} ontoast={addToast} />
       {:else if activeTab === 'mods'}

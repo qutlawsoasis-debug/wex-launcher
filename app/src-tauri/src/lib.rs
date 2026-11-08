@@ -304,6 +304,14 @@ pub fn run() {
             commands::crash::crash_get_last_diagnosis,
             commands::crash::crash_open_log_file,
             commands::crash::crash_disable_mod,
+            // Shell commands (SPEC 1.2)
+            commands::shell::shell_check_network,
+            commands::shell::shell_get_profile,
+            commands::shell::shell_get_launch_state,
+            commands::shell::shell_stop_game,
+            commands::shell::shell_minimize_window,
+            commands::shell::shell_toggle_maximize_window,
+            commands::shell::shell_close_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

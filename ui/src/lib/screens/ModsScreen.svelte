@@ -19,6 +19,7 @@
   import SearchField from '../components/SearchField.svelte';
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Icon from '../components/icons/Icon.svelte';
+  import ErrorState from '../components/ErrorState.svelte';
 
   export interface ModEntryModel {
     id: string;
@@ -49,12 +50,14 @@
   let isAdding = $state(false);
   let loading = $state(true);
   let fileInputRef = $state<HTMLInputElement | null>(null);
+  let modError = $state<unknown>(null);
+  let loadError = $state<unknown>(null);
 
   let mods = $state<ModEntryModel[]>([]);
 
   const versionOptions = [
-    { value: '1.21.1', label: '1.21.1 (Wex Client)' },
-    { value: '1.20.1', label: '1.20.1 (Wex Client)' },
+    { value: '1.21.1', label: '1.21.1' },
+    { value: '1.20.1', label: '1.20.1' },
   ];
 
   const filterTabs = [
@@ -85,6 +88,7 @@
 
   async function loadMods(version: string) {
     loading = true;
+    loadError = null;
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const res = await invoke<ModEntryModel[]>('list_mods', { version });
@@ -93,9 +97,15 @@
       } else {
         mods = [];
       }
-    } catch {
+    } catch (err) {
       // In-browser without Tauri: clean empty list
       mods = [];
+      const isTauri =
+        typeof window !== 'undefined' &&
+        ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+      if (isTauri) {
+        loadError = err;
+      }
     } finally {
       loading = false;
     }
@@ -116,9 +126,10 @@
         mod.file_name = updated.file_name;
         mod.enabled = updated.enabled;
       }
-    } catch {
+    } catch (err) {
       // Revert on IPC failure
       mod.enabled = oldEnabled;
+      modError = err;
     }
   }
 
@@ -143,7 +154,11 @@
 
     const file = input.files[0];
     if (!file.name.endsWith('.jar')) {
-      alert('Пожалуйста, выберите файл с расширением .jar');
+      modError = {
+        code: 'MODS_INVALID_FILE',
+        message: 'Неподдерживаемый файл мода',
+        technical: `Выбран файл «${file.name}». Лаунчер принимает только архивы модификаций .jar.`,
+      };
       return;
     }
 
@@ -174,18 +189,25 @@
         };
         mods = [newMod, ...mods];
       }
-    } catch {
-      // Fallback: local representation
-      const newMod: ModEntryModel = {
-        id: file.name.replace('.jar', '').toLowerCase(),
-        name: file.name.replace('.jar', ''),
-        version: '1.0.0',
-        description: 'Пользовательский файл мода',
-        file_name: file.name,
-        enabled: true,
-        is_pack_mod: false,
-      };
-      mods = [newMod, ...mods];
+    } catch (err) {
+      // In-browser mock fallback only if not in Tauri
+      const isTauri =
+        typeof window !== 'undefined' &&
+        ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+      if (isTauri) {
+        modError = err;
+      } else {
+        const newMod: ModEntryModel = {
+          id: file.name.replace('.jar', '').toLowerCase(),
+          name: file.name.replace('.jar', ''),
+          version: '1.0.0',
+          description: 'Пользовательский файл мода',
+          file_name: file.name,
+          enabled: true,
+          is_pack_mod: false,
+        };
+        mods = [newMod, ...mods];
+      }
     } finally {
       isAdding = false;
       input.value = '';
@@ -194,7 +216,11 @@
 
   async function handleDeleteMod(mod: ModEntryModel) {
     if (mod.is_pack_mod) {
-      alert('Моды из официального пака Wex защищены от удаления.');
+      modError = {
+        code: 'MODS_PROTECTED_PACK_MOD',
+        message: 'Мод защищён от удаления',
+        technical: `Мод «${mod.name}» (${mod.file_name}) входит в официальный пак Wex и не может быть удалён из клиента.`,
+      };
       return;
     }
 
@@ -205,9 +231,15 @@
         fileName: mod.file_name,
       });
       mods = mods.filter((m) => m.file_name !== mod.file_name);
-    } catch {
-      // In-browser mock fallback
-      mods = mods.filter((m) => m.file_name !== mod.file_name);
+    } catch (err) {
+      const isTauri =
+        typeof window !== 'undefined' &&
+        ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+      if (isTauri) {
+        modError = err;
+      } else {
+        mods = mods.filter((m) => m.file_name !== mod.file_name);
+      }
     }
   }
 
@@ -276,6 +308,21 @@
     </div>
   </div>
 
+  <!-- Error Banner -->
+  {#if modError}
+    <div class="mod-error-banner" role="alert">
+      <ErrorState
+        error={modError}
+        domain="mods"
+        compact={true}
+        onaction={handleOpenModsDir}
+        onclose={() => {
+          modError = null;
+        }}
+      />
+    </div>
+  {/if}
+
   <!-- Mods List Area -->
   <div class="mods-content">
     <List header="Установленные моды (версия {selectedVersion}) • {filteredMods.length} из {mods.length}">
@@ -283,6 +330,15 @@
         <div class="empty-state">
           <Icon name="refresh" size={28} color="var(--color-tertiary-label)" />
           <span class="empty-title">Загрузка модов...</span>
+        </div>
+      {:else if loadError && mods.length === 0}
+        <div class="error-state-wrap">
+          <ErrorState
+            error={loadError}
+            domain="mods"
+            onaction={() => loadMods(selectedVersion)}
+            onsecondaryaction={handleOpenModsDir}
+          />
         </div>
       {:else}
         {#each filteredMods as m (m.file_name)}
@@ -340,6 +396,14 @@
 </div>
 
 <style>
+  .mod-error-banner {
+    margin: 0;
+  }
+
+  .error-state-wrap {
+    padding: 24px 16px;
+  }
+
   .mods-screen {
     display: flex;
     flex-direction: column;

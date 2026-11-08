@@ -62,7 +62,20 @@
 
 <div class="apple-popover-container" bind:this={containerEl}>
   {#if trigger}
-    <div class="popover-trigger" onclick={toggle} role="presentation">
+    <div
+      class="popover-trigger"
+      onclick={toggle}
+      onkeydown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      }}
+      role="button"
+      tabindex="0"
+      aria-haspopup="dialog"
+      aria-expanded={open}
+    >
       {@render trigger()}
     </div>
   {/if}
@@ -152,11 +165,23 @@
   @keyframes popoverIn {
     from {
       opacity: 0;
-      transform: scale(0.94);
+      scale: 0.94;
     }
     to {
       opacity: 1;
-      transform: scale(1);
+      scale: 1;
     }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .popover-card {
+      animation: none !important;
+      scale: 1 !important;
+    }
+  }
+
+  :global([data-reduce-motion="true"]) .popover-card {
+    animation: none !important;
+    scale: 1 !important;
   }
 </style>
