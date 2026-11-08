@@ -20,6 +20,10 @@
   import WorkshopScreen from './lib/screens/WorkshopScreen.svelte';
   import SettingsScreen from './lib/screens/SettingsScreen.svelte';
   import ShowcaseScreen from './lib/screens/ShowcaseScreen.svelte';
+  import SplashScreen from './lib/screens/SplashScreen.svelte';
+
+  // Startup splash state
+  let isStartingUp = $state(true);
 
   // Navigation state
   let activeTab = $state('play');
@@ -187,8 +191,11 @@
       const screen = params.get('screen') || params.get('tab');
       const t = params.get('theme');
 
-      if (screen && ['play', 'servers', 'lobby', 'friends', 'mods', 'settings', 'showcase'].includes(screen)) {
+      if (screen === 'splash') {
+        isStartingUp = true;
+      } else if (screen && ['play', 'servers', 'lobby', 'friends', 'mods', 'settings', 'showcase'].includes(screen)) {
         activeTab = screen;
+        isStartingUp = false;
       }
       if (t === 'light' || t === 'dark') {
         theme.setAppearance(t);
@@ -362,6 +369,15 @@
         <Toast toast={t} ondismiss={dismissToast} />
       {/each}
     </div>
+  {/if}
+
+  <!-- Startup Splash Screen per SPEC 1.1 -->
+  {#if isStartingUp}
+    <SplashScreen
+      oncomplete={() => {
+        isStartingUp = false;
+      }}
+    />
   {/if}
 </div>
 

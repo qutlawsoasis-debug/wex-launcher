@@ -363,12 +363,21 @@ pub fn run() {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();
             let play_state = PlayState::new_real(paths.clone(), app.handle().clone());
+            let startup_state = commands::startup::StartupState::new(paths.clone());
+            let friends_state = commands::friends::FriendsState::new(paths);
             app.manage(play_state);
-            app.manage(commands::friends::FriendsState::new(paths));
+            app.manage(startup_state);
+            app.manage(friends_state);
             app.manage(AppState::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Startup commands (SPEC 1.1)
+            commands::startup::startup_get_info,
+            commands::startup::startup_verify_directories,
+            commands::startup::startup_check_update,
+            commands::startup::social_check_launcher_update,
+            commands::startup::startup_download_update,
             // Standard wex-ipc commands
             commands::launch::get_config,
             commands::launch::save_config,

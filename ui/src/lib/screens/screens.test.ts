@@ -10,6 +10,8 @@ import FriendsScreen from './FriendsScreen.svelte';
 import ModsScreen from './ModsScreen.svelte';
 import SettingsScreen from './SettingsScreen.svelte';
 import WorkshopScreen from './WorkshopScreen.svelte';
+import SplashScreen from './SplashScreen.svelte';
+import { theme } from '../design/theme.svelte';
 
 describe('Wex Launcher Screens', () => {
   let target: HTMLElement;
@@ -283,6 +285,82 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Снимков экрана пока нет');
     expect(target.textContent).toContain('Нажмите клавишу F2');
 
+    unmount(comp);
+  });
+
+  it('renders SplashScreen with wordmark logo, version badge, and initial status', () => {
+    const comp = mount(SplashScreen, {
+      target,
+      props: {
+        initialVersion: 'v0.1.0',
+        autoStart: false,
+      },
+    });
+
+    expect(target.textContent).toContain('Wex');
+    expect(target.textContent).toContain('v0.1.0');
+    expect(target.textContent).toContain('Инициализация каталогов…');
+    expect(target.querySelector('.splash-card')).not.toBeNull();
+
+    unmount(comp);
+  });
+
+  it('renders SplashScreen network error state with retry and offline skip buttons', async () => {
+    let completed = false;
+    const comp = mount(SplashScreen, {
+      target,
+      props: {
+        initialVersion: 'v0.1.0',
+        autoStart: false,
+        simulateNetworkError: true,
+        oncomplete: () => {
+          completed = true;
+        },
+      },
+    });
+
+    // Manually trigger initialization with simulated error
+    await comp.startInitialization();
+
+    expect(target.textContent).toContain('Сетевая ошибка');
+    expect(target.textContent).toContain('Повторить');
+    expect(target.textContent).toContain('Пропустить');
+
+    // Click offline skip button
+    const skipBtn = Array.from(target.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Пропустить')
+    );
+    expect(skipBtn).toBeDefined();
+    skipBtn?.click();
+
+    // Allow 250ms cross-fade transition to complete
+    await new Promise((r) => setTimeout(r, 300));
+
+    // Verify offline skip invokes completion handler
+    expect(completed).toBe(true);
+
+    unmount(comp);
+  });
+
+  it('immediately transitions when Reduce Motion is enabled without delay', async () => {
+    let completed = false;
+    theme.setReduceMotion(true);
+
+    const comp = mount(SplashScreen, {
+      target,
+      props: {
+        initialVersion: 'v0.1.0',
+        autoStart: false,
+        oncomplete: () => {
+          completed = true;
+        },
+      },
+    });
+
+    comp.skipOffline();
+    expect(completed).toBe(true);
+
+    theme.setReduceMotion(false);
     unmount(comp);
   });
 });
