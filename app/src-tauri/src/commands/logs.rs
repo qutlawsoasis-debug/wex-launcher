@@ -69,7 +69,10 @@ pub fn parse_log_line(raw_line: &str, line_number: usize, prev_level: &str) -> L
                         let lvl = &thread_level[slash_idx + 1..];
                         (Some(th.to_string()), normalize_level(lvl))
                     } else {
-                        (Some(thread_level.to_string()), normalize_level(thread_level))
+                        (
+                            Some(thread_level.to_string()),
+                            normalize_level(thread_level),
+                        )
                     };
 
                     return LogEntry {
@@ -269,11 +272,10 @@ pub fn read_log_file_impl(
 
     // Resolve target path safely (prevent path traversal)
     let clean_fname = file_name.trim_start_matches('/').trim_start_matches('\\');
-    let target_path = if clean_fname.starts_with("crash-reports") {
-        inst_dir.join(clean_fname)
-    } else if clean_fname.starts_with("logs") {
-        inst_dir.join(clean_fname)
-    } else if clean_fname.starts_with("hs_err_pid") {
+    let target_path = if clean_fname.starts_with("crash-reports")
+        || clean_fname.starts_with("logs")
+        || clean_fname.starts_with("hs_err_pid")
+    {
         inst_dir.join(clean_fname)
     } else {
         // Default to logs/
@@ -284,8 +286,8 @@ pub fn read_log_file_impl(
         return Err(format!("Файл журнала не найден: {}", file_name));
     }
 
-    let file = File::open(&target_path)
-        .map_err(|e| format!("Не удалось открыть файл журнала: {}", e))?;
+    let file =
+        File::open(&target_path).map_err(|e| format!("Не удалось открыть файл журнала: {}", e))?;
     let mut reader = BufReader::new(file);
 
     // Limit maximum lines in memory to keep UI responsive
@@ -491,7 +493,11 @@ mod tests {
 
         fs::write(logs_dir.join("latest.log"), b"Latest log content").unwrap();
         fs::write(logs_dir.join("2026-11-07-1.log"), b"Old log content").unwrap();
-        fs::write(crash_dir.join("crash-2026-11-08_14.00.00-client.txt"), b"Crash report").unwrap();
+        fs::write(
+            crash_dir.join("crash-2026-11-08_14.00.00-client.txt"),
+            b"Crash report",
+        )
+        .unwrap();
 
         let files = list_log_files_impl(&paths, Some("1.21.1"));
         assert_eq!(files.len(), 3);
@@ -524,19 +530,36 @@ mod tests {
         fs::write(logs_dir.join("latest.log"), log_content.as_bytes()).unwrap();
 
         // 1. Read all lines
-        let res_all = read_log_file_impl(&paths, Some("1.21.1"), "latest.log", None, None, None).unwrap();
+        let res_all =
+            read_log_file_impl(&paths, Some("1.21.1"), "latest.log", None, None, None).unwrap();
         assert_eq!(res_all.total_lines, 4);
         assert_eq!(res_all.returned_lines, 4);
         assert_eq!(res_all.error_count, 1);
         assert_eq!(res_all.warn_count, 1);
 
         // 2. Filter by ERROR level
-        let res_err = read_log_file_impl(&paths, Some("1.21.1"), "latest.log", None, Some("ERROR"), None).unwrap();
+        let res_err = read_log_file_impl(
+            &paths,
+            Some("1.21.1"),
+            "latest.log",
+            None,
+            Some("ERROR"),
+            None,
+        )
+        .unwrap();
         assert_eq!(res_err.returned_lines, 1);
         assert!(res_err.entries[0].message.contains("telemetry"));
 
         // 3. Search query
-        let res_search = read_log_file_impl(&paths, Some("1.21.1"), "latest.log", None, None, Some("disk")).unwrap();
+        let res_search = read_log_file_impl(
+            &paths,
+            Some("1.21.1"),
+            "latest.log",
+            None,
+            None,
+            Some("disk"),
+        )
+        .unwrap();
         assert_eq!(res_search.returned_lines, 1);
         assert_eq!(res_search.entries[0].level, "WARN");
     }
