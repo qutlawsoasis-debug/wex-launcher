@@ -30,7 +30,7 @@
   let selectedCapeId = $state<string>('none');
 
   // Active Skin state
-  let skinName = $state('Steve (Классический)');
+  let skinName = $state('Стандартный скин');
   let skinBase64 = $state<string | null>(null);
   let customCapeBase64 = $state<string | null>(null);
 
@@ -56,9 +56,7 @@
 
   const capeOptions = [
     { id: 'none', name: 'Без плаща', desc: 'Стандартный вид без накидки' },
-    { id: 'cyan', name: 'Aura Cyan', desc: 'Официальный лазурный плащ Aura' },
-    { id: 'silver', name: 'Aura Silver', desc: 'Официальный серебристый плащ Aura' },
-    { id: 'custom', name: 'Пользовательский', desc: 'Загрузить файл накидки (PNG)' },
+    { id: 'custom', name: 'Свой файл', desc: 'Загрузить файл накидки (PNG)' },
   ];
 
   async function callTauri<T>(command: string, args: Record<string, any> = {}): Promise<T> {
@@ -89,14 +87,18 @@
     try {
       const state = await callTauri<WardrobeStateDto>(COMMANDS.WARDROBE_GET_STATE);
       if (state) {
-        skinName = state.skin_name || 'Steve (Классический)';
+        skinName =
+          state.skin_name && state.skin_name !== 'Steve (Классический)'
+            ? state.skin_name
+            : 'Стандартный скин';
         skinBase64 = state.skin_base64 || null;
         selectedModel = state.model === 'Slim' ? 'slim' : 'default';
         selectedCapeId = state.cape_id || 'none';
         customCapeBase64 = state.cape_base64 || null;
       }
     } catch {
-      // Offline fallback: Steve default
+      // Offline fallback: Standard skin
+      skinName = 'Стандартный скин';
     }
   }
 
@@ -238,21 +240,7 @@
   }
 
   function drawCape(ctx: CanvasRenderingContext2D, dx: number, dy: number, dw: number, dh: number) {
-    if (selectedCapeId === 'cyan') {
-      ctx.fillStyle = '#0A84FF'; // Apple systemBlue / Aura Cyan
-      ctx.fillRect(dx, dy, dw, dh);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(dx + 30, dy + 50, 40, 10);
-      ctx.fillStyle = '#005BB5';
-      ctx.fillRect(dx, dy + dh - 10, dw, 10);
-    } else if (selectedCapeId === 'silver') {
-      ctx.fillStyle = '#8E8E93'; // Apple systemGray / Aura Silver
-      ctx.fillRect(dx, dy, dw, dh);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(dx + 30, dy + 50, 40, 10);
-      ctx.fillStyle = '#3A3A3C';
-      ctx.fillRect(dx, dy + dh - 10, dw, 10);
-    } else if (selectedCapeId === 'custom' && customCapeBase64) {
+    if (selectedCapeId === 'custom' && customCapeBase64) {
       const capeImg = new Image();
       capeImg.onload = () => {
         try {
@@ -435,12 +423,12 @@
 
   function handleResetDefault() {
     skinBase64 = null;
-    skinName = 'Steve (Классический)';
+    skinName = 'Стандартный скин';
     selectedModel = 'default';
     selectedCapeId = 'none';
     customCapeBase64 = null;
     errorMessage = null;
-    ontoast?.('info', 'Сброс выполнен', 'Восстановлен стандартный скин Steve');
+    ontoast?.('info', 'Сброс выполнен', 'Восстановлен стандартный скин');
   }
 
   function selectHistorySkin(item: WardrobeItemDto) {
@@ -604,11 +592,7 @@
           >
             {#snippet trailing()}
               <div class="cape-row-accessory">
-                {#if cape.id === 'cyan'}
-                  <span class="cape-chip cyan" title="Лазурный плащ Aura"></span>
-                {:else if cape.id === 'silver'}
-                  <span class="cape-chip silver" title="Серебристый плащ Aura"></span>
-                {:else if cape.id === 'custom'}
+                {#if cape.id === 'custom'}
                   <button
                     type="button"
                     class="upload-cape-link"
@@ -617,7 +601,7 @@
                       capeInputRef?.click();
                     }}
                   >
-                    Обзор...
+                    {customCapeBase64 ? 'Сменить...' : 'Обзор...'}
                   </button>
                 {/if}
 
@@ -793,23 +777,6 @@
     display: flex;
     align-items: center;
     gap: 12px;
-  }
-
-  .cape-chip {
-    width: 14px;
-    height: 20px;
-    border-radius: 2px;
-    display: inline-block;
-  }
-
-  .cape-chip.cyan {
-    background-color: var(--color-system-blue);
-    border: 1px solid rgba(0, 0, 0, 0.15);
-  }
-
-  .cape-chip.silver {
-    background-color: var(--color-system-gray);
-    border: 1px solid rgba(0, 0, 0, 0.15);
   }
 
   .upload-cape-link {

@@ -3,7 +3,7 @@ use base64::Engine;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::State;
-use wex_extras::image::{self, Rgba, RgbaImage};
+use wex_extras::image;
 
 use crate::commands::launch::PlayState;
 use wex_extras::skins::{
@@ -17,57 +17,6 @@ use wex_ipc::commands::{
     WardrobeDeleteHistoryRequest, WardrobeDeleteHistoryResponse,
 };
 use wex_ipc::models::{SkinModelDto, SkinValidationResultDto, WardrobeItemDto, WardrobeStateDto};
-
-/// Generate official Aura Cyan cape (64x32 PNG)
-pub fn generate_aura_cyan_cape() -> Vec<u8> {
-    let mut img = RgbaImage::from_pixel(64, 32, Rgba([0, 0, 0, 0]));
-    // Cape body: (0, 0) to (22, 17)
-    for y in 0..17 {
-        for x in 0..22 {
-            let base_color = if y == 0 {
-                Rgba([10, 132, 255, 255]) // systemBlue #0A84FF
-            } else if x >= 12 {
-                // Back face of cape
-                if (y == 8 || y == 9) && (15..=19).contains(&x) {
-                    Rgba([255, 255, 255, 255]) // White Aura logo mark
-                } else if y >= 14 {
-                    Rgba([0, 91, 181, 255]) // Darker cyan border
-                } else {
-                    Rgba([10, 132, 255, 255])
-                }
-            } else {
-                // Front face and sides
-                Rgba([10, 132, 255, 255])
-            };
-            img.put_pixel(x, y, base_color);
-        }
-    }
-    encode_png_bytes(&img).unwrap_or_default()
-}
-
-/// Generate official Aura Silver cape (64x32 PNG)
-pub fn generate_aura_silver_cape() -> Vec<u8> {
-    let mut img = RgbaImage::from_pixel(64, 32, Rgba([0, 0, 0, 0]));
-    for y in 0..17 {
-        for x in 0..22 {
-            let base_color = if y == 0 {
-                Rgba([142, 142, 147, 255]) // systemGray #8E8E93
-            } else if x >= 12 {
-                if (y == 8 || y == 9) && (15..=19).contains(&x) {
-                    Rgba([255, 255, 255, 255])
-                } else if y >= 14 {
-                    Rgba([58, 58, 60, 255]) // Dark graphite trim
-                } else {
-                    Rgba([142, 142, 147, 255])
-                }
-            } else {
-                Rgba([142, 142, 147, 255])
-            };
-            img.put_pixel(x, y, base_color);
-        }
-    }
-    encode_png_bytes(&img).unwrap_or_default()
-}
 
 #[tauri::command]
 pub async fn extras_validate_skin(
@@ -161,7 +110,7 @@ pub async fn extras_generate_csl_config(
                 "elytra": "LocalSkin/elytras/{USERNAME}.png"
             },
             {
-                "name": "AuraLobby",
+                "name": "WexLobby",
                 "type": "CustomSkinAPI",
                 "root": request.csl_api_root
             }
@@ -192,10 +141,10 @@ pub async fn wardrobe_get_state(state: State<'_, PlayState>) -> Result<WardrobeS
         }
     }
 
-    // Default state: Classic Steve, no cape
+    // Default state: standard skin, no cape
     Ok(WardrobeStateDto {
         nickname: "Player".to_string(),
-        skin_name: "Steve (Классический)".to_string(),
+        skin_name: "Стандартный скин".to_string(),
         skin_base64: None,
         model: SkinModelDto::Classic,
         cape_id: "none".to_string(),
@@ -222,8 +171,6 @@ pub async fn wardrobe_apply(
 
     // 2. Resolve cape bytes
     let cape_bytes: Option<Vec<u8>> = match request.cape_id.as_str() {
-        "cyan" => Some(generate_aura_cyan_cape()),
-        "silver" => Some(generate_aura_silver_cape()),
         "custom" => {
             if let Some(ref b64) = request.cape_base64 {
                 Some(
@@ -283,7 +230,7 @@ pub async fn wardrobe_apply(
 mod tests {
     use super::*;
     use tempfile::tempdir;
-    use wex_extras::image::GenericImageView;
+    use wex_extras::image::{GenericImageView, Rgba, RgbaImage};
 
     fn make_test_skin_png(width: u32, height: u32) -> (Vec<u8>, String) {
         let img = RgbaImage::from_pixel(width, height, Rgba([30, 60, 90, 255]));
@@ -371,15 +318,12 @@ mod tests {
     }
 
     #[test]
-    fn test_capes_generation() {
-        let cyan = generate_aura_cyan_cape();
-        assert!(!cyan.is_empty());
-        let val_cyan = image::load_from_memory(&cyan).unwrap();
-        assert_eq!(val_cyan.dimensions(), (64, 32));
-
-        let silver = generate_aura_silver_cape();
-        assert!(!silver.is_empty());
-        let val_silver = image::load_from_memory(&silver).unwrap();
-        assert_eq!(val_silver.dimensions(), (64, 32));
+    fn test_custom_cape_decode() {
+        let img = RgbaImage::from_pixel(64, 32, Rgba([20, 40, 60, 255]));
+        let bytes = encode_png_bytes(&img).unwrap();
+        let b64 = BASE64.encode(&bytes);
+        let decoded = BASE64.decode(&b64).unwrap();
+        let val = image::load_from_memory(&decoded).unwrap();
+        assert_eq!(val.dimensions(), (64, 32));
     }
 }
