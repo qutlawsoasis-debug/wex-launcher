@@ -125,6 +125,10 @@ export type WardrobeDeleteHistoryRequest = { history_dir: string, item_id: strin
 
 export type WardrobeDeleteHistoryResponse = { success: boolean, };;
 
+export type WardrobeGetSkinRequest = { history_dir: string, item_id: string, };;
+
+export type WardrobeGetSkinResponse = { item: WardrobeItemDto, skin_bytes_base64: string, };;
+
 export type ExtrasDiscordSetActivityRequest = { activity: DiscordActivityDto, };;
 
 export type ExtrasImportOldLauncherRequest = { old_launcher_dir: string, };;
@@ -222,6 +226,7 @@ export const COMMANDS = {
     WARDROBE_GET_STATE: "wardrobe_get_state",
     WARDROBE_APPLY: "wardrobe_apply",
     WARDROBE_DELETE_HISTORY: "wardrobe_delete_history",
+    WARDROBE_GET_SKIN: "wardrobe_get_skin",
     EXTRAS_DISCORD_SET_ACTIVITY: "extras_discord_set_activity",
     EXTRAS_DISCORD_CLEAR_ACTIVITY: "extras_discord_clear_activity",
     EXTRAS_IMPORT_OLD_LAUNCHER: "extras_import_old_launcher",

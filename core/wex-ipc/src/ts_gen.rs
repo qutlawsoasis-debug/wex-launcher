@@ -206,6 +206,8 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         WardrobeApplyResponse::decl(),
         WardrobeDeleteHistoryRequest::decl(),
         WardrobeDeleteHistoryResponse::decl(),
+        WardrobeGetSkinRequest::decl(),
+        WardrobeGetSkinResponse::decl(),
         ExtrasDiscordSetActivityRequest::decl(),
         ExtrasImportOldLauncherRequest::decl(),
         ExtrasGetPresetsResponse::decl(),
@@ -284,6 +286,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ("WARDROBE_GET_STATE", CMD_WARDROBE_GET_STATE),
         ("WARDROBE_APPLY", CMD_WARDROBE_APPLY),
         ("WARDROBE_DELETE_HISTORY", CMD_WARDROBE_DELETE_HISTORY),
+        ("WARDROBE_GET_SKIN", CMD_WARDROBE_GET_SKIN),
         (
             "EXTRAS_DISCORD_SET_ACTIVITY",
             CMD_EXTRAS_DISCORD_SET_ACTIVITY,

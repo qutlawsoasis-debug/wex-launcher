@@ -500,6 +500,95 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  it('renders WardrobeScreen skins library with quick-switch and deletion', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    (invoke as any).mockImplementation((cmd: string, args: any) => {
+      if (cmd === 'extras_list_skin_history') {
+        return Promise.resolve({
+          items: [
+            {
+              id: 'skin_123',
+              item_type: 'skin',
+              name: 'Warrior Alex',
+              hash: '1234567890abcdef',
+              model: 'slim',
+              relative_path: 'skins/1234567890abcdef.png',
+              created_utc: '2026-11-08T18:00:00Z',
+            },
+          ],
+        });
+      }
+      if (cmd === 'wardrobe_get_skin') {
+        return Promise.resolve({
+          item: {
+            id: 'skin_123',
+            name: 'Warrior Alex',
+            model: 'slim',
+          },
+          skin_bytes_base64:
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        });
+      }
+      if (cmd === 'wardrobe_delete_history') {
+        return Promise.resolve({ success: true });
+      }
+      return Promise.resolve(null);
+    });
+
+    const comp = mount(WardrobeScreen, {
+      target,
+      props: {
+        playerName: 'Player1',
+        initialHistory: [
+          {
+            id: 'skin_123',
+            item_type: 'skin',
+            name: 'Warrior Alex',
+            hash: '1234567890abcdef',
+            model: 'slim',
+            relative_path: 'skins/1234567890abcdef.png',
+            created_utc: '2026-11-08T18:00:00Z',
+          },
+        ],
+      },
+    });
+
+    await tick();
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Verify skins library rendered item
+    expect(target.textContent).toContain('Библиотека скинов');
+    expect(target.textContent).toContain('Warrior Alex');
+    expect(target.textContent).toContain('Тонкая');
+
+    // Click on item to quick-switch
+    const row = Array.from(target.querySelectorAll('.apple-row')).find((r) =>
+      r.textContent?.includes('Warrior Alex')
+    );
+    expect(row).toBeDefined();
+    (row as HTMLElement)?.click();
+
+    await tick();
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Verify skin name input updated to Warrior Alex
+    const skinInput = target.querySelector('.skin-name-input') as HTMLInputElement;
+    expect(skinInput).not.toBeNull();
+    expect(skinInput.value).toBe('Warrior Alex');
+
+    // Click delete button
+    const deleteBtn = target.querySelector('.delete-item-btn') as HTMLButtonElement;
+    expect(deleteBtn).not.toBeNull();
+    deleteBtn.click();
+
+    await tick();
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(target.textContent).toContain('История гардероба пуста');
+
+    unmount(comp);
+  });
+
   it('renders WorkshopScreen with tabs, version selector, and authentic empty states', () => {
     const comp = mount(WorkshopScreen, {
       target,

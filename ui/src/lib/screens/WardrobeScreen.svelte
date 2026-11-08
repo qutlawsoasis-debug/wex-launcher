@@ -19,10 +19,11 @@
 
   interface Props {
     playerName?: string;
+    initialHistory?: WardrobeItemDto[];
     ontoast?: (type: 'info' | 'success' | 'warning' | 'error', title: string, desc?: string) => void;
   }
 
-  let { playerName = 'Player', ontoast }: Props = $props();
+  let { playerName = 'Player', initialHistory, ontoast }: Props = $props();
 
   // Model & View states
   let selectedModel = $state<'default' | 'slim'>('default');
@@ -36,6 +37,12 @@
 
   // Status & history
   let historyItems = $state<WardrobeItemDto[]>([]);
+
+  $effect(() => {
+    if (initialHistory) {
+      historyItems = initialHistory;
+    }
+  });
   let isApplying = $state(false);
   let isValidating = $state(false);
   let errorMessage = $state<string | null>(null);
@@ -103,11 +110,15 @@
   }
 
   async function loadHistory() {
+    if (initialHistory !== undefined) return;
     try {
-      const res = await callTauri<{ items: WardrobeItemDto[] }>(COMMANDS.EXTRAS_LIST_SKIN_HISTORY, {
-        request: { history_dir: '' },
-      });
-      if (res?.items) {
+      const res = await callTauri<{ items: WardrobeItemDto[] } | WardrobeItemDto[]>(
+        COMMANDS.EXTRAS_LIST_SKIN_HISTORY,
+        { request: { history_dir: '' } }
+      );
+      if (Array.isArray(res)) {
+        historyItems = res;
+      } else if (res && Array.isArray(res.items)) {
         historyItems = res.items;
       }
     } catch {
@@ -431,12 +442,25 @@
     ontoast?.('info', 'Сброс выполнен', 'Восстановлен стандартный скин');
   }
 
-  function selectHistorySkin(item: WardrobeItemDto) {
-    skinName = item.name;
-    selectedModel = item.model === 'slim' ? 'slim' : 'default';
-    // If we have hash or data, we can reload or keep
-    errorMessage = null;
-    ontoast?.('info', 'Выбран скин из истории', item.name);
+  async function selectHistorySkin(item: WardrobeItemDto) {
+    try {
+      skinName = item.name;
+      selectedModel = item.model === 'slim' ? 'slim' : 'default';
+      errorMessage = null;
+
+      const res = await callTauri<{ item: WardrobeItemDto; skin_bytes_base64: string }>(
+        COMMANDS.WARDROBE_GET_SKIN,
+        { request: { history_dir: '', item_id: item.id } }
+      );
+
+      if (res?.skin_bytes_base64) {
+        skinBase64 = res.skin_bytes_base64;
+      }
+      ontoast?.('info', 'Скин выбран', item.name);
+    } catch {
+      // Offline fallback: keep metadata
+      ontoast?.('info', 'Выбран скин', item.name);
+    }
   }
 
   async function deleteHistorySkin(item: WardrobeItemDto, e: MouseEvent) {
@@ -525,6 +549,15 @@
 
         <div class="preview-status">
           <div class="status-title">{skinName}</div>
+          <div class="skin-name-field">
+            <input
+              type="text"
+              class="skin-name-input"
+              bind:value={skinName}
+              placeholder="Имя скина"
+              aria-label="Имя скина"
+            />
+          </div>
           <div class="status-subtitle">
             {selectedModel === 'slim' ? 'Тонкая модель (Alex)' : 'Классическая модель (Steve)'}
             {#if selectedCapeId !== 'none'}
@@ -616,14 +649,15 @@
         {/each}
       </List>
 
-      <!-- History of Skins Section -->
-      <List header="История скинов" footer="Ранее использованные скины сохраняются локально в профиле лаунчера.">
+      <!-- Library of Skins Section -->
+      <List header="Библиотека скинов" footer="Ранее загруженные скины сохраняются локально в папке Wex.">
         {#if historyItems.length === 0}
           <div class="empty-history">
             <span class="empty-text">История гардероба пуста</span>
           </div>
         {:else}
           {#each historyItems as item}
+            {@const isSelected = skinName === item.name}
             <Row
               title={item.name}
               subtitle={`${item.model === 'slim' ? 'Тонкая' : 'Классическая'} • ${item.created_utc.slice(0, 10)}`}
@@ -632,10 +666,15 @@
             >
               {#snippet trailing()}
                 <div class="history-actions">
+                  {#if isSelected}
+                    <span class="library-check-mark" aria-label="Выбран">
+                      <Icon name="check" size={14} color="var(--color-system-blue)" />
+                    </span>
+                  {/if}
                   <button
                     type="button"
                     class="delete-item-btn"
-                    title="Удалить из истории"
+                    title="Удалить скин"
                     onclick={(e) => deleteHistorySkin(item, e)}
                   >
                     <Icon name="close" size={14} color="var(--color-secondary-label)" />
@@ -724,13 +763,35 @@
     width: 100%;
   }
 
-  .status-title {
+  .skin-name-field {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+  }
+
+  .skin-name-input {
     font-size: var(--text-headline);
     font-weight: 600;
     color: var(--color-label);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    text-align: center;
+    padding: 2px 8px;
+    width: 100%;
+    max-width: 220px;
+    transition: border-color var(--duration-fast), background-color var(--duration-fast);
+  }
+
+  .skin-name-input:hover {
+    border-color: var(--color-quaternary-label);
+    background-color: var(--color-tertiary-fill);
+  }
+
+  .skin-name-input:focus {
+    outline: none;
+    border-color: var(--color-system-blue);
+    background-color: var(--color-secondary-fill);
   }
 
   .status-subtitle {
@@ -811,6 +872,12 @@
   }
 
   .history-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .library-check-mark {
     display: flex;
     align-items: center;
   }
