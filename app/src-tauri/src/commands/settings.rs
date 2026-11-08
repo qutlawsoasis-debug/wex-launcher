@@ -457,9 +457,10 @@ pub async fn verify_instance_files_impl(
                 primary_url,
                 fallback_url,
                 &target_path,
+                Some(file.size),
                 expected_hash,
                 &noop,
-                &format!("Repairing {}", clean_path),
+                None,
             )
             .await
             .is_ok()
