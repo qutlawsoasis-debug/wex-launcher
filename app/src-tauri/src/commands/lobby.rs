@@ -61,8 +61,8 @@ unsafe impl Sync for LobbyState {}
 impl LobbyState {
     pub fn new(tools_dir: PathBuf, lobby_api_url: &str, old_backend_url: &str) -> Self {
         let event_bus = Arc::new(NetEventBus::new(256));
-        let client = LobbyApiClient::new(lobby_api_url, Some(event_bus.clone()))
-            .unwrap_or_else(|_| {
+        let client =
+            LobbyApiClient::new(lobby_api_url, Some(event_bus.clone())).unwrap_or_else(|_| {
                 LobbyApiClient::new(DEFAULT_LOBBY_API_URL, Some(event_bus.clone()))
                     .expect("Failed to initialize default LobbyApiClient")
             });
@@ -84,7 +84,8 @@ fn format_lobby_error(err: &LobbyError) -> String {
     match err {
         LobbyError::Reqwest(e) => {
             if e.is_timeout() {
-                "Время ожидания ответа от сервиса лобби истекло. Проверьте интернет-соединение.".to_string()
+                "Время ожидания ответа от сервиса лобби истекло. Проверьте интернет-соединение."
+                    .to_string()
             } else {
                 "Не удалось связаться с сервисом лобби. Проверьте сетевое подключение.".to_string()
             }
@@ -121,7 +122,11 @@ async fn fetch_open_rooms(
         }
     }
 
-    let url_str = format!("{}/worlds?player={}", base_url.trim_end_matches('/'), encoded_player);
+    let url_str = format!(
+        "{}/worlds?player={}",
+        base_url.trim_end_matches('/'),
+        encoded_player
+    );
 
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(3))
@@ -196,7 +201,11 @@ async fn fetch_open_rooms(
             name: w.name,
             host_name: w.owner,
             game_version: w.game_version.unwrap_or_else(|| "1.21.1".to_string()),
-            player_count: w.online_players.as_ref().map(|p| p.len() as u32).unwrap_or(0),
+            player_count: w
+                .online_players
+                .as_ref()
+                .map(|p| p.len() as u32)
+                .unwrap_or(0),
             max_players: w.max_players,
             address: w.port.map(|p| format!("89.168.82.200:{}", p)),
             status: if w.status.is_empty() {
@@ -385,7 +394,9 @@ pub async fn net_tunnel_ensure_binary(
     let dest = PathBuf::from(&request.destination_path);
     let path = ensure_binary_downloaded(&dest, Some(&state.event_bus))
         .await
-        .map_err(|e| IpcError::internal("Не удалось загрузить бинарник Playit", Some(e.to_string())))?;
+        .map_err(|e| {
+            IpcError::internal("Не удалось загрузить бинарник Playit", Some(e.to_string()))
+        })?;
     Ok(NetTunnelEnsureBinaryResponse {
         path: path.to_string_lossy().to_string(),
         verified: true,
@@ -401,10 +412,9 @@ pub async fn net_tunnel_start(
     let mut supervisor = PlayitSupervisor::new(Some(state.event_bus.clone()));
     let bin = PathBuf::from(&request.binary_path);
     let secret = PathBuf::from(&request.secret_key);
-    supervisor
-        .start(&bin, &secret)
-        .await
-        .map_err(|e| IpcError::internal("Не удалось запустить playit-agent", Some(e.to_string())))?;
+    supervisor.start(&bin, &secret).await.map_err(|e| {
+        IpcError::internal("Не удалось запустить playit-agent", Some(e.to_string()))
+    })?;
     *sup_lock = Some(supervisor);
     Ok(NetTunnelStartResponse { pid: 0 })
 }
@@ -607,7 +617,11 @@ pub async fn get_lobby_status(
         lock.clone()
     };
 
-    let status = match state.client.get_status(clean_code, player_name.as_deref()).await {
+    let status = match state
+        .client
+        .get_status(clean_code, player_name.as_deref())
+        .await
+    {
         Ok(s) => s,
         Err(_) => return Ok(None),
     };
@@ -849,12 +863,19 @@ mod tests {
 
         let join_res = net_lobby_join_direct(&state, "A7X9", "Alex").await.unwrap();
         assert!(join_res.success);
-        assert_eq!(join_res.tunnel_address.as_deref(), Some("pgsql-jill.tun.ply.gg:38062"));
+        assert_eq!(
+            join_res.tunnel_address.as_deref(),
+            Some("pgsql-jill.tun.ply.gg:38062")
+        );
 
-        let status_res = net_lobby_status_direct(&state, "A7X9", Some("Alex")).await.unwrap();
+        let status_res = net_lobby_status_direct(&state, "A7X9", Some("Alex"))
+            .await
+            .unwrap();
         assert_eq!(status_res.players.unwrap().len(), 2);
 
-        let kick_res = net_lobby_kick_direct(&state, "A7X9", "tok", "Alex").await.unwrap();
+        let kick_res = net_lobby_kick_direct(&state, "A7X9", "tok", "Alex")
+            .await
+            .unwrap();
         assert!(kick_res);
     }
 
@@ -907,7 +928,11 @@ mod tests {
         state: &LobbyState,
         host_name: &str,
     ) -> IpcResult<LobbyCreateResponseDto> {
-        let res = state.client.create_lobby(host_name, None).await.map_err(IpcError::from)?;
+        let res = state
+            .client
+            .create_lobby(host_name, None)
+            .await
+            .map_err(IpcError::from)?;
         Ok(res.into())
     }
 
@@ -916,7 +941,11 @@ mod tests {
         code: &str,
         player_name: &str,
     ) -> IpcResult<LobbyJoinResponseDto> {
-        let res = state.client.join_lobby(code, player_name, None).await.map_err(IpcError::from)?;
+        let res = state
+            .client
+            .join_lobby(code, player_name, None)
+            .await
+            .map_err(IpcError::from)?;
         Ok(res.into())
     }
 
@@ -925,7 +954,11 @@ mod tests {
         code: &str,
         player_name: Option<&str>,
     ) -> IpcResult<LobbyStatusResponseDto> {
-        let res = state.client.get_status(code, player_name).await.map_err(IpcError::from)?;
+        let res = state
+            .client
+            .get_status(code, player_name)
+            .await
+            .map_err(IpcError::from)?;
         Ok(res.into())
     }
 
@@ -934,7 +967,11 @@ mod tests {
         code: &str,
         host_token: &str,
     ) -> IpcResult<bool> {
-        let res = state.client.heartbeat(code, host_token).await.map_err(IpcError::from)?;
+        let res = state
+            .client
+            .heartbeat(code, host_token)
+            .await
+            .map_err(IpcError::from)?;
         Ok(res)
     }
 
@@ -944,7 +981,11 @@ mod tests {
         host_token: &str,
         player: &str,
     ) -> IpcResult<bool> {
-        let res = state.client.kick_player(code, host_token, player).await.map_err(IpcError::from)?;
+        let res = state
+            .client
+            .kick_player(code, host_token, player)
+            .await
+            .map_err(IpcError::from)?;
         Ok(res)
     }
 }
