@@ -28,7 +28,7 @@ pub fn generate_aura_cyan_cape() -> Vec<u8> {
                 Rgba([10, 132, 255, 255]) // systemBlue #0A84FF
             } else if x >= 12 {
                 // Back face of cape
-                if (y == 8 || y == 9) && (x >= 15 && x <= 19) {
+                if (y == 8 || y == 9) && (15..=19).contains(&x) {
                     Rgba([255, 255, 255, 255]) // White Aura logo mark
                 } else if y >= 14 {
                     Rgba([0, 91, 181, 255]) // Darker cyan border
@@ -53,7 +53,7 @@ pub fn generate_aura_silver_cape() -> Vec<u8> {
             let base_color = if y == 0 {
                 Rgba([142, 142, 147, 255]) // systemGray #8E8E93
             } else if x >= 12 {
-                if (y == 8 || y == 9) && (x >= 15 && x <= 19) {
+                if (y == 8 || y == 9) && (15..=19).contains(&x) {
                     Rgba([255, 255, 255, 255])
                 } else if y >= 14 {
                     Rgba([58, 58, 60, 255]) // Dark graphite trim
@@ -283,6 +283,7 @@ pub async fn wardrobe_apply(
 mod tests {
     use super::*;
     use tempfile::tempdir;
+    use wex_extras::image::GenericImageView;
 
     fn make_test_skin_png(width: u32, height: u32) -> (Vec<u8>, String) {
         let img = RgbaImage::from_pixel(width, height, Rgba([30, 60, 90, 255]));
