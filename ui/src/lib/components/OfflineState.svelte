@@ -8,6 +8,7 @@
 -->
 <script lang="ts">
   import { network } from '../design/network.svelte';
+  import { t } from '../i18n';
   import Button from './Button.svelte';
   import Icon from './icons/Icon.svelte';
 
@@ -19,11 +20,14 @@
   }
 
   let {
-    title = 'Нет подключения',
-    subtitle = 'Проверьте подключение к интернету или локальной сети',
+    title,
+    subtitle,
     onretry,
     class: className = '',
   }: Props = $props();
+
+  let resolvedTitle = $derived(title ?? t('offline.title'));
+  let resolvedSubtitle = $derived(subtitle ?? t('offline.subtitle'));
 
   let isRetrying = $state(false);
 
@@ -46,8 +50,8 @@
     <Icon name="wifi-off" size={32} color="var(--color-secondary-label)" />
   </div>
 
-  <h3 class="offline-title">{title}</h3>
-  <p class="offline-subtitle">{subtitle}</p>
+  <h3 class="offline-title">{resolvedTitle}</h3>
+  <p class="offline-subtitle">{resolvedSubtitle}</p>
 
   <div class="offline-action">
     <Button
@@ -57,7 +61,7 @@
       loading={isRetrying || network.isChecking}
     >
       <Icon name="refresh" size={14} color="var(--color-label)" />
-      <span>Повторить</span>
+      <span>{t('offline.retry')}</span>
     </Button>
   </div>
 </div>

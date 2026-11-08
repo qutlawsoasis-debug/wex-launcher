@@ -11,3 +11,6 @@ pub mod shell;
 pub mod wardrobe;
 pub mod workshop;
 pub mod workshop_packs;
+
+#[cfg(test)]
+mod test_gaps;

@@ -8,6 +8,7 @@
   import { theme } from './lib/design/theme.svelte';
   import { network } from './lib/design/network.svelte';
   import { formatError } from './lib/design/errors';
+  import { i18n, t } from './lib/i18n';
   import Sidebar, { type SidebarItem } from './lib/components/Sidebar.svelte';
   import Toolbar from './lib/components/Toolbar.svelte';
   import ProfileBadge from './lib/components/ProfileBadge.svelte';
@@ -51,6 +52,10 @@
       const themeParam = params.get('theme');
       if (themeParam === 'light' || themeParam === 'dark') {
         theme.setAppearance(themeParam);
+      }
+      const langParam = params.get('lang');
+      if (langParam === 'ru' || langParam === 'en') {
+        i18n.setLocale(langParam);
       }
     }
   });
@@ -97,28 +102,28 @@
   }
 
   // Sidebar navigation destinations per SPEC.md 1.2
-  const sidebarItems: SidebarItem[] = [
-    { id: 'play', label: 'Играть', icon: 'play' },
-    { id: 'servers', label: 'Серверы', icon: 'server' },
-    { id: 'lobby', label: 'Лобби', icon: 'lobby' },
-    { id: 'friends', label: 'Друзья', icon: 'friends' },
-    { id: 'wardrobe', label: 'Гардероб', icon: 'wardrobe' },
-    { id: 'workshop', label: 'Мастерская', icon: 'workshop' },
-    { id: 'mods', label: 'Моды', icon: 'mods' },
-    { id: 'settings', label: 'Настройки', icon: 'settings' },
-  ];
+  let sidebarItems = $derived<SidebarItem[]>([
+    { id: 'play', label: t('sidebar.play'), icon: 'play' },
+    { id: 'servers', label: t('sidebar.servers'), icon: 'server' },
+    { id: 'lobby', label: t('sidebar.lobby'), icon: 'lobby' },
+    { id: 'friends', label: t('sidebar.friends'), icon: 'friends' },
+    { id: 'wardrobe', label: t('sidebar.wardrobe'), icon: 'wardrobe' },
+    { id: 'workshop', label: t('sidebar.workshop'), icon: 'workshop' },
+    { id: 'mods', label: t('sidebar.mods'), icon: 'mods' },
+    { id: 'settings', label: t('sidebar.settings'), icon: 'settings' },
+  ]);
 
-  const screenTitles: Record<string, string> = {
-    play: 'Играть',
-    servers: 'Серверы',
-    lobby: 'Кооператив и Лобби',
-    friends: 'Друзья',
-    wardrobe: 'Гардероб',
-    workshop: 'Мастерская',
-    mods: 'Моды и шейдеры',
-    settings: 'Настройки',
-    showcase: 'Компоненты Apple HIG',
-  };
+  let screenTitles = $derived<Record<string, string>>({
+    play: t('sidebar.play'),
+    servers: t('sidebar.servers'),
+    lobby: t('sidebar.lobby'),
+    friends: t('sidebar.friends'),
+    wardrobe: t('sidebar.wardrobe'),
+    workshop: t('sidebar.workshop'),
+    mods: t('sidebar.mods'),
+    settings: t('sidebar.settings'),
+    showcase: 'Showcase',
+  });
 
   // Tauri Window Control Actions
   async function minimizeWindow() {
@@ -286,6 +291,10 @@
       }
       if (t === 'light' || t === 'dark') {
         theme.setAppearance(t);
+      }
+      const l = params.get('lang');
+      if (l === 'ru' || l === 'en') {
+        i18n.setLocale(l);
       }
       const v = params.get('version');
       if (v === '1.20.1' || v === '1.21.1') {
