@@ -19,6 +19,10 @@
     loading?: boolean;
     fullWidth?: boolean;
     type?: 'button' | 'submit' | 'reset';
+    role?: string;
+    ariaLabel?: string;
+    ariaChecked?: boolean;
+    ariaPressed?: boolean;
     onclick?: (event: MouseEvent) => void;
     children?: Snippet;
   }
@@ -31,6 +35,10 @@
     loading = false,
     fullWidth = false,
     type = 'button',
+    role,
+    ariaLabel,
+    ariaChecked,
+    ariaPressed,
     onclick,
     children,
   }: Props = $props();
@@ -39,6 +47,10 @@
 <button
   {type}
   {title}
+  {role}
+  aria-label={ariaLabel || title}
+  aria-checked={ariaChecked}
+  aria-pressed={ariaPressed}
   class="apple-button {variant} {size}"
   class:loading
   class:full-width={fullWidth}

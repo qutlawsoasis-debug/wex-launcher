@@ -438,11 +438,16 @@ pub async fn start_game<R: tauri::Runtime>(
                 let _ = app_clone.emit(
                     EVT_LAUNCH_STATUS,
                     LaunchStatusPayload {
-                        state: status_state,
+                        state: status_state.clone(),
                         message: status_msg,
                         exit_code: None,
                     },
                 );
+
+                if status_state == "error" {
+                    let dto: wex_ipc::models::CrashDiagnosisDto = diagnosis.clone().into();
+                    let _ = app_clone.emit("game-crash", dto);
+                }
             });
 
             Ok(resp)
@@ -470,6 +475,9 @@ pub async fn start_game<R: tauri::Runtime>(
                     exit_code: None,
                 },
             );
+
+            let dto: wex_ipc::models::CrashDiagnosisDto = diagnosis.into();
+            let _ = app.emit("game-crash", dto);
 
             Err(error_msg)
         }

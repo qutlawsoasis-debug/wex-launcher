@@ -29,10 +29,10 @@
   let clampedPct = $derived(Math.max(0, Math.min(100, percentage)));
 </script>
 
-<div class="apple-progress-container" aria-label={label || 'Progress'}>
+<div class="apple-progress-container" aria-label={label || 'Прогресс'}>
   {#if label || detail || !indeterminate}
     <div class="progress-info">
-      <span class="progress-label">{label || (indeterminate ? 'Выполнение...' : 'Синхронизация...')}</span>
+      <span class="progress-label">{label || (indeterminate ? 'Выполнение...' : 'Прогресс')}</span>
       <span class="progress-detail">
         {#if detail}
           {detail}
@@ -57,6 +57,7 @@
         class="progress-fill"
         style="width: {clampedPct}%; background-color: {color};"
         role="progressbar"
+        aria-label={label || 'Прогресс'}
         aria-valuenow={Math.round(clampedPct)}
         aria-valuemin="0"
         aria-valuemax="100"
@@ -115,17 +116,19 @@
     position: absolute;
     top: 0;
     bottom: 0;
+    left: 0;
     width: 40%;
     border-radius: var(--radius-pill);
     animation: indeterminateSlide 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    will-change: transform;
   }
 
   @keyframes indeterminateSlide {
     0% {
-      left: -40%;
+      transform: translateX(-100%);
     }
     100% {
-      left: 100%;
+      transform: translateX(350%);
     }
   }
 

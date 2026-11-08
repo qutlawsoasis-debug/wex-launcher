@@ -12,6 +12,7 @@ import SettingsScreen from './SettingsScreen.svelte';
 import WardrobeScreen from './WardrobeScreen.svelte';
 import WorkshopScreen from './WorkshopScreen.svelte';
 import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
+import CrashSheet from '../components/CrashSheet.svelte';
 
 vi.mock('@tauri-apps/api/core', () => {
   return {
@@ -484,9 +485,10 @@ describe('Wex Launcher Screens', () => {
 
     // Check cape options per SPEC 1.6
     expect(target.textContent).toContain('Без плаща');
-    expect(target.textContent).toContain('Aura Cyan');
-    expect(target.textContent).toContain('Aura Silver');
-    expect(target.textContent).toContain('Пользовательский');
+    expect(target.textContent).toContain('Свой файл');
+    expect(target.textContent).not.toContain('Aura Cyan');
+    expect(target.textContent).not.toContain('Aura Silver');
+    expect(target.textContent).toContain('Стандартный скин');
 
     // Check action buttons
     expect(target.textContent).toContain('Загрузить скин (PNG)');
@@ -495,6 +497,31 @@ describe('Wex Launcher Screens', () => {
 
     // Check authentic empty state
     expect(target.textContent).toContain('История гардероба пуста');
+
+    unmount(comp);
+  });
+
+  it('falls back to 2D character preview in WardrobeScreen when WebGL is unavailable', () => {
+    const comp = mount(WardrobeScreen, {
+      target,
+      props: {
+        playerName: 'Alex',
+      },
+    });
+
+    // In jsdom without WebGL, fallback triggers automatically
+    const canvas2d = target.querySelector('canvas.character-canvas-2d');
+    expect(canvas2d).not.toBeNull();
+    expect(canvas2d?.classList.contains('hidden')).toBe(false);
+
+    // 3D canvas is present but marked hidden in fallback mode
+    const canvas3d = target.querySelector('canvas.character-canvas-3d');
+    expect(canvas3d).not.toBeNull();
+    expect(canvas3d?.classList.contains('hidden')).toBe(true);
+
+    // 2D view controls (front/back) are active
+    expect(target.textContent).toContain('Спереди');
+    expect(target.textContent).toContain('Сзади');
 
     unmount(comp);
   });
@@ -693,6 +720,28 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  it('renders CrashSheet with honest unknown diagnosis without fake reasons', () => {
+    const comp = mount(CrashSheet, {
+      target,
+      props: {
+        open: true,
+        version: '1.21.1',
+        diagnosis: {
+          kind: { Unknown: { exit_code: -1 } },
+          title: 'Игра завершилась с ошибкой (код -1)',
+          user_advice: 'Причина сбоя не определена.',
+          technical_summary: 'Process finished with exit code -1',
+        },
+      },
+    });
+
+    expect(target.textContent).toContain('Причина не определена');
+    expect(target.textContent).toContain('Process finished with exit code -1');
+    expect(target.textContent).toContain('Скопировать отчёт');
+    expect(target.textContent).toContain('Открыть лог');
+    unmount(comp);
+  });
+
   it('renders PlayScreen with launch ErrorState banner and actionable buttons', async () => {
     let launchRetried = false;
     let settingsOpened = false;
@@ -741,6 +790,20 @@ describe('Wex Launcher Screens', () => {
     // Pack mod should not have a delete button, or if triggered internally:
     expect(target.textContent).toContain('Пак Wex');
 
+    unmount(comp);
+  });
+
+  it('opens ImportWizardSheet on PlayScreen when initialShowImportWizard is true', () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        initialShowImportWizard: true,
+      },
+    });
+
+    expect(target.textContent).toContain('Импорт из старого лаунчера');
     unmount(comp);
   });
 });

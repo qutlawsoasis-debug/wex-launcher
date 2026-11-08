@@ -239,7 +239,7 @@
           <div class="status-icon-circle neutral">
             <Icon name="server" size={24} color="var(--color-secondary-label)" />
           </div>
-          <h3 class="status-title">Нет открытых комнат</h3>
+          <h2 class="status-title">Нет открытых комнат</h2>
           <p class="status-desc">
             В данный момент нет доступных публичных комнат. Вы можете открыть свой мир во вкладке «LAN и Туннели».
           </p>
@@ -251,7 +251,7 @@
         </div>
       {:else}
         <List header="Открытые комнаты ({cloudRooms.length})">
-          {#each cloudRooms as room}
+          {#each cloudRooms as room (room.id)}
             <Row
               title={room.name}
               subtitle="Организатор: {room.host_name} • Версия {room.game_version}"
@@ -350,7 +350,7 @@
       <!-- Players in Room List -->
       <div class="players-list-wrap">
         <List header="Игроки в комнате ({activeRoom.players.length})">
-          {#each activeRoom.players as p}
+          {#each activeRoom.players as p (p.name)}
             <Row
               title={p.name}
               subtitle={p.is_host ? 'Организатор комнаты (Хост)' : 'Гость'}
@@ -395,7 +395,7 @@
             <Icon name="friends" size={20} color="var(--color-system-blue)" />
           </div>
           <div class="card-headings">
-            <h3 class="card-heading">Присоединиться по коду</h3>
+            <h2 class="card-heading">Присоединиться по коду</h2>
             <p class="card-caption">Введите код комнаты, полученный от друга</p>
           </div>
         </div>
@@ -447,7 +447,7 @@
             <Icon name="play" size={20} color="var(--color-system-green)" />
           </div>
           <div class="card-headings">
-            <h3 class="card-heading">Открыть локальный мир</h3>
+            <h2 class="card-heading">Открыть локальный мир</h2>
             <p class="card-caption">Создайте комнату через автоматический Playit-туннель</p>
           </div>
         </div>
@@ -455,7 +455,7 @@
         <div class="world-picker">
           <label class="picker-label" for="world-select">Выберите мир для кооператива</label>
           <div class="world-options" id="world-select">
-            {#each localWorlds as w}
+            {#each localWorlds as w (w.id || w.name)}
               <button
                 type="button"
                 class="world-opt-btn"
@@ -524,8 +524,11 @@
 
   .cloud-status-card {
     background-color: var(--card-bg);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
+    box-shadow: var(--glass-shadow);
     padding: 40px 24px;
     display: flex;
     flex-direction: column;
@@ -560,6 +563,7 @@
   .status-desc {
     font-size: var(--text-subheadline);
     color: var(--color-secondary-label);
+    font-weight: 500;
     margin: 0;
     max-width: 420px;
     line-height: 1.4;
@@ -621,6 +625,8 @@
 
   .lobby-card {
     background-color: var(--card-bg);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
     padding: 24px;
@@ -668,6 +674,7 @@
   .card-caption {
     font-size: var(--text-subheadline);
     color: var(--color-secondary-label);
+    font-weight: 500;
     margin: 0;
   }
 

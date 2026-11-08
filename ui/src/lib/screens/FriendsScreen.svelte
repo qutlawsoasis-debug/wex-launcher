@@ -457,7 +457,7 @@
             <div class="empty-icon-wrap">
               <Icon name="friends" size={40} color="var(--color-tertiary-label)" />
             </div>
-            <h3 class="empty-title">Список друзей пуст</h3>
+            <h2 class="empty-title">Список друзей пуст</h2>
             <p class="empty-desc">
               {searchQuery
                 ? 'По запросу «' + searchQuery + '» ни одного игрока не найдено.'
@@ -513,7 +513,7 @@
             <div class="empty-icon-wrap">
               <Icon name="friends" size={40} color="var(--color-tertiary-label)" />
             </div>
-            <h3 class="empty-title">Нет входящих заявок</h3>
+            <h2 class="empty-title">Нет входящих заявок</h2>
             <p class="empty-desc">
               Когда другие игроки отправят вам заявку по вашему коду дружбы, она появится в этом разделе.
             </p>
@@ -532,7 +532,7 @@
           <span class="summary-count">{unlockedCount} из {achievements.length} получено</span>
         </div>
         <div class="summary-progress">
-          <ProgressBar percentage={overallPercentage} height={8} />
+          <ProgressBar percentage={overallPercentage} label="Общий прогресс достижений" height={8} />
         </div>
       </div>
 
@@ -564,7 +564,7 @@
 
               {#if !ach.unlocked}
                 <div class="ach-progress-bar">
-                  <ProgressBar percentage={pct} height={4} />
+                  <ProgressBar percentage={pct} label={ach.title} height={4} />
                 </div>
               {/if}
             </div>
