@@ -50,6 +50,92 @@ pub struct ApplyImportResponse {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PlayTimeDto {
+    pub total_seconds: u64,
+    pub total_launches: u32,
+    pub last_played_utc: Option<String>,
+    pub formatted_play_time: String,
+    pub summary_text: String,
+}
+
+pub fn format_play_time(total_seconds: u64) -> String {
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    if hours > 0 {
+        format!("{hours} ч. {minutes} мин.")
+    } else {
+        format!("{minutes} мин.")
+    }
+}
+
+pub fn get_playtime_internal(paths: &WexPaths) -> PlayTimeDto {
+    let stats_file = paths.root.join("stats.json");
+    if let Ok(bytes) = fs::read(&stats_file) {
+        if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+            let total_seconds = val
+                .get("total_play_time_seconds")
+                .or_else(|| val.get("total_seconds"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let total_launches = val
+                .get("total_game_launches")
+                .or_else(|| val.get("total_launches"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32;
+            let last_played_utc = val
+                .get("last_played_utc")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let formatted = format_play_time(total_seconds);
+            let summary = format!("В игре: {formatted}  •  Запусков: {total_launches}");
+            return PlayTimeDto {
+                total_seconds,
+                total_launches,
+                last_played_utc,
+                formatted_play_time: formatted,
+                summary_text: summary,
+            };
+        }
+    }
+    PlayTimeDto {
+        total_seconds: 0,
+        total_launches: 0,
+        last_played_utc: None,
+        formatted_play_time: "0 мин.".to_string(),
+        summary_text: "Время в игре: 0 мин. • 0 запусков".to_string(),
+    }
+}
+
+pub fn record_playtime_internal(
+    paths: &WexPaths,
+    added_seconds: u64,
+    inc_launch: bool,
+) -> PlayTimeDto {
+    let stats_file = paths.root.join("stats.json");
+    let mut current = get_playtime_internal(paths);
+    current.total_seconds += added_seconds;
+    if inc_launch {
+        current.total_launches += 1;
+    }
+    current.last_played_utc = Some(chrono::Utc::now().to_rfc3339());
+    current.formatted_play_time = format_play_time(current.total_seconds);
+    current.summary_text = format!(
+        "В игре: {}  •  Запусков: {}",
+        current.formatted_play_time, current.total_launches
+    );
+
+    let val = serde_json::json!({
+        "total_play_time_seconds": current.total_seconds,
+        "total_game_launches": current.total_launches,
+        "last_played_utc": current.last_played_utc,
+    });
+    if let Ok(json_str) = serde_json::to_string_pretty(&val) {
+        let _ = fs::write(&stats_file, json_str);
+    }
+    current
+}
+
 // ---------------------------------------------------------------------------
 // Business Logic Functions (Pure, easily testable with mock core)
 // ---------------------------------------------------------------------------
@@ -230,6 +316,33 @@ pub async fn apply_import_internal(
         }
     }
 
+    // 4. Import playtime statistics if present in old launcher
+    if let Ok(old_data) = import_old_launcher_internal(&req.old_launcher_dir) {
+        if old_data.total_play_time_seconds > 0 || old_data.total_game_launches > 0 {
+            let stats_file = paths.root.join("stats.json");
+            let mut current = get_playtime_internal(paths);
+            if current.total_seconds == 0 {
+                current.total_seconds = old_data.total_play_time_seconds;
+            }
+            if current.total_launches == 0 {
+                current.total_launches = old_data.total_game_launches;
+            }
+            current.formatted_play_time = format_play_time(current.total_seconds);
+            current.summary_text = format!(
+                "В игре: {}  •  Запусков: {}",
+                current.formatted_play_time, current.total_launches
+            );
+            let val = serde_json::json!({
+                "total_play_time_seconds": current.total_seconds,
+                "total_game_launches": current.total_launches,
+                "last_played_utc": current.last_played_utc,
+            });
+            if let Ok(json_str) = serde_json::to_string_pretty(&val) {
+                let _ = fs::write(&stats_file, json_str);
+            }
+        }
+    }
+
     Ok(ApplyImportResponse {
         success: true,
         imported_nickname,
@@ -307,6 +420,24 @@ pub async fn extras_apply_import(
     state: State<'_, PlayState>,
 ) -> Result<ApplyImportResponse, String> {
     apply_import_internal(&state.paths, state.core.as_ref(), request).await
+}
+
+#[tauri::command]
+pub async fn overview_get_playtime(state: State<'_, PlayState>) -> Result<PlayTimeDto, String> {
+    Ok(get_playtime_internal(&state.paths))
+}
+
+#[tauri::command]
+pub async fn overview_record_playtime(
+    state: State<'_, PlayState>,
+    added_seconds: u64,
+    inc_launch: Option<bool>,
+) -> Result<PlayTimeDto, String> {
+    Ok(record_playtime_internal(
+        &state.paths,
+        added_seconds,
+        inc_launch.unwrap_or(false),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -481,5 +612,39 @@ mod tests {
             fs::read(&test_skin_path).unwrap(),
             b"TEST_SKIN_DATA_ORIGINAL"
         );
+    }
+
+    #[test]
+    fn test_playtime_initial_and_recording() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+
+        // 1. Initially empty
+        let initial = get_playtime_internal(&paths);
+        assert_eq!(initial.total_seconds, 0);
+        assert_eq!(initial.total_launches, 0);
+        assert_eq!(initial.formatted_play_time, "0 мин.");
+
+        // 2. Record 3700 seconds (~1 hr 1 min) with launch
+        let rec = record_playtime_internal(&paths, 3700, true);
+        assert_eq!(rec.total_seconds, 3700);
+        assert_eq!(rec.total_launches, 1);
+        assert_eq!(rec.formatted_play_time, "1 ч. 1 мин.");
+        assert_eq!(rec.summary_text, "В игре: 1 ч. 1 мин.  •  Запусков: 1");
+
+        // 3. Persistent across reloads
+        let loaded = get_playtime_internal(&paths);
+        assert_eq!(loaded.total_seconds, 3700);
+        assert_eq!(loaded.total_launches, 1);
+    }
+
+    #[test]
+    fn test_playtime_formatting() {
+        assert_eq!(format_play_time(0), "0 мин.");
+        assert_eq!(format_play_time(59), "0 мин.");
+        assert_eq!(format_play_time(125), "2 мин.");
+        assert_eq!(format_play_time(3600), "1 ч. 0 мин.");
+        assert_eq!(format_play_time(3665), "1 ч. 1 мин.");
+        assert_eq!(format_play_time(7500), "2 ч. 5 мин.");
     }
 }

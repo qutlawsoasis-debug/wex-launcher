@@ -549,6 +549,10 @@
           onopensettings={() => {
             activeTab = 'settings';
           }}
+          onnavigatescreen={(screen) => {
+            activeTab = screen as any;
+          }}
+          ontoast={(t) => addToast(t.type, t.title, t.message)}
         />
       {:else if activeTab === 'servers'}
         <ServersScreen />

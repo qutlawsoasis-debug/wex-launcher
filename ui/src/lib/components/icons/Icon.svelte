@@ -31,7 +31,10 @@
       | 'cpu'
       | 'workshop'
       | 'wifi-off'
-      | 'copy';
+      | 'copy'
+      | 'trophy'
+      | 'camera'
+      | 'clock';
     size?: number;
     color?: string;
     class?: string;
@@ -164,6 +167,18 @@
   {:else if name === 'copy'}
     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+  {:else if name === 'trophy'}
+    <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2"></path>
+    <path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"></path>
+    <path d="M4 3h16v6a6 6 0 0 1-12 0V3z"></path>
+    <path d="M12 15v4"></path>
+    <path d="M8 21h8"></path>
+  {:else if name === 'camera'}
+    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path>
+    <circle cx="12" cy="13" r="3"></circle>
+  {:else if name === 'clock'}
+    <circle cx="12" cy="12" r="10"></circle>
+    <polyline points="12 6 12 12 16 14"></polyline>
   {/if}
 </svg>
 
