@@ -316,6 +316,10 @@ pub fn run() {
             commands::shell::shell_minimize_window,
             commands::shell::shell_toggle_maximize_window,
             commands::shell::shell_close_window,
+            // Report commands (SPEC 2.10)
+            commands::report::report_get_preview,
+            commands::report::report_save_zip,
+            commands::report::report_copy_text,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
