@@ -175,9 +175,6 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-    unmount(comp);
-  });
-
   it('renders Mockup 2 (Editorial) with showcase banner, changelog, and servers', () => {
     const comp = mount(Mockup2, {
       target,

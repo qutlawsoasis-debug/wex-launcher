@@ -160,7 +160,7 @@
         nickname: playerName,
       });
       isLaunching = false;
-      isRunning = true;
+      isGameRunning = true;
       clientStatus = 'Minecraft запущен';
       addToast('success', 'Minecraft запущен', result);
     } catch {
@@ -213,7 +213,7 @@
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('shell_stop_game', { version: selectedVersion });
-      isRunning = false;
+      isGameRunning = false;
       isLaunching = false;
       clientStatus = 'Игра остановлена';
       addToast('info', 'Minecraft остановлен');
@@ -288,7 +288,7 @@
       .then(({ invoke }) => {
         invoke<boolean>('is_game_running')
           .then((running) => {
-            isRunning = running;
+            isGameRunning = running;
             if (running) {
               clientStatus = 'Minecraft запущен';
             }
