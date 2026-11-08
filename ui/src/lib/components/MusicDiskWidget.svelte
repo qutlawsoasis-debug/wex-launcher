@@ -14,7 +14,7 @@
   import Icon from './icons/Icon.svelte';
   import Button from './Button.svelte';
   import { COMMANDS } from '../ipc/generated/commands';
-  import type { MusicTrackDto, MusicPlaylistResponse, MusicGetTrackDataResponse, MusicSettingsDto } from '../ipc/generated';
+  import type { MusicTrackDto, MusicPlaylistResponse, MusicGetTrackDataResponse, MusicSettingsDto, MusicSmtcStateDto } from '../ipc/generated';
 
   interface Props {
     isGameRunning?: boolean;
@@ -137,6 +137,9 @@
     }
   }
 
+  let fadeAnimationTimer: number | null = null;
+  let prevIsGameRunning = $state(false);
+
   export function togglePlayPause() {
     if (!isEnabled) return;
     if (tracks.length === 0) return;
@@ -144,27 +147,76 @@
     if (isPlaying) {
       pause();
     } else {
-      play();
+      return play();
     }
   }
 
   export function play() {
+    if (fadeAnimationTimer !== null) {
+      cancelAnimationFrame(fadeAnimationTimer);
+      fadeAnimationTimer = null;
+    }
     if (!isEnabled || tracks.length === 0) return;
     if (audioElement && audioElement.src) {
-      audioElement.play().catch(() => {
+      audioElement.volume = (isMuted ? 0 : volume) / 100;
+      isPlaying = true;
+      return audioElement.play().catch(() => {
         isPlaying = false;
       });
-      isPlaying = true;
     } else {
-      loadAndPlayTrack(currentTrackIndex, true);
+      return loadAndPlayTrack(currentTrackIndex, true);
     }
   }
 
   export function pause() {
+    if (fadeAnimationTimer !== null) {
+      cancelAnimationFrame(fadeAnimationTimer);
+      fadeAnimationTimer = null;
+    }
     if (audioElement) {
       audioElement.pause();
+      audioElement.volume = (isMuted ? 0 : volume) / 100;
     }
     isPlaying = false;
+  }
+
+  export function fadeOutAndPause(durationMs = 600) {
+    if (fadeAnimationTimer !== null) {
+      cancelAnimationFrame(fadeAnimationTimer);
+      fadeAnimationTimer = null;
+    }
+
+    if (!audioElement || !isPlaying) {
+      pause();
+      return;
+    }
+
+    const startVolume = audioElement.volume;
+    const startTime = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+    function step() {
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / durationMs);
+      const newVol = Math.max(0, startVolume * (1 - progress));
+
+      if (audioElement) {
+        audioElement.volume = newVol;
+      }
+
+      if (progress < 1) {
+        fadeAnimationTimer = requestAnimationFrame(step);
+      } else {
+        fadeAnimationTimer = null;
+        if (audioElement) {
+          audioElement.pause();
+          audioElement.volume = (isMuted ? 0 : volume) / 100;
+        }
+        isPlaying = false;
+      }
+    }
+
+    fadeAnimationTimer = requestAnimationFrame(step);
   }
 
   export function next() {
@@ -241,23 +293,159 @@
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   }
 
-  // Auto-pause when Minecraft game starts
-  $effect(() => {
-    if (isGameRunning && isPlaying) {
-      pause();
+  // Windows SMTC (System Media Transport Controls) synchronization
+  function updateMediaSession() {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+
+    if (!currentTrack) {
+      navigator.mediaSession.metadata = null;
+      navigator.mediaSession.playbackState = 'none';
+      return;
     }
+
+    const artwork = currentTrack.cover_data_url
+      ? [{ src: currentTrack.cover_data_url, sizes: '512x512', type: 'image/png' }]
+      : [];
+
+    if (typeof MediaMetadata !== 'undefined') {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        album: 'Wex Launcher',
+        artwork,
+      });
+    }
+
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : (tracks.length > 0 ? 'paused' : 'none');
+
+    if ('setPositionState' in navigator.mediaSession && durationSeconds > 0) {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: Math.max(durationSeconds, positionSeconds),
+          playbackRate: 1,
+          position: Math.min(positionSeconds, durationSeconds),
+        });
+      } catch {}
+    }
+  }
+
+  async function syncSmtcState() {
+    const state: MusicSmtcStateDto = {
+      is_playing: isPlaying,
+      track_title: currentTrack?.title ?? null,
+      artist: currentTrack?.artist ?? null,
+      album: currentTrack ? 'Wex Launcher' : null,
+      has_cover: Boolean(currentTrack?.cover_data_url),
+      position_seconds: BigInt(positionSeconds),
+      duration_seconds: durationSeconds > 0 ? BigInt(durationSeconds) : null,
+    };
+
+    try {
+      await callTauri(COMMANDS.MUSIC_SYNC_SMTC, { state });
+    } catch {}
+  }
+
+  // React to track, playback and timing changes for SMTC
+  $effect(() => {
+    // Read reactive variables to trigger effect
+    const _t = currentTrack;
+    const _p = isPlaying;
+    const _pos = positionSeconds;
+    const _dur = durationSeconds;
+
+    updateMediaSession();
+    syncSmtcState();
+  });
+
+  // Smooth fade-out (600 ms) when game starts; do not auto-resume on game exit
+  export function notifyGameRunning(running: boolean) {
+    if (running && !prevIsGameRunning) {
+      prevIsGameRunning = true;
+      if (isPlaying) {
+        fadeOutAndPause(600);
+      }
+    } else if (!running && prevIsGameRunning) {
+      prevIsGameRunning = false;
+      // Requirement: "после выхода из игры сама не включается"
+    }
+  }
+
+  $effect(() => {
+    notifyGameRunning(isGameRunning);
   });
 
   onMount(() => {
     loadPlaylist();
     loadSettings();
+
+    // Register Media Session Action Handlers for Windows SMTC
+    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+      const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
+        ['play', () => play()],
+        ['pause', () => pause()],
+        ['previoustrack', () => previous()],
+        ['nexttrack', () => next()],
+        ['stop', () => pause()],
+        ['seekto', (details) => {
+          if (details.seekTime !== undefined && audioElement) {
+            audioElement.currentTime = details.seekTime;
+            positionSeconds = Math.floor(details.seekTime);
+          }
+        }],
+      ];
+
+      for (const [action, handler] of handlers) {
+        try {
+          navigator.mediaSession.setActionHandler(action, handler);
+        } catch {}
+      }
+    }
+
+    // Hardware media keys listener on window
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'MediaPlayPause') {
+        e.preventDefault();
+        togglePlayPause();
+      } else if (e.key === 'MediaTrackNext') {
+        e.preventDefault();
+        next();
+      } else if (e.key === 'MediaTrackPrevious') {
+        e.preventDefault();
+        previous();
+      } else if (e.key === 'MediaStop') {
+        e.preventDefault();
+        pause();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      if (fadeAnimationTimer !== null) {
+        cancelAnimationFrame(fadeAnimationTimer);
+        fadeAnimationTimer = null;
+      }
+      if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+        try {
+          navigator.mediaSession.setActionHandler('play', null);
+          navigator.mediaSession.setActionHandler('pause', null);
+          navigator.mediaSession.setActionHandler('previoustrack', null);
+          navigator.mediaSession.setActionHandler('nexttrack', null);
+          navigator.mediaSession.setActionHandler('stop', null);
+          navigator.mediaSession.setActionHandler('seekto', null);
+        } catch {}
+      }
+    };
   });
 </script>
 
 <div class="music-disk-widget" class:playing={isPlaying} aria-label="Виджет фоновой музыки">
-  <!-- Hidden HTML5 Audio Element -->
+  <!-- Hidden HTML5 Audio Element (preload auto and playsinline for background SMTC) -->
   <audio
     bind:this={audioElement}
+    preload="auto"
+    playsinline
     ontimeupdate={handleTimeUpdate}
     onloadedmetadata={handleLoadedMetadata}
     onended={handleEnded}

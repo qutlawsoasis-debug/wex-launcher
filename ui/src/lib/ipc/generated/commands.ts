@@ -202,6 +202,8 @@ export type MusicGetTrackDataResponse = { file_name: string, mime_type: string, 
 
 export type MusicSettingsDto = { enabled: boolean, volume: number, auto_pause_on_launch: boolean, };;
 
+export type MusicSmtcStateDto = { is_playing: boolean, track_title: string | null, artist: string | null, album: string | null, has_cover: boolean, position_seconds: bigint, duration_seconds: bigint | null, };;
+
 export const COMMANDS = {
     CORE_GET_CONFIG: "core_get_config",
     CORE_SAVE_CONFIG: "core_save_config",
@@ -270,6 +272,8 @@ export const COMMANDS = {
     MUSIC_OPEN_FOLDER: "music_open_folder",
     MUSIC_GET_SETTINGS: "music_get_settings",
     MUSIC_SET_SETTINGS: "music_set_settings",
+    MUSIC_SYNC_SMTC: "music_sync_smtc",
+    MUSIC_GET_SMTC_STATE: "music_get_smtc_state",
 } as const;
 
 export type IpcCommandName = typeof COMMANDS[keyof typeof COMMANDS];

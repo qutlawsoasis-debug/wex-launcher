@@ -1,11 +1,12 @@
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use std::path::Path;
+use std::sync::{Mutex, OnceLock};
 use tauri::State;
 use wex_extras::music::{MusicManager, MusicSettings};
 use wex_ipc::commands::{
     MusicGetTrackDataRequest, MusicGetTrackDataResponse, MusicPlaylistResponse, MusicSettingsDto,
-    MusicTrackDto,
+    MusicSmtcStateDto, MusicTrackDto,
 };
 
 use super::launch::PlayState;
@@ -150,6 +151,42 @@ pub async fn music_set_settings(
     music_set_settings_impl(&state.paths.root, settings)
 }
 
+static LAST_SMTC_STATE: OnceLock<Mutex<Option<MusicSmtcStateDto>>> = OnceLock::new();
+
+fn get_smtc_storage() -> &'static Mutex<Option<MusicSmtcStateDto>> {
+    LAST_SMTC_STATE.get_or_init(|| Mutex::new(None))
+}
+
+pub fn music_sync_smtc_impl(state: MusicSmtcStateDto) {
+    if let Ok(mut lock) = get_smtc_storage().lock() {
+        *lock = Some(state);
+    }
+}
+
+pub fn music_get_smtc_state_impl() -> Option<MusicSmtcStateDto> {
+    get_smtc_storage()
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+}
+
+pub fn music_reset_smtc_state_for_test() {
+    if let Ok(mut lock) = get_smtc_storage().lock() {
+        *lock = None;
+    }
+}
+
+#[tauri::command]
+pub async fn music_sync_smtc(state: MusicSmtcStateDto) -> Result<(), String> {
+    music_sync_smtc_impl(state);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn music_get_smtc_state() -> Result<Option<MusicSmtcStateDto>, String> {
+    Ok(music_get_smtc_state_impl())
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -227,5 +264,25 @@ pub(crate) mod tests {
 
         let loaded = music_get_settings_impl(tmp.path()).unwrap();
         assert_eq!(loaded, new_s);
+    }
+
+    #[test]
+    fn test_music_smtc_sync_state() {
+        music_reset_smtc_state_for_test();
+        assert_eq!(music_get_smtc_state_impl(), None);
+
+        let sample = MusicSmtcStateDto {
+            is_playing: true,
+            track_title: Some("Wet Hands".to_string()),
+            artist: Some("C418".to_string()),
+            album: Some("Wex Launcher".to_string()),
+            has_cover: true,
+            position_seconds: 42,
+            duration_seconds: Some(130),
+        };
+
+        music_sync_smtc_impl(sample.clone());
+        let current = music_get_smtc_state_impl();
+        assert_eq!(current, Some(sample));
     }
 }

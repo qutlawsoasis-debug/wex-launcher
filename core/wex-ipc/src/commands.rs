@@ -549,6 +549,8 @@ pub const CMD_MUSIC_GET_TRACK_DATA: &str = "music_get_track_data";
 pub const CMD_MUSIC_OPEN_FOLDER: &str = "music_open_folder";
 pub const CMD_MUSIC_GET_SETTINGS: &str = "music_get_settings";
 pub const CMD_MUSIC_SET_SETTINGS: &str = "music_set_settings";
+pub const CMD_MUSIC_SYNC_SMTC: &str = "music_sync_smtc";
+pub const CMD_MUSIC_GET_SMTC_STATE: &str = "music_get_smtc_state";
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct MusicTrackDto {
@@ -583,4 +585,15 @@ pub struct MusicSettingsDto {
     pub enabled: bool,
     pub volume: u8,
     pub auto_pause_on_launch: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicSmtcStateDto {
+    pub is_playing: bool,
+    pub track_title: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub has_cover: bool,
+    pub position_seconds: u64,
+    pub duration_seconds: Option<u64>,
 }
