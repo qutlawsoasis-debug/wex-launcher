@@ -13,6 +13,7 @@ pub struct WexPaths {
     pub runtime_dir: PathBuf,
     pub logs_dir: PathBuf,
     pub config_file: PathBuf,
+    pub playtime_file: PathBuf,
 }
 
 impl WexPaths {
@@ -36,6 +37,7 @@ impl WexPaths {
         let runtime_dir = root.join("runtime");
         let logs_dir = root.join("logs");
         let config_file = root.join("config.json");
+        let playtime_file = root.join("playtime.json");
 
         Self {
             root,
@@ -46,6 +48,7 @@ impl WexPaths {
             runtime_dir,
             logs_dir,
             config_file,
+            playtime_file,
         }
     }
 

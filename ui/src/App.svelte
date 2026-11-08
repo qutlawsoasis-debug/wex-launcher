@@ -169,12 +169,25 @@
     }
   }
 
+  let playerPlaytimeFormatted = $state<string | undefined>(undefined);
+
   async function loadProfile() {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const prof = await invoke<{ nickname: string; initials: string; is_online: boolean; skin_head_url?: string }>('shell_get_profile', { nickname: playerName });
+      const prof = await invoke<{
+        nickname: string;
+        initials: string;
+        is_online: boolean;
+        skin_head_url?: string;
+        total_playtime_seconds?: number;
+        total_playtime_formatted?: string;
+        total_launches?: number;
+      }>('shell_get_profile', { nickname: playerName });
       if (prof.skin_head_url) {
         skinHeadUrl = prof.skin_head_url;
+      }
+      if (prof.total_playtime_formatted) {
+        playerPlaytimeFormatted = prof.total_playtime_formatted;
       }
     } catch {
       skinHeadUrl = undefined;
@@ -542,6 +555,7 @@
           {playerName}
           isOnline={network.isOnline}
           {skinHeadUrl}
+          playtimeFormatted={playerPlaytimeFormatted}
         />
       {/snippet}
     </Toolbar>

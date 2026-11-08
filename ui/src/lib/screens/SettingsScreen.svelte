@@ -297,6 +297,66 @@
     saveConfig();
   }
 
+  // Maintenance: Verify instance files & Cleanup cache
+  let isVerifyingFiles = $state(false);
+  let verifyStatus = $state<string | null>(null);
+  let isCleaningCache = $state(false);
+  let cleanCacheStatus = $state<string | null>(null);
+
+  async function handleVerifyFiles() {
+    if (isVerifyingFiles) return;
+    isVerifyingFiles = true;
+    verifyStatus = 'Проверка файлов по манифесту...';
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<{
+        success: boolean;
+        total_files: number;
+        verified_files: number;
+        repaired_files: number;
+        corrupted_files: number;
+        errors: string[];
+        message: string;
+      }>('verify_instance_files', { version: selectedVersion });
+
+      if (res) {
+        verifyStatus = res.message;
+      } else {
+        verifyStatus = 'Проверка завершена';
+      }
+    } catch (e: any) {
+      verifyStatus = `Ошибка проверки: ${e?.message || e || 'неизвестная ошибка'}`;
+    } finally {
+      isVerifyingFiles = false;
+    }
+  }
+
+  async function handleCleanCache() {
+    if (isCleaningCache) return;
+    isCleaningCache = true;
+    cleanCacheStatus = 'Очистка кэша и логов...';
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<{
+        success: boolean;
+        freed_bytes: number;
+        freed_formatted: string;
+        deleted_files_count: number;
+        message: string;
+      }>('cleanup_cache', { version: selectedVersion });
+
+      if (res) {
+        cleanCacheStatus = res.message;
+      } else {
+        cleanCacheStatus = 'Очистка завершена';
+      }
+    } catch (e: any) {
+      cleanCacheStatus = `Ошибка очистки: ${e?.message || e || 'неизвестная ошибка'}`;
+    } finally {
+      isCleaningCache = false;
+    }
+  }
+
   onMount(() => {
     loadConfig();
   });
@@ -394,6 +454,52 @@
               <span>{t('settings.gamedir_open')}</span>
             </Button>
           </div>
+        {/snippet}
+      </Row>
+
+      <Row
+        title="Проверить файлы игры"
+        subtitle={verifyStatus || `Проверка SHA-256 файлов клиента версии ${selectedVersion} по манифесту пака и восстановление`}
+      >
+        {#snippet trailing()}
+          <Button
+            variant="secondary"
+            size="small"
+            disabled={isVerifyingFiles}
+            onclick={handleVerifyFiles}
+            title="Проверить SHA-256 файлов инстанса"
+          >
+            {#if isVerifyingFiles}
+              <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
+              <span>Проверка...</span>
+            {:else}
+              <Icon name="check" size={13} color="var(--color-secondary-label)" />
+              <span>Проверить</span>
+            {/if}
+          </Button>
+        {/snippet}
+      </Row>
+
+      <Row
+        title="Очистить кэш"
+        subtitle={cleanCacheStatus || 'Удаление логов сессий, crash-reports и временных файлов загрузок'}
+      >
+        {#snippet trailing()}
+          <Button
+            variant="secondary"
+            size="small"
+            disabled={isCleaningCache}
+            onclick={handleCleanCache}
+            title="Очистить кэш и освободить дисковое пространство"
+          >
+            {#if isCleaningCache}
+              <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
+              <span>Очистка...</span>
+            {:else}
+              <Icon name="trash" size={13} color="var(--color-secondary-label)" />
+              <span>Очистить</span>
+            {/if}
+          </Button>
         {/snippet}
       </Row>
     </List>

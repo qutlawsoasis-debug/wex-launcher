@@ -409,7 +409,7 @@ pub async fn sync_aura_pack_cancellable(
     })
 }
 
-fn urlencoding_encode(s: &str) -> String {
+pub fn urlencoding_encode(s: &str) -> String {
     let mut result = String::new();
     for b in s.bytes() {
         match b {

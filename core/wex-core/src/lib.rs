@@ -9,6 +9,7 @@ pub mod java;
 pub mod launcher;
 pub mod minecraft;
 pub mod pack;
+pub mod playtime;
 
 pub use auth::offline_uuid;
 pub use config::{LauncherConfig, WexPaths};
