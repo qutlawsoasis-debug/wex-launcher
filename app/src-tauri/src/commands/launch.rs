@@ -245,17 +245,27 @@ pub async fn start_game(
         return Err("Игра уже запущена или выполняется запуск".to_string());
     }
 
-    // 2. Set Discord RPC activity
-    set_discord_rpc(
-        &state.discord,
-        Activity::Playing {
-            version: version.clone(),
-            world_name: None,
-            mod_count: None,
-            start_timestamp: Some(chrono::Utc::now().timestamp()),
-        },
-    )
-    .await;
+    // 2. Load launcher config to apply preset and check features
+    let cfg = wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file);
+
+    // Apply graphics preset before launch
+    let pool_dirs = vec![state.paths.root.join("shaderpacks_pool")];
+    let inst_dir = state.paths.instance_dir(&version);
+    let _ = wex_extras::presets::apply_preset(&inst_dir, &cfg.graphics_preset, &pool_dirs);
+
+    // Set Discord RPC activity if enabled
+    if cfg.discord_rpc {
+        set_discord_rpc(
+            &state.discord,
+            Activity::Playing {
+                version: version.clone(),
+                world_name: None,
+                mod_count: None,
+                start_timestamp: Some(chrono::Utc::now().timestamp()),
+            },
+        )
+        .await;
+    }
 
     // 3. Emit preparing launch status
     let _ = app.emit(
@@ -469,19 +479,6 @@ pub async fn launch_game(
     start_game(app, version, nickname, None, state)
         .await
         .map(|r| r.message)
-}
-
-#[tauri::command]
-pub async fn get_launcher_config(state: State<'_, PlayState>) -> Result<LauncherConfig, String> {
-    get_config(state).await
-}
-
-#[tauri::command]
-pub async fn save_launcher_config(
-    new_config: LauncherConfig,
-    state: State<'_, PlayState>,
-) -> Result<(), String> {
-    save_config(new_config, state).await
 }
 
 #[tauri::command]
