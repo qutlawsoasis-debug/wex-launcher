@@ -692,4 +692,18 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Нет сети — запуск без обновления');
     unmount(comp);
   });
+
+  it('opens ImportWizardSheet on PlayScreen when initialShowImportWizard is true', () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        initialShowImportWizard: true,
+      },
+    });
+
+    expect(target.textContent).toContain('Импорт из старого лаунчера');
+    unmount(comp);
+  });
 });
