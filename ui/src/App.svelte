@@ -26,6 +26,7 @@
 
   // Navigation state
   let activeTab = $state('play');
+  let friendsSubtab = $state<'friends' | 'requests' | 'achievements'>('friends');
   let isMaximized = $state(false);
 
   $effect(() => {
@@ -34,6 +35,10 @@
       const tabParam = params.get('tab');
       if (tabParam && sidebarItems.some((i) => i.id === tabParam)) {
         activeTab = tabParam;
+      }
+      const subtabParam = params.get('subtab');
+      if (subtabParam === 'friends' || subtabParam === 'requests' || subtabParam === 'achievements') {
+        friendsSubtab = subtabParam;
       }
       const themeParam = params.get('theme');
       if (themeParam === 'light' || themeParam === 'dark') {
@@ -484,6 +489,7 @@
         <FriendsScreen />
       {:else if activeTab === 'wardrobe'}
         <WardrobeScreen {playerName} ontoast={addToast} />
+        <FriendsScreen tab={friendsSubtab} />
       {:else if activeTab === 'workshop'}
         <WorkshopScreen {selectedVersion} ontoast={addToast} />
       {:else if activeTab === 'mods'}

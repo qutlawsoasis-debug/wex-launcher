@@ -384,7 +384,7 @@
         </div>
 
         {#if filteredFriends.length > 0}
-          <List header="СПИСОК ДРУЗЕЙ ({filteredFriends.length})">
+          <List header="Список друзей ({filteredFriends.length})">
             {#each filteredFriends as friend (friend.id)}
               <Row
                 title={friend.nick}
@@ -446,7 +446,7 @@
     {:else}
       <div class="tab-pane">
         {#if requests.length > 0}
-          <List header="ВХОДЯЩИЕ ЗАЯВКИ В ДРУЗЬЯ ({requests.length})">
+          <List header="Входящие заявки в друзья ({requests.length})">
             {#each requests as req (req.id)}
               <Row
                 title={req.from_nick}
@@ -508,7 +508,7 @@
       </div>
 
       <List
-        header="СПИСОК ДОСТИЖЕНИЙ"
+        header="Список достижений"
         footer="Прогресс отслеживается автоматически и сохраняется в каталоге лаунчера."
       >
         {#each achievements as ach (ach.id)}
