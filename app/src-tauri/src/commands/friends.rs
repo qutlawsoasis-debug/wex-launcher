@@ -421,8 +421,8 @@ pub async fn list_achievements_impl(
 /// Report progress increment on a specific launcher achievement.
 /// Emits social-achievement-toast event when an achievement unlocks.
 #[tauri::command]
-pub async fn social_report_achievement_progress(
-    app: AppHandle,
+pub async fn social_report_achievement_progress<R: tauri::Runtime>(
+    app: AppHandle<R>,
     request: Option<SocialReportAchievementProgressRequest>,
     data_dir: Option<String>,
     achievement_id: Option<String>,
@@ -443,8 +443,8 @@ pub async fn social_report_achievement_progress(
     report_achievement_progress_impl(Some(&app), PathBuf::from(dir_str), &ach_id, inc).await
 }
 
-pub async fn report_achievement_progress_impl(
-    app: Option<&AppHandle>,
+pub async fn report_achievement_progress_impl<R: tauri::Runtime>(
+    app: Option<&AppHandle<R>>,
     data_dir: PathBuf,
     achievement_id: &str,
     increment: u32,
@@ -517,7 +517,7 @@ mod tests {
         let dir = tmp.path().to_path_buf();
 
         // Increment 10_launches target=10
-        let res1 = report_achievement_progress_impl(None, dir.clone(), "ten_launches", 1)
+        let res1 = report_achievement_progress_impl::<tauri::Wry>(None, dir.clone(), "ten_launches", 1)
             .await
             .unwrap();
 
@@ -526,7 +526,7 @@ mod tests {
         assert!(!res1.unlocked);
 
         // Increment again
-        let res2 = report_achievement_progress_impl(None, dir.clone(), "ten_launches", 2)
+        let res2 = report_achievement_progress_impl::<tauri::Wry>(None, dir.clone(), "ten_launches", 2)
             .await
             .unwrap();
 
@@ -540,7 +540,7 @@ mod tests {
         let dir = tmp.path().to_path_buf();
 
         // first_launch target is 1
-        let res = report_achievement_progress_impl(None, dir.clone(), "first_launch", 1)
+        let res = report_achievement_progress_impl::<tauri::Wry>(None, dir.clone(), "first_launch", 1)
             .await
             .unwrap();
 

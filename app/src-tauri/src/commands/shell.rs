@@ -208,13 +208,13 @@ pub async fn shell_stop_game(
 
 /// Minimize the application window (frameless window control).
 #[tauri::command]
-pub async fn shell_minimize_window(window: Window) -> Result<(), String> {
+pub async fn shell_minimize_window<R: tauri::Runtime>(window: Window<R>) -> Result<(), String> {
     window.minimize().map_err(|e| e.to_string())
 }
 
 /// Toggle maximize / restore for the application window.
 #[tauri::command]
-pub async fn shell_toggle_maximize_window(window: Window) -> Result<bool, String> {
+pub async fn shell_toggle_maximize_window<R: tauri::Runtime>(window: Window<R>) -> Result<bool, String> {
     let is_maximized = window.is_maximized().map_err(|e| e.to_string())?;
     if is_maximized {
         window.unmaximize().map_err(|e| e.to_string())?;
@@ -227,7 +227,7 @@ pub async fn shell_toggle_maximize_window(window: Window) -> Result<bool, String
 
 /// Close the application window.
 #[tauri::command]
-pub async fn shell_close_window(window: Window) -> Result<(), String> {
+pub async fn shell_close_window<R: tauri::Runtime>(window: Window<R>) -> Result<(), String> {
     window.close().map_err(|e| e.to_string())
 }
 
