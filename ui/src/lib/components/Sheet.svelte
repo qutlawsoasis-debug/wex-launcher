@@ -181,8 +181,6 @@
     justify-content: center;
     padding: 24px;
     z-index: 1000;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
     animation: scrimFadeIn var(--motion-duration-screen-enter) ease forwards;
   }
 

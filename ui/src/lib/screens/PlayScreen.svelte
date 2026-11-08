@@ -402,7 +402,7 @@
             <div class="tech-runtime-box">
               <span class="tech-runtime-text">{javaRuntime}</span>
               {#if isRunning}
-                <span class="tech-status-badge running">• {i18n.locale === 'en' ? 'Playing' : 'В игре'}</span>
+                <span class="tech-status-badge running">({i18n.locale === 'en' ? 'Playing' : 'В игре'})</span>
               {:else if clientStatus}
                 <span class="tech-status-badge">• {clientStatus}</span>
               {/if}
@@ -418,7 +418,6 @@
                 onclick={onstop}
                 title={i18n.locale === 'en' ? 'Stop Minecraft' : 'Остановить процесс Minecraft'}
               >
-                <span class="running-indicator-dot"></span>
                 <span>{i18n.locale === 'en' ? 'Stop Minecraft' : 'В игре • Остановить'}</span>
               </Button>
             {:else}
@@ -870,17 +869,8 @@
   }
 
   .tech-status-badge.running {
-    color: var(--color-system-green);
-    font-weight: 600;
-  }
-
-  .running-indicator-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background-color: var(--color-system-green);
-    margin-right: 6px;
+    color: var(--color-secondary-label);
+    font-weight: 500;
   }
 
   .dock-primary-action {
