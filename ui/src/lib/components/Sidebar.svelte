@@ -21,7 +21,8 @@
       | 'friends'
       | 'wardrobe'
       | 'mods'
-      | 'settings';
+      | 'settings'
+      | 'workshop';
     badge?: string | number;
   }
 

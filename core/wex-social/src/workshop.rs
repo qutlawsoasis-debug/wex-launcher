@@ -439,6 +439,14 @@ pub fn list_screenshots(screenshots_dir: &Path) -> Result<Vec<ScreenshotItem>, W
     Ok(list)
 }
 
+pub fn delete_world(world_folder: &Path) -> Result<(), WorkshopError> {
+    if !world_folder.exists() {
+        return Err(WorkshopError::NotFound(world_folder.to_path_buf()));
+    }
+    fs::remove_dir_all(world_folder)?;
+    Ok(())
+}
+
 fn calculate_dir_size(dir: &Path) -> u64 {
     let mut total = 0;
     if let Ok(entries) = fs::read_dir(dir) {
@@ -542,5 +550,17 @@ mod tests {
         let list = list_screenshots(&screens_dir).unwrap();
         assert_eq!(list.len(), 2);
         assert_eq!(list[0].file_name, "2026-11-02_14.00.00.png");
+    }
+
+    #[test]
+    fn test_delete_world() {
+        let dir = tempdir().unwrap();
+        let world_dir = dir.path().join("saves").join("WorldToDelete");
+        fs::create_dir_all(&world_dir).unwrap();
+        fs::write(world_dir.join("level.dat"), b"fake_level").unwrap();
+
+        assert!(world_dir.exists());
+        delete_world(&world_dir).unwrap();
+        assert!(!world_dir.exists());
     }
 }

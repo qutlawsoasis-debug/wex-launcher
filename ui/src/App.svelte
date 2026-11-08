@@ -18,6 +18,7 @@
   import FriendsScreen from './lib/screens/FriendsScreen.svelte';
   import WardrobeScreen from './lib/screens/WardrobeScreen.svelte';
   import ModsScreen from './lib/screens/ModsScreen.svelte';
+  import WorkshopScreen from './lib/screens/WorkshopScreen.svelte';
   import SettingsScreen from './lib/screens/SettingsScreen.svelte';
   import ShowcaseScreen from './lib/screens/ShowcaseScreen.svelte';
 
@@ -68,6 +69,7 @@
     { id: 'lobby', label: 'Лобби', icon: 'lobby' },
     { id: 'friends', label: 'Друзья', icon: 'friends' },
     { id: 'wardrobe', label: 'Гардероб', icon: 'wardrobe' },
+    { id: 'workshop', label: 'Мастерская', icon: 'workshop' },
     { id: 'mods', label: 'Моды', icon: 'mods' },
     { id: 'settings', label: 'Настройки', icon: 'settings' },
   ];
@@ -78,6 +80,7 @@
     lobby: 'Кооператив и Лобби',
     friends: 'Друзья',
     wardrobe: 'Гардероб',
+    workshop: 'Мастерская',
     mods: 'Моды и шейдеры',
     settings: 'Настройки',
     showcase: 'Компоненты Apple HIG',
@@ -201,55 +204,84 @@
     // Tauri 2 Event Listeners (install-progress & launch-status as per SPEC.md)
     let unlistenProgress: (() => void) | undefined;
     let unlistenStatus: (() => void) | undefined;
+    let unlistenAchievement: (() => void) | undefined;
+    let unlistenInvite: (() => void) | undefined;
 
-    import('@tauri-apps/api/event')
-      .then(({ listen }) => {
-        listen<{
-          stage: string;
-          percentage: number;
-          detail: string;
-          speed_bytes_per_sec: number;
-          total_bytes?: number;
-          downloaded_bytes?: number;
-        }>('install-progress', (event) => {
-          const p = event.payload;
-          progressStage = p.stage;
-          progressPercentage = p.percentage;
-          progressDetail = p.detail;
-          progressSpeed = p.speed_bytes_per_sec > 0
-            ? `${(p.speed_bytes_per_sec / (1024 * 1024)).toFixed(1)} МБ/с`
-            : '';
-        }).then((fn) => {
-          unlistenProgress = fn;
-        });
+    if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+      import('@tauri-apps/api/event')
+        .then(({ listen }) => {
+          listen<{
+            stage: string;
+            percentage: number;
+            detail: string;
+            speed_bytes_per_sec: number;
+            total_bytes?: number;
+            downloaded_bytes?: number;
+          }>('install-progress', (event) => {
+            const p = event.payload;
+            progressStage = p.stage;
+            progressPercentage = p.percentage;
+            progressDetail = p.detail;
+            progressSpeed = p.speed_bytes_per_sec > 0
+              ? `${(p.speed_bytes_per_sec / (1024 * 1024)).toFixed(1)} МБ/с`
+              : '';
+          }).then((fn) => {
+            unlistenProgress = fn;
+          });
 
-        listen<{
-          state: string;
-          message: string;
-          exit_code?: number;
-        }>('launch-status', (event) => {
-          const s = event.payload;
-          clientStatus = s.message;
-          if (s.state === 'running') {
-            isLaunching = false;
-            addToast('success', 'Minecraft запущен', s.message);
-          } else if (s.state === 'cancelled') {
-            isLaunching = false;
-            addToast('warning', 'Запуск отменён', s.message);
-          } else if (s.state === 'error') {
-            isLaunching = false;
-            addToast('error', 'Ошибка запуска', s.message);
-          }
-        }).then((fn) => {
-          unlistenStatus = fn;
-        });
-      })
-      .catch(() => {});
+          listen<{
+            state: string;
+            message: string;
+            exit_code?: number;
+          }>('launch-status', (event) => {
+            const s = event.payload;
+            clientStatus = s.message;
+            if (s.state === 'running') {
+              isLaunching = false;
+              addToast('success', 'Minecraft запущен', s.message);
+            } else if (s.state === 'cancelled') {
+              isLaunching = false;
+              addToast('warning', 'Запуск отменён', s.message);
+            } else if (s.state === 'error') {
+              isLaunching = false;
+              addToast('error', 'Ошибка запуска', s.message);
+            }
+          }).then((fn) => {
+            unlistenStatus = fn;
+          });
+
+          listen<{
+            id: string;
+            title: string;
+            description: string;
+            unlocked_at: string;
+          }>('social-achievement-toast', (event) => {
+            const a = event.payload;
+            addToast('success', `Достижение разблокировано: «${a.title}»`, a.description);
+          }).then((fn) => {
+            unlistenAchievement = fn;
+          });
+
+          listen<{
+            id: string;
+            lobby_code: string;
+            from_nick: string;
+          }>('social-lobby-invite', (event) => {
+            const inv = event.payload;
+            addToast('info', `Приглашение в лобби ${inv.lobby_code}`, `${inv.from_nick} зовёт вас в игру`);
+          }).then((fn) => {
+            unlistenInvite = fn;
+          });
+        })
+        .catch(() => {});
+    }
 
     return () => {
       window.removeEventListener('hashchange', applyHashRoute);
       unlistenProgress?.();
       unlistenStatus?.();
+      unlistenAchievement?.();
+      unlistenInvite?.();
     };
   });
 </script>
@@ -316,6 +348,8 @@
         <FriendsScreen />
       {:else if activeTab === 'wardrobe'}
         <WardrobeScreen {playerName} ontoast={addToast} />
+      {:else if activeTab === 'workshop'}
+        <WorkshopScreen {selectedVersion} ontoast={addToast} />
       {:else if activeTab === 'mods'}
         <ModsScreen />
       {:else if activeTab === 'settings'}

@@ -30,7 +30,7 @@ pub struct LauncherConfig {
     pub game_dir: String,
     pub graphics_preset: String, // "Low" | "Medium" | "High" | "Ultra"
     pub appearance: String,      // "dark" | "light" | "auto"
-    pub accent: String,          // "blue" | "purple" | "pink" | "orange" | "green" | "mint" | "graphite"
+    pub accent: String, // "blue" | "purple" | "pink" | "orange" | "green" | "mint" | "graphite"
     pub reduce_motion: bool,
     pub reduce_transparency: bool,
 }
