@@ -281,6 +281,15 @@ pub fn run() {
             commands::workshop::workshop_list_screenshots,
             commands::workshop::social_list_screenshots,
             commands::workshop::workshop_open_path,
+            // Workshop packs and shaders commands (SPEC 1.7)
+            commands::workshop_packs::workshop_list_resource_packs,
+            commands::workshop_packs::workshop_toggle_resource_pack,
+            commands::workshop_packs::workshop_set_resource_packs_order,
+            commands::workshop_packs::workshop_list_shader_packs,
+            commands::workshop_packs::workshop_set_active_shader_pack,
+            commands::workshop_packs::workshop_add_pack_file,
+            commands::workshop_packs::workshop_delete_pack_file,
+            commands::workshop_packs::workshop_open_packs_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -6,3 +6,4 @@ pub mod network;
 pub mod overview;
 pub mod settings;
 pub mod workshop;
+pub mod workshop_packs;
