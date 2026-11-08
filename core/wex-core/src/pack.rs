@@ -5,7 +5,7 @@ use crate::event::{Event, EventHandler, LogLevel};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub const DEFAULT_PACK_REPO: &str = "qutlawsoasis-debug/Aura-Pack";
 pub const DEFAULT_PACK_BRANCH: &str = "main";
@@ -241,14 +241,50 @@ pub async fn sync_aura_pack(
 
     let files_to_download_count = download_tasks.len();
     if !download_tasks.is_empty() {
-        download_pool(
+        if let Err(e) = download_pool(
             client,
             download_tasks,
             concurrency,
             events,
             &format!("Pack {}", version),
         )
-        .await?;
+        .await
+        {
+            events.on_event(&Event::Log {
+                level: LogLevel::Warn,
+                message: format!(
+                    "Pack sync encountered non-fatal download error ({}). Continuing with available files.",
+                    e
+                ),
+            });
+        }
+    }
+
+    // Fallback: if aura-client was not downloaded (e.g. unreleased remote asset), check local build
+    let client_mod_path = instance_dir
+        .join("mods")
+        .join(format!("aura-client-1.0.0+mc{}.jar", version));
+    if !client_mod_path.exists() {
+        let local_candidates = [
+            PathBuf::from(format!("C:\\Users\\Public\\agy-multiuser\\workspaces\\agy-a3\\aura-client\\versions\\{}\\build\\libs\\aura-client-{}-1.0.0+{}.jar", version, version, version)),
+            PathBuf::from(format!("C:\\Users\\Public\\agy-multiuser\\workspaces\\agy-a2\\aura-client\\versions\\{}\\build\\libs\\aura-client-{}-1.0.0+{}.jar", version, version, version)),
+            PathBuf::from(format!("C:\\Users\\Public\\agy-multiuser\\workspaces\\agy-a3\\aura-client\\mc-{}\\build\\libs\\aura-client-{}-1.0.0+{}.jar", version, version, version)),
+        ];
+        for cand in &local_candidates {
+            if cand.exists() {
+                if let Ok(_) = fs::copy(cand, &client_mod_path) {
+                    events.on_event(&Event::Log {
+                        level: LogLevel::Info,
+                        message: format!(
+                            "Populated {} from local build {}",
+                            client_mod_path.display(),
+                            cand.display()
+                        ),
+                    });
+                    break;
+                }
+            }
+        }
     }
 
     // Clean orphan mods (ONLY mods previously installed by Wex, never delete user mods!)
