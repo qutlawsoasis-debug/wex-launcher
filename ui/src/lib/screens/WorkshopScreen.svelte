@@ -1198,6 +1198,14 @@
     gap: 12px;
   }
 
+  .section-segmented {
+    width: 440px;
+  }
+
+  .version-segmented {
+    width: 170px;
+  }
+
   .header-right {
     display: flex;
     align-items: center;
