@@ -396,6 +396,15 @@ pub fn run() {
             join_lobby_room,
             get_lobby_status,
             close_lobby_room,
+            // Wardrobe commands
+            commands::wardrobe::extras_validate_skin,
+            commands::wardrobe::extras_convert_skin,
+            commands::wardrobe::extras_save_skin,
+            commands::wardrobe::extras_list_skin_history,
+            commands::wardrobe::extras_generate_csl_config,
+            commands::wardrobe::wardrobe_delete_history,
+            commands::wardrobe::wardrobe_get_state,
+            commands::wardrobe::wardrobe_apply,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -4,6 +4,7 @@ pub mod import;
 pub mod presets;
 pub mod skins;
 
+pub use image;
 pub use crash::{analyze_crash, analyze_log_text, CrashDiagnosis, CrashKind};
 pub use discord::{Activity, DiscordRpcClient, DEFAULT_DISCORD_APP_ID};
 pub use import::{
@@ -15,5 +16,5 @@ pub use presets::{
 };
 pub use skins::{
     convert_64x32_to_64x64, detect_skin_model, generate_csl_config, validate_skin_bytes,
-    SkinHistoryManager, SkinModel, SkinValidationResult, WardrobeItem,
+    SkinError, SkinHistoryManager, SkinModel, SkinValidationResult, WardrobeItem,
 };

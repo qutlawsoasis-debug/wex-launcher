@@ -4952,6 +4952,7 @@ name = "wex-app"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "chrono",
  "serde",
  "serde_json",

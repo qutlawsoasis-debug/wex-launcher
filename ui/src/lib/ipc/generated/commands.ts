@@ -29,6 +29,7 @@ import type {
     UserAuthDto,
     UserPresenceDto,
     WardrobeItemDto,
+    WardrobeStateDto,
     WorldBackupItemDto,
     WorldItemDto,
 } from './models';
@@ -110,6 +111,14 @@ export type ExtrasListSkinHistoryRequest = { history_dir: string, };;
 export type ExtrasListSkinHistoryResponse = { items: Array<WardrobeItemDto>, };;
 
 export type ExtrasGenerateCslConfigRequest = { output_path: string, csl_api_root: string, };;
+
+export type WardrobeApplyRequest = { nickname: string, skin_name: string, skin_base64: string | null, model: SkinModelDto, cape_id: string, cape_name: string, cape_base64: string | null, };;
+
+export type WardrobeApplyResponse = { success: boolean, message: string, };;
+
+export type WardrobeDeleteHistoryRequest = { history_dir: string, item_id: string, };;
+
+export type WardrobeDeleteHistoryResponse = { success: boolean, };;
 
 export type ExtrasDiscordSetActivityRequest = { activity: DiscordActivityDto, };;
 
@@ -204,6 +213,9 @@ export const COMMANDS = {
     EXTRAS_SAVE_SKIN: "extras_save_skin",
     EXTRAS_LIST_SKIN_HISTORY: "extras_list_skin_history",
     EXTRAS_GENERATE_CSL_CONFIG: "extras_generate_csl_config",
+    WARDROBE_GET_STATE: "wardrobe_get_state",
+    WARDROBE_APPLY: "wardrobe_apply",
+    WARDROBE_DELETE_HISTORY: "wardrobe_delete_history",
     EXTRAS_DISCORD_SET_ACTIVITY: "extras_discord_set_activity",
     EXTRAS_DISCORD_CLEAR_ACTIVITY: "extras_discord_clear_activity",
     EXTRAS_IMPORT_OLD_LAUNCHER: "extras_import_old_launcher",

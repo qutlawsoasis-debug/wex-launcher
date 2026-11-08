@@ -241,6 +241,9 @@ pub const CMD_EXTRAS_DISCORD_CLEAR_ACTIVITY: &str = "extras_discord_clear_activi
 pub const CMD_EXTRAS_IMPORT_OLD_LAUNCHER: &str = "extras_import_old_launcher";
 pub const CMD_EXTRAS_GET_PRESETS: &str = "extras_get_presets";
 pub const CMD_EXTRAS_APPLY_PRESET: &str = "extras_apply_preset";
+pub const CMD_WARDROBE_GET_STATE: &str = "wardrobe_get_state";
+pub const CMD_WARDROBE_APPLY: &str = "wardrobe_apply";
+pub const CMD_WARDROBE_DELETE_HISTORY: &str = "wardrobe_delete_history";
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct ExtrasAnalyzeCrashRequest {
@@ -286,6 +289,34 @@ pub struct ExtrasListSkinHistoryResponse {
 pub struct ExtrasGenerateCslConfigRequest {
     pub output_path: String,
     pub csl_api_root: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct WardrobeApplyRequest {
+    pub nickname: String,
+    pub skin_name: String,
+    pub skin_base64: Option<String>,
+    pub model: SkinModelDto,
+    pub cape_id: String,
+    pub cape_name: String,
+    pub cape_base64: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct WardrobeApplyResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct WardrobeDeleteHistoryRequest {
+    pub history_dir: String,
+    pub item_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct WardrobeDeleteHistoryResponse {
+    pub success: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS, PartialEq, Eq)]

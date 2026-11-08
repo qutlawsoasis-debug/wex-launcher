@@ -469,6 +469,17 @@ impl From<wex_extras::WardrobeItem> for WardrobeItemDto {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct WardrobeStateDto {
+    pub nickname: String,
+    pub skin_name: String,
+    pub skin_base64: Option<String>,
+    pub model: SkinModelDto,
+    pub cape_id: String,
+    pub cape_name: String,
+    pub cape_base64: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub enum DiscordActivityDto {
     #[default]
