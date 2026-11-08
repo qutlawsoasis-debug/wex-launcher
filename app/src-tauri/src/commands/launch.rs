@@ -268,12 +268,32 @@ pub async fn start_game(
     );
 
     // 4. Launch game via LauncherCore
+    let mut actual_jvm_args = jvm_args.unwrap_or_default();
+    if std::env::var("WEX_QA_BACKGROUND").is_ok()
+        || std::env::var("WEX_QA_BACKGROUND")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false)
+    {
+        if !actual_jvm_args
+            .iter()
+            .any(|a| a.contains("wex.qa.background"))
+        {
+            actual_jvm_args.push("-Dwex.qa.background=true".to_string());
+        }
+        if !actual_jvm_args
+            .iter()
+            .any(|a| a.contains("aura.client.hiddenWindow"))
+        {
+            actual_jvm_args.push("-Daura.client.hiddenWindow=true".to_string());
+        }
+    }
+
     let launch_res = state
         .core
         .launch_game(LaunchGameRequest {
             version: version.clone(),
             nickname: nickname.clone(),
-            jvm_args,
+            jvm_args: Some(actual_jvm_args),
         })
         .await;
 
