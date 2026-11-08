@@ -170,9 +170,23 @@
     outline: none;
   }
 
+  .segment-button:hover:not(.selected) {
+    color: var(--color-label);
+  }
+
+  .segment-button:active {
+    opacity: 0.75;
+  }
+
   .segment-button:focus-visible {
     border-radius: calc(var(--radius-sm) - 2px);
-    box-shadow: 0 0 0 2px var(--color-system-blue);
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 1px;
+    box-shadow: 0 0 0 2px rgba(0, 145, 255, 0.3);
+  }
+
+  .apple-segmented-control.small .segment-button:focus-visible {
+    border-radius: calc(var(--radius-xs) - 2px);
   }
 
   .segment-button.selected {
@@ -184,5 +198,17 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .active-pill,
+    .segment-button {
+      transition: none !important;
+    }
+  }
+
+  :global([data-reduce-motion="true"]) .active-pill,
+  :global([data-reduce-motion="true"]) .segment-button {
+    transition: none !important;
   }
 </style>
