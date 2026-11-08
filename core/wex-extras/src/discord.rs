@@ -103,11 +103,7 @@ pub fn default_buttons() -> Vec<DiscordButton> {
     }]
 }
 
-pub fn build_activity_payload(
-    pid: u32,
-    activity: &Activity,
-    nonce: &str,
-) -> serde_json::Value {
+pub fn build_activity_payload(pid: u32, activity: &Activity, nonce: &str) -> serde_json::Value {
     let (details, state, timestamps, assets) = match activity {
         Activity::InLauncher => (
             Some("В главном меню".to_string()),
@@ -341,10 +337,7 @@ mod tests {
             p2["args"]["activity"]["state"],
             "Сборка Aura Pack • Модов: 184"
         );
-        assert_eq!(
-            p2["args"]["activity"]["timestamps"]["start"],
-            1730000000
-        );
+        assert_eq!(p2["args"]["activity"]["timestamps"]["start"], 1730000000);
 
         // 3. Lobby
         let lobby = Activity::InLobby {

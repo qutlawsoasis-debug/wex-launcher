@@ -250,7 +250,13 @@ pub fn create_world_backup(
     let safe_name: String = world_item
         .display_name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
 
     let aura_backups_dir = backup_base_dir.join("AuraBackups");
@@ -262,8 +268,7 @@ pub fn create_world_backup(
 
     let file = File::create(&zip_path)?;
     let mut zip = ZipWriter::new(file);
-    let options = SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
+    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
     add_dir_to_zip(&mut zip, world_folder, world_folder, options)?;
     zip.finish()?;
@@ -280,9 +285,7 @@ fn add_dir_to_zip<W: Write + std::io::Seek>(
     let entries = fs::read_dir(current_dir)?;
     for entry in entries.flatten() {
         let path = entry.path();
-        let rel_path = path
-            .strip_prefix(base_dir)
-            .map_err(std::io::Error::other)?;
+        let rel_path = path.strip_prefix(base_dir).map_err(std::io::Error::other)?;
         let name_str = rel_path.to_string_lossy().replace('\\', "/");
 
         if path.is_dir() {
@@ -356,7 +359,13 @@ pub fn list_world_backups(
 
     let safe_name: String = display_name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
 
     let mut backups = Vec::new();
@@ -365,7 +374,11 @@ pub fn list_world_backups(
     for entry in entries.flatten() {
         let p = entry.path();
         if p.is_file() && p.extension().map(|e| e == "zip").unwrap_or(false) {
-            let fname = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let fname = p
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             if fname.starts_with(&safe_name) || fname.starts_with(world_folder_name) {
                 let meta = p.metadata().ok();
                 let size_bytes = meta.as_ref().map(|m| m.len()).unwrap_or(0);
@@ -402,7 +415,11 @@ pub fn list_screenshots(screenshots_dir: &Path) -> Result<Vec<ScreenshotItem>, W
                 .map(|e| e.eq_ignore_ascii_case("png"))
                 .unwrap_or(false)
         {
-            let fname = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let fname = p
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             let meta = p.metadata().ok();
             let size_bytes = meta.as_ref().map(|m| m.len()).unwrap_or(0);
             let created_at = meta

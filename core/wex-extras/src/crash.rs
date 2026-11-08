@@ -371,11 +371,7 @@ fn collect_recent_logs(game_dir: &Path, exit_code: Option<i32>) -> String {
     if let Ok(entries) = fs::read_dir(game_dir) {
         let mut hs_files: Vec<_> = entries
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .starts_with("hs_err_pid")
-            })
+            .filter(|e| e.file_name().to_string_lossy().starts_with("hs_err_pid"))
             .collect();
         hs_files.sort_by_key(|e| {
             e.metadata()
@@ -475,7 +471,10 @@ Caused by: org.spongepowered.asm.mixin.throwables.MixinApplyError: Mixin [aura-c
         let diag = analyze_log_text(Some(1), log);
         match diag.kind {
             CrashKind::MixinConflict { mod_names, .. } => {
-                assert!(mod_names.contains(&"aura-client".to_string()) || mod_names.contains(&"aura_client".to_string()));
+                assert!(
+                    mod_names.contains(&"aura-client".to_string())
+                        || mod_names.contains(&"aura_client".to_string())
+                );
             }
             other => panic!("Unexpected kind: {:?}", other),
         }
@@ -509,7 +508,10 @@ Exception in thread "main" java.lang.UnsupportedClassVersionError: net/minecraft
 # C  [nvoglv64.dll+0x9abcde]
 "#;
         let diag = analyze_log_text(Some(-1073741819), log);
-        assert!(matches!(diag.kind, CrashKind::GraphicsDriverOrShader { .. }));
+        assert!(matches!(
+            diag.kind,
+            CrashKind::GraphicsDriverOrShader { .. }
+        ));
         assert!(diag.title.contains("видеодрайвера"));
     }
 

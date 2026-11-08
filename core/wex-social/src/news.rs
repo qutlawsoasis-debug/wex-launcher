@@ -93,9 +93,15 @@ pub fn get_bundled_release_notes() -> Vec<ReleaseNoteVersion> {
             items: vec![
                 ReleaseNoteItem::parse("[Новое] Полный переход на стек Tauri 2 + Rust + Svelte 5"),
                 ReleaseNoteItem::parse("[Новое] Нативный Apple HIG и Liquid Glass дизайн системы"),
-                ReleaseNoteItem::parse("[Новое] Изолированный безопасный импорт данных из старого лаунчера"),
-                ReleaseNoteItem::parse("[Улучшено] Мгновенный запуск и нулевое потребление памяти в фоне"),
-                ReleaseNoteItem::parse("[Исправлено] Полная ликвидация утечек и зависаний процессов"),
+                ReleaseNoteItem::parse(
+                    "[Новое] Изолированный безопасный импорт данных из старого лаунчера",
+                ),
+                ReleaseNoteItem::parse(
+                    "[Улучшено] Мгновенный запуск и нулевое потребление памяти в фоне",
+                ),
+                ReleaseNoteItem::parse(
+                    "[Исправлено] Полная ликвидация утечек и зависаний процессов",
+                ),
             ],
         },
         ReleaseNoteVersion {
@@ -105,8 +111,12 @@ pub fn get_bundled_release_notes() -> Vec<ReleaseNoteVersion> {
             short_title: "Уведомления без спама".to_string(),
             is_current: false,
             items: vec![
-                ReleaseNoteItem::parse("[Исправлено] Спам уведомлениями об обновлении лаунчера в Windows"),
-                ReleaseNoteItem::parse("[Исправлено] Зависание старых уведомлений после завершения обновления"),
+                ReleaseNoteItem::parse(
+                    "[Исправлено] Спам уведомлениями об обновлении лаунчера в Windows",
+                ),
+                ReleaseNoteItem::parse(
+                    "[Исправлено] Зависание старых уведомлений после завершения обновления",
+                ),
             ],
         },
         ReleaseNoteVersion {
@@ -116,8 +126,12 @@ pub fn get_bundled_release_notes() -> Vec<ReleaseNoteVersion> {
             short_title: "Миры друзей".to_string(),
             is_current: false,
             items: vec![
-                ReleaseNoteItem::parse("[Улучшено] Миры в профиле теперь видны друзьям по умолчанию"),
-                ReleaseNoteItem::parse("[Улучшено] Управление видимостью отдельных одиночных миров в Настройках"),
+                ReleaseNoteItem::parse(
+                    "[Улучшено] Миры в профиле теперь видны друзьям по умолчанию",
+                ),
+                ReleaseNoteItem::parse(
+                    "[Улучшено] Управление видимостью отдельных одиночных миров в Настройках",
+                ),
             ],
         },
         ReleaseNoteVersion {
@@ -127,8 +141,12 @@ pub fn get_bundled_release_notes() -> Vec<ReleaseNoteVersion> {
             short_title: "Скриншоты и новости".to_string(),
             is_current: false,
             items: vec![
-                ReleaseNoteItem::parse("[Улучшено] Отображение недавних скриншотов на главном экране"),
-                ReleaseNoteItem::parse("[Улучшено] Аккуратное расположение списка изменений в новостях"),
+                ReleaseNoteItem::parse(
+                    "[Улучшено] Отображение недавних скриншотов на главном экране",
+                ),
+                ReleaseNoteItem::parse(
+                    "[Улучшено] Аккуратное расположение списка изменений в новостях",
+                ),
             ],
         },
         ReleaseNoteVersion {
@@ -139,7 +157,9 @@ pub fn get_bundled_release_notes() -> Vec<ReleaseNoteVersion> {
             is_current: false,
             items: vec![
                 ReleaseNoteItem::parse("[Исправлено] Сбой при запуске лаунчера после обновления"),
-                ReleaseNoteItem::parse("[Новое] Профиль друга: просмотр статистики, достижений и миров"),
+                ReleaseNoteItem::parse(
+                    "[Новое] Профиль друга: просмотр статистики, достижений и миров",
+                ),
                 ReleaseNoteItem::parse("[Новое] Настройки приватности для отображения друзьям"),
             ],
         },

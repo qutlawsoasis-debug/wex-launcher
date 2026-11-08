@@ -172,7 +172,13 @@ async fn add_server(
     state: State<'_, AppState>,
 ) -> Result<ServerEntryModel, String> {
     let new_server = ServerEntryModel {
-        id: format!("server-{}", std::time::SystemTime::now().elapsed().unwrap_or_default().as_millis()),
+        id: format!(
+            "server-{}",
+            std::time::SystemTime::now()
+                .elapsed()
+                .unwrap_or_default()
+                .as_millis()
+        ),
         name: name.clone(),
         address: address.clone(),
         icon: None,
@@ -237,7 +243,8 @@ fn remove_server(address: String, state: State<'_, AppState>) -> Result<(), Stri
             elements.retain(|elem| {
                 if let wex_net::NbtTag::Compound(fields) = elem {
                     !fields.iter().any(|(k, v)| {
-                        k == "ip" && matches!(v, wex_net::NbtTag::String(ip_str) if ip_str == &address)
+                        k == "ip"
+                            && matches!(v, wex_net::NbtTag::String(ip_str) if ip_str == &address)
                     })
                 } else {
                     true
@@ -261,7 +268,11 @@ async fn create_lobby_room(
 ) -> Result<LobbyRoomModel, String> {
     let code = format!(
         "#{:X}",
-        std::time::SystemTime::now().elapsed().unwrap_or_default().as_millis() % 0xFFFF
+        std::time::SystemTime::now()
+            .elapsed()
+            .unwrap_or_default()
+            .as_millis()
+            % 0xFFFF
     );
 
     let room = LobbyRoomModel {
@@ -322,7 +333,10 @@ async fn join_lobby_room(
 }
 
 #[tauri::command]
-fn get_lobby_status(code: String, state: State<'_, AppState>) -> Result<Option<LobbyRoomModel>, String> {
+fn get_lobby_status(
+    code: String,
+    state: State<'_, AppState>,
+) -> Result<Option<LobbyRoomModel>, String> {
     let active = state.active_lobby.lock().map_err(|e| e.to_string())?;
     if let Some(ref r) = *active {
         if r.code == code {

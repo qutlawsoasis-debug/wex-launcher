@@ -11,8 +11,8 @@ use wex_extras::discord::{Activity, DiscordRpcClient, DEFAULT_DISCORD_APP_ID};
 use wex_ipc::commands::{LaunchGameRequest, LaunchGameResponse};
 use wex_ipc::core_trait::LauncherCore;
 use wex_ipc::events::{
-    GameLogPayload, InstallProgressPayload, LaunchStatusPayload, EVT_GAME_LOG, EVT_INSTALL_PROGRESS,
-    EVT_LAUNCH_STATUS,
+    GameLogPayload, InstallProgressPayload, LaunchStatusPayload, EVT_GAME_LOG,
+    EVT_INSTALL_PROGRESS, EVT_LAUNCH_STATUS,
 };
 use wex_ipc::models::{InstalledVersion, LauncherConfig};
 
@@ -139,10 +139,7 @@ impl EventHandler for TauriEventHandler {
 }
 
 /// Helper to set Discord RPC activity safely without blocking.
-pub async fn set_discord_rpc(
-    discord: &Arc<Mutex<Option<DiscordRpcClient>>>,
-    activity: Activity,
-) {
+pub async fn set_discord_rpc(discord: &Arc<Mutex<Option<DiscordRpcClient>>>, activity: Activity) {
     let mut lock = discord.lock().await;
     if let Some(client) = lock.as_mut() {
         client.set_activity(activity).await;
@@ -215,7 +212,11 @@ pub async fn save_config(
     config: LauncherConfig,
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
-    state.core.save_config(config).await.map_err(|e| e.to_string())
+    state
+        .core
+        .save_config(config)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Retrieve installed versions for selectors.
@@ -414,10 +415,7 @@ pub async fn is_game_running(state: State<'_, PlayState>) -> Result<bool, String
 
 /// Force kill the game instance.
 #[tauri::command]
-pub async fn kill_game(
-    version: Option<String>,
-    state: State<'_, PlayState>,
-) -> Result<(), String> {
+pub async fn kill_game(version: Option<String>, state: State<'_, PlayState>) -> Result<(), String> {
     let ver = match version {
         Some(v) => v,
         None => {
@@ -569,7 +567,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_discord_rpc_status_transition() {
-        let discord = Arc::new(Mutex::new(Some(DiscordRpcClient::connect_or_noop(DEFAULT_DISCORD_APP_ID).await)));
+        let discord = Arc::new(Mutex::new(Some(
+            DiscordRpcClient::connect_or_noop(DEFAULT_DISCORD_APP_ID).await,
+        )));
 
         // Transition to playing
         set_discord_rpc(

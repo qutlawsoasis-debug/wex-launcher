@@ -172,9 +172,7 @@ impl LobbyApiClient {
             url_str.push('/');
         }
         let base_url = Url::parse(&url_str)?;
-        let http = Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()?;
+        let http = Client::builder().timeout(Duration::from_secs(10)).build()?;
 
         Ok(Self {
             http,
@@ -195,7 +193,10 @@ impl LobbyApiClient {
         manifest: Option<&[ModManifestEntry]>,
     ) -> Result<LobbyCreateResponse, LobbyError> {
         let url = self.endpoint("api/lobby")?;
-        let payload = CreateLobbyRequest { host_name, manifest };
+        let payload = CreateLobbyRequest {
+            host_name,
+            manifest,
+        };
 
         let resp = self.http.post(url).json(&payload).send().await?;
         Self::check_status_and_json(resp).await
@@ -431,7 +432,10 @@ mod tests {
         assert_eq!(create_res.code, "TEST");
         assert_eq!(create_res.host_token, "token123");
 
-        let join_res = client.join_lobby("TEST", "GuestPlayer", None).await.unwrap();
+        let join_res = client
+            .join_lobby("TEST", "GuestPlayer", None)
+            .await
+            .unwrap();
         assert!(join_res.success);
         assert_eq!(join_res.tunnel_address.unwrap(), "ply.gg:12345");
         assert_eq!(join_res.player_count, 2);
@@ -508,7 +512,10 @@ mod tests {
 
         let client = LobbyApiClient::new(&mock_server.uri(), None).unwrap();
 
-        assert!(client.open_lobby("TEST", "token", "ply.gg:12345", 25565).await.unwrap());
+        assert!(client
+            .open_lobby("TEST", "token", "ply.gg:12345", 25565)
+            .await
+            .unwrap());
 
         let status = client.get_status("TEST", Some("Player1")).await.unwrap();
         assert_eq!(status.code, "TEST");
@@ -517,7 +524,10 @@ mod tests {
         assert!(client.heartbeat("TEST", "token").await.unwrap());
         assert!(client.close_lobby("TEST", "token").await.unwrap());
         assert!(client.leave_lobby("TEST", "Player1").await.unwrap());
-        assert!(client.kick_player("TEST", "token", "BadPlayer").await.unwrap());
+        assert!(client
+            .kick_player("TEST", "token", "BadPlayer")
+            .await
+            .unwrap());
 
         let tunnel = client.get_tunnel_config().await.unwrap();
         assert_eq!(tunnel.secret.unwrap(), "secret_abc");

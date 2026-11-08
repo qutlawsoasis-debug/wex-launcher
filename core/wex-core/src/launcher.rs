@@ -1,11 +1,3 @@
-use std::collections::HashSet;
-use std::fs::{self, File};
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use std::sync::Arc;
-use tokio::io::AsyncBufReadExt;
-use tokio::process::Command;
 use crate::auth::offline_uuid;
 use crate::config::{LauncherConfig, WexPaths};
 use crate::error::{Result, WexError};
@@ -17,6 +9,14 @@ use crate::minecraft::{
     resolve_vanilla_libraries,
 };
 use crate::pack::sync_aura_pack;
+use std::collections::HashSet;
+use std::fs::{self, File};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::sync::Arc;
+use tokio::io::AsyncBufReadExt;
+use tokio::process::Command;
 
 pub struct LaunchOptions<'a> {
     pub paths: &'a WexPaths,
@@ -47,7 +47,7 @@ impl WindowsJobObject {
         use std::mem::size_of;
         use std::ptr;
         use windows_sys::Win32::System::JobObjects::{
-            CreateJobObjectW, SetInformationJobObject, JobObjectExtendedLimitInformation,
+            CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
             JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
         };
 
@@ -69,7 +69,9 @@ impl WindowsJobObject {
 
             if success == 0 {
                 windows_sys::Win32::Foundation::CloseHandle(job);
-                return Err(WexError::LaunchError("SetInformationJobObject failed".to_string()));
+                return Err(WexError::LaunchError(
+                    "SetInformationJobObject failed".to_string(),
+                ));
             }
 
             Ok(Self { job_handle: job })
@@ -78,12 +80,17 @@ impl WindowsJobObject {
 
     /// # Safety
     /// `process_handle` must be a valid process handle.
-    pub unsafe fn assign_process(&self, process_handle: windows_sys::Win32::Foundation::HANDLE) -> Result<()> {
+    pub unsafe fn assign_process(
+        &self,
+        process_handle: windows_sys::Win32::Foundation::HANDLE,
+    ) -> Result<()> {
         use windows_sys::Win32::System::JobObjects::AssignProcessToJobObject;
 
         let res = AssignProcessToJobObject(self.job_handle, process_handle);
         if res == 0 {
-            return Err(WexError::LaunchError("AssignProcessToJobObject failed".to_string()));
+            return Err(WexError::LaunchError(
+                "AssignProcessToJobObject failed".to_string(),
+            ));
         }
         Ok(())
     }
@@ -149,8 +156,16 @@ fn get_artifact_base_name(file_name: &str) -> String {
     }
 }
 
-pub fn build_classpath(client_jar: &Path, vanilla_libs: &[PathBuf], fabric_libs: &[PathBuf]) -> String {
-    let separator = if cfg!(target_os = "windows") { ";" } else { ":" };
+pub fn build_classpath(
+    client_jar: &Path,
+    vanilla_libs: &[PathBuf],
+    fabric_libs: &[PathBuf],
+) -> String {
+    let separator = if cfg!(target_os = "windows") {
+        ";"
+    } else {
+        ":"
+    };
     let mut entries = Vec::new();
     let mut fabric_artifacts = HashSet::new();
 
@@ -221,7 +236,11 @@ pub fn build_launch_args(opts: &LaunchOptions) -> Vec<String> {
     }
 
     // Classpath
-    let cp = build_classpath(opts.client_jar, opts.vanilla_libraries, opts.fabric_libraries);
+    let cp = build_classpath(
+        opts.client_jar,
+        opts.vanilla_libraries,
+        opts.fabric_libraries,
+    );
     args.push("-cp".to_string());
     args.push(cp);
 
@@ -300,12 +319,19 @@ pub async fn launch_game_process(
 
     events.on_event(&Event::Log {
         level: LogLevel::Info,
-        message: format!("Launching Minecraft {} as '{}'...", opts.version, opts.config.nickname),
+        message: format!(
+            "Launching Minecraft {} as '{}'...",
+            opts.version, opts.config.nickname
+        ),
     });
 
     let mut command = build_launch_command(&opts)?;
     let mut child = command.spawn().map_err(|e| {
-        WexError::LaunchError(format!("Failed to spawn Java process {}: {}", opts.java_binary.display(), e))
+        WexError::LaunchError(format!(
+            "Failed to spawn Java process {}: {}",
+            opts.java_binary.display(),
+            e
+        ))
     })?;
 
     let pid = child.id().unwrap_or(0);
@@ -403,7 +429,10 @@ pub async fn install_full_environment(
             if pkg_cache_file.exists() {
                 events.on_event(&Event::Log {
                     level: LogLevel::Warn,
-                    message: format!("Network unavailable ({}); using cached version package for Minecraft {}", e, version),
+                    message: format!(
+                        "Network unavailable ({}); using cached version package for Minecraft {}",
+                        e, version
+                    ),
                 });
                 let content = fs::read_to_string(&pkg_cache_file)?;
                 serde_json::from_str(&content)?
@@ -420,7 +449,10 @@ pub async fn install_full_environment(
             if local_jar.exists() {
                 events.on_event(&Event::Log {
                     level: LogLevel::Warn,
-                    message: format!("Network error downloading client.jar, using cached {}", local_jar.display()),
+                    message: format!(
+                        "Network error downloading client.jar, using cached {}",
+                        local_jar.display()
+                    ),
                 });
                 local_jar
             } else {
@@ -429,16 +461,20 @@ pub async fn install_full_environment(
         }
     };
 
-    let vanilla_libs = match install_vanilla_libraries(paths, version, &pkg, client, events, concurrency).await {
-        Ok(libs) => libs,
-        Err(e) => {
-            events.on_event(&Event::Log {
-                level: LogLevel::Warn,
-                message: format!("Network error downloading vanilla libraries ({}), resolving cached libraries", e),
-            });
-            resolve_vanilla_libraries(paths, &pkg)
-        }
-    };
+    let vanilla_libs =
+        match install_vanilla_libraries(paths, version, &pkg, client, events, concurrency).await {
+            Ok(libs) => libs,
+            Err(e) => {
+                events.on_event(&Event::Log {
+                    level: LogLevel::Warn,
+                    message: format!(
+                    "Network error downloading vanilla libraries ({}), resolving cached libraries",
+                    e
+                ),
+                });
+                resolve_vanilla_libraries(paths, &pkg)
+            }
+        };
 
     let _ = install_assets(paths, &pkg, client, events, concurrency).await;
 
@@ -459,7 +495,10 @@ pub async fn install_full_environment(
             if fabric_cache_file.exists() {
                 events.on_event(&Event::Log {
                     level: LogLevel::Warn,
-                    message: format!("Network unavailable ({}); using cached Fabric profile for Minecraft {}", e, version),
+                    message: format!(
+                        "Network unavailable ({}); using cached Fabric profile for Minecraft {}",
+                        e, version
+                    ),
                 });
                 let content = fs::read_to_string(&fabric_cache_file)?;
                 serde_json::from_str(&content)?
@@ -469,16 +508,20 @@ pub async fn install_full_environment(
         }
     };
 
-    let fabric_libs = match install_fabric_libraries(paths, &fabric_profile, client, events, concurrency).await {
-        Ok(libs) => libs,
-        Err(e) => {
-            events.on_event(&Event::Log {
-                level: LogLevel::Warn,
-                message: format!("Network error downloading Fabric libraries ({}), resolving cached libraries", e),
-            });
-            resolve_fabric_libraries(paths, &fabric_profile)
-        }
-    };
+    let fabric_libs =
+        match install_fabric_libraries(paths, &fabric_profile, client, events, concurrency).await {
+            Ok(libs) => libs,
+            Err(e) => {
+                events.on_event(&Event::Log {
+                    level: LogLevel::Warn,
+                    message: format!(
+                    "Network error downloading Fabric libraries ({}), resolving cached libraries",
+                    e
+                ),
+                });
+                resolve_fabric_libraries(paths, &fabric_profile)
+            }
+        };
 
     // 3. Java Runtime
     events.on_event(&Event::StageStarted {
@@ -507,7 +550,13 @@ pub async fn install_full_environment(
     }
 
     let asset_index_id = pkg.asset_index.id;
-    Ok((java_binary, client_jar, vanilla_libs, fabric_libs, asset_index_id))
+    Ok((
+        java_binary,
+        client_jar,
+        vanilla_libs,
+        fabric_libs,
+        asset_index_id,
+    ))
 }
 
 pub async fn prepare_and_launch(
@@ -589,7 +638,9 @@ mod tests {
         assert!(args_file.exists());
         let content = fs::read_to_string(&args_file).unwrap();
         // Check that paths with spaces are properly quoted and escaped
-        assert!(content.contains("\"C:\\\\Program Files\\\\Wex\\\\lib 1.jar;C:\\\\Program Files\\\\Wex\\\\lib 2.jar\""));
+        assert!(content.contains(
+            "\"C:\\\\Program Files\\\\Wex\\\\lib 1.jar;C:\\\\Program Files\\\\Wex\\\\lib 2.jar\""
+        ));
         assert!(content.contains("\"Player One\""));
         assert!(content.contains("-Xmx4096M"));
     }
@@ -612,7 +663,11 @@ mod tests {
         File::create(&vanilla_guava).unwrap();
 
         let fabric_libs = vec![fabric_asm.clone(), fabric_asm_tree.clone()];
-        let vanilla_libs = vec![vanilla_asm.clone(), vanilla_asm_tree.clone(), vanilla_guava.clone()];
+        let vanilla_libs = vec![
+            vanilla_asm.clone(),
+            vanilla_asm_tree.clone(),
+            vanilla_guava.clone(),
+        ];
 
         let cp = build_classpath(&client_jar, &vanilla_libs, &fabric_libs);
         // Fabric ASM 9.7 must be present
@@ -684,8 +739,10 @@ mod tests {
         fs::write(&fabric_cache_file, mock_fabric_json).unwrap();
 
         // Verify offline reading of cached JSONs without network
-        let pkg: crate::minecraft::VersionPackage = serde_json::from_str(&fs::read_to_string(&pkg_cache_file).unwrap()).unwrap();
-        let fabric_prof: crate::fabric::FabricProfile = serde_json::from_str(&fs::read_to_string(&fabric_cache_file).unwrap()).unwrap();
+        let pkg: crate::minecraft::VersionPackage =
+            serde_json::from_str(&fs::read_to_string(&pkg_cache_file).unwrap()).unwrap();
+        let fabric_prof: crate::fabric::FabricProfile =
+            serde_json::from_str(&fs::read_to_string(&fabric_cache_file).unwrap()).unwrap();
 
         let v_libs = resolve_vanilla_libraries(&paths, &pkg);
         let f_libs = resolve_fabric_libraries(&paths, &fabric_prof);

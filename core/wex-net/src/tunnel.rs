@@ -165,14 +165,16 @@ impl WindowsJobObject {
         use std::mem::size_of;
         use std::ptr;
         use windows_sys::Win32::System::JobObjects::{
-            CreateJobObjectW, SetInformationJobObject, JobObjectExtendedLimitInformation,
+            CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
             JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
         };
 
         unsafe {
             let job = CreateJobObjectW(ptr::null(), ptr::null());
             if job.is_null() {
-                return Err(TunnelError::JobObject("CreateJobObjectW failed".to_string()));
+                return Err(TunnelError::JobObject(
+                    "CreateJobObjectW failed".to_string(),
+                ));
             }
 
             let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
@@ -187,20 +189,27 @@ impl WindowsJobObject {
 
             if success == 0 {
                 windows_sys::Win32::Foundation::CloseHandle(job);
-                return Err(TunnelError::JobObject("SetInformationJobObject failed".to_string()));
+                return Err(TunnelError::JobObject(
+                    "SetInformationJobObject failed".to_string(),
+                ));
             }
 
             Ok(Self { job_handle: job })
         }
     }
 
-    fn assign_process(&self, process_handle: windows_sys::Win32::Foundation::HANDLE) -> Result<(), TunnelError> {
+    fn assign_process(
+        &self,
+        process_handle: windows_sys::Win32::Foundation::HANDLE,
+    ) -> Result<(), TunnelError> {
         use windows_sys::Win32::System::JobObjects::AssignProcessToJobObject;
 
         unsafe {
             let res = AssignProcessToJobObject(self.job_handle, process_handle);
             if res == 0 {
-                return Err(TunnelError::JobObject("AssignProcessToJobObject failed".to_string()));
+                return Err(TunnelError::JobObject(
+                    "AssignProcessToJobObject failed".to_string(),
+                ));
             }
         }
         Ok(())
@@ -265,7 +274,9 @@ impl PlayitSupervisor {
             cmd.creation_flags(0x08000000);
         }
 
-        let mut child = cmd.spawn().map_err(|e| TunnelError::ProcessSpawn(e.to_string()))?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| TunnelError::ProcessSpawn(e.to_string()))?;
 
         #[cfg(windows)]
         {

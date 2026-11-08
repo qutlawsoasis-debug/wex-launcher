@@ -202,7 +202,8 @@ mod tests {
             let actual_normalized = actual_content.replace("\r\n", "\n");
 
             assert_eq!(
-                expected_normalized, actual_normalized,
+                expected_normalized,
+                actual_normalized,
                 "Drift detected in TypeScript definition file: {}. Run generator to sync types!",
                 file_path.display()
             );

@@ -351,11 +351,7 @@ impl FriendApiClient {
         Ok(())
     }
 
-    pub async fn remove_friend(
-        &self,
-        auth: &UserAuth,
-        friend_id: &str,
-    ) -> Result<(), FriendError> {
+    pub async fn remove_friend(&self, auth: &UserAuth, friend_id: &str) -> Result<(), FriendError> {
         let url = format!("{}/api/friends/remove", self.base_url);
         let res = self
             .client
@@ -447,7 +443,10 @@ impl FriendApiClient {
             #[serde(rename = "lobbyCode")]
             lobby_code: Option<String>,
         }
-        let raw: RawLobbyResp = res.json().await.unwrap_or(RawLobbyResp { lobby_code: None });
+        let raw: RawLobbyResp = res
+            .json()
+            .await
+            .unwrap_or(RawLobbyResp { lobby_code: None });
         Ok(raw.lobby_code)
     }
 
@@ -625,10 +624,16 @@ mod tests {
             nick: "User1".to_string(),
         };
 
-        let msg = client.send_friend_request(&auth, "FC-TARGET").await.unwrap();
+        let msg = client
+            .send_friend_request(&auth, "FC-TARGET")
+            .await
+            .unwrap();
         assert_eq!(msg, "Заявка отправлена");
 
-        let inv_id = client.send_lobby_invite(&auth, "usr_2", "ROOM88").await.unwrap();
+        let inv_id = client
+            .send_lobby_invite(&auth, "usr_2", "ROOM88")
+            .await
+            .unwrap();
         assert_eq!(inv_id, "inv_9988");
     }
 }

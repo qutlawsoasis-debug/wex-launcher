@@ -1,17 +1,16 @@
-use std::collections::HashMap;
-use std::fs::{self, File};
-use std::io;
-use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 use crate::config::WexPaths;
 use crate::download::{download_file_resumable, download_pool, DownloadTask, HashType};
 use crate::error::{Result, WexError};
 use crate::event::{Event, EventHandler, LogLevel};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fs::{self, File};
+use std::io;
+use std::path::{Path, PathBuf};
 
 pub const PISTON_VERSION_MANIFEST_URL: &str =
     "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
-pub const MINECRAFT_RESOURCES_BASE_URL: &str =
-    "https://resources.download.minecraft.net";
+pub const MINECRAFT_RESOURCES_BASE_URL: &str = "https://resources.download.minecraft.net";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PistonVersionManifest {
@@ -164,7 +163,10 @@ pub fn is_library_allowed(lib: &Library) -> bool {
     }
 }
 
-pub async fn fetch_version_package(client: &reqwest::Client, version: &str) -> Result<VersionPackage> {
+pub async fn fetch_version_package(
+    client: &reqwest::Client,
+    version: &str,
+) -> Result<VersionPackage> {
     let manifest_resp = client
         .get(PISTON_VERSION_MANIFEST_URL)
         .send()
@@ -176,7 +178,12 @@ pub async fn fetch_version_package(client: &reqwest::Client, version: &str) -> R
         .versions
         .into_iter()
         .find(|v| v.id == version)
-        .ok_or_else(|| WexError::UnsupportedVersion(format!("Minecraft version {} not found in piston meta", version)))?;
+        .ok_or_else(|| {
+            WexError::UnsupportedVersion(format!(
+                "Minecraft version {} not found in piston meta",
+                version
+            ))
+        })?;
 
     let pkg_resp = client.get(&entry.url).send().await?.error_for_status()?;
     let pkg: VersionPackage = pkg_resp.json().await?;
@@ -278,10 +285,16 @@ pub async fn install_vanilla_libraries(
                 } else {
                     "linux"
                 };
-                let arch_bits = if cfg!(target_pointer_width = "64") { "64" } else { "32" };
-                let dynamic_key = lib.natives.as_ref().and_then(|m| m.get(os_key)).map(|tmpl| {
-                    tmpl.replace("${arch}", arch_bits)
-                });
+                let arch_bits = if cfg!(target_pointer_width = "64") {
+                    "64"
+                } else {
+                    "32"
+                };
+                let dynamic_key = lib
+                    .natives
+                    .as_ref()
+                    .and_then(|m| m.get(os_key))
+                    .map(|tmpl| tmpl.replace("${arch}", arch_bits));
 
                 let fallback_key = if cfg!(target_os = "windows") {
                     "natives-windows"
@@ -300,10 +313,13 @@ pub async fn install_vanilla_libraries(
                     .or_else(|| classifiers.get("natives-macos"));
 
                 if let Some(item) = native_item {
-                    let rel_path = item
-                        .path
-                        .clone()
-                        .unwrap_or_else(|| format!("natives/{}-{}.jar", lib.name.replace(':', "-"), fallback_key));
+                    let rel_path = item.path.clone().unwrap_or_else(|| {
+                        format!(
+                            "natives/{}-{}.jar",
+                            lib.name.replace(':', "-"),
+                            fallback_key
+                        )
+                    });
                     let target_path = paths.libraries_dir.join(rel_path);
                     native_jars_to_extract.push(target_path.clone());
 
@@ -327,7 +343,14 @@ pub async fn install_vanilla_libraries(
         ),
     });
 
-    download_pool(client, download_tasks, concurrency, events, "Vanilla Libraries").await?;
+    download_pool(
+        client,
+        download_tasks,
+        concurrency,
+        events,
+        "Vanilla Libraries",
+    )
+    .await?;
 
     // Clean old natives before extraction
     if natives_dir.exists() {
@@ -502,8 +525,14 @@ mod tests {
         natives_map.insert("windows".to_string(), "natives-windows-${arch}".to_string());
         natives_map.insert("osx".to_string(), "natives-osx".to_string());
 
-        let arch_bits = if cfg!(target_pointer_width = "64") { "64" } else { "32" };
-        let resolved = natives_map.get("windows").map(|tmpl| tmpl.replace("${arch}", arch_bits));
+        let arch_bits = if cfg!(target_pointer_width = "64") {
+            "64"
+        } else {
+            "32"
+        };
+        let resolved = natives_map
+            .get("windows")
+            .map(|tmpl| tmpl.replace("${arch}", arch_bits));
         assert_eq!(resolved, Some(format!("natives-windows-{}", arch_bits)));
     }
 }

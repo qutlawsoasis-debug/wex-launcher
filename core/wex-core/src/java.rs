@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-use std::fs;
-use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 use crate::config::WexPaths;
 use crate::download::{download_pool, DownloadTask, HashType};
 use crate::error::{Result, WexError};
 use crate::event::{Event, EventHandler, LogLevel};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 pub const MOJANG_JAVA_ALL_JSON: &str =
     "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
@@ -114,7 +114,10 @@ pub async fn ensure_mojang_java(
     if (javaw_exe.exists() || java_exe.exists()) && release_file.exists() {
         events.on_event(&Event::Log {
             level: LogLevel::Info,
-            message: format!("Using existing Mojang Java runtime for {} ({})", mc_version, component),
+            message: format!(
+                "Using existing Mojang Java runtime for {} ({})",
+                mc_version, component
+            ),
         });
         return Ok(javaw_exe);
     }
@@ -134,15 +137,25 @@ pub async fn ensure_mojang_java(
     });
 
     let platform_key = get_platform_key();
-    let all_resp = client.get(MOJANG_JAVA_ALL_JSON).send().await?.error_for_status()?;
+    let all_resp = client
+        .get(MOJANG_JAVA_ALL_JSON)
+        .send()
+        .await?
+        .error_for_status()?;
     let all_data: serde_json::Value = all_resp.json().await?;
 
     let platform_obj = all_data.get(platform_key).ok_or_else(|| {
-        WexError::JavaError(format!("Platform '{}' not found in Mojang Java manifest", platform_key))
+        WexError::JavaError(format!(
+            "Platform '{}' not found in Mojang Java manifest",
+            platform_key
+        ))
     })?;
 
     let comp_entries = platform_obj.get(component).ok_or_else(|| {
-        WexError::JavaError(format!("Component '{}' not found for platform '{}'", component, platform_key))
+        WexError::JavaError(format!(
+            "Component '{}' not found for platform '{}'",
+            component, platform_key
+        ))
     })?;
 
     let manifest_url = comp_entries
@@ -151,7 +164,9 @@ pub async fn ensure_mojang_java(
         .and_then(|item| item.get("manifest"))
         .and_then(|m| m.get("url"))
         .and_then(|u| u.as_str())
-        .ok_or_else(|| WexError::JavaError("Failed to parse Mojang runtime manifest URL".to_string()))?;
+        .ok_or_else(|| {
+            WexError::JavaError("Failed to parse Mojang runtime manifest URL".to_string())
+        })?;
 
     let pkg_resp = client.get(manifest_url).send().await?.error_for_status()?;
     let pkg: MojangRuntimePackage = pkg_resp.json().await?;
@@ -234,8 +249,14 @@ mod tests {
 
     #[test]
     fn test_java_component_selection() {
-        assert_eq!(get_java_component_for_version("1.20.1"), "java-runtime-gamma");
-        assert_eq!(get_java_component_for_version("1.21.1"), "java-runtime-delta");
+        assert_eq!(
+            get_java_component_for_version("1.20.1"),
+            "java-runtime-gamma"
+        );
+        assert_eq!(
+            get_java_component_for_version("1.21.1"),
+            "java-runtime-delta"
+        );
     }
 
     #[test]

@@ -1,7 +1,7 @@
-use std::path::PathBuf;
-use std::sync::Arc;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
+use std::sync::Arc;
 use wex_core::{
     config::{LauncherConfig, WexPaths},
     event::ConsoleEventHandler,
@@ -79,9 +79,17 @@ async fn main() -> Result<()> {
         Commands::Install { version } => {
             println!("Installing full environment for Minecraft {}...", version);
             let _ = install_full_environment(&paths, &version, &client, events.as_ref(), 8).await?;
-            println!("Installation of Minecraft {} environment finished successfully!", version);
+            println!(
+                "Installation of Minecraft {} environment finished successfully!",
+                version
+            );
         }
-        Commands::Launch { version, nick, xmx, jvm_args } => {
+        Commands::Launch {
+            version,
+            nick,
+            xmx,
+            jvm_args,
+        } => {
             if let Some(n) = nick {
                 config.nickname = n;
             }
@@ -96,18 +104,14 @@ async fn main() -> Result<()> {
                 version, config.nickname, config.max_memory_mb
             );
 
-            let mut process = prepare_and_launch(
-                &paths,
-                &config,
-                &version,
-                &client,
-                events,
-                8,
-                &jvm_args,
-            )
-            .await?;
+            let mut process =
+                prepare_and_launch(&paths, &config, &version, &client, events, 8, &jvm_args)
+                    .await?;
 
-            println!("Game launched with PID {}. Waiting for game exit...", process.pid);
+            println!(
+                "Game launched with PID {}. Waiting for game exit...",
+                process.pid
+            );
             tokio::select! {
                 res = process.wait() => {
                     let exit_code = res?;

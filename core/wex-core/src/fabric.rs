@@ -1,9 +1,9 @@
-use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 use crate::config::WexPaths;
 use crate::download::{download_pool, DownloadTask, HashType};
 use crate::error::{Result, WexError};
 use crate::event::{Event, EventHandler, LogLevel};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 pub const DEFAULT_FABRIC_LOADER: &str = "0.19.5";
 pub const FABRIC_META_BASE: &str = "https://meta.fabricmc.net/v2/versions/loader";
@@ -64,7 +64,10 @@ pub async fn fetch_fabric_profile(
     loader_version: Option<&str>,
 ) -> Result<FabricProfile> {
     let loader = loader_version.unwrap_or(DEFAULT_FABRIC_LOADER);
-    let url = format!("{}/{}/{}/profile/json", FABRIC_META_BASE, mc_version, loader);
+    let url = format!(
+        "{}/{}/{}/profile/json",
+        FABRIC_META_BASE, mc_version, loader
+    );
 
     let resp = client.get(&url).send().await?.error_for_status()?;
     let profile: FabricProfile = resp.json().await?;
@@ -129,7 +132,14 @@ pub async fn install_fabric_libraries(
         ),
     });
 
-    download_pool(client, download_tasks, concurrency, events, "Fabric Libraries").await?;
+    download_pool(
+        client,
+        download_tasks,
+        concurrency,
+        events,
+        "Fabric Libraries",
+    )
+    .await?;
 
     Ok(classpath_jars)
 }
@@ -142,7 +152,10 @@ mod tests {
     fn test_maven_coordinate_parsing() {
         let coord = "net.fabricmc:fabric-loader:0.19.5";
         let path = maven_coordinate_to_path(coord).unwrap();
-        assert_eq!(path, "net/fabricmc/fabric-loader/0.19.5/fabric-loader-0.19.5.jar");
+        assert_eq!(
+            path,
+            "net/fabricmc/fabric-loader/0.19.5/fabric-loader-0.19.5.jar"
+        );
 
         let coord_asm = "org.ow2.asm:asm:9.10.1";
         let path_asm = maven_coordinate_to_path(coord_asm).unwrap();

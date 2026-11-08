@@ -149,8 +149,14 @@ pub fn import_from_dir(aura_dir: &Path) -> Result<OldLauncherData, ImportError> 
     // 2. Read servers.dat
     let mut servers = Vec::new();
     let server_dat_candidates = [
-        aura_dir.join("instances").join("1.20.1").join("servers.dat"),
-        aura_dir.join("instances").join("1.21.1").join("servers.dat"),
+        aura_dir
+            .join("instances")
+            .join("1.20.1")
+            .join("servers.dat"),
+        aura_dir
+            .join("instances")
+            .join("1.21.1")
+            .join("servers.dat"),
         aura_dir.join("servers.dat"),
     ];
 
@@ -159,7 +165,10 @@ pub fn import_from_dir(aura_dir: &Path) -> Result<OldLauncherData, ImportError> 
             if let Ok(bytes) = fs::read(s_path) {
                 let parsed = parse_servers_dat_bytes(&bytes);
                 for s in parsed {
-                    if !servers.iter().any(|existing: &ImportedServer| existing.ip.eq_ignore_ascii_case(&s.ip)) {
+                    if !servers
+                        .iter()
+                        .any(|existing: &ImportedServer| existing.ip.eq_ignore_ascii_case(&s.ip))
+                    {
                         servers.push(s);
                     }
                 }
@@ -191,7 +200,11 @@ pub fn import_from_dir(aura_dir: &Path) -> Result<OldLauncherData, ImportError> 
                         };
 
                         skins.push(ImportedSkin {
-                            file_name: p.file_name().unwrap_or_default().to_string_lossy().to_string(),
+                            file_name: p
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string(),
                             path: p,
                             hash,
                             is_slim,
@@ -220,7 +233,11 @@ pub fn import_from_dir(aura_dir: &Path) -> Result<OldLauncherData, ImportError> 
                         let hash = hex::encode(hasher.finalize());
 
                         capes.push(ImportedCape {
-                            file_name: p.file_name().unwrap_or_default().to_string_lossy().to_string(),
+                            file_name: p
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string(),
                             path: p,
                             hash,
                         });
@@ -260,10 +277,12 @@ fn parse_servers_dat_bytes(bytes: &[u8]) -> Vec<ImportedServer> {
         {
             let ip_len_pos = i + 5;
             if ip_len_pos + 2 <= bytes.len() {
-                let ip_len = u16::from_be_bytes([bytes[ip_len_pos], bytes[ip_len_pos + 1]]) as usize;
+                let ip_len =
+                    u16::from_be_bytes([bytes[ip_len_pos], bytes[ip_len_pos + 1]]) as usize;
                 let ip_start = ip_len_pos + 2;
                 if ip_start + ip_len <= bytes.len() {
-                    let ip = String::from_utf8_lossy(&bytes[ip_start..ip_start + ip_len]).to_string();
+                    let ip =
+                        String::from_utf8_lossy(&bytes[ip_start..ip_start + ip_len]).to_string();
 
                     // Search nearby for "name" tag within 256 bytes backwards or forwards
                     let mut name = ip.clone();
@@ -278,10 +297,14 @@ fn parse_servers_dat_bytes(bytes: &[u8]) -> Vec<ImportedServer> {
                         {
                             let n_len_pos = j + 7;
                             if n_len_pos + 2 <= bytes.len() {
-                                let n_len = u16::from_be_bytes([bytes[n_len_pos], bytes[n_len_pos + 1]]) as usize;
+                                let n_len =
+                                    u16::from_be_bytes([bytes[n_len_pos], bytes[n_len_pos + 1]])
+                                        as usize;
                                 let n_start = n_len_pos + 2;
                                 if n_start + n_len <= bytes.len() {
-                                    name = String::from_utf8_lossy(&bytes[n_start..n_start + n_len]).to_string();
+                                    name =
+                                        String::from_utf8_lossy(&bytes[n_start..n_start + n_len])
+                                            .to_string();
                                     break;
                                 }
                             }

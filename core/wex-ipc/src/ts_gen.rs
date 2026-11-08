@@ -235,7 +235,10 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
     let command_names = [
         ("CORE_GET_CONFIG", CMD_CORE_GET_CONFIG),
         ("CORE_SAVE_CONFIG", CMD_CORE_SAVE_CONFIG),
-        ("CORE_GET_INSTALLED_VERSIONS", CMD_CORE_GET_INSTALLED_VERSIONS),
+        (
+            "CORE_GET_INSTALLED_VERSIONS",
+            CMD_CORE_GET_INSTALLED_VERSIONS,
+        ),
         ("CORE_INSTALL_INSTANCE", CMD_CORE_INSTALL_INSTANCE),
         ("CORE_LAUNCH_GAME", CMD_CORE_LAUNCH_GAME),
         ("CORE_CANCEL_LAUNCH", CMD_CORE_CANCEL_LAUNCH),
@@ -267,28 +270,49 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ("EXTRAS_SAVE_SKIN", CMD_EXTRAS_SAVE_SKIN),
         ("EXTRAS_LIST_SKIN_HISTORY", CMD_EXTRAS_LIST_SKIN_HISTORY),
         ("EXTRAS_GENERATE_CSL_CONFIG", CMD_EXTRAS_GENERATE_CSL_CONFIG),
-        ("EXTRAS_DISCORD_SET_ACTIVITY", CMD_EXTRAS_DISCORD_SET_ACTIVITY),
-        ("EXTRAS_DISCORD_CLEAR_ACTIVITY", CMD_EXTRAS_DISCORD_CLEAR_ACTIVITY),
+        (
+            "EXTRAS_DISCORD_SET_ACTIVITY",
+            CMD_EXTRAS_DISCORD_SET_ACTIVITY,
+        ),
+        (
+            "EXTRAS_DISCORD_CLEAR_ACTIVITY",
+            CMD_EXTRAS_DISCORD_CLEAR_ACTIVITY,
+        ),
         ("EXTRAS_IMPORT_OLD_LAUNCHER", CMD_EXTRAS_IMPORT_OLD_LAUNCHER),
         ("EXTRAS_GET_PRESETS", CMD_EXTRAS_GET_PRESETS),
         ("EXTRAS_APPLY_PRESET", CMD_EXTRAS_APPLY_PRESET),
         ("SOCIAL_LOGIN", CMD_SOCIAL_LOGIN),
         ("SOCIAL_GET_FRIENDS", CMD_SOCIAL_GET_FRIENDS),
         ("SOCIAL_SEND_FRIEND_REQUEST", CMD_SOCIAL_SEND_FRIEND_REQUEST),
-        ("SOCIAL_ACCEPT_FRIEND_REQUEST", CMD_SOCIAL_ACCEPT_FRIEND_REQUEST),
-        ("SOCIAL_DECLINE_FRIEND_REQUEST", CMD_SOCIAL_DECLINE_FRIEND_REQUEST),
+        (
+            "SOCIAL_ACCEPT_FRIEND_REQUEST",
+            CMD_SOCIAL_ACCEPT_FRIEND_REQUEST,
+        ),
+        (
+            "SOCIAL_DECLINE_FRIEND_REQUEST",
+            CMD_SOCIAL_DECLINE_FRIEND_REQUEST,
+        ),
         ("SOCIAL_SYNC", CMD_SOCIAL_SYNC),
         ("SOCIAL_SEND_LOBBY_INVITE", CMD_SOCIAL_SEND_LOBBY_INVITE),
         ("SOCIAL_SET_PRESENCE", CMD_SOCIAL_SET_PRESENCE),
         ("SOCIAL_LIST_ACHIEVEMENTS", CMD_SOCIAL_LIST_ACHIEVEMENTS),
-        ("SOCIAL_REPORT_ACHIEVEMENT_PROGRESS", CMD_SOCIAL_REPORT_ACHIEVEMENT_PROGRESS),
+        (
+            "SOCIAL_REPORT_ACHIEVEMENT_PROGRESS",
+            CMD_SOCIAL_REPORT_ACHIEVEMENT_PROGRESS,
+        ),
         ("SOCIAL_LIST_WORLDS", CMD_SOCIAL_LIST_WORLDS),
         ("SOCIAL_CREATE_WORLD_BACKUP", CMD_SOCIAL_CREATE_WORLD_BACKUP),
         ("SOCIAL_LIST_WORLD_BACKUPS", CMD_SOCIAL_LIST_WORLD_BACKUPS),
-        ("SOCIAL_RESTORE_WORLD_BACKUP", CMD_SOCIAL_RESTORE_WORLD_BACKUP),
+        (
+            "SOCIAL_RESTORE_WORLD_BACKUP",
+            CMD_SOCIAL_RESTORE_WORLD_BACKUP,
+        ),
         ("SOCIAL_LIST_SCREENSHOTS", CMD_SOCIAL_LIST_SCREENSHOTS),
         ("SOCIAL_GET_NEWS", CMD_SOCIAL_GET_NEWS),
-        ("SOCIAL_CHECK_LAUNCHER_UPDATE", CMD_SOCIAL_CHECK_LAUNCHER_UPDATE),
+        (
+            "SOCIAL_CHECK_LAUNCHER_UPDATE",
+            CMD_SOCIAL_CHECK_LAUNCHER_UPDATE,
+        ),
     ];
     for (k, v) in command_names {
         cmd_ts.push_str(&format!("    {}: \"{}\",\n", k, v));
@@ -355,7 +379,9 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
     core_ts.push_str("    getConfig(): Promise<LauncherConfig>;\n");
     core_ts.push_str("    saveConfig(config: LauncherConfig): Promise<void>;\n");
     core_ts.push_str("    getInstalledVersions(): Promise<Array<InstalledVersion>>;\n");
-    core_ts.push_str("    installInstance(request: InstallInstanceRequest): Promise<InstallInstanceResponse>;\n");
+    core_ts.push_str(
+        "    installInstance(request: InstallInstanceRequest): Promise<InstallInstanceResponse>;\n",
+    );
     core_ts.push_str("    launchGame(request: LaunchGameRequest): Promise<LaunchGameResponse>;\n");
     core_ts.push_str("    cancelLaunch(): Promise<void>;\n");
     core_ts.push_str("    isRunning(instanceId: string): Promise<boolean>;\n");

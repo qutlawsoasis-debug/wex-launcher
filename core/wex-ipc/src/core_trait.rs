@@ -1,6 +1,6 @@
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use async_trait::async_trait;
 
 use crate::commands::{
     InstallInstanceRequest, InstallInstanceResponse, LaunchGameRequest, LaunchGameResponse,
@@ -101,26 +101,29 @@ impl MockLauncherCore {
 #[async_trait]
 impl LauncherCore for MockLauncherCore {
     async fn get_config(&self) -> IpcResult<LauncherConfig> {
-        self.config
-            .lock()
-            .map(|c| c.clone())
-            .map_err(|e| IpcError::internal("Не удалось заблокировать мьютекс конфигурации", Some(e.to_string())))
+        self.config.lock().map(|c| c.clone()).map_err(|e| {
+            IpcError::internal(
+                "Не удалось заблокировать мьютекс конфигурации",
+                Some(e.to_string()),
+            )
+        })
     }
 
     async fn save_config(&self, config: LauncherConfig) -> IpcResult<()> {
-        let mut guard = self
-            .config
-            .lock()
-            .map_err(|e| IpcError::internal("Не удалось заблокировать мьютекс конфигурации", Some(e.to_string())))?;
+        let mut guard = self.config.lock().map_err(|e| {
+            IpcError::internal(
+                "Не удалось заблокировать мьютекс конфигурации",
+                Some(e.to_string()),
+            )
+        })?;
         *guard = config;
         Ok(())
     }
 
     async fn get_installed_versions(&self) -> IpcResult<Vec<InstalledVersion>> {
-        self.versions
-            .lock()
-            .map(|v| v.clone())
-            .map_err(|e| IpcError::internal("Не удалось прочитать список версий", Some(e.to_string())))
+        self.versions.lock().map(|v| v.clone()).map_err(|e| {
+            IpcError::internal("Не удалось прочитать список версий", Some(e.to_string()))
+        })
     }
 
     async fn install_instance(
@@ -150,7 +153,10 @@ impl LauncherCore for MockLauncherCore {
     }
 
     async fn launch_game(&self, request: LaunchGameRequest) -> IpcResult<LaunchGameResponse> {
-        let should_fail = *self.fail_next_launch.lock().unwrap_or_else(|e| e.into_inner());
+        let should_fail = *self
+            .fail_next_launch
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if should_fail {
             return Err(IpcError::new(
                 "LAUNCH_SIMULATED_FAILURE",
@@ -178,7 +184,10 @@ impl LauncherCore for MockLauncherCore {
         Ok(LaunchGameResponse {
             success: true,
             pid: Some(pid),
-            message: format!("Minecraft {} успешно запущен для игрока {}", request.version, request.nickname),
+            message: format!(
+                "Minecraft {} успешно запущен для игрока {}",
+                request.version, request.nickname
+            ),
         })
     }
 
@@ -192,18 +201,16 @@ impl LauncherCore for MockLauncherCore {
     }
 
     async fn is_running(&self, instance_id: &str) -> IpcResult<bool> {
-        let map = self
-            .running_instances
-            .lock()
-            .map_err(|e| IpcError::internal("Ошибка чтения запущенных процессов", Some(e.to_string())))?;
+        let map = self.running_instances.lock().map_err(|e| {
+            IpcError::internal("Ошибка чтения запущенных процессов", Some(e.to_string()))
+        })?;
         Ok(map.contains_key(instance_id))
     }
 
     async fn kill_game(&self, instance_id: &str) -> IpcResult<()> {
-        let mut map = self
-            .running_instances
-            .lock()
-            .map_err(|e| IpcError::internal("Ошибка доступа к запущенным процессам", Some(e.to_string())))?;
+        let mut map = self.running_instances.lock().map_err(|e| {
+            IpcError::internal("Ошибка доступа к запущенным процессам", Some(e.to_string()))
+        })?;
         map.remove(instance_id);
         Ok(())
     }
