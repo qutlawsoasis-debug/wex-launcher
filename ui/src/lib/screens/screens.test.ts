@@ -387,7 +387,7 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Постоялец');
     expect(target.textContent).toContain('Сто часов');
     expect(target.textContent).toContain('Хост');
-    expect(target.textContent).toContain('СПИСОК ДОСТИЖЕНИЙ');
+    expect(target.textContent).toContain('Список достижений');
 
     unmount(comp);
   });

@@ -23,7 +23,26 @@
 
   // Navigation state
   let activeTab = $state('play');
+  let friendsSubtab = $state<'friends' | 'requests' | 'achievements'>('friends');
   let isMaximized = $state(false);
+
+  $effect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      if (tabParam && sidebarItems.some((i) => i.id === tabParam)) {
+        activeTab = tabParam;
+      }
+      const subtabParam = params.get('subtab');
+      if (subtabParam === 'friends' || subtabParam === 'requests' || subtabParam === 'achievements') {
+        friendsSubtab = subtabParam;
+      }
+      const themeParam = params.get('theme');
+      if (themeParam === 'light' || themeParam === 'dark') {
+        theme.setAppearance(themeParam);
+      }
+    }
+  });
 
   // Launch state
   let selectedVersion = $state('1.21.1');
@@ -382,7 +401,7 @@
       {:else if activeTab === 'lobby'}
         <LobbyScreen />
       {:else if activeTab === 'friends'}
-        <FriendsScreen />
+        <FriendsScreen tab={friendsSubtab} />
       {:else if activeTab === 'workshop'}
         <WorkshopScreen {selectedVersion} ontoast={addToast} />
       {:else if activeTab === 'mods'}
