@@ -343,7 +343,7 @@
   <!-- Main Servers List View (Apple HIG Inset Grouped) -->
   <div class="servers-content">
     {#if !network.isOnline}
-      <OfflineState onretry={loadServers} />
+      <OfflineState onretry={() => loadServers(activeVersion)} />
     {:else if filteredServers.length > 0}
       <List header="Серверы Minecraft • {activeVersion}">
         {#each filteredServers as s (s.id)}
