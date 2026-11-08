@@ -199,6 +199,20 @@ pub async fn ensure_mojang_java(
     )
     .await?;
 
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for (rel_path, file_entry) in &pkg.files {
+            let clean_path = rel_path.replace('\\', "/");
+            let target_path = comp_dir.join(&clean_path);
+            if file_entry.executable == Some(true) || clean_path.contains("bin/") {
+                if target_path.exists() {
+                    let _ = fs::set_permissions(&target_path, fs::Permissions::from_mode(0o755));
+                }
+            }
+        }
+    }
+
     if !javaw_exe.exists() && !java_exe.exists() {
         return Err(WexError::JavaError(format!(
             "Java executable not found after download at {}",

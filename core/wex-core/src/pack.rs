@@ -60,6 +60,8 @@ pub struct PackState {
     pub fabric_loader: String,
     #[serde(rename = "installedAtUtc")]
     pub installed_at_utc: String,
+    #[serde(rename = "installedMods", default)]
+    pub installed_mods: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -169,6 +171,19 @@ pub async fn sync_aura_pack(
         let clean_path = file.path.replace('\\', "/");
         let target_path = instance_dir.join(&clean_path);
 
+        // Check if mod was disabled by user (.disabled)
+        if clean_path.starts_with("mods/") && clean_path.ends_with(".jar") {
+            let disabled_target_path = instance_dir.join(format!("{}.disabled", clean_path));
+            if disabled_target_path.exists() {
+                if let Ok(meta) = fs::metadata(&disabled_target_path) {
+                    if meta.len() == file.size {
+                        // User disabled this mod and file size matches manifest. Keep it disabled!
+                        continue;
+                    }
+                }
+            }
+        }
+
         let is_forced = force_set.contains(&clean_path.to_lowercase())
             || (clean_path.starts_with("config/")
                 && force_set.contains(&clean_path["config/".len()..].to_lowercase()));
@@ -236,21 +251,25 @@ pub async fn sync_aura_pack(
         .await?;
     }
 
-    // Clean orphan mods
+    // Clean orphan mods (ONLY mods previously installed by Wex, never delete user mods!)
     let mut mods_deleted = 0;
     let mods_dir = instance_dir.join("mods");
+    let state_path = instance_dir.join("pack.state.json");
+    let previous_installed_mods: HashSet<String> = if state_path.exists() {
+        fs::read_to_string(&state_path)
+            .ok()
+            .and_then(|content| serde_json::from_str::<PackState>(&content).ok())
+            .map(|s| s.installed_mods.into_iter().map(|m| m.to_lowercase()).collect())
+            .unwrap_or_default()
+    } else {
+        HashSet::new()
+    };
+
     if mods_dir.exists() {
         let manifest_mod_names: HashSet<String> = manifest
             .files
             .iter()
             .filter(|f| f.path.starts_with("mods/") && f.path.ends_with(".jar"))
-            .filter_map(|f| Path::new(&f.path).file_name().and_then(|n| n.to_str()).map(|s| s.to_lowercase()))
-            .collect();
-
-        let manifest_disabled_names: HashSet<String> = manifest
-            .files
-            .iter()
-            .filter(|f| f.path.starts_with("mods/") && f.path.ends_with(".disabled"))
             .filter_map(|f| Path::new(&f.path).file_name().and_then(|n| n.to_str()).map(|s| s.to_lowercase()))
             .collect();
 
@@ -260,20 +279,22 @@ pub async fn sync_aura_pack(
                 if let Some(file_name) = p.file_name().and_then(|n| n.to_str()) {
                     let lower = file_name.to_lowercase();
                     if lower.ends_with(".jar") {
-                        if !manifest_mod_names.contains(&lower) {
-                            let disabled_name = format!("{}.disabled", lower);
-                            if !manifest_disabled_names.contains(&disabled_name) {
-                                events.on_event(&Event::Log {
-                                    level: LogLevel::Info,
-                                    message: format!("Deleting removed mod: {}", file_name),
-                                });
-                                let _ = fs::remove_file(&p);
-                                mods_deleted += 1;
-                            }
+                        // Only delete if Wex installed it previously AND it's removed from manifest!
+                        if previous_installed_mods.contains(&lower) && !manifest_mod_names.contains(&lower) {
+                            events.on_event(&Event::Log {
+                                level: LogLevel::Info,
+                                message: format!("Deleting removed pack mod: {}", file_name),
+                            });
+                            let _ = fs::remove_file(&p);
+                            mods_deleted += 1;
                         }
                     } else if lower.ends_with(".jar.disabled") {
                         let active_name = lower.trim_end_matches(".disabled");
-                        if !manifest_disabled_names.contains(&lower) && !manifest_mod_names.contains(active_name) {
+                        if previous_installed_mods.contains(active_name) && !manifest_mod_names.contains(active_name) {
+                            events.on_event(&Event::Log {
+                                level: LogLevel::Info,
+                                message: format!("Deleting removed disabled pack mod: {}", file_name),
+                            });
                             let _ = fs::remove_file(&p);
                             mods_deleted += 1;
                         }
@@ -283,15 +304,23 @@ pub async fn sync_aura_pack(
         }
     }
 
-    // Save pack.state.json
+    // Save pack.state.json with new list of installed pack mods
+    let current_installed_mods: Vec<String> = manifest
+        .files
+        .iter()
+        .filter(|f| f.path.starts_with("mods/") && f.path.ends_with(".jar"))
+        .filter_map(|f| Path::new(&f.path).file_name().and_then(|n| n.to_str()).map(|s| s.to_string()))
+        .collect();
+
     let state = PackState {
         pack_version: manifest.pack_version.clone(),
         minecraft: manifest.minecraft.clone(),
         fabric_loader: manifest.fabric_loader.clone(),
         installed_at_utc: chrono::Utc::now().to_rfc3339(),
+        installed_mods: current_installed_mods,
     };
     let state_json = serde_json::to_string_pretty(&state)?;
-    fs::write(instance_dir.join("pack.state.json"), state_json)?;
+    fs::write(&state_path, state_json)?;
 
     events.on_event(&Event::Log {
         level: LogLevel::Info,
@@ -365,42 +394,74 @@ mod tests {
         let mods_dir = tmp.path().join("mods");
         fs::create_dir_all(&mods_dir).unwrap();
 
-        let mod1 = mods_dir.join("valid-mod.jar");
-        let mod2 = mods_dir.join("old-mod.jar");
-        fs::write(&mod1, "data1").unwrap();
-        fs::write(&mod2, "data2").unwrap();
+        let pack_mod = mods_dir.join("valid-pack-mod.jar");
+        let old_pack_mod = mods_dir.join("old-pack-mod.jar");
+        let user_mod = mods_dir.join("my-custom-minimap.jar");
 
-        let manifest = Manifest {
-            name: "Aura".to_string(),
-            pack_version: "1.0".to_string(),
-            minecraft: "1.20.1".to_string(),
-            fabric_loader: "0.19.5".to_string(),
-            servers: None,
-            files: vec![ManifestFileEntry {
-                path: "mods/valid-mod.jar".to_string(),
-                sha256: "".to_string(),
-                size: 5,
-                mode: "sync".to_string(),
-                url: None,
-            }],
-        };
+        fs::write(&pack_mod, "data1").unwrap();
+        fs::write(&old_pack_mod, "data2").unwrap();
+        fs::write(&user_mod, "custom user mod").unwrap();
 
-        let manifest_mod_names: HashSet<String> = manifest
-            .files
-            .iter()
-            .map(|f| Path::new(&f.path).file_name().unwrap().to_str().unwrap().to_lowercase())
+        // Previous state recorded only pack mods
+        let previous_installed_mods: HashSet<String> = [
+            "valid-pack-mod.jar".to_string(),
+            "old-pack-mod.jar".to_string(),
+        ]
+        .into_iter()
+        .collect();
+
+        // New manifest only has valid-pack-mod.jar
+        let manifest_mod_names: HashSet<String> = ["valid-pack-mod.jar".to_string()]
+            .into_iter()
             .collect();
 
         for entry in fs::read_dir(&mods_dir).unwrap().flatten() {
             let p = entry.path();
             let name = p.file_name().unwrap().to_str().unwrap().to_lowercase();
-            if !manifest_mod_names.contains(&name) {
+            // ONLY remove if it was installed by Wex AND is no longer in manifest!
+            if previous_installed_mods.contains(&name) && !manifest_mod_names.contains(&name) {
                 fs::remove_file(p).unwrap();
             }
         }
 
-        assert!(mod1.exists());
-        assert!(!mod2.exists());
+        // Pack mod in manifest is kept
+        assert!(pack_mod.exists());
+        // Old pack mod no longer in manifest is removed
+        assert!(!old_pack_mod.exists());
+        // User's custom mod was NEVER in previous_installed_mods, so it MUST BE PRESERVED!
+        assert!(user_mod.exists(), "User custom mod must NEVER be deleted by pack sync!");
+    }
+
+    #[test]
+    fn test_disabled_mod_not_redownloaded() {
+        let tmp = tempdir().unwrap();
+        let mods_dir = tmp.path().join("mods");
+        fs::create_dir_all(&mods_dir).unwrap();
+
+        let disabled_mod = mods_dir.join("iris.jar.disabled");
+        let test_data = b"some iris shader data";
+        fs::write(&disabled_mod, test_data).unwrap();
+
+        let entry = ManifestFileEntry {
+            path: "mods/iris.jar".to_string(),
+            sha256: "dummy".to_string(),
+            size: test_data.len() as u64,
+            mode: "sync".to_string(),
+            url: None,
+        };
+
+        let clean_path = entry.path.replace('\\', "/");
+        let disabled_target = tmp.path().join(format!("{}.disabled", clean_path));
+        assert!(disabled_target.exists());
+
+        let mut should_download = true;
+        if let Ok(meta) = fs::metadata(&disabled_target) {
+            if meta.len() == entry.size {
+                should_download = false;
+            }
+        }
+
+        assert!(!should_download, "Disabled mod with matching size must NOT be queued for re-download!");
     }
 
     #[test]

@@ -70,6 +70,8 @@ pub fn verify_file(path: &Path, expected_size: Option<u64>, expected_hash: Optio
     }
 }
 
+use tokio_util::sync::CancellationToken;
+
 pub async fn download_file_resumable(
     client: &reqwest::Client,
     url: &str,
@@ -78,6 +80,33 @@ pub async fn download_file_resumable(
     expected_hash: Option<(&str, HashType)>,
     events: &dyn EventHandler,
 ) -> Result<bool> {
+    download_file_resumable_cancellable(
+        client,
+        url,
+        target_path,
+        expected_size,
+        expected_hash,
+        events,
+        None,
+    )
+    .await
+}
+
+pub async fn download_file_resumable_cancellable(
+    client: &reqwest::Client,
+    url: &str,
+    target_path: &Path,
+    expected_size: Option<u64>,
+    expected_hash: Option<(&str, HashType)>,
+    events: &dyn EventHandler,
+    cancel_token: Option<&CancellationToken>,
+) -> Result<bool> {
+    if let Some(token) = cancel_token {
+        if token.is_cancelled() {
+            return Err(WexError::Cancelled);
+        }
+    }
+
     if verify_file(target_path, expected_size, expected_hash) {
         return Ok(false);
     }
@@ -150,6 +179,11 @@ pub async fn download_file_resumable(
         let mut downloaded_bytes = existing_len;
 
         while let Some(chunk_res) = stream.next().await {
+            if let Some(token) = cancel_token {
+                if token.is_cancelled() {
+                    return Err(WexError::Cancelled);
+                }
+            }
             match chunk_res {
                 Ok(chunk) => {
                     file.write_all(&chunk)?;
@@ -232,6 +266,17 @@ pub async fn download_pool(
     events: &dyn EventHandler,
     stage_name: &str,
 ) -> Result<u64> {
+    download_pool_cancellable(client, tasks, concurrency, events, stage_name, None).await
+}
+
+pub async fn download_pool_cancellable(
+    client: &reqwest::Client,
+    tasks: Vec<DownloadTask>,
+    concurrency: usize,
+    events: &dyn EventHandler,
+    stage_name: &str,
+    cancel_token: Option<CancellationToken>,
+) -> Result<u64> {
     let total_tasks = tasks.len();
     if total_tasks == 0 {
         return Ok(0);
@@ -246,22 +291,36 @@ pub async fn download_pool(
         let sem = semaphore.clone();
         let client = client.clone();
         let total_bytes = total_bytes_downloaded.clone();
+        let token_clone = cancel_token.clone();
 
         join_set.spawn(async move {
+            if let Some(t) = &token_clone {
+                if t.is_cancelled() {
+                    return Err(WexError::Cancelled);
+                }
+            }
+
             let _permit = sem.acquire().await.map_err(|e| WexError::DownloadError {
                 url: task.url.clone(),
                 message: e.to_string(),
             })?;
 
+            if let Some(t) = &token_clone {
+                if t.is_cancelled() {
+                    return Err(WexError::Cancelled);
+                }
+            }
+
             let expected_hash = task.hash.as_ref().map(|(h, t)| (h.as_str(), *t));
             let noop = crate::event::NoopEventHandler;
-            let res = download_file_resumable(
+            let res = download_file_resumable_cancellable(
                 &client,
                 &task.url,
                 &task.target_path,
                 task.size,
                 expected_hash,
                 &noop,
+                token_clone.as_ref(),
             )
             .await;
 

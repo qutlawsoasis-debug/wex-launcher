@@ -51,4 +51,7 @@ pub enum WexError {
 
     #[error("Process exited with code {0}")]
     ProcessFailed(i32),
+
+    #[error("Operation cancelled")]
+    Cancelled,
 }

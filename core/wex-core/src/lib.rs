@@ -4,6 +4,7 @@ pub mod download;
 pub mod error;
 pub mod event;
 pub mod fabric;
+pub mod ipc_adapter;
 pub mod java;
 pub mod launcher;
 pub mod minecraft;
@@ -16,6 +17,7 @@ pub use event::{
     ChannelEventHandler, ConsoleEventHandler, Event, EventHandler, LogLevel, NoopEventHandler,
     SharedEventHandler,
 };
+pub use ipc_adapter::WexLauncherCore;
 pub use launcher::{
     build_classpath, build_launch_command, install_full_environment, launch_game_process,
     prepare_and_launch, GameProcess, LaunchOptions,

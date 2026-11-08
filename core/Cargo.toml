@@ -2,5 +2,9 @@
 members = [
     "wex-core",
     "wex-cli",
+    "wex-ipc",
+    "wex-net",
+    "wex-social",
+    "wex-extras",
 ]
 resolver = "2"

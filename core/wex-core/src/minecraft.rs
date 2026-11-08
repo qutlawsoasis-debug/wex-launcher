@@ -105,6 +105,10 @@ pub struct AssetIndex {
 }
 
 pub fn evaluates_rule_for_current_os(rules: &[LibraryRule]) -> bool {
+    if rules.is_empty() {
+        return true;
+    }
+
     let current_os = if cfg!(target_os = "windows") {
         "windows"
     } else if cfg!(target_os = "macos") {
@@ -113,25 +117,43 @@ pub fn evaluates_rule_for_current_os(rules: &[LibraryRule]) -> bool {
         "linux"
     };
 
-    let mut allowed = false;
+    let mut allowed = match rules.first() {
+        Some(r) => r.action == "disallow",
+        None => true,
+    };
 
     for rule in rules {
-        let os_match = if let Some(os) = &rule.os {
+        let mut matches = true;
+        if let Some(os) = &rule.os {
             if let Some(os_name) = &os.name {
-                os_name.eq_ignore_ascii_case(current_os)
-            } else {
-                true
+                if !os_name.eq_ignore_ascii_case(current_os) {
+                    matches = false;
+                }
             }
-        } else {
-            true
-        };
+            if let Some(arch) = &os.arch {
+                if !matches_arch(arch) {
+                    matches = false;
+                }
+            }
+        }
 
-        if os_match {
+        if matches {
             allowed = rule.action == "allow";
         }
     }
 
     allowed
+}
+
+fn matches_arch(arch: &str) -> bool {
+    let current = std::env::consts::ARCH;
+    match arch {
+        "x86" | "x32" => current == "x86",
+        "x64" | "x86_64" => current == "x86_64",
+        "arm" => current == "arm",
+        "arm64" | "aarch64" => current == "aarch64",
+        _ => arch.eq_ignore_ascii_case(current),
+    }
 }
 
 pub fn is_library_allowed(lib: &Library) -> bool {
@@ -230,24 +252,39 @@ pub async fn install_vanilla_libraries(
 
             // Classifiers (natives)
             if let Some(classifiers) = &downloads.classifiers {
-                let native_key = if cfg!(target_os = "windows") {
+                let os_key = if cfg!(target_os = "windows") {
+                    "windows"
+                } else if cfg!(target_os = "macos") {
+                    "osx"
+                } else {
+                    "linux"
+                };
+                let arch_bits = if cfg!(target_pointer_width = "64") { "64" } else { "32" };
+                let dynamic_key = lib.natives.as_ref().and_then(|m| m.get(os_key)).map(|tmpl| {
+                    tmpl.replace("${arch}", arch_bits)
+                });
+
+                let fallback_key = if cfg!(target_os = "windows") {
                     "natives-windows"
                 } else if cfg!(target_os = "macos") {
-                    "natives-macos"
+                    "natives-osx"
                 } else {
                     "natives-linux"
                 };
 
-                let native_item = classifiers
-                    .get(native_key)
+                let native_item = dynamic_key
+                    .as_deref()
+                    .and_then(|k| classifiers.get(k))
+                    .or_else(|| classifiers.get(fallback_key))
                     .or_else(|| classifiers.get("natives-windows-64"))
-                    .or_else(|| classifiers.get("natives-windows-32"));
+                    .or_else(|| classifiers.get("natives-windows-32"))
+                    .or_else(|| classifiers.get("natives-macos"));
 
                 if let Some(item) = native_item {
                     let rel_path = item
                         .path
                         .clone()
-                        .unwrap_or_else(|| format!("natives/{}-{}.jar", lib.name.replace(':', "-"), native_key));
+                        .unwrap_or_else(|| format!("natives/{}-{}.jar", lib.name.replace(':', "-"), fallback_key));
                     let target_path = paths.libraries_dir.join(rel_path);
                     native_jars_to_extract.push(target_path.clone());
 
@@ -272,6 +309,15 @@ pub async fn install_vanilla_libraries(
     });
 
     download_pool(client, download_tasks, concurrency, events, "Vanilla Libraries").await?;
+
+    // Clean old natives before extraction
+    if natives_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&natives_dir) {
+            for entry in entries.flatten() {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
+    }
 
     // Extract natives
     for native_jar in native_jars_to_extract {
@@ -344,13 +390,25 @@ pub async fn install_assets(
         let prefix = &hash[..2];
         let target_path = paths.assets_objects_dir().join(prefix).join(hash);
 
-        let url = format!("{}/{}/{}", MINECRAFT_RESOURCES_BASE_URL, prefix, hash);
-        download_tasks.push(DownloadTask {
-            url,
-            target_path,
-            size: Some(object.size),
-            hash: Some((hash.clone(), HashType::Sha1)),
-        });
+        // Fast check: if file already exists with matching size, avoid full re-hash
+        let mut needs_download = true;
+        if target_path.exists() {
+            if let Ok(meta) = fs::metadata(&target_path) {
+                if meta.len() == object.size {
+                    needs_download = false;
+                }
+            }
+        }
+
+        if needs_download {
+            let url = format!("{}/{}/{}", MINECRAFT_RESOURCES_BASE_URL, prefix, hash);
+            download_tasks.push(DownloadTask {
+                url,
+                target_path,
+                size: Some(object.size),
+                hash: Some((hash.clone(), HashType::Sha1)),
+            });
+        }
     }
 
     events.on_event(&Event::Log {
@@ -391,6 +449,31 @@ mod tests {
         if cfg!(target_os = "windows") {
             assert!(evaluates_rule_for_current_os(&[windows_rule]));
             assert!(!evaluates_rule_for_current_os(&[osx_rule]));
+        }
+
+        // Test disallow first rule: should be allowed by default, disallowed if matches
+        let disallow_osx = LibraryRule {
+            action: "disallow".to_string(),
+            os: Some(OsRule {
+                name: Some("osx".to_string()),
+                arch: None,
+            }),
+        };
+        if cfg!(target_os = "windows") {
+            // On Windows, disallow osx rule should still allow on Windows!
+            assert!(evaluates_rule_for_current_os(&[disallow_osx]));
+        }
+
+        // Test arch filtering: rule allowing only arm64 on x86_64
+        let arm64_rule = LibraryRule {
+            action: "allow".to_string(),
+            os: Some(OsRule {
+                name: Some("windows".to_string()),
+                arch: Some("arm64".to_string()),
+            }),
+        };
+        if cfg!(target_os = "windows") && cfg!(target_arch = "x86_64") {
+            assert!(!evaluates_rule_for_current_os(&[arm64_rule]));
         }
     }
 }

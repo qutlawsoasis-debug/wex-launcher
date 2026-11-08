@@ -55,6 +55,10 @@ impl WexPaths {
         self.instance_dir(version).join("natives")
     }
 
+    pub fn client_jar(&self, version: &str) -> PathBuf {
+        self.versions_dir.join(version).join(format!("{}.jar", version))
+    }
+
     pub fn assets_indexes_dir(&self) -> PathBuf {
         self.assets_dir.join("indexes")
     }
@@ -92,17 +96,41 @@ pub struct LauncherConfig {
     #[serde(default = "default_version")]
     pub selected_version: String,
 
-    #[serde(default = "default_nickname")]
+    #[serde(default = "default_nickname", alias = "player_name", alias = "playerName")]
     pub nickname: String,
 
-    #[serde(default = "default_memory")]
+    #[serde(default = "default_memory", alias = "max_memory_mb", alias = "ramMb", alias = "ram_gb", deserialize_with = "deserialize_ram")]
     pub max_memory_mb: u32,
 
-    #[serde(default)]
+    #[serde(default, alias = "custom_java_path", alias = "javaPath")]
     pub custom_java_path: Option<PathBuf>,
 
-    #[serde(default)]
+    #[serde(default, alias = "jvm_args")]
     pub jvm_args: Vec<String>,
+
+    #[serde(default, alias = "reduceMotion")]
+    pub reduce_motion: bool,
+
+    #[serde(default, alias = "reduceTransparency")]
+    pub reduce_transparency: bool,
+
+    #[serde(default = "default_appearance")]
+    pub appearance: String,
+
+    #[serde(default = "default_accent")]
+    pub accent: String,
+}
+
+fn deserialize_ram<'de, D>(deserializer: D) -> std::result::Result<u32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let val = u32::deserialize(deserializer)?;
+    if val <= 64 {
+        Ok(val * 1024)
+    } else {
+        Ok(val)
+    }
 }
 
 fn default_version() -> String {
@@ -117,6 +145,14 @@ fn default_memory() -> u32 {
     4096
 }
 
+fn default_appearance() -> String {
+    "dark".to_string()
+}
+
+fn default_accent() -> String {
+    "blue".to_string()
+}
+
 impl Default for LauncherConfig {
     fn default() -> Self {
         Self {
@@ -125,6 +161,40 @@ impl Default for LauncherConfig {
             max_memory_mb: default_memory(),
             custom_java_path: None,
             jvm_args: Vec::new(),
+            reduce_motion: false,
+            reduce_transparency: false,
+            appearance: default_appearance(),
+            accent: default_accent(),
+        }
+    }
+}
+
+impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
+    fn from(ipc: wex_ipc::models::LauncherConfig) -> Self {
+        Self {
+            selected_version: ipc.selected_version,
+            nickname: ipc.player_name,
+            max_memory_mb: if ipc.ram_gb <= 64 { ipc.ram_gb * 1024 } else { ipc.ram_gb },
+            custom_java_path: None,
+            jvm_args: Vec::new(),
+            reduce_motion: ipc.reduce_motion,
+            reduce_transparency: ipc.reduce_transparency,
+            appearance: ipc.appearance,
+            accent: ipc.accent,
+        }
+    }
+}
+
+impl From<LauncherConfig> for wex_ipc::models::LauncherConfig {
+    fn from(core: LauncherConfig) -> Self {
+        Self {
+            selected_version: core.selected_version,
+            player_name: core.nickname,
+            ram_gb: (core.max_memory_mb / 1024).max(1),
+            reduce_motion: core.reduce_motion,
+            reduce_transparency: core.reduce_transparency,
+            appearance: core.appearance,
+            accent: core.accent,
         }
     }
 }
