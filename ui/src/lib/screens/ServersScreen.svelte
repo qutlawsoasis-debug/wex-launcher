@@ -218,7 +218,7 @@
                   class="remove-btn"
                   onclick={() => handleRemoveServer(s)}
                   title="Удалить сервер"
-                  aria-label="Удалить сервер"
+                  aria-label="Удалить сервер {s.name}"
                 >
                   <Icon name="close" size={12} color="var(--color-secondary-label)" />
                 </button>
@@ -396,6 +396,11 @@
     background-color: rgba(255, 69, 58, 0.15);
   }
 
+  .remove-btn:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 2px;
+  }
+
   .remove-btn:hover :global(svg) {
     stroke: var(--color-system-red);
   }
@@ -462,6 +467,7 @@
 
   .form-input:focus {
     border-color: var(--color-system-blue);
+    box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
     background-color: var(--card-bg);
   }
 </style>
