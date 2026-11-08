@@ -13,8 +13,11 @@ vi.mock('@tauri-apps/api/core', () => {
           audio_base64: 'bW9jayBhdWRpbyBieXRlcw==',
         };
       }
-      if (cmd === 'music_sync_smtc') {
+      if (cmd === 'music_sync_smtc' || cmd === 'music_update_session') {
         return;
+      }
+      if (cmd === 'music_check_command') {
+        return { command: null };
       }
       if (cmd === 'music_get_settings') {
         return { enabled: true, volume: 75, auto_pause_on_launch: true };
@@ -37,6 +40,7 @@ describe('MusicDiskWidget and Background Music', () => {
   let mockMediaSession: {
     metadata: any;
     playbackState: string;
+    handlers: Map<string, Function>;
     setActionHandler: ReturnType<typeof vi.fn>;
     setPositionState: ReturnType<typeof vi.fn>;
   };
@@ -54,6 +58,7 @@ describe('MusicDiskWidget and Background Music', () => {
     mockMediaSession = {
       metadata: null as any,
       playbackState: 'none' as string,
+      handlers: mockActionHandlers,
       setActionHandler: vi.fn((action: string, handler: Function | null) => {
         if (handler) {
           mockActionHandlers.set(action, handler);
@@ -64,18 +69,20 @@ describe('MusicDiskWidget and Background Music', () => {
       setPositionState: vi.fn(),
     };
 
-    (globalThis as any).MediaMetadata = class MediaMetadata {
+    class MockMediaMetadata {
       title: string;
       artist: string;
       album: string;
       artwork: any[];
-      constructor(init: any) {
-        this.title = init.title;
-        this.artist = init.artist;
-        this.album = init.album;
-        this.artwork = init.artwork;
+      constructor(init?: any) {
+        this.title = init?.title || '';
+        this.artist = init?.artist || '';
+        this.album = init?.album || '';
+        this.artwork = init?.artwork || [];
       }
-    };
+    }
+    (window as any).MediaMetadata = MockMediaMetadata;
+    (globalThis as any).MediaMetadata = MockMediaMetadata;
 
     Object.defineProperty(navigator, 'mediaSession', {
       value: mockMediaSession,
@@ -390,6 +397,48 @@ describe('MusicDiskWidget and Background Music', () => {
     expect(mockMediaSession.playbackState).toBe('paused');
 
     vi.useRealTimers();
+    unmount(comp);
+  });
+
+  it('supports SMTC session helpers (getIsPlaying, getIsFadingOut, fadeOutAndPause)', async () => {
+    const mockTracks = [
+      {
+        id: '1',
+        title: 'Sweden',
+        artist: 'C418',
+        file_name: 'C418 - Sweden.mp3',
+        cover_data_url: null,
+        duration_seconds: 215n,
+      },
+    ];
+
+    const comp = mount(MusicDiskWidget, {
+      target,
+      props: {
+        initialTracks: mockTracks,
+        isGameRunning: false,
+      },
+    });
+
+    await tick();
+
+    const audio = target.querySelector('audio') as HTMLAudioElement;
+    if (audio) {
+      audio.src = 'data:audio/mp3;base64,mockaudio';
+    }
+
+    comp.play();
+    await tick();
+    expect(comp.getIsPlaying()).toBe(true);
+
+    const fadePromise = comp.fadeOutAndPause(50);
+    expect(comp.getIsFadingOut()).toBe(true);
+
+    await fadePromise;
+    expect(comp.getIsFadingOut()).toBe(false);
+    expect(comp.getIsPlaying()).toBe(false);
+    expect(window.HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+
     unmount(comp);
   });
 });

@@ -551,6 +551,8 @@ pub const CMD_MUSIC_GET_SETTINGS: &str = "music_get_settings";
 pub const CMD_MUSIC_SET_SETTINGS: &str = "music_set_settings";
 pub const CMD_MUSIC_SYNC_SMTC: &str = "music_sync_smtc";
 pub const CMD_MUSIC_GET_SMTC_STATE: &str = "music_get_smtc_state";
+pub const CMD_MUSIC_UPDATE_SESSION: &str = "music_update_session";
+pub const CMD_MUSIC_CHECK_COMMAND: &str = "music_check_command";
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct MusicTrackDto {
@@ -596,4 +598,29 @@ pub struct MusicSmtcStateDto {
     pub has_cover: bool,
     pub position_seconds: u64,
     pub duration_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq)]
+pub struct MusicSessionStateDto {
+    pub has_active_session: bool,
+    pub source_app: String,
+    pub app_id: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub is_playing: bool,
+    pub position_seconds: f64,
+    pub duration_seconds: f64,
+    pub thumbnail_base64: Option<String>,
+    pub timestamp_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq)]
+pub struct MusicUpdateSessionRequest {
+    pub session: MusicSessionStateDto,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicCheckCommandResponse {
+    pub command: Option<String>,
 }

@@ -3,10 +3,11 @@ use base64::Engine;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 use tauri::State;
-use wex_extras::music::{MusicManager, MusicSettings};
+use wex_extras::music::{MediaSessionState, MusicManager, MusicSettings};
 use wex_ipc::commands::{
-    MusicGetTrackDataRequest, MusicGetTrackDataResponse, MusicPlaylistResponse, MusicSettingsDto,
-    MusicSmtcStateDto, MusicTrackDto,
+    MusicCheckCommandResponse, MusicGetTrackDataRequest, MusicGetTrackDataResponse,
+    MusicPlaylistResponse, MusicSettingsDto, MusicSmtcStateDto, MusicTrackDto,
+    MusicUpdateSessionRequest,
 };
 
 use super::launch::PlayState;
@@ -118,6 +119,64 @@ pub fn music_set_settings_impl(root: &Path, settings: MusicSettingsDto) -> Resul
     Ok(())
 }
 
+pub fn music_update_session_impl(
+    root: &Path,
+    request: MusicUpdateSessionRequest,
+) -> Result<(), String> {
+    let music_dir = root.join("music");
+    let manager = MusicManager::new(&music_dir);
+    let s = request.session;
+    let state = MediaSessionState {
+        has_active_session: s.has_active_session,
+        source_app: s.source_app,
+        app_id: s.app_id,
+        title: s.title,
+        artist: s.artist,
+        album: s.album,
+        is_playing: s.is_playing,
+        position_seconds: s.position_seconds,
+        duration_seconds: s.duration_seconds,
+        thumbnail_base64: s.thumbnail_base64,
+        timestamp_ms: s.timestamp_ms,
+    };
+    manager
+        .write_session_state(&state)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn music_check_command_impl(root: &Path) -> Result<MusicCheckCommandResponse, String> {
+    let music_dir = root.join("music");
+    let manager = MusicManager::new(&music_dir);
+    let cmd = manager.check_incoming_command();
+    Ok(MusicCheckCommandResponse { command: cmd })
+}
+
+static LAST_SMTC_STATE: OnceLock<Mutex<Option<MusicSmtcStateDto>>> = OnceLock::new();
+
+fn get_smtc_storage() -> &'static Mutex<Option<MusicSmtcStateDto>> {
+    LAST_SMTC_STATE.get_or_init(|| Mutex::new(None))
+}
+
+pub fn music_sync_smtc_impl(state: MusicSmtcStateDto) {
+    if let Ok(mut lock) = get_smtc_storage().lock() {
+        *lock = Some(state);
+    }
+}
+
+pub fn music_get_smtc_state_impl() -> Option<MusicSmtcStateDto> {
+    get_smtc_storage()
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+}
+
+pub fn music_reset_smtc_state_for_test() {
+    if let Ok(mut lock) = get_smtc_storage().lock() {
+        *lock = None;
+    }
+}
+
 #[tauri::command]
 pub async fn music_get_playlist(
     state: State<'_, PlayState>,
@@ -151,29 +210,19 @@ pub async fn music_set_settings(
     music_set_settings_impl(&state.paths.root, settings)
 }
 
-static LAST_SMTC_STATE: OnceLock<Mutex<Option<MusicSmtcStateDto>>> = OnceLock::new();
-
-fn get_smtc_storage() -> &'static Mutex<Option<MusicSmtcStateDto>> {
-    LAST_SMTC_STATE.get_or_init(|| Mutex::new(None))
+#[tauri::command]
+pub async fn music_update_session(
+    request: MusicUpdateSessionRequest,
+    state: State<'_, PlayState>,
+) -> Result<(), String> {
+    music_update_session_impl(&state.paths.root, request)
 }
 
-pub fn music_sync_smtc_impl(state: MusicSmtcStateDto) {
-    if let Ok(mut lock) = get_smtc_storage().lock() {
-        *lock = Some(state);
-    }
-}
-
-pub fn music_get_smtc_state_impl() -> Option<MusicSmtcStateDto> {
-    get_smtc_storage()
-        .lock()
-        .ok()
-        .and_then(|guard| guard.clone())
-}
-
-pub fn music_reset_smtc_state_for_test() {
-    if let Ok(mut lock) = get_smtc_storage().lock() {
-        *lock = None;
-    }
+#[tauri::command]
+pub async fn music_check_command(
+    state: State<'_, PlayState>,
+) -> Result<MusicCheckCommandResponse, String> {
+    music_check_command_impl(&state.paths.root)
 }
 
 #[tauri::command]
@@ -192,6 +241,7 @@ pub(crate) mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+    use wex_ipc::commands::MusicSessionStateDto;
 
     #[test]
     fn test_music_empty_playlist() {
@@ -264,6 +314,58 @@ pub(crate) mod tests {
 
         let loaded = music_get_settings_impl(tmp.path()).unwrap();
         assert_eq!(loaded, new_s);
+    }
+
+    #[test]
+    fn test_music_update_session() {
+        let tmp = tempdir().unwrap();
+        let session = MusicSessionStateDto {
+            has_active_session: true,
+            source_app: "Wex".to_string(),
+            app_id: "WexLauncher".to_string(),
+            title: "Test Track".to_string(),
+            artist: "Test Artist".to_string(),
+            album: "Test Album".to_string(),
+            is_playing: true,
+            position_seconds: 15.0,
+            duration_seconds: 180.0,
+            thumbnail_base64: None,
+            timestamp_ms: 12345678,
+        };
+        music_update_session_impl(
+            tmp.path(),
+            MusicUpdateSessionRequest {
+                session: session.clone(),
+            },
+        )
+        .unwrap();
+
+        let manager = MusicManager::new(tmp.path().join("music"));
+        let loaded = manager.read_session_state().unwrap();
+        assert_eq!(loaded.title, "Test Track");
+        assert_eq!(loaded.artist, "Test Artist");
+        assert!(loaded.is_playing);
+    }
+
+    #[test]
+    fn test_music_check_command() {
+        let tmp = tempdir().unwrap();
+        let res = music_check_command_impl(tmp.path()).unwrap();
+        assert_eq!(res.command, None);
+
+        let music_dir = tmp.path().join("music");
+        fs::create_dir_all(&music_dir).unwrap();
+        fs::write(
+            music_dir.join("music_command.json"),
+            r#"{"command":"next"}"#,
+        )
+        .unwrap();
+
+        let res2 = music_check_command_impl(tmp.path()).unwrap();
+        assert_eq!(res2.command, Some("next".to_string()));
+
+        let res3 = music_check_command_impl(tmp.path()).unwrap();
+        assert_eq!(res3.command, None);
     }
 
     #[test]

@@ -6,15 +6,25 @@
   - Honest empty state when no files exist with a button to open the folder in Explorer.
   - Turntable vinyl record animation that spins when playing.
   - Reduced Motion support: respects system settings.
-  - Auto-pause when game is running.
+  - Auto-pause when game is running with smooth 600 ms fade-out.
+  - Windows System Media Transport Controls (SMTC) integration via navigator.mediaSession.
+  - Hardware media keys support (MediaPlayPause, MediaTrackNext, MediaTrackPrevious, MediaStop).
+  - Background audio playback when minimized.
   - Volume control and mute toggle.
 -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import Button from './Button.svelte';
   import { COMMANDS } from '../ipc/generated/commands';
-  import type { MusicTrackDto, MusicPlaylistResponse, MusicGetTrackDataResponse, MusicSettingsDto, MusicSmtcStateDto } from '../ipc/generated';
+  import type {
+    MusicTrackDto,
+    MusicPlaylistResponse,
+    MusicGetTrackDataResponse,
+    MusicSettingsDto,
+    MusicSmtcStateDto,
+    MusicCheckCommandResponse,
+  } from '../ipc/generated';
 
   interface Props {
     isGameRunning?: boolean;
@@ -28,6 +38,7 @@
   let tracks = $state<MusicTrackDto[]>([]);
   let currentTrackIndex = $state(0);
   let isPlaying = $state(false);
+  let isFadingOut = $state(false);
   let positionSeconds = $state(0);
   let durationSeconds = $state(0);
   let volume = $state(75);
@@ -35,6 +46,10 @@
   let isEnabled = $state(true);
   let isLoadingTrack = $state(false);
   let musicDir = $state('');
+
+  let fadeInterval: ReturnType<typeof setInterval> | null = null;
+  let commandPollInterval: ReturnType<typeof setInterval> | null = null;
+  let prevIsGameRunning = false;
 
   $effect(() => {
     if (initialTracks !== undefined) {
@@ -52,6 +67,22 @@
   let audioElement = $state<HTMLAudioElement | null>(null);
 
   let currentTrack = $derived(tracks.length > 0 ? tracks[currentTrackIndex] : null);
+
+  export function getIsPlaying(): boolean {
+    return isPlaying;
+  }
+
+  export function getIsFadingOut(): boolean {
+    return isFadingOut;
+  }
+
+  export function getAudioVolume(): number {
+    return audioElement ? audioElement.volume : 0;
+  }
+
+  export function getCurrentTrack(): MusicTrackDto | null {
+    return currentTrack;
+  }
 
   async function callTauri<T>(command: string, args: Record<string, any> = {}): Promise<T> {
     try {
@@ -103,7 +134,7 @@
     } catch {}
   }
 
-  async function loadAndPlayTrack(index: number, shouldPlay = true) {
+  async function loadAndPlayTrack(index: number, shouldPlay = true): Promise<void> {
     if (index < 0 || index >= tracks.length) return;
     currentTrackIndex = index;
     positionSeconds = 0;
@@ -122,10 +153,10 @@
         audioElement.src = `data:${res.mime_type};base64,${res.audio_base64}`;
         audioElement.volume = (isMuted ? 0 : volume) / 100;
         if (shouldPlay && isEnabled) {
-          audioElement.play().catch(() => {
+          isPlaying = true;
+          await audioElement.play().catch(() => {
             isPlaying = false;
           });
-          isPlaying = true;
         } else {
           isPlaying = false;
         }
@@ -137,10 +168,7 @@
     }
   }
 
-  let fadeAnimationTimer: number | null = null;
-  let prevIsGameRunning = $state(false);
-
-  export function togglePlayPause() {
+  export function togglePlayPause(): Promise<void> | void {
     if (!isEnabled) return;
     if (tracks.length === 0) return;
 
@@ -151,11 +179,13 @@
     }
   }
 
-  export function play() {
-    if (fadeAnimationTimer !== null) {
-      cancelAnimationFrame(fadeAnimationTimer);
-      fadeAnimationTimer = null;
+  export function play(): Promise<void> | void {
+    if (fadeInterval) {
+      clearInterval(fadeInterval);
+      fadeInterval = null;
     }
+    isFadingOut = false;
+
     if (!isEnabled || tracks.length === 0) return;
     if (audioElement && audioElement.src) {
       audioElement.volume = (isMuted ? 0 : volume) / 100;
@@ -169,10 +199,11 @@
   }
 
   export function pause() {
-    if (fadeAnimationTimer !== null) {
-      cancelAnimationFrame(fadeAnimationTimer);
-      fadeAnimationTimer = null;
+    if (fadeInterval) {
+      clearInterval(fadeInterval);
+      fadeInterval = null;
     }
+    isFadingOut = false;
     if (audioElement) {
       audioElement.pause();
       audioElement.volume = (isMuted ? 0 : volume) / 100;
@@ -180,43 +211,59 @@
     isPlaying = false;
   }
 
-  export function fadeOutAndPause(durationMs = 600) {
-    if (fadeAnimationTimer !== null) {
-      cancelAnimationFrame(fadeAnimationTimer);
-      fadeAnimationTimer = null;
-    }
-
-    if (!audioElement || !isPlaying) {
-      pause();
-      return;
-    }
-
-    const startVolume = audioElement.volume;
-    const startTime = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-
-    function step() {
-      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-      const elapsed = now - startTime;
-      const progress = Math.min(1, elapsed / durationMs);
-      const newVol = Math.max(0, startVolume * (1 - progress));
-
-      if (audioElement) {
-        audioElement.volume = newVol;
+  export function fadeOutAndPause(durationMs = 600): Promise<void> {
+    return new Promise((resolve) => {
+      if (fadeInterval) {
+        clearInterval(fadeInterval);
+        fadeInterval = null;
       }
 
-      if (progress < 1) {
-        fadeAnimationTimer = requestAnimationFrame(step);
-      } else {
-        fadeAnimationTimer = null;
+      if (!audioElement || !isPlaying) {
+        pause();
+        resolve();
+        return;
+      }
+
+      isFadingOut = true;
+      const initialVol = audioElement.volume;
+      const steps = 20;
+      const stepDuration = Math.max(10, Math.floor(durationMs / steps));
+      let currentStep = 0;
+
+      fadeInterval = setInterval(() => {
+        currentStep++;
+        const factor = Math.max(0, 1 - currentStep / steps);
         if (audioElement) {
-          audioElement.pause();
-          audioElement.volume = (isMuted ? 0 : volume) / 100;
+          audioElement.volume = initialVol * factor;
         }
-        isPlaying = false;
-      }
-    }
 
-    fadeAnimationTimer = requestAnimationFrame(step);
+        if (currentStep >= steps || !isPlaying) {
+          if (fadeInterval) {
+            clearInterval(fadeInterval);
+            fadeInterval = null;
+          }
+          pause();
+          isFadingOut = false;
+          // Restore volume setting so user can resume playback later
+          if (audioElement) {
+            audioElement.volume = (isMuted ? 0 : volume) / 100;
+          }
+          resolve();
+        }
+      }, stepDuration);
+    });
+  }
+
+  export function notifyGameRunning(running: boolean) {
+    if (running && !prevIsGameRunning) {
+      prevIsGameRunning = true;
+      if (isPlaying) {
+        fadeOutAndPause(600);
+      }
+    } else if (!running && prevIsGameRunning) {
+      prevIsGameRunning = false;
+      // Requirement: "после выхода из игры сама не включается"
+    }
   }
 
   export function next() {
@@ -294,48 +341,58 @@
   }
 
   // Windows SMTC (System Media Transport Controls) synchronization
-  function updateMediaSession() {
-    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+  export function updateMediaSession() {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator) || !navigator.mediaSession) return;
 
     if (!currentTrack) {
-      navigator.mediaSession.metadata = null;
-      navigator.mediaSession.playbackState = 'none';
+      try {
+        navigator.mediaSession.metadata = null;
+        navigator.mediaSession.playbackState = 'none';
+      } catch {}
       return;
     }
 
-    const artwork = currentTrack.cover_data_url
-      ? [{ src: currentTrack.cover_data_url, sizes: '512x512', type: 'image/png' }]
-      : [];
+    try {
+      const artwork = currentTrack.cover_data_url
+        ? [{ src: currentTrack.cover_data_url, sizes: '512x512', type: 'image/png' }]
+        : [{ src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' }];
 
-    if (typeof MediaMetadata !== 'undefined') {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: currentTrack.title,
-        artist: currentTrack.artist,
-        album: 'Wex Launcher',
-        artwork,
-      });
-    }
+      const MetaClass =
+        typeof window !== 'undefined' && (window as any).MediaMetadata
+          ? (window as any).MediaMetadata
+          : typeof MediaMetadata !== 'undefined'
+            ? MediaMetadata
+            : null;
 
-    navigator.mediaSession.playbackState = isPlaying ? 'playing' : (tracks.length > 0 ? 'paused' : 'none');
+      if (MetaClass) {
+        navigator.mediaSession.metadata = new MetaClass({
+          title: currentTrack.title,
+          artist: currentTrack.artist,
+          album: 'Wex Launcher',
+          artwork,
+        });
+      }
 
-    if ('setPositionState' in navigator.mediaSession && durationSeconds > 0) {
-      try {
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : (tracks.length > 0 ? 'paused' : 'none');
+
+      if ('setPositionState' in navigator.mediaSession && durationSeconds > 0) {
         navigator.mediaSession.setPositionState({
           duration: Math.max(durationSeconds, positionSeconds),
-          playbackRate: 1,
+          playbackRate: 1.0,
           position: Math.min(positionSeconds, durationSeconds),
         });
-      } catch {}
-    }
+      }
+    } catch {}
   }
 
-  async function syncSmtcState() {
+  async function syncBackendSmtc() {
+    const track = currentTrack;
     const state: MusicSmtcStateDto = {
       is_playing: isPlaying,
-      track_title: currentTrack?.title ?? null,
-      artist: currentTrack?.artist ?? null,
-      album: currentTrack ? 'Wex Launcher' : null,
-      has_cover: Boolean(currentTrack?.cover_data_url),
+      track_title: track?.title ?? null,
+      artist: track?.artist ?? null,
+      album: track ? 'Wex Launcher' : null,
+      has_cover: Boolean(track?.cover_data_url),
       position_seconds: BigInt(positionSeconds),
       duration_seconds: durationSeconds > 0 ? BigInt(durationSeconds) : null,
     };
@@ -343,33 +400,67 @@
     try {
       await callTauri(COMMANDS.MUSIC_SYNC_SMTC, { state });
     } catch {}
+
+    try {
+      await callTauri(COMMANDS.MUSIC_UPDATE_SESSION, {
+        request: {
+          session: {
+            has_active_session: Boolean(track && isEnabled),
+            source_app: 'Wex',
+            app_id: 'WexLauncher',
+            title: track?.title || '',
+            artist: track?.artist || '',
+            album: 'Wex Launcher',
+            is_playing: isPlaying,
+            position_seconds: positionSeconds,
+            duration_seconds: durationSeconds,
+            thumbnail_base64: track?.cover_data_url || null,
+            timestamp_ms: BigInt(Date.now()),
+          },
+        },
+      });
+    } catch {}
+  }
+
+  export async function pollCommands() {
+    try {
+      const res = await callTauri<MusicCheckCommandResponse>(COMMANDS.MUSIC_CHECK_COMMAND);
+      if (res?.command) {
+        switch (res.command.toLowerCase()) {
+          case 'play':
+            play();
+            break;
+          case 'pause':
+            pause();
+            break;
+          case 'toggle':
+            togglePlayPause();
+            break;
+          case 'next':
+            next();
+            break;
+          case 'previous':
+          case 'prev':
+            previous();
+            break;
+        }
+      }
+    } catch {}
   }
 
   // React to track, playback and timing changes for SMTC
   $effect(() => {
-    // Read reactive variables to trigger effect
     const _t = currentTrack;
     const _p = isPlaying;
     const _pos = positionSeconds;
     const _dur = durationSeconds;
+    const _en = isEnabled;
 
     updateMediaSession();
-    syncSmtcState();
+    syncBackendSmtc();
   });
 
-  // Smooth fade-out (600 ms) when game starts; do not auto-resume on game exit
-  export function notifyGameRunning(running: boolean) {
-    if (running && !prevIsGameRunning) {
-      prevIsGameRunning = true;
-      if (isPlaying) {
-        fadeOutAndPause(600);
-      }
-    } else if (!running && prevIsGameRunning) {
-      prevIsGameRunning = false;
-      // Requirement: "после выхода из игры сама не включается"
-    }
-  }
-
+  // Smooth fade-out (600 ms) when game starts; strictly do not auto-resume on game exit
   $effect(() => {
     notifyGameRunning(isGameRunning);
   });
@@ -379,13 +470,13 @@
     loadSettings();
 
     // Register Media Session Action Handlers for Windows SMTC
-    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator && navigator.mediaSession) {
       const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
-        ['play', () => play()],
-        ['pause', () => pause()],
-        ['previoustrack', () => previous()],
-        ['nexttrack', () => next()],
-        ['stop', () => pause()],
+        ['play', () => { play(); }],
+        ['pause', () => { pause(); }],
+        ['previoustrack', () => { previous(); }],
+        ['nexttrack', () => { next(); }],
+        ['stop', () => { pause(); }],
         ['seekto', (details) => {
           if (details.seekTime !== undefined && audioElement) {
             audioElement.currentTime = details.seekTime;
@@ -419,14 +510,19 @@
     };
 
     window.addEventListener('keydown', handleKeyDown);
+    commandPollInterval = setInterval(pollCommands, 1000);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      if (fadeAnimationTimer !== null) {
-        cancelAnimationFrame(fadeAnimationTimer);
-        fadeAnimationTimer = null;
+      if (fadeInterval) {
+        clearInterval(fadeInterval);
+        fadeInterval = null;
       }
-      if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+      if (commandPollInterval) {
+        clearInterval(commandPollInterval);
+        commandPollInterval = null;
+      }
+      if (typeof navigator !== 'undefined' && 'mediaSession' in navigator && navigator.mediaSession) {
         try {
           navigator.mediaSession.setActionHandler('play', null);
           navigator.mediaSession.setActionHandler('pause', null);
@@ -437,6 +533,17 @@
         } catch {}
       }
     };
+  });
+
+  onDestroy(() => {
+    if (fadeInterval) {
+      clearInterval(fadeInterval);
+      fadeInterval = null;
+    }
+    if (commandPollInterval) {
+      clearInterval(commandPollInterval);
+      commandPollInterval = null;
+    }
   });
 </script>
 
@@ -486,29 +593,34 @@
       </div>
     </div>
   {:else}
-    <!-- Active Player State -->
-    <div class="active-player">
-      <div class="turntable-mini">
-        <div class="vinyl-disc" class:spinning={isPlaying} aria-hidden="true">
-          <div class="vinyl-groove groove-1"></div>
-          <div class="vinyl-groove groove-2"></div>
-          <div class="vinyl-groove groove-3"></div>
+    <!-- Active Player Widget with Turntable -->
+    <div class="active-widget">
+      <!-- Turntable Vinyl Graphic -->
+      <div class="turntable-container">
+        <div class="vinyl-platter" class:spinning={isPlaying} aria-hidden="true">
+          <div class="vinyl-disc">
+            <div class="vinyl-groove groove-1"></div>
+            <div class="vinyl-groove groove-2"></div>
+            <div class="vinyl-groove groove-3"></div>
 
-          <div class="vinyl-center">
-            {#if currentTrack?.cover_data_url}
-              <img
-                src={currentTrack.cover_data_url}
-                alt="Обложка"
-                class="vinyl-cover-img"
-              />
-            {:else}
-              <span class="vinyl-label-text">Wex</span>
-            {/if}
+            <div class="vinyl-center">
+              {#if currentTrack?.cover_data_url}
+                <img
+                  src={currentTrack.cover_data_url}
+                  alt={currentTrack.title}
+                  class="vinyl-cover-img"
+                />
+              {:else}
+                <div class="vinyl-default-label">
+                  <span class="vinyl-label-text">Wex</span>
+                </div>
+              {/if}
+              <div class="vinyl-spindle"></div>
+            </div>
           </div>
-          <div class="vinyl-spindle"></div>
         </div>
 
-        <!-- Tonearm -->
+        <!-- Animated Tonearm -->
         <div class="tonearm" class:on-record={isPlaying} aria-hidden="true">
           <div class="tonearm-pivot"></div>
           <div class="tonearm-stick"></div>
@@ -516,40 +628,41 @@
         </div>
       </div>
 
+      <!-- Player Controls and Meta -->
       <div class="player-content">
-        <!-- Track metadata -->
         <div class="meta-row">
           <div class="meta-text">
             <span class="track-title" title={currentTrack?.title || ''}>
-              {currentTrack?.title || 'Загрузка...'}
+              {currentTrack?.title || '—'}
             </span>
             <span class="track-artist" title={currentTrack?.artist || ''}>
               {currentTrack?.artist || '—'}
             </span>
           </div>
-
           <button
             type="button"
             class="folder-icon-btn"
             onclick={openFolder}
-            title="Открыть папку с музыкой в проводнике"
+            title="Открыть папку с музыкой"
             aria-label="Открыть папку с музыкой"
           >
             <Icon name="folder" size={14} color="var(--color-secondary-label)" />
           </button>
         </div>
 
-        <!-- Progress bar with timestamps -->
+        <!-- Scrubber Bar -->
         <div class="progress-container">
           <button
             type="button"
             class="progress-track"
-            aria-label="Позиция воспроизведения"
             onclick={handleSeek}
+            aria-label="Перемотка трека"
           >
             <div
               class="progress-fill"
-              style="width: {durationSeconds > 0 ? (positionSeconds / durationSeconds) * 100 : 0}%"
+              style="width: {durationSeconds > 0
+                ? (positionSeconds / durationSeconds) * 100
+                : 0}%"
             ></div>
           </button>
           <div class="time-row">
@@ -558,7 +671,7 @@
           </div>
         </div>
 
-        <!-- Playback and volume controls -->
+        <!-- Transport Controls -->
         <div class="controls-row">
           <div class="transport-buttons">
             <button
@@ -568,7 +681,7 @@
               title="Предыдущий трек"
               aria-label="Предыдущий трек"
             >
-              <Icon name="backward" size={14} color="var(--color-label)" />
+              <Icon name="chevron-left" size={16} />
             </button>
 
             <button
@@ -578,7 +691,11 @@
               title={isPlaying ? 'Пауза' : 'Воспроизведение'}
               aria-label={isPlaying ? 'Пауза' : 'Воспроизведение'}
             >
-              <Icon name={isPlaying ? 'pause' : 'play'} size={15} color="#ffffff" />
+              {#if isPlaying}
+                <Icon name="pause" size={16} color="#ffffff" />
+              {:else}
+                <Icon name="play" size={16} color="#ffffff" />
+              {/if}
             </button>
 
             <button
@@ -588,10 +705,11 @@
               title="Следующий трек"
               aria-label="Следующий трек"
             >
-              <Icon name="forward" size={14} color="var(--color-label)" />
+              <Icon name="chevron-right" size={16} />
             </button>
           </div>
 
+          <!-- Volume Controls -->
           <div class="volume-container">
             <button
               type="button"
@@ -600,7 +718,11 @@
               title={isMuted ? 'Включить звук' : 'Выключить звук'}
               aria-label={isMuted ? 'Включить звук' : 'Выключить звук'}
             >
-              <Icon name={isMuted || volume === 0 ? 'volume-x' : 'volume'} size={14} color="var(--color-secondary-label)" />
+              <Icon
+                name={isMuted || volume === 0 ? 'volume-x' : 'volume'}
+                size={14}
+                color="var(--color-secondary-label)"
+              />
             </button>
             <input
               type="range"
@@ -609,7 +731,7 @@
               value={isMuted ? 0 : volume}
               oninput={(e) => handleVolumeChange(Number((e.target as HTMLInputElement).value))}
               class="volume-slider"
-              aria-label="Громкость"
+              aria-label="Громкость музыки"
             />
           </div>
         </div>
@@ -620,16 +742,16 @@
 
 <style>
   .music-disk-widget {
-    background-color: var(--glass-card-bg);
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-md);
-    padding: 10px;
-    margin-bottom: 8px;
+    position: relative;
+    padding: 10px 14px;
+    background-color: var(--color-bg-secondary);
+    border: 1px solid var(--color-separator);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    min-width: 250px;
+    max-width: 320px;
     user-select: none;
-    box-sizing: border-box;
-    width: 100%;
+    transition: border-color var(--motion-duration-fast) var(--motion-spring-ease);
   }
 
   .disabled-state {
@@ -637,57 +759,66 @@
     align-items: center;
     gap: 8px;
     padding: 6px 4px;
+    color: var(--color-tertiary-label);
   }
 
   .disabled-text {
-    font-size: var(--text-caption-1);
-    color: var(--color-tertiary-label);
+    font-size: var(--text-footnote);
   }
 
   .empty-widget {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
   }
 
-  .active-player {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  /* Turntable & Vinyl Styling */
   .turntable-mini {
-    position: relative;
-    width: 52px;
-    height: 52px;
     flex-shrink: 0;
   }
 
-  .active-player .turntable-mini {
-    align-self: center;
-    width: 68px;
-    height: 68px;
+  .widget-details {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
   }
 
-  .vinyl-disc {
+  /* Active widget layout */
+  .active-widget {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 12px;
+    align-items: center;
+  }
+
+  /* Turntable vinyl record styling */
+  .turntable-container {
     position: relative;
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    background: radial-gradient(circle, #2c2d30 0%, #151618 60%, #0d0e10 100%);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    width: 80px;
+    height: 80px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: transform 0.3s ease-out;
   }
 
-  .vinyl-disc.spinning {
-    animation: spin 3s linear infinite;
+  .vinyl-platter {
+    width: 74px;
+    height: 74px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #2a2a2e 0%, #161618 100%);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
   }
 
-  @keyframes spin {
+  @media (prefers-reduced-motion: no-preference) {
+    .vinyl-platter.spinning {
+      animation: spin-vinyl 4s linear infinite;
+    }
+  }
+
+  @keyframes spin-vinyl {
     from {
       transform: rotate(0deg);
     }
@@ -696,55 +827,79 @@
     }
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .vinyl-disc.spinning {
-      animation: none;
-    }
+  .vinyl-disc {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  .vinyl-disc.static {
+    width: 48px;
+    height: 48px;
+    background: radial-gradient(circle, #2a2a2e 0%, #161618 100%);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
   }
 
   .vinyl-groove {
     position: absolute;
     border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     pointer-events: none;
   }
 
   .groove-1 {
-    width: 82%;
-    height: 82%;
+    width: 85%;
+    height: 85%;
   }
 
   .groove-2 {
-    width: 64%;
-    height: 64%;
+    width: 68%;
+    height: 68%;
   }
 
   .groove-3 {
-    width: 46%;
-    height: 46%;
+    width: 52%;
+    height: 52%;
   }
 
   .vinyl-center {
-    width: 40%;
-    height: 40%;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
-    background: var(--color-system-blue);
+    background-color: var(--color-system-blue);
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
     overflow: hidden;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
     z-index: 1;
   }
 
   .vinyl-center.empty {
-    background: var(--color-fill-secondary);
+    width: 22px;
+    height: 22px;
+    background-color: var(--color-tertiary-label);
+  }
+
+  .vinyl-default-label {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--color-system-blue) 0%, #0056b3 100%);
   }
 
   .vinyl-label-text {
     font-size: 8px;
     font-weight: 700;
     color: #ffffff;
-    letter-spacing: -0.2px;
+    letter-spacing: 0.5px;
   }
 
   .vinyl-cover-img {
