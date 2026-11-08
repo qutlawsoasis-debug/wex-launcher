@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mount, unmount } from 'svelte';
+import { mount, unmount, tick } from 'svelte';
 import PlayScreen from './PlayScreen.svelte';
 import Mockup1 from './mockups/Mockup1.svelte';
 import Mockup2 from './mockups/Mockup2.svelte';
@@ -191,6 +191,50 @@ describe('Wex Launcher Screens', () => {
     const comp = mount(FriendsScreen, { target });
     expect(target.textContent).toContain('Список друзей пуст');
     expect(target.querySelector('input')).not.toBeNull();
+    unmount(comp);
+  });
+
+  it('renders FriendsScreen segmented tabs and add friend action', () => {
+    const comp = mount(FriendsScreen, { target });
+    expect(target.textContent).toContain('Друзья');
+    expect(target.textContent).toContain('Заявки');
+    expect(target.textContent).toContain('Достижения');
+    expect(target.textContent).toContain('Добавить друга');
+
+    const friendInput = target.querySelector('.friend-code-input') as HTMLInputElement;
+    expect(friendInput).not.toBeNull();
+    expect(friendInput.placeholder).toContain('Код друга');
+    unmount(comp);
+  });
+
+  it('renders FriendsScreen achievements tab with standard launcher achievements', async () => {
+    const comp = mount(FriendsScreen, {
+      target,
+      props: { tab: 'achievements' },
+    });
+    await tick();
+
+    // Verify achievements content rendered
+    expect(target.textContent).toContain('Достижения лаунчера');
+    expect(target.textContent).toContain('Искра');
+    expect(target.textContent).toContain('Постоялец');
+    expect(target.textContent).toContain('Сто часов');
+    expect(target.textContent).toContain('Хост');
+    expect(target.textContent).toContain('СПИСОК ДОСТИЖЕНИЙ');
+
+    unmount(comp);
+  });
+
+  it('renders FriendsScreen requests tab with authentic clean empty state', async () => {
+    const comp = mount(FriendsScreen, {
+      target,
+      props: { tab: 'requests' },
+    });
+    await tick();
+
+    expect(target.textContent).toContain('Нет входящих заявок');
+    expect(target.textContent).toContain('Когда другие игроки отправят вам заявку');
+
     unmount(comp);
   });
 
