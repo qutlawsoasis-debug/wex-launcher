@@ -363,6 +363,7 @@ pub async fn start_game(
             version: version.clone(),
             nickname: nickname.clone(),
             jvm_args: Some(actual_jvm_args),
+            quick_play_multiplayer: None,
         })
         .await;
 
