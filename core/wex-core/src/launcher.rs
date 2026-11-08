@@ -580,6 +580,47 @@ pub async fn install_full_environment(
     ))
 }
 
+/// Prewarms the Java Virtual Machine by executing a minimal JVM probe.
+/// This warms up the OS disk cache for JVM binaries (`jvm.dll`, runtime libraries)
+/// and verifies JVM responsiveness before full client execution.
+pub async fn prewarm_jvm(java_binary: &Path) -> Result<std::time::Duration> {
+    if !java_binary.exists() {
+        return Err(WexError::LaunchError(format!(
+            "Java binary not found for prewarm: {:?}",
+            java_binary
+        )));
+    }
+
+    let start = std::time::Instant::now();
+    let mut cmd = tokio::process::Command::new(java_binary);
+    cmd.args(["-Xms16m", "-Xmx32m", "-version"]);
+    cmd.stdout(std::process::Stdio::null());
+    cmd.stderr(std::process::Stdio::null());
+
+    #[cfg(windows)]
+    {
+        // CREATE_NO_WINDOW
+        cmd.creation_flags(0x08000000);
+    }
+
+    let mut child = cmd.spawn().map_err(|e| {
+        WexError::LaunchError(format!("Не удалось запустить процесс прогрева JVM: {}", e))
+    })?;
+
+    let status = child.wait().await.map_err(|e| {
+        WexError::LaunchError(format!("Ошибка ожидания процесса прогрева JVM: {}", e))
+    })?;
+
+    if !status.success() {
+        return Err(WexError::LaunchError(format!(
+            "Процесс прогрева JVM завершился с кодом {:?}",
+            status.code()
+        )));
+    }
+
+    Ok(start.elapsed())
+}
+
 pub async fn prepare_and_launch(
     paths: &WexPaths,
     config: &LauncherConfig,
@@ -601,6 +642,30 @@ pub async fn prepare_and_launch(
     } else {
         mojang_java
     };
+
+    if config.fast_start_jvm {
+        events.on_event(&Event::Log {
+            level: LogLevel::Info,
+            message: "[PREWARM] Быстрый запуск активен: предварительный прогрев JVM и верификация runtime среды".to_string(),
+        });
+        match prewarm_jvm(&java_binary).await {
+            Ok(duration) => {
+                events.on_event(&Event::Log {
+                    level: LogLevel::Info,
+                    message: format!(
+                        "[PREWARM] JVM успешно прогрета за {} мс",
+                        duration.as_millis()
+                    ),
+                });
+            }
+            Err(e) => {
+                events.on_event(&Event::Log {
+                    level: LogLevel::Warn,
+                    message: format!("[PREWARM] Предупреждение прогрева JVM: {}", e),
+                });
+            }
+        }
+    }
 
     let launch_opts = LaunchOptions {
         paths,
@@ -842,5 +907,26 @@ mod tests {
             "--quickPlayMultiplayer must be present in launch args"
         );
         assert_eq!(args[qp_pos.unwrap() + 1], "192.168.1.42:54321");
+    }
+
+    #[tokio::test]
+    async fn test_prewarm_jvm_nonexistent() {
+        let fake_java = PathBuf::from("nonexistent_java_path_12345.exe");
+        let res = prewarm_jvm(&fake_java).await;
+        assert!(
+            res.is_err(),
+            "Must report error for nonexistent java binary"
+        );
+    }
+
+    #[test]
+    fn test_launcher_config_fast_start_jvm_toggle() {
+        let mut cfg = LauncherConfig::default();
+        assert!(
+            !cfg.fast_start_jvm,
+            "fast_start_jvm must be disabled by default"
+        );
+        cfg.fast_start_jvm = true;
+        assert!(cfg.fast_start_jvm);
     }
 }

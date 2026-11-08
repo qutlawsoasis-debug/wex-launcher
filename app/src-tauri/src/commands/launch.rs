@@ -321,11 +321,16 @@ pub async fn start_game(
                 .await;
             }
 
+            let prep_msg = if cfg.fast_start_jvm {
+                format!("Быстрый запуск и подготовка Minecraft {}...", version)
+            } else {
+                format!("Подготовка к запуску Minecraft {}...", version)
+            };
             let _ = app.emit(
                 EVT_LAUNCH_STATUS,
                 LaunchStatusPayload {
                     state: "preparing".to_string(),
-                    message: format!("Подготовка к запуску Minecraft {}...", version),
+                    message: prep_msg,
                     exit_code: None,
                 },
             );
