@@ -1,11 +1,12 @@
 use crate::config::WexPaths;
-use crate::download::{download_pool, DownloadTask, HashType};
-use crate::error::Result;
+use crate::download::{download_pool_cancellable, DownloadTask, HashType};
+use crate::error::{Result, WexError};
 use crate::event::{Event, EventHandler, LogLevel};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+use tokio_util::sync::CancellationToken;
 
 pub const DEFAULT_PACK_REPO: &str = "qutlawsoasis-debug/Aura-Pack";
 pub const DEFAULT_PACK_BRANCH: &str = "main";
@@ -138,6 +139,23 @@ pub async fn sync_aura_pack(
     events: &dyn EventHandler,
     concurrency: usize,
 ) -> Result<PackSyncResult> {
+    sync_aura_pack_cancellable(paths, version, client, events, concurrency, None).await
+}
+
+pub async fn sync_aura_pack_cancellable(
+    paths: &WexPaths,
+    version: &str,
+    client: &reqwest::Client,
+    events: &dyn EventHandler,
+    concurrency: usize,
+    cancel_token: Option<&CancellationToken>,
+) -> Result<PackSyncResult> {
+    if let Some(token) = cancel_token {
+        if token.is_cancelled() {
+            return Err(WexError::Cancelled);
+        }
+    }
+
     paths.ensure_instance_dirs(version)?;
     let instance_dir = paths.instance_dir(version);
 
@@ -152,7 +170,30 @@ pub async fn sync_aura_pack(
         message: format!("Fetching Aura-Pack manifest for Minecraft {}...", version),
     });
 
-    let manifest = fetch_manifest(client, version, None, None).await?;
+    let manifest_cache_file = instance_dir.join("manifest.cache.json");
+    let manifest = match fetch_manifest(client, version, None, None).await {
+        Ok(m) => {
+            if let Ok(json) = serde_json::to_string_pretty(&m) {
+                let _ = fs::write(&manifest_cache_file, json);
+            }
+            m
+        }
+        Err(e) => {
+            if manifest_cache_file.exists() {
+                events.on_event(&Event::Log {
+                    level: LogLevel::Warn,
+                    message: format!(
+                        "Network unavailable ({}); using cached Aura-Pack manifest for Minecraft {}",
+                        e, version
+                    ),
+                });
+                let content = fs::read_to_string(&manifest_cache_file)?;
+                serde_json::from_str(&content)?
+            } else {
+                return Err(e);
+            }
+        }
+    };
     let settings = fetch_pack_settings(client, None, None).await;
 
     let repo_prefix = get_repo_prefix(version);
@@ -243,14 +284,21 @@ pub async fn sync_aura_pack(
 
     let files_to_download_count = download_tasks.len();
     if !download_tasks.is_empty() {
-        download_pool(
+        download_pool_cancellable(
             client,
             download_tasks,
             concurrency,
             events,
             &format!("Pack {}", version),
+            cancel_token.cloned(),
         )
         .await?;
+    }
+
+    if let Some(token) = cancel_token {
+        if token.is_cancelled() {
+            return Err(WexError::Cancelled);
+        }
     }
 
     // Clean orphan mods (ONLY mods previously installed by Wex, never delete user mods!)
@@ -379,6 +427,7 @@ fn urlencoding_encode(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::download::download_pool;
     use tempfile::tempdir;
 
     #[test]
@@ -674,5 +723,108 @@ mod tests {
             pool_res.is_err(),
             "Download pool must fail when both primary and fallback return 404"
         );
+    }
+
+    #[tokio::test]
+    async fn test_sync_aura_pack_cancellation_preserves_state() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let version = "1.20.1";
+        paths.ensure_instance_dirs(version).unwrap();
+        let instance_dir = paths.instance_dir(version);
+
+        let mods_dir = instance_dir.join("mods");
+        fs::create_dir_all(&mods_dir).unwrap();
+        let mod_file = mods_dir.join("important_mod.jar");
+        fs::write(&mod_file, b"vital mod data").unwrap();
+
+        let state_path = instance_dir.join("pack.state.json");
+        let initial_state = PackState {
+            pack_version: "20261101.0000".to_string(),
+            minecraft: "1.20.1".to_string(),
+            fabric_loader: "0.19.5".to_string(),
+            installed_at_utc: chrono::Utc::now().to_rfc3339(),
+            installed_mods: vec!["important_mod.jar".to_string()],
+        };
+        fs::write(&state_path, serde_json::to_string(&initial_state).unwrap()).unwrap();
+
+        let token = CancellationToken::new();
+        token.cancel();
+
+        let client = reqwest::Client::new();
+        let events = crate::event::NoopEventHandler;
+
+        let res =
+            sync_aura_pack_cancellable(&paths, version, &client, &events, 2, Some(&token)).await;
+
+        assert!(matches!(res, Err(WexError::Cancelled)));
+        assert!(
+            mod_file.exists(),
+            "Mod file must not be deleted on cancellation"
+        );
+        let saved_state: PackState =
+            serde_json::from_str(&fs::read_to_string(&state_path).unwrap()).unwrap();
+        assert_eq!(saved_state.pack_version, "20261101.0000");
+    }
+
+    #[tokio::test]
+    async fn test_sync_aura_pack_offline_fallback_to_cached_manifest() {
+        use sha2::Digest;
+
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let version = "1.20.1";
+        paths.ensure_instance_dirs(version).unwrap();
+        let instance_dir = paths.instance_dir(version);
+
+        let mod_content = b"local cached mod file content";
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(mod_content);
+        let mod_sha = hex::encode(hasher.finalize());
+
+        let mods_dir = instance_dir.join("mods");
+        fs::create_dir_all(&mods_dir).unwrap();
+        let mod_file = mods_dir.join("offline_mod.jar");
+        fs::write(&mod_file, mod_content).unwrap();
+
+        let manifest = Manifest {
+            name: "Aura".to_string(),
+            pack_version: "20261108.offline".to_string(),
+            minecraft: "1.20.1".to_string(),
+            fabric_loader: "0.19.5".to_string(),
+            servers: None,
+            files: vec![ManifestFileEntry {
+                path: "mods/offline_mod.jar".to_string(),
+                sha256: mod_sha,
+                size: mod_content.len() as u64,
+                mode: "sync".to_string(),
+                url: None,
+            }],
+        };
+
+        // Cache manifest locally as manifest.cache.json
+        let manifest_cache_file = instance_dir.join("manifest.cache.json");
+        fs::write(
+            &manifest_cache_file,
+            serde_json::to_string_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+
+        // Offline client (connection will fail immediately)
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(50))
+            .build()
+            .unwrap();
+        let events = crate::event::NoopEventHandler;
+
+        let res = sync_aura_pack(&paths, version, &client, &events, 2).await;
+        assert!(
+            res.is_ok(),
+            "Offline sync with cached manifest and installed files must succeed: {:?}",
+            res
+        );
+        let sync_result = res.unwrap();
+        assert_eq!(sync_result.pack_version, "20261108.offline");
+        assert_eq!(sync_result.files_downloaded, 0);
     }
 }

@@ -51,11 +51,23 @@ pub enum WexError {
 
     #[error("Operation cancelled")]
     Cancelled,
+
+    #[error("Not enough disk space for {path}: {source}")]
+    DiskFull {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 impl From<WexError> for wex_ipc::error::IpcError {
     fn from(err: WexError) -> Self {
         match err {
+            WexError::DiskFull { path, source } => Self::new(
+                "IO_DISK_FULL",
+                "Недостаточно свободного места на диске",
+                Some(format!("Path: {}, details: {}", path.display(), source)),
+            ),
             WexError::Io(e) => e.into(),
             WexError::Network(e) => {
                 let code = if e.is_timeout() {
