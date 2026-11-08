@@ -29,6 +29,7 @@
       selectedVersion?: string;
       serversCount: number;
       skinsCount: number;
+      worldsCount?: number;
     }) => void;
     onclose?: () => void;
   }
@@ -58,6 +59,7 @@
   let importVersion = $state(true);
   let importServers = $state(true);
   let importSkins = $state(true);
+  let importWorlds = $state(true);
 
   export async function scanLauncher(targetDir?: string) {
     isScanning = true;
@@ -107,6 +109,7 @@
         imported_ram_gb?: number;
         imported_servers_count: number;
         imported_skins_count: number;
+        imported_worlds_count: number;
         message: string;
       }>('extras_apply_import', {
         request: {
@@ -117,10 +120,14 @@
           ram_mb: oldData.ram_mb,
           import_version: importVersion,
           selected_version: oldData.selected_version,
+          graphics_preset: oldData.graphics_preset,
           import_servers: importServers,
           servers: oldData.servers || [],
           import_skins: importSkins,
           skins: oldData.skins || [],
+          capes: oldData.capes || [],
+          import_worlds: importWorlds,
+          worlds: oldData.worlds || [],
         },
       });
 
@@ -132,6 +139,7 @@
           selectedVersion: importVersion ? oldData.selected_version : undefined,
           serversCount: response.imported_servers_count,
           skinsCount: response.imported_skins_count,
+          worldsCount: response.imported_worlds_count,
         });
 
         setTimeout(() => {
@@ -270,6 +278,25 @@
             bind:checked={importSkins}
             disabled={!oldData.skins || oldData.skins.length === 0}
             label="Перенести скины и плащи"
+          />
+        </div>
+
+        <div class="option-divider"></div>
+
+        <!-- Worlds -->
+        <div class="option-item">
+          <div class="option-details">
+            <span class="option-title">Локальные миры</span>
+            <span class="option-subtitle">
+              {oldData.worlds?.length
+                ? `${oldData.worlds.length} мир(-ов) найдено`
+                : 'Миры не найдены'}
+            </span>
+          </div>
+          <Toggle
+            bind:checked={importWorlds}
+            disabled={!oldData.worlds || oldData.worlds.length === 0}
+            label="Перенести сохранённые миры"
           />
         </div>
       </div>

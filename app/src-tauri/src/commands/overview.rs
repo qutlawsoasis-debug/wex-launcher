@@ -10,8 +10,8 @@ use wex_ipc::commands::{
 };
 use wex_ipc::core_trait::LauncherCore;
 use wex_ipc::models::{
-    ImportedServerDto, ImportedSkinDto, OldLauncherDataDto, ReleaseNoteVersionDto,
-    UpdateCheckResultDto,
+    ImportedCapeDto, ImportedServerDto, ImportedSkinDto, ImportedWorldDto, OldLauncherDataDto,
+    ReleaseNoteVersionDto, UpdateCheckResultDto,
 };
 use wex_social::launcher_update::{check_update_from_url, DEFAULT_TARGET_PLATFORM};
 use wex_social::NewsManager;
@@ -31,6 +31,8 @@ pub struct ApplyImportRequest {
     pub import_version: bool,
     pub selected_version: Option<String>,
     #[serde(default)]
+    pub graphics_preset: Option<String>,
+    #[serde(default)]
     pub import_servers: bool,
     #[serde(default)]
     pub servers: Vec<ImportedServerDto>,
@@ -38,6 +40,12 @@ pub struct ApplyImportRequest {
     pub import_skins: bool,
     #[serde(default)]
     pub skins: Vec<ImportedSkinDto>,
+    #[serde(default)]
+    pub capes: Vec<ImportedCapeDto>,
+    #[serde(default)]
+    pub import_worlds: bool,
+    #[serde(default)]
+    pub worlds: Vec<ImportedWorldDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -47,6 +55,7 @@ pub struct ApplyImportResponse {
     pub imported_ram_gb: Option<u32>,
     pub imported_servers_count: usize,
     pub imported_skins_count: usize,
+    pub imported_worlds_count: usize,
     pub message: String,
 }
 
@@ -132,6 +141,22 @@ pub fn import_old_launcher_internal(old_dir: &str) -> Result<OldLauncherDataDto,
     }
 }
 
+fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_all(&from, &to)?;
+        } else {
+            fs::copy(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
 pub async fn apply_import_internal(
     paths: &WexPaths,
     core: &dyn LauncherCore,
@@ -141,6 +166,7 @@ pub async fn apply_import_internal(
     let mut imported_ram_gb = None;
     let mut imported_servers_count = 0;
     let mut imported_skins_count = 0;
+    let mut imported_worlds_count = 0;
 
     // 1. Update Wex launcher configuration if requested
     let mut cfg = core.get_config().await.map_err(|e| e.to_string())?;
@@ -179,12 +205,48 @@ pub async fn apply_import_internal(
         core.save_config(cfg).await.map_err(|e| e.to_string())?;
     }
 
-    // 2. Safe non-destructive servers import: append to Wex servers.dat
-    if req.import_servers && !req.servers.is_empty() {
-        let servers_dat_path = paths.root.join("servers.dat");
-        if let Some(parent) = servers_dat_path.parent() {
-            let _ = fs::create_dir_all(parent);
+    // 1b. Update core config file directly to preserve graphics_preset and exact RAM
+    let mut core_cfg = wex_core::config::LauncherConfig::load_or_default(&paths.config_file);
+    let mut core_modified = false;
+    if req.import_nickname {
+        if let Some(nick) = req.nickname.as_ref().filter(|n| !n.trim().is_empty()) {
+            core_cfg.nickname = nick.trim().to_string();
+            core_modified = true;
         }
+    }
+    if req.import_ram {
+        if let Some(ram_mb) = req.ram_mb.filter(|&m| m > 0) {
+            core_cfg.max_memory_mb = ram_mb;
+            core_modified = true;
+        }
+    }
+    if req.import_version {
+        if let Some(ver) = req
+            .selected_version
+            .as_ref()
+            .filter(|v| !v.trim().is_empty())
+        {
+            core_cfg.selected_version = ver.trim().to_string();
+            core_modified = true;
+        }
+    }
+    if let Some(preset) = req
+        .graphics_preset
+        .as_ref()
+        .filter(|p| !p.trim().is_empty())
+    {
+        core_cfg.graphics_preset = preset.trim().to_string();
+        core_modified = true;
+    }
+    if core_modified {
+        let _ = core_cfg.save(&paths.config_file);
+    }
+
+    // 2. Safe non-destructive servers import: append to Wex root servers.dat AND instance servers.dat
+    if req.import_servers && !req.servers.is_empty() {
+        let root_servers_dat = paths.root.join("servers.dat");
+        let v120_servers_dat = paths.instance_dir("1.20.1").join("servers.dat");
+        let v121_servers_dat = paths.instance_dir("1.21.1").join("servers.dat");
 
         let pack_entries: Vec<wex_net::PackServerEntry> = req
             .servers
@@ -197,20 +259,25 @@ pub async fn apply_import_internal(
             })
             .collect();
 
-        let mut root = wex_net::load_servers_dat(&servers_dat_path).unwrap_or_else(|_| {
-            wex_net::NbtTag::Compound(vec![(
-                "servers".to_string(),
-                wex_net::NbtTag::List {
-                    tag_id: 10,
-                    elements: Vec::new(),
-                },
-            )])
-        });
+        for s_path in [&root_servers_dat, &v120_servers_dat, &v121_servers_dat] {
+            if let Some(parent) = s_path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
 
-        wex_net::merge_pack_servers(&mut root, &pack_entries);
-        if wex_net::save_servers_dat(&servers_dat_path, &root).is_ok() {
-            imported_servers_count = req.servers.len();
+            let mut root = wex_net::load_servers_dat(s_path).unwrap_or_else(|_| {
+                wex_net::NbtTag::Compound(vec![(
+                    "servers".to_string(),
+                    wex_net::NbtTag::List {
+                        tag_id: 10,
+                        elements: Vec::new(),
+                    },
+                )])
+            });
+
+            wex_net::merge_pack_servers(&mut root, &pack_entries);
+            let _ = wex_net::save_servers_dat(s_path, &root);
         }
+        imported_servers_count = req.servers.len();
     }
 
     // 3. Safe non-destructive skins import: copy PNGs into Wex skins/
@@ -230,12 +297,46 @@ pub async fn apply_import_internal(
         }
     }
 
+    // 3b. Safe non-destructive capes import: copy PNGs into Wex capes/
+    if req.import_skins && !req.capes.is_empty() {
+        let target_capes_dir = paths.root.join("capes");
+        let _ = fs::create_dir_all(&target_capes_dir);
+
+        for cape in &req.capes {
+            let src = PathBuf::from(&cape.path);
+            if src.is_file() {
+                let dest = target_capes_dir.join(&cape.file_name);
+                let _ = fs::copy(&src, &dest);
+            }
+        }
+    }
+
+    // 4. Safe non-destructive worlds import: copy world saves into Wex instance saves
+    if req.import_worlds && !req.worlds.is_empty() {
+        for world in &req.worlds {
+            let src = PathBuf::from(&world.source_path);
+            if src.is_dir() {
+                let target_ver = world
+                    .version
+                    .as_deref()
+                    .or(req.selected_version.as_deref())
+                    .unwrap_or("1.21.1");
+                let target_saves_dir = paths.instance_dir(target_ver).join("saves");
+                let dest = target_saves_dir.join(&world.folder_name);
+                if copy_dir_all(&src, &dest).is_ok() {
+                    imported_worlds_count += 1;
+                }
+            }
+        }
+    }
+
     Ok(ApplyImportResponse {
         success: true,
         imported_nickname,
         imported_ram_gb,
         imported_servers_count,
         imported_skins_count,
+        imported_worlds_count,
         message: "Данные успешно перенесены в Wex без изменения файлов старого лаунчера"
             .to_string(),
     })
@@ -452,6 +553,10 @@ mod tests {
                 hash: "dummyhash".to_string(),
                 is_slim: false,
             }],
+            capes: Vec::new(),
+            graphics_preset: Some("High".to_string()),
+            import_worlds: false,
+            worlds: Vec::new(),
         };
 
         let res = apply_import_internal(&paths, &core, req).await.unwrap();
@@ -481,5 +586,125 @@ mod tests {
             fs::read(&test_skin_path).unwrap(),
             b"TEST_SKIN_DATA_ORIGINAL"
         );
+    }
+
+    #[tokio::test]
+    async fn test_import_real_scenario_with_worlds_and_settings() {
+        let tmp = tempdir().unwrap();
+        let wex_root = tmp.path().join("Wex");
+        let paths = WexPaths::new(Some(wex_root.clone()));
+        let core = MockLauncherCore::new();
+
+        // 1. Setup realistic old launcher directory structure
+        let old_aura_dir = tmp.path().join(".aura");
+        fs::create_dir_all(&old_aura_dir).unwrap();
+
+        // Old config.json
+        let config_json = serde_json::json!({
+            "Nickname": "AuraVeteran",
+            "RamMb": 8192,
+            "SelectedVersion": "1.20.1",
+            "GraphicsPreset": "Ultra",
+            "JvmArgs": "-XX:+UseG1GC",
+            "DiscordRpcEnabled": true,
+            "TotalPlayTimeSeconds": 86400,
+            "TotalGameLaunches": 50,
+            "SkinPath": "skins/hero.png",
+            "SkinModel": "default"
+        });
+        fs::write(old_aura_dir.join("config.json"), config_json.to_string()).unwrap();
+
+        // Old skins & capes
+        let old_skins = old_aura_dir.join("skins");
+        fs::create_dir_all(&old_skins).unwrap();
+        let hero_skin = old_skins.join("hero.png");
+        fs::write(&hero_skin, b"PNG_HERO_SKIN_DATA").unwrap();
+
+        let old_capes = old_aura_dir.join("capes");
+        fs::create_dir_all(&old_capes).unwrap();
+        let aura_cape = old_capes.join("cape_cyan.png");
+        fs::write(&aura_cape, b"PNG_AURA_CAPE_DATA").unwrap();
+
+        // Old worlds in instances
+        let v120_saves = old_aura_dir.join("instances").join("1.20.1").join("saves");
+        let world_a = v120_saves.join("SurvivalWorld");
+        fs::create_dir_all(&world_a).unwrap();
+        fs::write(world_a.join("level.dat"), b"MOCK_LEVEL_DAT_A").unwrap();
+        fs::write(world_a.join("icon.png"), b"MOCK_ICON_A").unwrap();
+
+        let v121_saves = old_aura_dir.join("instances").join("1.21.1").join("saves");
+        let world_b = v121_saves.join("CoopRealm");
+        fs::create_dir_all(&world_b).unwrap();
+        fs::write(world_b.join("level.dat"), b"MOCK_LEVEL_DAT_B").unwrap();
+
+        // 2. Run scan
+        let scanned = import_old_launcher_internal(&old_aura_dir.to_string_lossy()).unwrap();
+        assert_eq!(scanned.nickname, "AuraVeteran");
+        assert_eq!(scanned.ram_mb, 8192);
+        assert_eq!(scanned.selected_version, "1.20.1");
+        assert_eq!(scanned.graphics_preset.as_deref(), Some("Ultra"));
+        assert_eq!(scanned.skins.len(), 1);
+        assert_eq!(scanned.capes.len(), 1);
+        assert_eq!(scanned.worlds.len(), 2);
+
+        // 3. Apply import
+        let req = ApplyImportRequest {
+            old_launcher_dir: old_aura_dir.to_string_lossy().to_string(),
+            import_nickname: true,
+            nickname: Some(scanned.nickname),
+            import_ram: true,
+            ram_mb: Some(scanned.ram_mb),
+            import_version: true,
+            selected_version: Some(scanned.selected_version),
+            graphics_preset: scanned.graphics_preset,
+            import_servers: true,
+            servers: scanned.servers,
+            import_skins: true,
+            skins: scanned.skins,
+            capes: scanned.capes,
+            import_worlds: true,
+            worlds: scanned.worlds,
+        };
+
+        let res = apply_import_internal(&paths, &core, req).await.unwrap();
+        assert!(res.success);
+        assert_eq!(res.imported_nickname.as_deref(), Some("AuraVeteran"));
+        assert_eq!(res.imported_ram_gb, Some(8));
+        assert_eq!(res.imported_skins_count, 1);
+        assert_eq!(res.imported_worlds_count, 2);
+
+        // 4. Verify Wex directories received all files
+        assert!(wex_root.join("skins").join("hero.png").is_file());
+        assert!(wex_root.join("capes").join("cape_cyan.png").is_file());
+
+        let target_world_a = paths
+            .instance_dir("1.20.1")
+            .join("saves")
+            .join("SurvivalWorld");
+        assert!(target_world_a.join("level.dat").is_file());
+        assert!(target_world_a.join("icon.png").is_file());
+        assert_eq!(
+            fs::read(target_world_a.join("level.dat")).unwrap(),
+            b"MOCK_LEVEL_DAT_A"
+        );
+
+        let target_world_b = paths.instance_dir("1.21.1").join("saves").join("CoopRealm");
+        assert!(target_world_b.join("level.dat").is_file());
+        assert_eq!(
+            fs::read(target_world_b.join("level.dat")).unwrap(),
+            b"MOCK_LEVEL_DAT_B"
+        );
+
+        // Verify core config has graphics preset and exact memory
+        let core_cfg = wex_core::config::LauncherConfig::load_or_default(&paths.config_file);
+        assert_eq!(core_cfg.graphics_preset, "Ultra");
+        assert_eq!(core_cfg.max_memory_mb, 8192);
+
+        // 5. CRITICAL NON-DESTRUCTIVE CHECK:
+        // Ensure old launcher files still exist completely untouched
+        assert!(hero_skin.is_file());
+        assert!(aura_cape.is_file());
+        assert!(world_a.join("level.dat").is_file());
+        assert!(world_b.join("level.dat").is_file());
     }
 }
