@@ -17,7 +17,9 @@ impl GameWindowBehavior {
     pub fn from_str_loose(s: &str) -> Self {
         match s.trim().to_lowercase().as_str() {
             "keep" | "leave" | "оставить" => Self::Keep,
-            "tray" | "hide" | "hide_to_tray" | "скрыть" | "скрыть в трей" => Self::HideToTray,
+            "tray" | "hide" | "hide_to_tray" | "скрыть" | "скрыть в трей" => {
+                Self::HideToTray
+            }
             _ => Self::Minimize,
         }
     }
@@ -102,35 +104,32 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .icon(icon)
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| {
-            match event.id.as_ref() {
-                "open_wex" => {
-                    restore_window(app);
-                }
-                "stop_game" => {
-                    let app_clone = app.clone();
-                    tauri::async_runtime::spawn(async move {
-                        if let Some(state) =
-                            app_clone.try_state::<crate::commands::launch::PlayState>()
-                        {
-                            let ver = {
-                                let v = state.running_version.lock().await;
-                                v.clone()
-                            };
-                            if let Some(ver) = ver {
-                                let _ = state.core.kill_game(&ver).await;
-                            }
-                            state.is_running.store(false, Ordering::SeqCst);
-                            restore_window(&app_clone);
-                            update_tray_game_running(&app_clone, false);
-                        }
-                    });
-                }
-                "quit" => {
-                    app.exit(0);
-                }
-                _ => {}
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "open_wex" => {
+                restore_window(app);
             }
+            "stop_game" => {
+                let app_clone = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Some(state) = app_clone.try_state::<crate::commands::launch::PlayState>()
+                    {
+                        let ver = {
+                            let v = state.running_version.lock().await;
+                            v.clone()
+                        };
+                        if let Some(ver) = ver {
+                            let _ = state.core.kill_game(&ver).await;
+                        }
+                        state.is_running.store(false, Ordering::SeqCst);
+                        restore_window(&app_clone);
+                        update_tray_game_running(&app_clone, false);
+                    }
+                });
+            }
+            "quit" => {
+                app.exit(0);
+            }
+            _ => {}
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
