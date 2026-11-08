@@ -1,5 +1,6 @@
 pub mod friends;
 pub mod launch;
+pub mod lobby;
 pub mod mods;
 pub mod overview;
 pub mod settings;

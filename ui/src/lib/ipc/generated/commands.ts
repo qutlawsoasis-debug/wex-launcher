@@ -13,6 +13,7 @@ import type {
     LobbyStatusResponseDto,
     ModManifestEntryDto,
     ModMismatchItemDto,
+    NetOpenRoomDto,
     OldLauncherDataDto,
     PackServerEntryDto,
     PresetApplyResultDto,
@@ -78,6 +79,10 @@ export type NetLobbyCloseRequest = { code: string, host_token: string, };;
 export type NetLobbyLeaveRequest = { code: string, player_name: string, };;
 
 export type NetLobbyKickRequest = { code: string, host_token: string, player: string, };;
+
+export type NetListOpenRoomsRequest = { player_name: string | null, };;
+
+export type NetListOpenRoomsResponse = { rooms: Array<NetOpenRoomDto>, };;
 
 export type NetCompareManifestsRequest = { client_manifest: Array<ModManifestEntryDto>, host_manifest: Array<ModManifestEntryDto>, };;
 
@@ -192,6 +197,7 @@ export const COMMANDS = {
     NET_LOBBY_LEAVE: "net_lobby_leave",
     NET_LOBBY_KICK: "net_lobby_kick",
     NET_LOBBY_TUNNEL_CONFIG: "net_lobby_tunnel_config",
+    NET_LOBBY_LIST_OPEN_ROOMS: "net_lobby_list_open_rooms",
     NET_COMPARE_MANIFESTS: "net_compare_manifests",
     NET_COMPUTE_MANIFEST_HASH: "net_compute_manifest_hash",
     NET_TUNNEL_START: "net_tunnel_start",
