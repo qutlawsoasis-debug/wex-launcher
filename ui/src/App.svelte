@@ -119,6 +119,39 @@
     showcase: 'Компоненты Apple HIG',
   };
 
+  // Keyboard Navigation & Shortcuts per wex-window SPEC:
+  // - Esc: closes open modals and sheets
+  // - Ctrl+1..7: switches active screen sections
+  function handleWindowKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      if (crashSheetOpen) {
+        crashSheetOpen = false;
+        e.preventDefault();
+        return;
+      }
+      if (showImportWizard) {
+        showImportWizard = false;
+        e.preventDefault();
+        return;
+      }
+      // Broadcast custom escape event for any active local sheets/modals
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('wex-escape'));
+      }
+    }
+
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+      const num = parseInt(e.key, 10);
+      if (num >= 1 && num <= 7) {
+        const item = sidebarItems[num - 1];
+        if (item) {
+          activeTab = item.id;
+          e.preventDefault();
+        }
+      }
+    }
+  }
+
   // Tauri Window Control Actions
   async function minimizeWindow() {
     try {
@@ -480,6 +513,8 @@
     };
   });
 </script>
+
+<svelte:window onkeydown={handleWindowKeydown} />
 
 <div class="wex-shell" data-theme={theme.isDark ? 'dark' : 'light'}>
   <!-- Real Game Scenery Backdrop under entire app shell -->

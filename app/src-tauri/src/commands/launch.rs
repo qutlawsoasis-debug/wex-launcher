@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex;
 
 use wex_core::config::WexPaths;
@@ -385,6 +385,12 @@ pub async fn start_game(
                 },
             );
 
+            // Apply window minimize-to-tray behavior per wex-window specification
+            if let Some(w) = app.get_webview_window("main") {
+                let minimize = crate::commands::window::is_minimize_to_tray_enabled(&state.paths);
+                crate::commands::window::apply_launch_window_behavior(&w, minimize);
+            }
+
             // Spawn background supervisor to monitor running process and detect crashes
             let app_clone = app.clone();
             let core_clone = state.core.clone();
@@ -407,6 +413,11 @@ pub async fn start_game(
                 {
                     let mut v = running_version_clone.lock().await;
                     *v = None;
+                }
+
+                // Restore launcher window after game exits
+                if let Some(w) = app_clone.get_webview_window("main") {
+                    crate::commands::window::restore_window_from_game(&w);
                 }
 
                 // Switch Discord RPC back to InLauncher

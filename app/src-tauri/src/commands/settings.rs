@@ -59,6 +59,12 @@ pub struct LauncherSettingsDto {
     pub accent: String,     // "blue" | "purple" | "pink" | "orange" | "green" | "mint" | "graphite"
     pub reduce_motion: bool,
     pub reduce_transparency: bool,
+    #[serde(default = "default_true")]
+    pub minimize_to_tray: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for LauncherSettingsDto {
@@ -80,6 +86,7 @@ impl Default for LauncherSettingsDto {
             accent: "blue".to_string(),
             reduce_motion: false,
             reduce_transparency: false,
+            minimize_to_tray: true,
         }
     }
 }
@@ -170,6 +177,7 @@ pub fn get_launcher_settings_impl(paths: &WexPaths) -> LauncherSettingsDto {
         accent: cfg.accent,
         reduce_motion: cfg.reduce_motion,
         reduce_transparency: cfg.reduce_transparency,
+        minimize_to_tray: cfg.minimize_to_tray,
     }
 }
 
@@ -207,6 +215,7 @@ pub async fn save_launcher_settings_impl(
     cfg.accent = new_settings.accent;
     cfg.reduce_motion = new_settings.reduce_motion;
     cfg.reduce_transparency = new_settings.reduce_transparency;
+    cfg.minimize_to_tray = new_settings.minimize_to_tray;
 
     cfg.save(&paths.config_file)
         .map_err(|e| format!("Не удалось сохранить конфигурацию: {}", e))?;
@@ -346,6 +355,7 @@ mod tests {
         assert_eq!(settings.java_mode, "auto");
         assert!(settings.discord_rpc);
         assert_eq!(settings.language, "ru");
+        assert!(settings.minimize_to_tray);
 
         // 2. Modify and save settings
         let mut updated = settings.clone();
@@ -356,6 +366,7 @@ mod tests {
         updated.custom_java_path = Some(r"C:\Java\jdk-21\bin\javaw.exe".to_string());
         updated.discord_rpc = false;
         updated.language = "en".to_string();
+        updated.minimize_to_tray = false;
 
         save_launcher_settings_impl(updated, &paths, &mock_core)
             .await
@@ -373,6 +384,7 @@ mod tests {
         );
         assert!(!reloaded.discord_rpc);
         assert_eq!(reloaded.language, "en");
+        assert!(!reloaded.minimize_to_tray);
     }
 
     #[tokio::test]
@@ -399,5 +411,6 @@ mod tests {
         assert_eq!(reset.graphics_preset, "High");
         assert_eq!(reset.java_mode, "auto");
         assert!(reset.discord_rpc);
+        assert!(reset.minimize_to_tray);
     }
 }

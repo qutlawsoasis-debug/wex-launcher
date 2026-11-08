@@ -8,5 +8,6 @@ pub mod overview;
 pub mod settings;
 pub mod shell;
 pub mod wardrobe;
+pub mod window;
 pub mod workshop;
 pub mod workshop_packs;

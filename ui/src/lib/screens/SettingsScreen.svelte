@@ -40,6 +40,7 @@
   let language = $state('ru');
   let launcherVersion = $state('1.0.0');
   let osName = $state('windows');
+  let minimizeToTray = $state(true);
 
   const graphicsOptions = [
     { value: 'Low', label: 'Низкий' },
@@ -131,6 +132,7 @@
         accent?: string;
         reduce_motion?: boolean;
         reduce_transparency?: boolean;
+        minimize_to_tray?: boolean;
       }>('get_launcher_settings');
 
       if (cfg) {
@@ -148,6 +150,7 @@
         if (cfg.language) language = cfg.language;
         if (cfg.appearance) theme.setAppearance(cfg.appearance as 'dark' | 'light' | 'auto');
         if (cfg.accent) theme.setAccent(cfg.accent as AccentColor);
+        if (cfg.minimize_to_tray !== undefined) minimizeToTray = cfg.minimize_to_tray;
         theme.setReduceMotion(cfg.reduce_motion ?? false);
         theme.setReduceTransparency(cfg.reduce_transparency ?? false);
       }
@@ -186,6 +189,7 @@
           accent: theme.accent,
           reduce_motion: theme.reduceMotion,
           reduce_transparency: theme.reduceTransparency,
+          minimize_to_tray: minimizeToTray,
         },
       });
     } catch {
@@ -203,6 +207,7 @@
         custom_java_path?: string | null;
         discord_rpc?: boolean;
         language?: string;
+        minimize_to_tray?: boolean;
       }>('reset_settings');
 
       if (reset) {
@@ -212,6 +217,7 @@
         customJavaPath = '';
         if (reset.discord_rpc !== undefined) discordRpc = reset.discord_rpc;
         if (reset.language) language = reset.language;
+        if (reset.minimize_to_tray !== undefined) minimizeToTray = reset.minimize_to_tray;
       }
     } catch {
       // Browser reset fallback
@@ -221,6 +227,7 @@
       customJavaPath = '';
       discordRpc = true;
       language = 'ru';
+      minimizeToTray = true;
     }
 
     theme.setAppearance('dark');
@@ -347,6 +354,25 @@
               <span>Открыть</span>
             </Button>
           </div>
+        {/snippet}
+      </Row>
+    </List>
+
+    <!-- Window and Tray behavior (SPEC wex-window) -->
+    <List header="Окно и трей">
+      <Row
+        title="Сворачивать в трей при запуске игры"
+        subtitle="Скрывать окно лаунчера во время игры и возвращать его на экран после закрытия"
+      >
+        {#snippet trailing()}
+          <Toggle
+            ariaLabel="Сворачивать в трей при запуске игры"
+            checked={minimizeToTray}
+            onchange={(checked) => {
+              minimizeToTray = checked;
+              saveConfig();
+            }}
+          />
         {/snippet}
       </Row>
     </List>
