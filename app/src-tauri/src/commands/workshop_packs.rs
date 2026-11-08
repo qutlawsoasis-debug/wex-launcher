@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 use tauri::State;
 use wex_core::config::WexPaths;
 
@@ -44,7 +44,7 @@ fn resolve_game_dir(paths: &WexPaths, version: Option<&str>) -> PathBuf {
 // Pure Rust standard RFC 4648 Base64 encoder (zero extra dependencies)
 fn base64_encode(bytes: &[u8]) -> String {
     const CHARSET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    let mut result = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let b0 = chunk[0] as u32;
         let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
@@ -78,7 +78,9 @@ fn parse_pack_mcmeta(bytes: &[u8]) -> (Option<String>, Option<u32>) {
             if let Some(s) = d.as_str() {
                 Some(s.to_string())
             } else if let Some(obj) = d.as_object() {
-                obj.get("text").and_then(|t| t.as_str()).map(|s| s.to_string())
+                obj.get("text")
+                    .and_then(|t| t.as_str())
+                    .map(|s| s.to_string())
             } else if let Some(arr) = d.as_array() {
                 let texts: Vec<&str> = arr
                     .iter()
@@ -226,14 +228,20 @@ fn set_enabled_resource_pack(
                 serde_json::from_str(rest).unwrap_or_else(|_| vec!["vanilla".to_string()]);
 
             if enable {
-                if !list.iter().any(|item| item == &target_entry || item == file_name) {
+                if !list
+                    .iter()
+                    .any(|item| item == &target_entry || item == file_name)
+                {
                     list.push(target_entry.clone());
                 }
             } else {
                 list.retain(|item| item != &target_entry && item != file_name);
             }
 
-            *line = format!("resourcePacks:{}", serde_json::to_string(&list).unwrap_or_default());
+            *line = format!(
+                "resourcePacks:{}",
+                serde_json::to_string(&list).unwrap_or_default()
+            );
             break;
         }
     }
@@ -244,7 +252,10 @@ fn set_enabled_resource_pack(
         } else {
             vec!["vanilla".to_string()]
         };
-        lines.push(format!("resourcePacks:{}", serde_json::to_string(&list).unwrap_or_default()));
+        lines.push(format!(
+            "resourcePacks:{}",
+            serde_json::to_string(&list).unwrap_or_default()
+        ));
     }
 
     if let Some(p) = options_txt_path.parent() {
@@ -379,7 +390,9 @@ pub async fn workshop_list_resource_packs(
         };
 
         let target_prefix = format!("file/{}", fname);
-        let is_enabled = enabled_list.iter().any(|e| e == &target_prefix || e == &fname);
+        let is_enabled = enabled_list
+            .iter()
+            .any(|e| e == &target_prefix || e == &fname);
         let is_from_pack = is_file_from_pack(&fname, "resourcepacks", &game_dir);
 
         items.push(ResourcePackItemDto {
@@ -396,12 +409,10 @@ pub async fn workshop_list_resource_packs(
     }
 
     // Sort: enabled first, then alphabetically
-    items.sort_by(|a, b| {
-        match (a.is_enabled, b.is_enabled) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        }
+    items.sort_by(|a, b| match (a.is_enabled, b.is_enabled) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
     });
 
     Ok(items)
@@ -533,8 +544,8 @@ pub async fn workshop_list_shader_packs(
             read_pack_meta_from_dir(&path)
         };
 
-        let is_active = active_shader.as_deref() == Some(&fname)
-            || active_shader.as_deref() == Some(&name);
+        let is_active =
+            active_shader.as_deref() == Some(&fname) || active_shader.as_deref() == Some(&name);
         let is_from_pack = is_file_from_pack(&fname, "shaderpacks", &game_dir);
 
         items.push(ShaderPackItemDto {
@@ -549,12 +560,10 @@ pub async fn workshop_list_shader_packs(
         });
     }
 
-    items.sort_by(|a, b| {
-        match (a.is_active, b.is_active) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        }
+    items.sort_by(|a, b| match (a.is_active, b.is_active) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
     });
 
     Ok(items)
@@ -702,7 +711,8 @@ mod tests {
     fn create_dummy_zip_pack(zip_path: &Path, desc: &str, format: u32) {
         let file = fs::File::create(zip_path).unwrap();
         let mut zip = zip::ZipWriter::new(file);
-        let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
         zip.start_file("pack.mcmeta", options).unwrap();
         let mcmeta_json = format!(
@@ -746,8 +756,16 @@ mod tests {
         assert!(enabled.contains(&"file/Faithful.zip".to_string()));
 
         // Check is_from_pack detection
-        assert!(!is_file_from_pack("Faithful.zip", "resourcepacks", &inst_dir));
-        assert!(is_file_from_pack("Aura-ResourcePack.zip", "resourcepacks", &inst_dir));
+        assert!(!is_file_from_pack(
+            "Faithful.zip",
+            "resourcepacks",
+            &inst_dir
+        ));
+        assert!(is_file_from_pack(
+            "Aura-ResourcePack.zip",
+            "resourcepacks",
+            &inst_dir
+        ));
 
         // Disable Faithful
         set_enabled_resource_pack(&options_txt, "Faithful.zip", false).unwrap();
@@ -775,7 +793,10 @@ mod tests {
 
         // Activate Complementary
         set_active_shader(&inst_dir, Some("Complementary.zip")).unwrap();
-        assert_eq!(get_active_shader(&inst_dir), Some("Complementary.zip".to_string()));
+        assert_eq!(
+            get_active_shader(&inst_dir),
+            Some("Complementary.zip".to_string())
+        );
 
         let iris = fs::read_to_string(inst_dir.join("config").join("iris.properties")).unwrap();
         assert!(iris.contains("enableShaders=true"));
@@ -820,22 +841,14 @@ mod tests {
         let aura_file = rp_dir.join("Aura-Texture.zip");
         fs::write(&aura_file, b"aura").unwrap();
 
-        let del_aura_res = delete_pack_file_impl(
-            &paths,
-            "Aura-Texture.zip",
-            "resourcepack",
-            Some("1.21.1"),
-        );
+        let del_aura_res =
+            delete_pack_file_impl(&paths, "Aura-Texture.zip", "resourcepack", Some("1.21.1"));
         assert!(del_aura_res.is_err());
         assert!(aura_file.is_file());
 
         // Deleting user pack succeeds
-        let del_user_res = delete_pack_file_impl(
-            &paths,
-            "ImportMe.zip",
-            "resourcepack",
-            Some("1.21.1"),
-        );
+        let del_user_res =
+            delete_pack_file_impl(&paths, "ImportMe.zip", "resourcepack", Some("1.21.1"));
         assert!(del_user_res.is_ok());
         assert!(!rp_dir.join("ImportMe.zip").exists());
     }
