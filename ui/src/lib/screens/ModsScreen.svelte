@@ -242,6 +242,7 @@
         class="hidden-file-input"
         bind:this={fileInputRef}
         onchange={handleFileSelected}
+        aria-label="Выбрать файл мода .jar"
       />
       <Button
         variant="primary"
@@ -438,6 +439,11 @@
 
   .delete-btn:hover {
     background-color: rgba(255, 69, 58, 0.12);
+  }
+
+  .delete-btn:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 2px;
   }
 
   .hidden-file-input {
