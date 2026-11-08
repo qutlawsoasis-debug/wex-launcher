@@ -18,6 +18,7 @@
   import Icon from '../components/icons/Icon.svelte';
   import OfflineState from '../components/OfflineState.svelte';
   import { network } from '../design/network.svelte';
+  import { t, i18n } from '../i18n';
 
   interface ServerEntry {
     id: string;
@@ -142,7 +143,7 @@
 <div class="servers-screen">
   <div class="screen-toolbar">
     <div class="search-wrap">
-      <SearchField placeholder="Поиск серверов по названию или адресу..." bind:value={searchQuery} />
+      <SearchField placeholder={t('servers.search_placeholder')} bind:value={searchQuery} />
     </div>
 
     <div class="toolbar-actions">
@@ -151,20 +152,20 @@
         size="small"
         onclick={refreshAllServers}
         loading={isRefreshingAll}
-        title="Обновить статус и пинг всех серверов"
+        title={t('servers.refresh_all')}
       >
         <Icon name="restore" size={13} color="var(--color-secondary-label)" />
-        <span>Обновить</span>
+        <span>{t('common.refresh')}</span>
       </Button>
 
       <Button
         variant="primary"
         size="small"
         onclick={() => (addSheetOpen = true)}
-        title="Добавить новый Minecraft сервер"
+        title={t('servers.add_server')}
       >
         <Icon name="server" size={14} color="#ffffff" />
-        <span>Добавить сервер</span>
+        <span>{t('servers.add_server')}</span>
       </Button>
     </div>
   </div>
@@ -193,11 +194,11 @@
             {#snippet trailing()}
               <div class="server-metrics">
                 {#if s.isPinging}
-                  <span class="ping-pill loading">Пинг...</span>
+                  <span class="ping-pill loading">{i18n.locale === 'en' ? 'Checking connection…' : 'Пинг...'}</span>
                 {:else if s.ping_ms !== null && s.ping_ms !== undefined}
                   <span class="ping-pill" class:fast={s.ping_ms < 60} class:medium={s.ping_ms >= 60 && s.ping_ms < 150} class:slow={s.ping_ms >= 150}>
                     <span class="dot"></span>
-                    {s.ping_ms} мс
+                    {s.ping_ms} {i18n.locale === 'en' ? 'ms' : 'мс'}
                   </span>
 
                   {#if s.online !== null && s.online !== undefined}
@@ -206,19 +207,19 @@
                     </span>
                   {/if}
                 {:else}
-                  <span class="ping-pill offline">Офлайн</span>
+                  <span class="ping-pill offline">{i18n.locale === 'en' ? 'Offline' : 'Офлайн'}</span>
                 {/if}
 
                 <Button variant="secondary" size="small">
-                  Подключиться
+                  {i18n.locale === 'en' ? 'Connect' : 'Подключиться'}
                 </Button>
 
                 <button
                   type="button"
                   class="remove-btn"
                   onclick={() => handleRemoveServer(s)}
-                  title="Удалить сервер"
-                  aria-label="Удалить сервер {s.name}"
+                  title={t('servers.delete_server')}
+                  aria-label="{t('servers.delete_server')} {s.name}"
                 >
                   <Icon name="close" size={12} color="var(--color-secondary-label)" />
                 </button>
@@ -230,11 +231,11 @@
     {:else}
       <div class="empty-state-card">
         <Icon name="server" size={44} color="var(--color-tertiary-label)" />
-        <h2 class="empty-title">Серверы не найдены</h2>
+        <h2 class="empty-title">{t('servers.empty_title')}</h2>
         <p class="empty-desc">
           {searchQuery
-            ? 'По запросу «' + searchQuery + '» ничего не найдено.'
-            : 'Список серверов пуст. Нажмите «Добавить сервер», чтобы сохранить адрес любимого сервера.'}
+            ? t('servers.empty_search', { query: searchQuery })
+            : t('servers.empty_default')}
         </p>
       </div>
     {/if}
@@ -243,30 +244,30 @@
 
 <Sheet
   bind:open={addSheetOpen}
-  title="Добавить сервер"
-  doneLabel="Сохранить"
+  title={t('servers.sheet_title')}
+  doneLabel={t('servers.sheet_save')}
   ondone={handleAddServer}
 >
   <div class="sheet-form">
     <div class="form-row">
-      <label class="form-label" for="srv-name">Название сервера</label>
+      <label class="form-label" for="srv-name">{t('servers.sheet_name_label')}</label>
       <input
         id="srv-name"
         type="text"
         bind:value={newServerName}
-        placeholder="Например: Мой любимый сервер"
+        placeholder={t('servers.sheet_name_placeholder')}
         class="form-input"
         maxlength={32}
       />
     </div>
 
     <div class="form-row">
-      <label class="form-label" for="srv-addr">Адрес сервера (домен или IP:порт)</label>
+      <label class="form-label" for="srv-addr">{t('servers.sheet_address_label')}</label>
       <input
         id="srv-addr"
         type="text"
         bind:value={newServerAddress}
-        placeholder="mc.example.com или 192.168.1.100:25565"
+        placeholder={t('servers.sheet_address_placeholder')}
         class="form-input"
       />
     </div>
