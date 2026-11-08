@@ -92,7 +92,8 @@ pub fn import_from_dir(aura_dir: &Path) -> Result<OldLauncherData, ImportError> 
     let config_path = aura_dir.join("config.json");
     if config_path.is_file() {
         if let Ok(text) = fs::read_to_string(&config_path) {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+            let clean_text = text.trim_start_matches('\u{feff}');
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(clean_text) {
                 if let Some(nick) = v.get("Nickname").and_then(|n| n.as_str()) {
                     nickname = nick.to_string();
                 }
@@ -416,5 +417,22 @@ mod tests {
         let missing = PathBuf::from("C:\\definitely\\non_existent_aura_dir_12345");
         let res = import_from_dir(&missing);
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_import_from_fixture_with_bom() {
+        let dir = tempdir().unwrap();
+        let aura_path = dir.path();
+
+        // Write config with UTF-8 BOM (\u{feff})
+        let config_str = format!(
+            "\u{feff}{{\"Nickname\": \"BomPlayer\", \"RamMb\": 4096, \"SelectedVersion\": \"1.20.1\"}}"
+        );
+        fs::write(aura_path.join("config.json"), config_str.as_bytes()).unwrap();
+
+        let imported = import_from_dir(aura_path).unwrap();
+        assert_eq!(imported.nickname, "BomPlayer");
+        assert_eq!(imported.ram_mb, 4096);
+        assert_eq!(imported.selected_version, "1.20.1");
     }
 }

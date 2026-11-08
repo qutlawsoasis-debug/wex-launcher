@@ -2395,6 +2395,8 @@ dependencies = [
  "clap",
  "tokio",
  "wex-core",
+ "wex-extras",
+ "wex-net",
 ]
 
 [[package]]
