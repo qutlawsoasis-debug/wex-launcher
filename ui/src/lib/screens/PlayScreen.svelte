@@ -531,13 +531,26 @@
     line-height: 1.08;
     margin: 0 0 4px;
     color: var(--color-label);
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
   }
 
   .game-subheading {
     font-size: 16px;
-    color: var(--color-secondary-label);
+    color: var(--color-label);
+    opacity: 0.94;
     margin: 0;
-    font-weight: 500;
+    font-weight: 600;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  :global([data-theme="light"]) .game-heading {
+    text-shadow: 0 1px 8px rgba(255, 255, 255, 0.8);
+  }
+
+  :global([data-theme="light"]) .game-subheading {
+    color: #1c1c1e;
+    opacity: 1;
+    text-shadow: 0 1px 8px rgba(255, 255, 255, 0.8);
   }
 
   .header-tools {
@@ -556,13 +569,14 @@
   }
 
   .glass-card {
-    background: var(--color-system-ultra-thin-material);
+    background: var(--color-system-ultra-thin-material, var(--card-bg));
     backdrop-filter: blur(28px) saturate(160%);
     -webkit-backdrop-filter: blur(28px) saturate(160%);
     border: 1px solid var(--color-separator);
     border-radius: var(--radius-lg);
     padding: 16px 20px;
     box-sizing: border-box;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
   }
 
   .updates-card {
@@ -683,7 +697,9 @@
 
   .empty-status-text {
     font-size: var(--text-footnote);
-    color: var(--color-secondary-label);
+    color: var(--color-label);
+    opacity: 0.88;
+    font-weight: 500;
     padding: 4px 0;
   }
 
@@ -698,11 +714,15 @@
     align-items: center;
     gap: 8px;
     font-size: var(--text-caption-1);
-    color: var(--color-secondary-label);
+    color: var(--color-label);
+    opacity: 0.88;
   }
 
   .friends-status-label {
     font-size: var(--text-footnote);
+    color: var(--color-label);
+    opacity: 0.88;
+    font-weight: 500;
   }
 
   /* Bottom Launch Dock */
@@ -845,5 +865,12 @@
 
   .dock-cancel-action {
     flex-shrink: 0;
+  }
+
+  :global([data-reduce-transparency="true"]) .launch-dock,
+  :global([data-reduce-transparency="true"]) .glass-card {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--color-secondary-system-background) !important;
   }
 </style>
