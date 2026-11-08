@@ -257,9 +257,11 @@ pub fn run() {
             commands::lobby::kick_lobby_player,
             commands::lobby::list_open_rooms,
             commands::lobby::net_lan_list_discovered,
+            commands::lobby::net_lan_publish,
             commands::lobby::list_lan_worlds,
             commands::lobby::record_lan_world,
             commands::lobby::connect_lan_world,
+            commands::lobby::publish_lan_world,
             // Wardrobe commands
             commands::wardrobe::extras_validate_skin,
             commands::wardrobe::extras_convert_skin,

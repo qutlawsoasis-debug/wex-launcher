@@ -94,6 +94,10 @@ export type NetLanConnectRequest = { address: string, };;
 
 export type NetLanConnectResponse = { success: boolean, message: string, };;
 
+export type NetLanPublishRequest = { motd: string, port: number, host_name: string | null, };;
+
+export type NetLanPublishResponse = { code: string, host_name: string, world_name: string, tunnel_address: string, port: number, };;
+
 export type NetCompareManifestsRequest = { client_manifest: Array<ModManifestEntryDto>, host_manifest: Array<ModManifestEntryDto>, };;
 
 export type NetCompareManifestsResponse = { mismatches: Array<ModMismatchItemDto>, manifest_hash: string, };;
@@ -218,6 +222,7 @@ export const COMMANDS = {
     NET_LOBBY_LIST_OPEN_ROOMS: "net_lobby_list_open_rooms",
     NET_LAN_LIST_DISCOVERED: "net_lan_list_discovered",
     NET_LAN_CONNECT: "net_lan_connect",
+    NET_LAN_PUBLISH: "net_lan_publish",
     NET_COMPARE_MANIFESTS: "net_compare_manifests",
     NET_COMPUTE_MANIFEST_HASH: "net_compute_manifest_hash",
     NET_TUNNEL_START: "net_tunnel_start",

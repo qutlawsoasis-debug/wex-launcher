@@ -82,6 +82,7 @@ pub const CMD_NET_LOBBY_TUNNEL_CONFIG: &str = "net_lobby_tunnel_config";
 pub const CMD_NET_LOBBY_LIST_OPEN_ROOMS: &str = "net_lobby_list_open_rooms";
 pub const CMD_NET_LAN_LIST_DISCOVERED: &str = "net_lan_list_discovered";
 pub const CMD_NET_LAN_CONNECT: &str = "net_lan_connect";
+pub const CMD_NET_LAN_PUBLISH: &str = "net_lan_publish";
 pub const CMD_NET_COMPARE_MANIFESTS: &str = "net_compare_manifests";
 pub const CMD_NET_COMPUTE_MANIFEST_HASH: &str = "net_compute_manifest_hash";
 pub const CMD_NET_TUNNEL_START: &str = "net_tunnel_start";
@@ -214,6 +215,22 @@ pub struct NetLanConnectRequest {
 pub struct NetLanConnectResponse {
     pub success: bool,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetLanPublishRequest {
+    pub motd: String,
+    pub port: u16,
+    pub host_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetLanPublishResponse {
+    pub code: String,
+    pub host_name: String,
+    pub world_name: String,
+    pub tunnel_address: String,
+    pub port: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
