@@ -86,6 +86,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         WardrobeItemDto::decl(),
         WardrobeStateDto::decl(),
         DiscordActivityDto::decl(),
+        DiscordPreviewDto::decl(),
         ImportedServerDto::decl(),
         ImportedSkinDto::decl(),
         ImportedCapeDto::decl(),

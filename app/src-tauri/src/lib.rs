@@ -216,6 +216,7 @@ pub fn run() {
             commands::settings::get_launcher_config,
             commands::settings::save_launcher_config,
             commands::settings::open_data_dir,
+            commands::settings::get_discord_rpc_preview,
             // Mods commands (commands/mods.rs)
             commands::mods::list_mods,
             commands::mods::toggle_mod,

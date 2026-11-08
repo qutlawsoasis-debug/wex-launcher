@@ -146,6 +146,25 @@ pub async fn set_discord_rpc(discord: &Arc<Mutex<Option<DiscordRpcClient>>>, act
     }
 }
 
+/// Helper to clear Discord RPC activity when disabled or closed.
+pub async fn clear_discord_rpc(discord: &Arc<Mutex<Option<DiscordRpcClient>>>) {
+    let mut lock = discord.lock().await;
+    if let Some(client) = lock.as_mut() {
+        client.clear_activity().await;
+    }
+}
+
+/// Helper to set Discord RPC enabled/disabled dynamically.
+pub async fn set_discord_rpc_enabled(
+    discord: &Arc<Mutex<Option<DiscordRpcClient>>>,
+    enabled: bool,
+) {
+    let mut lock = discord.lock().await;
+    if let Some(client) = lock.as_mut() {
+        client.set_enabled(enabled).await;
+    }
+}
+
 /// Shared runtime state for the Play lifecycle.
 pub struct PlayState {
     pub core: Arc<dyn LauncherCore>,
@@ -172,8 +191,14 @@ impl PlayState {
 
         // Connect Discord RPC asynchronously in background
         let discord_clone = discord.clone();
+        let config_file = paths.config_file.clone();
         tauri::async_runtime::spawn(async move {
-            let client = DiscordRpcClient::connect_or_noop(DEFAULT_DISCORD_APP_ID).await;
+            let mut client = DiscordRpcClient::connect_or_noop(DEFAULT_DISCORD_APP_ID).await;
+            let cfg = wex_core::config::LauncherConfig::load_or_default(&config_file);
+            client.set_enabled(cfg.discord_rpc).await;
+            if cfg.discord_rpc {
+                client.set_activity(Activity::InLauncher).await;
+            }
             let mut lock = discord_clone.lock().await;
             *lock = Some(client);
         });
@@ -262,6 +287,7 @@ pub async fn start_game(
     version: String,
     nickname: String,
     jvm_args: Option<Vec<String>>,
+    server: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<LaunchGameResponse, String> {
     // 1. Guard against duplicate starts
@@ -277,6 +303,18 @@ pub async fn start_game(
     let inst_dir = state.paths.instance_dir(&version);
     let _ = wex_extras::presets::apply_preset(&inst_dir, &cfg.graphics_preset, &pool_dirs);
 
+    // Set Installing status in Discord RPC
+    if cfg.discord_rpc {
+        set_discord_rpc(
+            &state.discord,
+            Activity::Installing {
+                version: version.clone(),
+                stage: Some("Подготовка к запуску".to_string()),
+            },
+        )
+        .await;
+    }
+
     // 3. Offline launch check
     let is_online = if let Some(ref net) = state.network {
         net.is_online().await
@@ -287,6 +325,11 @@ pub async fn start_game(
     match super::network::check_offline_launch(state.core.as_ref(), &version, is_online).await {
         Ok(super::network::OfflineLaunchDecision::OfflineForbidden { reason }) => {
             state.is_launching.store(false, Ordering::SeqCst);
+            if cfg.discord_rpc {
+                set_discord_rpc(&state.discord, Activity::InLauncher).await;
+            } else {
+                clear_discord_rpc(&state.discord).await;
+            }
             let _ = app.emit(
                 EVT_LAUNCH_STATUS,
                 LaunchStatusPayload {
@@ -308,19 +351,6 @@ pub async fn start_game(
             );
         }
         Ok(super::network::OfflineLaunchDecision::Online) => {
-            if cfg.discord_rpc {
-                set_discord_rpc(
-                    &state.discord,
-                    Activity::Playing {
-                        version: version.clone(),
-                        world_name: None,
-                        mod_count: None,
-                        start_timestamp: Some(chrono::Utc::now().timestamp()),
-                    },
-                )
-                .await;
-            }
-
             let _ = app.emit(
                 EVT_LAUNCH_STATUS,
                 LaunchStatusPayload {
@@ -332,6 +362,11 @@ pub async fn start_game(
         }
         Err(e) => {
             state.is_launching.store(false, Ordering::SeqCst);
+            if cfg.discord_rpc {
+                set_discord_rpc(&state.discord, Activity::InLauncher).await;
+            } else {
+                clear_discord_rpc(&state.discord).await;
+            }
             return Err(e);
         }
     }
@@ -375,6 +410,20 @@ pub async fn start_game(
                 *v = Some(version.clone());
             }
 
+            // Update Discord RPC status to Playing (with server if auto-connect specified)
+            if cfg.discord_rpc {
+                set_discord_rpc(
+                    &state.discord,
+                    Activity::Playing {
+                        version: version.clone(),
+                        world_name: server.clone(),
+                        mod_count: None,
+                        start_timestamp: Some(chrono::Utc::now().timestamp()),
+                    },
+                )
+                .await;
+            }
+
             let _ = app.emit(
                 EVT_LAUNCH_STATUS,
                 LaunchStatusPayload {
@@ -391,6 +440,7 @@ pub async fn start_game(
             let running_version_clone = state.running_version.clone();
             let discord_clone = state.discord.clone();
             let instance_dir = state.paths.instance_dir(&version);
+            let config_file = state.paths.config_file.clone();
             let version_clone = version.clone();
 
             tauri::async_runtime::spawn(async move {
@@ -408,8 +458,13 @@ pub async fn start_game(
                     *v = None;
                 }
 
-                // Switch Discord RPC back to InLauncher
-                set_discord_rpc(&discord_clone, Activity::InLauncher).await;
+                // Switch Discord RPC back to InLauncher (or clear if disabled)
+                let latest_cfg = wex_core::config::LauncherConfig::load_or_default(&config_file);
+                if latest_cfg.discord_rpc {
+                    set_discord_rpc(&discord_clone, Activity::InLauncher).await;
+                } else {
+                    clear_discord_rpc(&discord_clone).await;
+                }
 
                 // Run crash diagnosis on instance logs
                 let diagnosis = analyze_crash(&instance_dir, None);
@@ -450,8 +505,12 @@ pub async fn start_game(
         Err(e) => {
             state.is_launching.store(false, Ordering::SeqCst);
 
-            // Switch Discord RPC back to InLauncher
-            set_discord_rpc(&state.discord, Activity::InLauncher).await;
+            // Switch Discord RPC back to InLauncher (or clear)
+            if cfg.discord_rpc {
+                set_discord_rpc(&state.discord, Activity::InLauncher).await;
+            } else {
+                clear_discord_rpc(&state.discord).await;
+            }
 
             // Crash analysis on startup failure
             let instance_dir = state.paths.instance_dir(&version);
@@ -482,7 +541,12 @@ pub async fn cancel_launch(app: AppHandle, state: State<'_, PlayState>) -> Resul
     let _ = state.core.cancel_launch().await;
     state.is_launching.store(false, Ordering::SeqCst);
 
-    set_discord_rpc(&state.discord, Activity::InLauncher).await;
+    let cfg = wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file);
+    if cfg.discord_rpc {
+        set_discord_rpc(&state.discord, Activity::InLauncher).await;
+    } else {
+        clear_discord_rpc(&state.discord).await;
+    }
 
     let _ = app.emit(
         EVT_LAUNCH_STATUS,
@@ -519,7 +583,12 @@ pub async fn kill_game(version: Option<String>, state: State<'_, PlayState>) -> 
     state.is_running.store(false, Ordering::SeqCst);
     state.is_launching.store(false, Ordering::SeqCst);
 
-    set_discord_rpc(&state.discord, Activity::InLauncher).await;
+    let cfg = wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file);
+    if cfg.discord_rpc {
+        set_discord_rpc(&state.discord, Activity::InLauncher).await;
+    } else {
+        clear_discord_rpc(&state.discord).await;
+    }
 
     Ok(())
 }
@@ -533,9 +602,10 @@ pub async fn launch_game(
     app: AppHandle,
     version: String,
     nickname: String,
+    server: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<String, String> {
-    start_game(app, version, nickname, None, state)
+    start_game(app, version, nickname, None, server, state)
         .await
         .map(|r| r.message)
 }
@@ -647,7 +717,34 @@ mod tests {
             DiscordRpcClient::connect_or_noop(DEFAULT_DISCORD_APP_ID).await,
         )));
 
-        // Transition to playing
+        // 1. Initial: in launcher
+        set_discord_rpc(&discord, Activity::InLauncher).await;
+        {
+            let lock = discord.lock().await;
+            assert_eq!(
+                lock.as_ref().unwrap().current_activity(),
+                Some(&Activity::InLauncher)
+            );
+        }
+
+        // 2. Transition to Installing
+        set_discord_rpc(
+            &discord,
+            Activity::Installing {
+                version: "1.21.1".to_string(),
+                stage: Some("Загрузка файлов".to_string()),
+            },
+        )
+        .await;
+        {
+            let lock = discord.lock().await;
+            assert!(matches!(
+                lock.as_ref().unwrap().current_activity(),
+                Some(Activity::Installing { .. })
+            ));
+        }
+
+        // 3. Transition to Playing (version X, singleplayer)
         set_discord_rpc(
             &discord,
             Activity::Playing {
@@ -658,9 +755,89 @@ mod tests {
             },
         )
         .await;
+        {
+            let lock = discord.lock().await;
+            assert!(matches!(
+                lock.as_ref().unwrap().current_activity(),
+                Some(Activity::Playing {
+                    world_name: None,
+                    ..
+                })
+            ));
+        }
 
-        // Transition back to in launcher
+        // 4. Transition to Playing on server Y
+        set_discord_rpc(
+            &discord,
+            Activity::Playing {
+                version: "1.21.1".to_string(),
+                world_name: Some("mc.auramc.net".to_string()),
+                mod_count: None,
+                start_timestamp: Some(1731000500),
+            },
+        )
+        .await;
+        {
+            let lock = discord.lock().await;
+            assert!(matches!(
+                lock.as_ref().unwrap().current_activity(),
+                Some(Activity::Playing {
+                    world_name: Some(ref s),
+                    ..
+                }) if s == "mc.auramc.net"
+            ));
+        }
+
+        // 5. Transition to InLobby
+        set_discord_rpc(
+            &discord,
+            Activity::InLobby {
+                lobby_code: Some("WEX01".to_string()),
+                player_count: 3,
+                host_name: Some("AuraHost".to_string()),
+            },
+        )
+        .await;
+        {
+            let lock = discord.lock().await;
+            assert!(matches!(
+                lock.as_ref().unwrap().current_activity(),
+                Some(Activity::InLobby {
+                    player_count: 3,
+                    ..
+                })
+            ));
+        }
+
+        // 6. Transition back to InLauncher
         set_discord_rpc(&discord, Activity::InLauncher).await;
+        {
+            let lock = discord.lock().await;
+            assert_eq!(
+                lock.as_ref().unwrap().current_activity(),
+                Some(&Activity::InLauncher)
+            );
+        }
+
+        // 7. Clear and Disable
+        clear_discord_rpc(&discord).await;
+        {
+            let lock = discord.lock().await;
+            assert_eq!(lock.as_ref().unwrap().current_activity(), None);
+        }
+
+        set_discord_rpc_enabled(&discord, false).await;
+        {
+            let lock = discord.lock().await;
+            assert!(!lock.as_ref().unwrap().is_enabled());
+        }
+
+        // 8. Re-enable
+        set_discord_rpc_enabled(&discord, true).await;
+        {
+            let lock = discord.lock().await;
+            assert!(lock.as_ref().unwrap().is_enabled());
+        }
     }
 
     #[tokio::test]

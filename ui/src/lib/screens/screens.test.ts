@@ -467,6 +467,25 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  it('renders SettingsScreen with interactive Discord RPC status preview card', async () => {
+    const comp = mount(SettingsScreen, { target });
+    expect(target.textContent).toContain('Discord Rich Presence');
+    expect(target.textContent).toContain('Превью статуса Discord');
+    expect(target.textContent).toContain('Wex Launcher');
+    expect(target.textContent).toContain('В главном меню');
+    expect(target.textContent).toContain('Выбирает режим игры');
+    expect(target.textContent).toContain('Скачать Wex Launcher');
+
+    // Check preview mode options exist
+    expect(target.textContent).toContain('В лаунчере');
+    expect(target.textContent).toContain('Установка');
+    expect(target.textContent).toContain('В игре');
+    expect(target.textContent).toContain('На сервере');
+    expect(target.textContent).toContain('В лобби');
+
+    unmount(comp);
+  });
+
   it('renders WardrobeScreen with 2D character preview, model selector, capes, and authentic empty history', () => {
     const comp = mount(WardrobeScreen, {
       target,

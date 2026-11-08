@@ -248,12 +248,42 @@ pub async fn save_launcher_settings(
     new_settings: LauncherSettingsDto,
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
-    save_launcher_settings_impl(new_settings, &state.paths, state.core.as_ref()).await
+    let discord_rpc = new_settings.discord_rpc;
+    save_launcher_settings_impl(new_settings, &state.paths, state.core.as_ref()).await?;
+
+    let mut lock = state.discord.lock().await;
+    if let Some(client) = lock.as_mut() {
+        client.set_enabled(discord_rpc).await;
+    }
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn reset_settings(state: State<'_, PlayState>) -> Result<LauncherSettingsDto, String> {
-    reset_settings_impl(&state.paths, state.core.as_ref()).await
+    let res = reset_settings_impl(&state.paths, state.core.as_ref()).await?;
+    let mut lock = state.discord.lock().await;
+    if let Some(client) = lock.as_mut() {
+        client.set_enabled(true).await;
+    }
+    Ok(res)
+}
+
+#[tauri::command]
+pub async fn get_discord_rpc_preview(
+    state: State<'_, PlayState>,
+) -> Result<wex_ipc::models::DiscordPreviewDto, String> {
+    let cfg = CoreConfig::load_or_default(&state.paths.config_file);
+    let lock = state.discord.lock().await;
+    let preview = if let Some(client) = lock.as_ref() {
+        client.preview()
+    } else {
+        wex_extras::discord::get_activity_preview(
+            Some(&wex_extras::discord::Activity::InLauncher),
+            cfg.discord_rpc,
+            false,
+        )
+    };
+    Ok(preview.into())
 }
 
 #[tauri::command]
