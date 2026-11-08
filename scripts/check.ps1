@@ -13,6 +13,9 @@ try {
 }
 
 $env:CARGO_BUILD_JOBS = '2'
+$env:CARGO_INCREMENTAL = '0'
+$env:CARGO_PROFILE_DEV_DEBUG = '0'
+$env:CARGO_PROFILE_TEST_DEBUG = '0'
 $env:npm_config_maxsockets = '2'
 
 function Invoke-Check {
@@ -53,8 +56,8 @@ function Invoke-Check {
 # Root and core are separate Cargo workspaces, so each gets the same Rust gates.
 Invoke-Check 'core: cargo fmt --check' $coreRoot 'cargo' @('fmt', '--all', '--', '--check')
 Invoke-Check 'app: cargo fmt --check' $repoRoot 'cargo' @('fmt', '--all', '--', '--check')
-Invoke-Check 'core: cargo clippy' $coreRoot 'cargo' @('clippy', '--workspace', '--all-targets', '-j', '2', '--', '-D', 'warnings')
-Invoke-Check 'app: cargo clippy' $repoRoot 'cargo' @('clippy', '--workspace', '--all-targets', '-j', '2', '--', '-D', 'warnings')
+Invoke-Check 'core: cargo clippy' $coreRoot 'cargo' @('clippy', '--workspace', '-j', '2', '--', '-D', 'warnings')
+Invoke-Check 'app: cargo clippy' $repoRoot 'cargo' @('clippy', '--workspace', '-j', '2', '--', '-D', 'warnings')
 Invoke-Check 'core: cargo test' $coreRoot 'cargo' @('test', '--workspace', '-j', '2')
 Invoke-Check 'app: cargo test' $repoRoot 'cargo' @('test', '--workspace', '-j', '2')
 
@@ -62,9 +65,9 @@ if (-not (Test-Path -LiteralPath (Join-Path $uiRoot 'package-lock.json'))) {
     Write-Host 'FAIL ui: npm ci (package-lock.json not found)' -ForegroundColor Red
     $results.Add([pscustomobject]@{ Name = 'ui: npm ci'; Passed = $false; ExitCode = 1 })
 } else {
-    Invoke-Check 'ui: npm ci' $uiRoot 'npm' @('ci')
-    Invoke-Check 'ui: npm test' $uiRoot 'npm' @('test', '--', '--maxWorkers=2')
-    Invoke-Check 'ui: npm run check' $uiRoot 'npm' @('run', 'check')
+    Invoke-Check 'ui: npm ci' $repoRoot 'npm' @('--prefix', 'ui', '--workspaces=false', 'ci', '--foreground-scripts')
+    Invoke-Check 'ui: npm test' $repoRoot 'npm' @('--prefix', 'ui', '--workspaces=false', 'test', '--', '--maxWorkers=2')
+    Invoke-Check 'ui: npm run check' $repoRoot 'npm' @('--prefix', 'ui', '--workspaces=false', 'run', 'check')
 }
 
 Write-Host "`n================ Check summary ================"

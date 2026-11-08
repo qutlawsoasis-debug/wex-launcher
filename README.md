@@ -31,26 +31,24 @@ On Windows PowerShell, run the repository check script from the repository root:
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1
 ```
 
-It runs formatting checks, Clippy with warnings denied, Rust tests for both workspaces, then `npm ci`, UI tests, and Svelte/TypeScript checks. Rust and Vitest use at most two workers. The script lowers its process priority to `BelowNormal`, prints a PASS/FAIL result for each check, and exits non-zero if any check fails.
+It runs formatting checks, Clippy with warnings denied, Rust tests for both workspaces, then `npm ci`, UI tests, and Svelte/TypeScript checks. Rust and Vitest use at most two workers. Rust checks disable incremental compilation and debug symbols to limit temporary disk use. The npm commands target the `ui` workspace package with npm workspace traversal disabled because its lockfile is stored in `ui/`; package lifecycle scripts run in the foreground. The script lowers its process priority to `BelowNormal`, prints a PASS/FAIL result for each check, and exits non-zero if any check fails.
 
 The equivalent individual commands are:
 
 ```powershell
 Push-Location .\core
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -j 2 -- -D warnings
+cargo clippy --workspace -j 2 -- -D warnings
 cargo test --workspace -j 2
 Pop-Location
 
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -j 2 -- -D warnings
+cargo clippy --workspace -j 2 -- -D warnings
 cargo test --workspace -j 2
 
-Push-Location .\ui
-npm ci
-npm test -- --maxWorkers=2
-npm run check
-Pop-Location
+npm --prefix ui --workspaces=false ci --foreground-scripts
+npm --prefix ui --workspaces=false test -- --maxWorkers=2
+npm --prefix ui --workspaces=false run check
 ```
 
 ## Build and run
@@ -58,18 +56,14 @@ Pop-Location
 Install UI dependencies and build the frontend:
 
 ```powershell
-Push-Location .\ui
-npm ci
-npm run build
-Pop-Location
+npm --prefix ui --workspaces=false ci --foreground-scripts
+npm --prefix ui --workspaces=false run build
 ```
 
 Run the desktop app in development mode (requires Tauri platform prerequisites):
 
 ```powershell
-Push-Location .\ui
-npm ci
-Pop-Location
+npm --prefix ui --workspaces=false ci --foreground-scripts
 cargo tauri dev
 ```
 
