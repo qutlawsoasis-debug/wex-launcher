@@ -60,7 +60,11 @@
   let progressStage = $state('Готов к запуску');
   let progressDetail = $state('Нажмите «Играть» для старта');
   let progressSpeed = $state('');
+<<<<<<< HEAD
   let launchError = $state<unknown>(null);
+=======
+  let showImportWizard = $state(false);
+>>>>>>> origin/wex/release-check
 
   // Dynamic background based on theme and time of day
   let currentHour = new Date().getHours();
@@ -267,8 +271,14 @@
       const screen = params.get('screen') || params.get('tab');
       const t = params.get('theme');
 
-      if (screen && ['play', 'servers', 'lobby', 'friends', 'mods', 'settings', 'showcase'].includes(screen)) {
+      if (screen && ['play', 'servers', 'lobby', 'friends', 'workshop', 'mods', 'settings', 'showcase'].includes(screen)) {
         activeTab = screen;
+      }
+      if (screen === 'import' || params.get('import') === 'true') {
+        activeTab = 'play';
+        showImportWizard = true;
+      } else {
+        showImportWizard = false;
       }
       if (t === 'light' || t === 'dark') {
         theme.setAppearance(t);
@@ -494,7 +504,11 @@
           {progressStage}
           {progressDetail}
           {progressSpeed}
+<<<<<<< HEAD
           bind:launchError
+=======
+          initialShowImportWizard={showImportWizard}
+>>>>>>> origin/wex/release-check
           onlaunch={handleLaunch}
           oncancel={handleCancelLaunch}
           onstop={handleStopGame}
