@@ -60,11 +60,8 @@
   let progressStage = $state('Готов к запуску');
   let progressDetail = $state('Нажмите «Играть» для старта');
   let progressSpeed = $state('');
-<<<<<<< HEAD
   let launchError = $state<unknown>(null);
-=======
   let showImportWizard = $state(false);
->>>>>>> origin/wex/release-check
 
   // Dynamic background based on theme and time of day
   let currentHour = new Date().getHours();
@@ -504,11 +501,8 @@
           {progressStage}
           {progressDetail}
           {progressSpeed}
-<<<<<<< HEAD
           bind:launchError
-=======
           initialShowImportWizard={showImportWizard}
->>>>>>> origin/wex/release-check
           onlaunch={handleLaunch}
           oncancel={handleCancelLaunch}
           onstop={handleStopGame}
