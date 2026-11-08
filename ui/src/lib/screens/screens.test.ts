@@ -250,6 +250,8 @@ describe('Wex Launcher Screens', () => {
 
     // Check tabs
     expect(target.textContent).toContain('Миры');
+    expect(target.textContent).toContain('Ресурс-паки');
+    expect(target.textContent).toContain('Шейдеры');
     expect(target.textContent).toContain('Скриншоты');
     expect(target.textContent).toContain('1.21.1');
     expect(target.textContent).toContain('1.20.1');
@@ -282,6 +284,52 @@ describe('Wex Launcher Screens', () => {
 
     expect(target.textContent).toContain('Снимков экрана пока нет');
     expect(target.textContent).toContain('Нажмите клавишу F2');
+
+    unmount(comp);
+  });
+
+  it('renders WorkshopScreen with resource packs empty state and header actions when switched to resourcepacks tab', async () => {
+    const comp = mount(WorkshopScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+      },
+    });
+
+    const buttons = Array.from(target.querySelectorAll('button'));
+    const packsBtn = buttons.find((b) => b.textContent?.includes('Ресурс-паки'));
+    expect(packsBtn).toBeDefined();
+
+    packsBtn?.click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(target.textContent).toContain('Ресурс-паков пока нет');
+    expect(target.textContent).toContain('Поместите ZIP-архив с ресурс-паком');
+    expect(target.textContent).toContain('Добавить ZIP…');
+    expect(target.textContent).toContain('Папка паков');
+
+    unmount(comp);
+  });
+
+  it('renders WorkshopScreen with shaders empty state and header actions when switched to shaders tab', async () => {
+    const comp = mount(WorkshopScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+      },
+    });
+
+    const buttons = Array.from(target.querySelectorAll('button'));
+    const shadersBtn = buttons.find((b) => b.textContent?.includes('Шейдеры'));
+    expect(shadersBtn).toBeDefined();
+
+    shadersBtn?.click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(target.textContent).toContain('Шейдер-паков пока нет');
+    expect(target.textContent).toContain('Поместите ZIP-архив с шейдерами');
+    expect(target.textContent).toContain('Добавить ZIP…');
+    expect(target.textContent).toContain('Папка шейдеров');
 
     unmount(comp);
   });
