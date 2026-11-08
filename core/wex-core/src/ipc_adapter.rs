@@ -92,10 +92,7 @@ impl LauncherCore for WexLauncherCore {
                 version: request.version,
                 message: "Environment installed successfully".to_string(),
             }),
-            Err(e) => Err(IpcError::internal(
-                format!("Installation failed: {}", e),
-                Some(e.to_string()),
-            )),
+            Err(e) => Err(e.into()),
         }
     }
 
@@ -136,10 +133,7 @@ impl LauncherCore for WexLauncherCore {
                     message: "Game launched successfully".to_string(),
                 })
             }
-            Err(e) => Err(IpcError::internal(
-                format!("Launch failed: {}", e),
-                Some(e.to_string()),
-            )),
+            Err(e) => Err(e.into()),
         };
 
         {
