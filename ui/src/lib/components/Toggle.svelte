@@ -17,6 +17,7 @@
     id?: string;
     name?: string;
     label?: string;
+    ariaLabel?: string;
     onchange?: (checked: boolean) => void;
     children?: Snippet;
   }
@@ -27,6 +28,7 @@
     id = `toggle-${Math.random().toString(36).substring(2, 9)}`,
     name,
     label,
+    ariaLabel,
     onchange,
     children,
   }: Props = $props();
@@ -51,6 +53,7 @@
     class="apple-toggle"
     class:checked
     role="switch"
+    aria-label={ariaLabel || label || undefined}
     aria-checked={checked}
     aria-disabled={disabled}
     tabindex={disabled ? -1 : 0}

@@ -165,6 +165,14 @@
       transform var(--motion-duration-short) ease;
   }
 
+  .apple-slider-container:has(.range-input:focus-visible) .slider-thumb {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 2px;
+    box-shadow:
+      0 0 0 3px rgba(0, 145, 255, 0.35),
+      0 2px 6px rgba(0, 0, 0, 0.28);
+  }
+
   .range-input {
     position: absolute;
     width: 100%;
