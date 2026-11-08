@@ -64,7 +64,7 @@
       <div class="capsule-top">
         <div class="title-cluster">
           <h1 class="main-title">Minecraft</h1>
-          <span class="sub-title">Aura Client • Fabric</span>
+          <span class="sub-title">Клиент Wex • Fabric</span>
         </div>
 
         <div class="version-segmented-wrap">
@@ -149,7 +149,7 @@
     <div class="quiet-feed">
       <div class="feed-header">
         <h3 class="feed-title">Последние изменения</h3>
-        <span class="feed-subtitle">Aura Pack 2.4</span>
+        <span class="feed-subtitle">Сборка Wex 2.4</span>
       </div>
 
       <div class="feed-items">

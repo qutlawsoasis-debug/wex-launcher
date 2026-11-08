@@ -27,7 +27,7 @@
   // Launch state
   let selectedVersion = $state('1.21.1');
   let playerName = $state('Player');
-  let clientStatus = $state('Aura Client готов');
+  let clientStatus = $state('Клиент Wex готов');
   let isLaunching = $state(false);
   let progressPercentage = $state(0);
   let progressStage = $state('Готов к запуску');
@@ -133,8 +133,8 @@
     } catch {
       // Fallback in-browser progress simulation
       const steps = [
-        { stage: 'Проверка клиента Aura', pct: 15, detail: 'Проверка целостности jar-файлов', speed: '' },
-        { stage: 'Синхронизация Aura-Pack', pct: 40, detail: 'Загрузка манифеста модов (142 мода)', speed: '14.8 МБ/с' },
+        { stage: 'Проверка клиента Wex', pct: 15, detail: 'Проверка целостности jar-файлов', speed: '' },
+        { stage: 'Синхронизация сборки Wex', pct: 40, detail: 'Загрузка манифеста модов (142 мода)', speed: '14.8 МБ/с' },
         { stage: 'Проверка Java Runtime', pct: 75, detail: 'OpenJDK 21 HotSpot готов к старту', speed: '8.2 МБ/с' },
         { stage: 'Запуск Minecraft', pct: 100, detail: 'Инициализация графической сессии...', speed: '' },
       ];

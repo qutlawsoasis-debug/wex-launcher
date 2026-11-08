@@ -38,21 +38,21 @@
 
   let servers = $state<ServerEntry[]>([
     {
-      id: 'aura-main',
-      name: 'Aura Official — Survival & PvP',
-      address: 'mc.auramc.net',
+      id: 'wex-main',
+      name: 'Официальный сервер Wex — Survival & PvP',
+      address: 'mc.wexmc.net',
       version: '1.21.1 / 1.20.1',
-      motd: 'Официальный сервер Aura Client • Стабильный 20 TPS',
+      motd: 'Официальный сервер Wex • Стабильный 20 TPS',
       ping_ms: 24,
       online: 184,
       max_players: 300,
     },
     {
-      id: 'aura-modded',
-      name: 'Aura Pack Community Server',
-      address: 'pack.auramc.net',
+      id: 'wex-modded',
+      name: 'Сообщество Wex — Сборка модов',
+      address: 'pack.wexmc.net',
       version: '1.21.1',
-      motd: 'Сборка модов Aura-Pack • Синхронизация в 1 клик',
+      motd: 'Сборка Wex • Синхронизация в 1 клик',
       ping_ms: 38,
       online: 62,
       max_players: 150,
@@ -190,7 +190,7 @@
 
   <div class="servers-content">
     {#if filteredServers.length > 0}
-      <List header="Серверы Minecraft и миры Aura">
+      <List header="Серверы Minecraft и миры Wex">
         {#each filteredServers as s (s.id)}
           <Row
             title={s.name}

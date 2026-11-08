@@ -63,7 +63,7 @@
   <div class="mockup1-content">
     <!-- Top Left Title Area -->
     <header class="hero-header">
-      <span class="client-label">Aura Client</span>
+      <span class="client-label">Клиент Wex</span>
       <h1 class="game-title">Minecraft</h1>
       <p class="game-subtitle">Версия {selectedVersion} • Fabric Loader</p>
     </header>

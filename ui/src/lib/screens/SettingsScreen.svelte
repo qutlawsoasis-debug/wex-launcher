@@ -265,7 +265,7 @@
       <Row
         title="Лаунчер Wex"
         subtitle="Версия {launcherVersion} • ОС: {osName} (64-bit)"
-        trailingText="Aura Project"
+        trailingText="Wex Project"
       />
       <Row
         title="Технологический стек"

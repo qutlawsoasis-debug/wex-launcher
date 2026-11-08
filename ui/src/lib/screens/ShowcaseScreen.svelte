@@ -43,7 +43,7 @@
   const sampleToast: ToastMessage = {
     id: 'demo-1',
     type: 'success',
-    title: 'Aura Client синхронизирован',
+    title: 'Клиент Wex синхронизирован',
     description: 'Все 142 мода проверены, хэши совпадают.',
     duration: 0,
   };

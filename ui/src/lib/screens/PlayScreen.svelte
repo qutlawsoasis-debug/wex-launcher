@@ -65,8 +65,8 @@
     } catch {
       // Fallback local server display for dev/preview
       recentServer = {
-        name: 'Aura Official — Survival & PvP',
-        address: 'mc.auramc.net',
+        name: 'Официальный сервер Wex — Survival & PvP',
+        address: 'mc.wexmc.net',
         ping_ms: 24,
       };
     }
@@ -79,7 +79,7 @@
     <!-- Top Header: Natural Apple Typography -->
     <header class="app-header-area">
       <h1 class="game-heading">Minecraft</h1>
-      <p class="game-subheading">Aura Client • Версия {selectedVersion}</p>
+      <p class="game-subheading">Клиент Wex • Версия {selectedVersion}</p>
     </header>
 
     <!-- Middle Shelf: Real Updates & Activity Glance -->

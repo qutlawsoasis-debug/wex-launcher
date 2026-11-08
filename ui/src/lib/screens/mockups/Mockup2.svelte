@@ -58,7 +58,7 @@
     <div class="showcase-scrim"></div>
     <div class="showcase-content">
       <span class="showcase-overline">Новое в сборке</span>
-      <h2 class="showcase-title">Aura {selectedVersion}</h2>
+      <h2 class="showcase-title">Wex {selectedVersion}</h2>
       <p class="showcase-desc">
         Переработанное сумеречное освещение горизонта и плавная синхронизация модов в лобби.
       </p>

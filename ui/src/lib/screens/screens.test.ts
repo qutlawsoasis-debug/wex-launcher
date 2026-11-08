@@ -28,13 +28,13 @@ describe('Wex Launcher Screens', () => {
       props: {
         selectedVersion: '1.21.1',
         playerName: 'Steve',
-        clientStatus: 'Aura Client готов',
+        clientStatus: 'Клиент Wex готов',
         isLaunching: false,
       },
     });
 
     expect(target.textContent).toContain('Minecraft');
-    expect(target.textContent).toContain('Aura Client');
+    expect(target.textContent).toContain('Клиент Wex');
     const playBtn = target.querySelector('.dock-action button');
     expect(playBtn).not.toBeNull();
     expect(playBtn?.textContent).toContain('Играть');
@@ -72,14 +72,14 @@ describe('Wex Launcher Screens', () => {
         playerName: 'Alex',
         isLaunching: true,
         progressPercentage: 55,
-        progressStage: 'Синхронизация Aura-Pack',
+        progressStage: 'Синхронизация сборки Wex',
         progressDetail: 'Загрузка шейдеров...',
       },
     });
 
     const progress = target.querySelector('.dock-progress');
     expect(progress).not.toBeNull();
-    expect(target.querySelector('.progress-label')?.textContent).toBe('Синхронизация Aura-Pack');
+    expect(target.querySelector('.progress-label')?.textContent).toBe('Синхронизация сборки Wex');
 
     const cancelBtn = target.querySelector('.dock-cancel button');
     expect(cancelBtn?.textContent).toContain('Отмена');
@@ -96,7 +96,7 @@ describe('Wex Launcher Screens', () => {
       },
     });
 
-    expect(target.textContent).toContain('Aura 1.21.1');
+    expect(target.textContent).toContain('Wex 1.21.1');
     expect(target.textContent).toContain('Новое в сборке');
     expect(target.textContent).toContain('Журнал изменений');
     expect(target.textContent).toContain('Быстрый вход');
@@ -115,7 +115,7 @@ describe('Wex Launcher Screens', () => {
     });
 
     expect(target.textContent).toContain('Minecraft');
-    expect(target.textContent).toContain('Aura Client • Fabric');
+    expect(target.textContent).toContain('Клиент Wex • Fabric');
     expect(target.textContent).toContain('Последние изменения');
     expect(target.textContent).toContain('Java 17 • 64-bit');
     expect(target.querySelector('.launch-btn-wrap button')?.textContent).toContain('Играть');
@@ -127,8 +127,8 @@ describe('Wex Launcher Screens', () => {
     const comp = mount(ServersScreen, { target });
     const rows = target.querySelectorAll('.apple-row');
     expect(rows.length).toBeGreaterThan(0);
-    expect(target.textContent).toContain('Aura Official');
-    expect(target.textContent).toContain('mc.auramc.net');
+    expect(target.textContent).toContain('Официальный сервер Wex');
+    expect(target.textContent).toContain('mc.wexmc.net');
     expect(target.textContent).toContain('Добавить сервер');
     unmount(comp);
   });
@@ -158,7 +158,7 @@ describe('Wex Launcher Screens', () => {
     const comp = mount(ModsScreen, { target });
     expect(target.textContent).toContain('Sodium');
     expect(target.textContent).toContain('Iris Shaders');
-    expect(target.textContent).toContain('Aura Client');
+    expect(target.textContent).toContain('Wex Client');
     unmount(comp);
   });
 

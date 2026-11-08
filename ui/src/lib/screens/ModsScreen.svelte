@@ -28,8 +28,8 @@
 
   let mods = $state<ModItem[]>([
     {
-      id: 'aura-client',
-      name: 'Aura Client',
+      id: 'wex-client',
+      name: 'Wex Client',
       version: '2.0.0-release',
       description: 'Ядро интерфейса, OpenGL 3.3 рендер, Dual Kawase размытие, 3D эффекты',
       enabled: true,
@@ -88,7 +88,7 @@
   const tabs = [
     { value: 'all', label: 'Все моды' },
     { value: 'enabled', label: 'Включённые' },
-    { value: 'core', label: 'Aura Core' },
+    { value: 'core', label: 'Wex Core' },
   ];
 </script>
 

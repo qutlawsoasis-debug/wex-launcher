@@ -104,7 +104,7 @@
       activeRoom = {
         code: guestCode.trim().toUpperCase(),
         host_name: 'Alex_Host',
-        world_name: 'Aura Survival World',
+        world_name: 'Кооперативный мир Wex',
         tunnel_address: 'playit.gg:49152',
         tunnel_active: true,
         is_host: false,
@@ -202,7 +202,7 @@
             </span>
             <span class="modsync-desc">
               {activeRoom.mod_mismatch_count === 0
-                ? 'Все клиенты используют идентичный манифест Aura-Pack.'
+                ? 'Все клиенты используют идентичный манифест сборки Wex.'
                 : 'Конфигурация некоторых модов отличается от хоста.'}
             </span>
           </div>
