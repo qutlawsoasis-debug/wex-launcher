@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::RwLock;
 
@@ -73,7 +73,10 @@ impl NetworkState {
 
                 let prev = is_online_clone.swap(active, Ordering::SeqCst);
                 if prev != active {
-                    let _ = app.emit(EVT_NETWORK_STATUS, NetworkStatusPayload { is_online: active });
+                    let _ = app.emit(
+                        EVT_NETWORK_STATUS,
+                        NetworkStatusPayload { is_online: active },
+                    );
                 }
             }
         });
