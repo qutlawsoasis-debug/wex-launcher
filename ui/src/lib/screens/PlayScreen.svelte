@@ -38,8 +38,13 @@
   interface UpdateInfo {
     update_available: boolean;
     current_version: string;
-    latest_version?: string;
-    notes?: string;
+    latest_version?: string | null;
+    notes?: string | null;
+    download_url?: string | null;
+    signature?: string | null;
+    is_signed?: boolean;
+    can_auto_update?: boolean;
+    mode?: 'auto' | 'notify_only';
   }
 
   interface Props {
@@ -142,67 +147,157 @@
   let updateBannerDismissed = $state(false);
   let showUpdateBanner = $derived(Boolean(updateInfo?.update_available) && !updateBannerDismissed);
 
+  // Auto-updater lifecycle: 'available' -> 'downloading' -> 'ready_to_restart' | 'error'
+  let updateStage = $state<'available' | 'downloading' | 'ready_to_restart' | 'error'>('available');
+  let updateProgressPct = $state(0);
+  let updateProgressText = $state('');
+  let updateErrorMessage = $state('');
+
+  let canAutoUpdate = $derived.by(() => {
+    if (!updateInfo) return false;
+    if (typeof updateInfo.can_auto_update === 'boolean') return updateInfo.can_auto_update;
+    if (typeof updateInfo.is_signed === 'boolean') return updateInfo.is_signed;
+    return Boolean(updateInfo.signature && updateInfo.signature.trim().length >= 32);
+  });
+
+  async function handleStartUpdate() {
+    if (!updateInfo) return;
+    updateStage = 'downloading';
+    updateProgressPct = 0;
+    updateProgressText = 'Подключение к серверу обновлений…';
+    updateErrorMessage = '';
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<{ status: string; message: string }>('updater_install', {
+        downloadUrl: updateInfo.download_url || '',
+        signature: updateInfo.signature || null,
+        version: updateInfo.latest_version || 'latest',
+      });
+      if (res && res.status === 'ready_to_restart') {
+        updateStage = 'ready_to_restart';
+      } else {
+        updateStage = 'error';
+        updateErrorMessage = res?.message || 'Не удалось завершить обновление';
+      }
+    } catch (err: any) {
+      updateStage = 'error';
+      const msg = typeof err === 'string' ? err : err?.message || 'Ошибка загрузки обновления';
+      updateErrorMessage = msg.includes('Прежняя версия')
+        ? msg
+        : `${msg}. Прежняя версия сохранена.`;
+    }
+  }
+
+  async function handleRestart() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('updater_restart');
+    } catch {
+      if (typeof window !== 'undefined') window.location.reload();
+    }
+  }
+
+  async function handleOpenDownloadUrl() {
+    const url =
+      updateInfo?.download_url ||
+      'https://github.com/qutlawsoasis-debug/wex-launcher/releases';
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('updater_open_download_url', { url });
+    } catch {
+      if (typeof window !== 'undefined') window.open(url, '_blank');
+    }
+  }
+
   // Import wizard sheet state
   let manualImportWizardOpen = $state(false);
   let isImportWizardOpen = $derived(Boolean(initialShowImportWizard) || manualImportWizardOpen);
 
-  onMount(async () => {
-    // 1. Fetch servers from IPC
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const list = await invoke<Array<{ name: string; address: string; ping_ms?: number }>>('list_servers');
-      if (list && list.length > 0) {
-        recentServer = list[0];
-      } else {
+  onMount(() => {
+    let unlistenProgress: (() => void) | undefined;
+
+    (async () => {
+      // 1. Fetch servers from IPC
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const list = await invoke<Array<{ name: string; address: string; ping_ms?: number }>>('list_servers');
+        if (list && list.length > 0) {
+          recentServer = list[0];
+        } else {
+          recentServer = null;
+        }
+      } catch {
         recentServer = null;
       }
-    } catch {
-      recentServer = null;
-    }
 
-    // 2. Fetch news from wex-social / overview IPC if not provided via props
-    if (initialNews === undefined) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const res = await invoke<any>('overview_get_news');
-        if (Array.isArray(res) && res.length > 0) {
-          fetchedNews = res;
-        } else if (res?.versions && Array.isArray(res.versions) && res.versions.length > 0) {
-          fetchedNews = res.versions;
-        } else {
+      // 2. Fetch news from wex-social / overview IPC if not provided via props
+      if (initialNews === undefined) {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const res = await invoke<any>('overview_get_news');
+          if (Array.isArray(res) && res.length > 0) {
+            fetchedNews = res;
+          } else if (res?.versions && Array.isArray(res.versions) && res.versions.length > 0) {
+            fetchedNews = res.versions;
+          } else {
+            fetchedNews = [];
+          }
+        } catch {
           fetchedNews = [];
         }
-      } catch {
-        fetchedNews = [];
       }
-    }
 
-    // 3. Unobtrusive launcher update check
-    if (initialUpdateInfo === null) {
+      // 3. Listen to updater download progress
       try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const res = await invoke<UpdateInfo>('overview_check_update');
-        if (res && res.update_available) {
-          fetchedUpdateInfo = res;
+        const { listen } = await import('@tauri-apps/api/event');
+        unlistenProgress = await listen<any>('updater-progress', (event) => {
+          if (event.payload) {
+            updateProgressPct = event.payload.percentage ?? 0;
+            updateProgressText = event.payload.status_text ?? '';
+          }
+        });
+      } catch {}
+
+      // 4. Unobtrusive launcher update check
+      if (initialUpdateInfo === null) {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const res = await invoke<UpdateInfo>('updater_check');
+          if (res && res.update_available) {
+            fetchedUpdateInfo = res;
+          }
+        } catch {
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            const res = await invoke<UpdateInfo>('overview_check_update');
+            if (res && res.update_available) {
+              fetchedUpdateInfo = res;
+            }
+          } catch {
+            // Silent fallback for update check
+          }
+        }
+      }
+
+      // 5. Check for old launcher data on first launch
+      try {
+        if (typeof localStorage !== 'undefined' && !localStorage.getItem('wex_import_checked')) {
+          localStorage.setItem('wex_import_checked', 'true');
+          const { invoke } = await import('@tauri-apps/api/core');
+          const detected = await invoke<string | null>('extras_detect_old_launcher');
+          if (detected) {
+            manualImportWizardOpen = true;
+          }
         }
       } catch {
-        // Silent fallback for update check
+        // Ignore if localStorage unavailable
       }
-    }
+    })();
 
-    // 4. Check for old launcher data on first launch
-    try {
-      if (typeof localStorage !== 'undefined' && !localStorage.getItem('wex_import_checked')) {
-        localStorage.setItem('wex_import_checked', 'true');
-        const { invoke } = await import('@tauri-apps/api/core');
-        const detected = await invoke<string | null>('extras_detect_old_launcher');
-        if (detected) {
-          manualImportWizardOpen = true;
-        }
-      }
-    } catch {
-      // Ignore if localStorage unavailable
-    }
+    return () => {
+      if (unlistenProgress) unlistenProgress();
+    };
   });
 
   function handleImportCompleted(result: {
@@ -227,26 +322,134 @@
     <!-- Unobtrusive Update Notification Banner (Apple HIG Banners & Alerts) -->
     {#if showUpdateBanner && updateInfo}
       <div class="update-banner" role="status" aria-live="polite">
-        <div class="update-banner-icon">
-          <Icon name="info" size={16} color="var(--color-system-blue)" />
-        </div>
-        <div class="update-banner-body">
-          <span class="update-banner-headline">
-            Доступна новая версия Wex {updateInfo.latest_version || ''}
-          </span>
-          {#if updateInfo.notes}
-            <span class="update-banner-subtext">{updateInfo.notes}</span>
+        <div class="update-banner-icon {updateStage}">
+          {#if updateStage === 'ready_to_restart'}
+            <Icon name="check" size={16} color="var(--color-system-green)" />
+          {:else if updateStage === 'error'}
+            <Icon name="error" size={16} color="var(--color-system-red)" />
+          {:else if updateStage === 'downloading'}
+            <Icon name="refresh" size={16} color="var(--color-system-blue)" />
+          {:else}
+            <Icon name="info" size={16} color="var(--color-system-blue)" />
           {/if}
         </div>
-        <div class="update-banner-close">
-          <Button
-            variant="ghost"
-            size="small"
-            onclick={() => (updateBannerDismissed = true)}
-            title="Закрыть уведомление"
-          >
-            <Icon name="close" size={14} color="var(--color-secondary-label)" />
-          </Button>
+        <div class="update-banner-body">
+          {#if updateStage === 'available'}
+            <div class="update-banner-headline-row">
+              <span class="update-banner-headline">
+                Доступна новая версия Wex {updateInfo.latest_version || ''}
+              </span>
+              {#if !canAutoUpdate}
+                <span class="badge badge-general">Неподписанная сборка</span>
+              {/if}
+            </div>
+            {#if updateInfo.notes}
+              <span class="update-banner-subtext">{updateInfo.notes}</span>
+            {:else if !canAutoUpdate}
+              <span class="update-banner-subtext">
+                Автоматическая установка недоступна без цифровой подписи. Доступна ручная загрузка.
+              </span>
+            {/if}
+          {:else if updateStage === 'downloading'}
+            <span class="update-banner-headline">
+              Загрузка обновления Wex {updateInfo.latest_version || ''}
+            </span>
+            <span class="update-banner-subtext">
+              {updateProgressText || `Скачиваем обновление… ${updateProgressPct}%`}
+            </span>
+            <div class="update-banner-progress">
+              <ProgressBar percentage={updateProgressPct} height={4} />
+            </div>
+          {:else if updateStage === 'ready_to_restart'}
+            <span class="update-banner-headline">
+              Обновление готово к установке
+            </span>
+            <span class="update-banner-subtext">
+              Перезапустите лаунчер, чтобы применить версию {updateInfo.latest_version || ''}
+            </span>
+          {:else if updateStage === 'error'}
+            <span class="update-banner-headline update-banner-headline-error">
+              Не удалось обновить лаунчер
+            </span>
+            <span class="update-banner-subtext">
+              {updateErrorMessage || 'Ошибка при загрузке. Прежняя версия сохранена и готова к работе.'}
+            </span>
+          {/if}
+        </div>
+        <div class="update-banner-actions">
+          {#if updateStage === 'available'}
+            {#if canAutoUpdate}
+              <Button
+                variant="primary"
+                size="small"
+                onclick={handleStartUpdate}
+                title="Скачать и установить обновление"
+              >
+                <Icon name="refresh" size={14} color="#ffffff" />
+                <span>Обновить</span>
+              </Button>
+            {:else}
+              <Button
+                variant="secondary"
+                size="small"
+                onclick={handleOpenDownloadUrl}
+                title="Перейти к загрузке установщика"
+              >
+                <Icon name="folder" size={14} color="var(--color-secondary-label)" />
+                <span>Перейти к загрузке</span>
+              </Button>
+            {/if}
+            <div class="update-banner-close">
+              <Button
+                variant="ghost"
+                size="small"
+                onclick={() => (updateBannerDismissed = true)}
+                title="Закрыть уведомление"
+              >
+                <Icon name="close" size={14} color="var(--color-secondary-label)" />
+              </Button>
+            </div>
+          {:else if updateStage === 'ready_to_restart'}
+            <Button
+              variant="primary"
+              size="small"
+              onclick={handleRestart}
+              title="Перезапустить лаунчер сейчас"
+            >
+              <Icon name="refresh" size={14} color="#ffffff" />
+              <span>Перезапуск</span>
+            </Button>
+            <div class="update-banner-close">
+              <Button
+                variant="ghost"
+                size="small"
+                onclick={() => (updateBannerDismissed = true)}
+                title="Отложить перезапуск"
+              >
+                <span>Позже</span>
+              </Button>
+            </div>
+          {:else if updateStage === 'error'}
+            <Button
+              variant="secondary"
+              size="small"
+              onclick={handleStartUpdate}
+              title="Повторить попытку обновления"
+            >
+              <Icon name="refresh" size={14} color="var(--color-secondary-label)" />
+              <span>Повторить</span>
+            </Button>
+            <div class="update-banner-close">
+              <Button
+                variant="ghost"
+                size="small"
+                onclick={() => (updateBannerDismissed = true)}
+                title="Закрыть уведомление"
+              >
+                <Icon name="close" size={14} color="var(--color-secondary-label)" />
+              </Button>
+            </div>
+          {/if}
         </div>
       </div>
     {/if}
@@ -524,6 +727,52 @@
   .update-banner-subtext {
     font-size: var(--text-caption-1);
     color: var(--color-secondary-label);
+  }
+
+  .update-banner-headline-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .update-banner-headline-error {
+    color: var(--color-system-red);
+  }
+
+  .update-banner-progress {
+    margin-top: 6px;
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .update-banner-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .update-banner-icon.ready_to_restart {
+    background: rgba(48, 209, 88, 0.16);
+  }
+
+  .update-banner-icon.error {
+    background: rgba(255, 69, 58, 0.16);
+  }
+
+  .update-banner-icon.downloading {
+    background: rgba(0, 145, 255, 0.16);
+    animation: spinSlow 3s linear infinite;
+  }
+
+  @keyframes spinSlow {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .update-banner-close {

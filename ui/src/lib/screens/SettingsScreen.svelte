@@ -40,6 +40,49 @@
   let language = $state('ru');
   let launcherVersion = $state('1.0.0');
   let osName = $state('windows');
+  let updateChecking = $state(false);
+  let updateStatusText = $state('');
+  let updateAvailable = $state(false);
+  let canAutoUpdateSettings = $state(false);
+  let updateDownloadUrl = $state('');
+
+  async function handleCheckUpdateSettings() {
+    updateChecking = true;
+    updateStatusText = 'Проверка обновлений…';
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<any>('updater_check');
+      if (res && res.update_available) {
+        updateAvailable = true;
+        canAutoUpdateSettings = Boolean(
+          res.can_auto_update ?? (res.signature && res.signature.length >= 32)
+        );
+        updateDownloadUrl = res.download_url || '';
+        updateStatusText = `Доступна версия ${res.latest_version || ''}${!canAutoUpdateSettings ? ' (неподписанная)' : ''}`;
+      } else {
+        updateAvailable = false;
+        updateStatusText = 'У вас установлена последняя версия';
+      }
+    } catch {
+      updateStatusText = 'Не удалось проверить обновления';
+    } finally {
+      updateChecking = false;
+    }
+  }
+
+  async function handleApplyUpdateSettings() {
+    if (!updateDownloadUrl) return;
+    if (!canAutoUpdateSettings) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('updater_open_download_url', { url: updateDownloadUrl });
+      } catch {
+        if (typeof window !== 'undefined') window.open(updateDownloadUrl, '_blank');
+      }
+    } else {
+      updateStatusText = 'Перейдите на экран «Играть» для установки';
+    }
+  }
 
   const graphicsOptions = [
     { value: 'Low', label: 'Низкий' },
@@ -476,6 +519,32 @@
         trailingText="Wex Project"
       />
       <Row
+        title="Самообновление лаунчера"
+        subtitle={updateStatusText || `Проверка релизов по latest.json`}
+      >
+        {#snippet trailing()}
+          {#if updateChecking}
+            <span class="updating-text">Проверка…</span>
+          {:else if updateAvailable}
+            <Button
+              variant="primary"
+              size="small"
+              onclick={handleApplyUpdateSettings}
+            >
+              {canAutoUpdateSettings ? 'Обновить' : 'Скачать'}
+            </Button>
+          {:else}
+            <Button
+              variant="secondary"
+              size="small"
+              onclick={handleCheckUpdateSettings}
+            >
+              Проверить
+            </Button>
+          {/if}
+        {/snippet}
+      </Row>
+      <Row
         title="Технологический стек"
         subtitle="Tauri 2 • Svelte 5 • TypeScript 5.8 • Rust (core/wex-core, wex-extras)"
         trailingText="v1.0.0"
@@ -611,5 +680,10 @@
     display: flex;
     padding-top: 8px;
     margin-bottom: 24px;
+  }
+
+  .updating-text {
+    font-size: var(--text-caption-1);
+    color: var(--color-secondary-label);
   }
 </style>

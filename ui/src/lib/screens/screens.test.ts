@@ -58,6 +58,35 @@ vi.mock('@tauri-apps/api/core', () => {
           language: 'ru',
         };
       }
+      if (cmd === 'updater_install') {
+        if (args?.downloadUrl?.includes('fail')) {
+          throw new Error('Ошибка загрузки обновления');
+        }
+        return {
+          status: 'ready_to_restart',
+          message: 'Обновление успешно загружено',
+          version: args?.version || '1.1.0',
+        };
+      }
+      if (cmd === 'updater_restart') {
+        return null;
+      }
+      if (cmd === 'updater_open_download_url') {
+        return null;
+      }
+      if (cmd === 'updater_check') {
+        return {
+          update_available: false,
+          current_version: '1.0.0',
+          latest_version: '1.0.0',
+          notes: null,
+          download_url: null,
+          signature: null,
+          pub_date: null,
+          is_signed: false,
+          can_auto_update: false,
+        };
+      }
       return [];
     }),
   };
@@ -303,6 +332,136 @@ describe('Wex Launcher Screens', () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(target.querySelector('.update-banner')).toBeNull();
+
+    unmount(comp);
+  });
+
+  it('renders auto-update flow: "Обновить" button for signed release and transitions to "Перезапуск"', async () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        initialNews: [],
+        initialUpdateInfo: {
+          update_available: true,
+          current_version: '0.1.0',
+          latest_version: '0.2.0',
+          notes: 'Релиз с новыми возможностями',
+          download_url: 'https://example.com/wex-update.exe',
+          signature: 'untrusted comment: signature\nRWSomeBase64SignatureString1234567890==',
+          is_signed: true,
+          can_auto_update: true,
+        },
+      },
+    });
+
+    const banner = target.querySelector('.update-banner');
+    expect(banner).not.toBeNull();
+    expect(banner?.textContent).toContain('Доступна новая версия Wex 0.2.0');
+
+    // Signed release must display primary "Обновить" button
+    const updateBtn = Array.from(banner?.querySelectorAll('button') || []).find((b) =>
+      b.textContent?.includes('Обновить')
+    );
+    expect(updateBtn).not.toBeUndefined();
+
+    // Click "Обновить" to trigger download & install
+    updateBtn?.click();
+    await tick();
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Must transition to "ready_to_restart" state with "Перезапуск" button
+    expect(banner?.textContent).toContain('Обновление готово к установке');
+    const restartBtn = Array.from(banner?.querySelectorAll('button') || []).find((b) =>
+      b.textContent?.includes('Перезапуск')
+    );
+    expect(restartBtn).not.toBeUndefined();
+
+    unmount(comp);
+  });
+
+  it('renders unsigned release mode: only notify with download link button', async () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        initialNews: [],
+        initialUpdateInfo: {
+          update_available: true,
+          current_version: '0.1.0',
+          latest_version: '0.2.0',
+          notes: 'Неподписанный билд',
+          download_url: 'https://example.com/wex-unsigned.exe',
+          signature: null,
+          is_signed: false,
+          can_auto_update: false,
+        },
+      },
+    });
+
+    const banner = target.querySelector('.update-banner');
+    expect(banner).not.toBeNull();
+    expect(banner?.textContent).toContain('Неподписанная сборка');
+
+    // Must show "Перейти к загрузке", not "Обновить"
+    expect(banner?.textContent).toContain('Перейти к загрузке');
+    expect(banner?.textContent).not.toContain('Обновить');
+
+    unmount(comp);
+  });
+
+  it('renders rollback error state when update installation fails and allows retry', async () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        initialNews: [],
+        initialUpdateInfo: {
+          update_available: true,
+          current_version: '0.1.0',
+          latest_version: '0.2.0',
+          notes: 'Тест ошибки',
+          download_url: 'https://example.com/fail-download.exe',
+          signature: 'untrusted comment: signature\nRWSomeBase64SignatureString1234567890==',
+          is_signed: true,
+          can_auto_update: true,
+        },
+      },
+    });
+
+    const banner = target.querySelector('.update-banner');
+    expect(banner).not.toBeNull();
+
+    const updateBtn = Array.from(banner?.querySelectorAll('button') || []).find((b) =>
+      b.textContent?.includes('Обновить')
+    );
+    updateBtn?.click();
+    await tick();
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Error state after failed download
+    expect(banner?.textContent).toContain('Не удалось обновить лаунчер');
+    expect(banner?.textContent).toContain('Прежняя версия сохранена');
+    const retryBtn = Array.from(banner?.querySelectorAll('button') || []).find((b) =>
+      b.textContent?.includes('Повторить')
+    );
+    expect(retryBtn).not.toBeUndefined();
+
+    unmount(comp);
+  });
+
+  it('renders SettingsScreen with launcher update check row', async () => {
+    const comp = mount(SettingsScreen, { target });
+    await tick();
+
+    expect(target.textContent).toContain('Самообновление лаунчера');
+    const checkBtn = Array.from(target.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Проверить')
+    );
+    expect(checkBtn).not.toBeUndefined();
 
     unmount(comp);
   });
