@@ -17,6 +17,7 @@
   import ProgressBar from '../components/ProgressBar.svelte';
   import Icon from '../components/icons/Icon.svelte';
   import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
+  import ErrorState from '../components/ErrorState.svelte';
   import { theme } from '../design/theme.svelte';
 
   interface ReleaseNoteItem {
@@ -51,11 +52,13 @@
     progressStage?: string;
     progressDetail?: string;
     progressSpeed?: string;
+    launchError?: unknown;
     initialNews?: ReleaseNoteVersion[];
     initialUpdateInfo?: UpdateInfo | null;
     initialShowImportWizard?: boolean;
     onlaunch?: () => void;
     oncancel?: () => void;
+    onopensettings?: () => void;
   }
 
   let {
@@ -68,11 +71,13 @@
     progressStage = 'Готов к запуску',
     progressDetail = 'Нажмите «Играть» для старта',
     progressSpeed = '',
+    launchError = $bindable<unknown>(null),
     initialNews = undefined,
     initialUpdateInfo = null,
     initialShowImportWizard = false,
     onlaunch,
     oncancel,
+    onopensettings,
   }: Props = $props();
 
   const versions = [
@@ -320,6 +325,22 @@
         </div>
       </div>
     </div>
+
+    <!-- Launch Error Banner (Apple HIG Alert State) -->
+    {#if launchError}
+      <div class="launch-error-banner" role="alert">
+        <ErrorState
+          error={launchError}
+          domain="launch"
+          compact={true}
+          onaction={onlaunch}
+          onsecondaryaction={onopensettings}
+          onclose={() => {
+            launchError = null;
+          }}
+        />
+      </div>
+    {/if}
 
     <!-- Bottom Floating Launch Dock (Liquid Glass) -->
     <div class="launch-dock">
@@ -679,6 +700,14 @@
 
   .friends-status-label {
     font-size: var(--text-footnote);
+  }
+
+  .launch-error-banner {
+    margin-bottom: 14px;
+    max-width: 680px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
   }
 
   /* Bottom Launch Dock */

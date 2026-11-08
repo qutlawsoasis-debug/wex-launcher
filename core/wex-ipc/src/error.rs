@@ -62,6 +62,33 @@ impl IpcError {
     pub fn timeout(message: impl Into<String>) -> Self {
         Self::new("TIMEOUT", message, None)
     }
+
+    /// Helper for launch errors.
+    pub fn launch(
+        code: impl Into<String>,
+        message: impl Into<String>,
+        technical: Option<String>,
+    ) -> Self {
+        Self::new(code, message, technical)
+    }
+
+    /// Helper for installation errors.
+    pub fn install(
+        code: impl Into<String>,
+        message: impl Into<String>,
+        technical: Option<String>,
+    ) -> Self {
+        Self::new(code, message, technical)
+    }
+
+    /// Helper for Java runtime errors.
+    pub fn java(
+        code: impl Into<String>,
+        message: impl Into<String>,
+        technical: Option<String>,
+    ) -> Self {
+        Self::new(code, message, technical)
+    }
 }
 
 // ============================================================================

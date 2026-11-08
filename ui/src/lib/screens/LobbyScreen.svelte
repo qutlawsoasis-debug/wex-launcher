@@ -15,6 +15,7 @@
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Icon from '../components/icons/Icon.svelte';
   import OfflineState from '../components/OfflineState.svelte';
+  import ErrorState from '../components/ErrorState.svelte';
   import { network } from '../design/network.svelte';
 
   interface LobbyPlayer {
@@ -225,20 +226,13 @@
           <p class="status-text">Загрузка открытых комнат...</p>
         </div>
       {:else if cloudError}
-        <!-- Honest "Service Unavailable" State without fake data -->
-        <div class="cloud-status-card error">
-          <div class="status-icon-circle error">
-            <Icon name="info" size={24} color="var(--color-system-orange)" />
-          </div>
-          <h3 class="status-title">Сервис недоступен</h3>
-          <p class="status-desc">
-            Не удалось связаться с сервером сетевых комнат. Проверьте подключение к интернету или повторите попытку позже.
-          </p>
-          <div class="status-actions">
-            <Button variant="secondary" size="regular" onclick={fetchCloudRooms} loading={isLoadingCloudRooms}>
-              Повторить попытку
-            </Button>
-          </div>
+        <!-- Honest Service Error State via ErrorState -->
+        <div class="cloud-error-wrap">
+          <ErrorState
+            error={cloudError}
+            domain="lobby"
+            onaction={fetchCloudRooms}
+          />
         </div>
       {:else if cloudRooms.length === 0}
         <div class="cloud-status-card empty">
@@ -419,7 +413,17 @@
           </div>
 
           {#if errorMessage}
-            <p class="error-text">{errorMessage}</p>
+            <div class="lobby-error-wrapper">
+              <ErrorState
+                error={errorMessage}
+                domain="lobby"
+                compact={true}
+                onaction={handleJoinRoom}
+                onclose={() => {
+                  errorMessage = '';
+                }}
+              />
+            </div>
           {/if}
 
           <Button
@@ -508,6 +512,15 @@
     width: 100%;
   }
 
+  .cloud-error-wrap {
+    width: 100%;
+  }
+
+  .lobby-error-wrapper {
+    margin-bottom: 8px;
+    width: 100%;
+  }
+
   .cloud-status-card {
     background-color: var(--card-bg);
     border: 1px solid var(--glass-border);
@@ -530,10 +543,6 @@
     align-items: center;
     justify-content: center;
     margin-bottom: 4px;
-  }
-
-  .status-icon-circle.error {
-    background-color: rgba(255, 159, 10, 0.12);
   }
 
   .status-icon-circle.neutral {
@@ -692,13 +701,6 @@
   .code-input:focus {
     border-color: var(--color-system-blue);
     background-color: var(--card-bg);
-  }
-
-  .error-text {
-    font-size: var(--text-footnote);
-    color: var(--color-system-red);
-    margin: 0;
-    text-align: center;
   }
 
   .world-picker {

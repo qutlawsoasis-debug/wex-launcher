@@ -22,6 +22,8 @@
   import Sheet from '../components/Sheet.svelte';
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Icon from '../components/icons/Icon.svelte';
+  import ErrorState from '../components/ErrorState.svelte';
+  import { formatError } from '../design/errors';
   import type { WorldItemDto, WorldBackupItemDto, ScreenshotItemDto } from '../ipc/generated';
 
   interface Props {
@@ -46,6 +48,7 @@
   let backups = $state<WorldBackupItemDto[]>([]);
   let screenshots = $state<ScreenshotItemDto[]>([]);
   let isLoading = $state(false);
+  let sheetError = $state<unknown>(null);
 
   // Confirmation modals state
   let deleteSheetOpen = $state(false);
@@ -178,7 +181,8 @@
       });
       notify('success', 'Резервная копия создана', backup.file_name);
     } catch (err) {
-      notify('error', 'Ошибка создания резервной копии', String(err));
+      const formatted = formatError(err, 'workshop');
+      notify('error', formatted.title, formatted.description);
     } finally {
       isBackingUp = { ...isBackingUp, [world.folder_name]: false };
     }
@@ -188,6 +192,7 @@
   async function openBackupsSheet(world: WorldItemDto) {
     selectedWorldForBackups = world;
     backups = [];
+    sheetError = null;
     backupsSheetOpen = true;
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -198,13 +203,16 @@
       });
       backups = list || [];
     } catch (err) {
-      notify('error', 'Не удалось загрузить резервные копии', String(err));
+      sheetError = err;
+      const formatted = formatError(err, 'workshop');
+      notify('error', formatted.title, formatted.description);
     }
   }
 
   // Trigger Restore Confirmation
   function promptRestore(backup: WorldBackupItemDto) {
     backupToRestore = backup;
+    sheetError = null;
     restoreSheetOpen = true;
   }
 
@@ -224,7 +232,9 @@
       backupsSheetOpen = false;
       await loadWorlds();
     } catch (err) {
-      notify('error', 'Ошибка восстановления мира', String(err));
+      sheetError = err;
+      const formatted = formatError(err, 'workshop');
+      notify('error', formatted.title, formatted.description);
     } finally {
       isRestoring = false;
     }
@@ -233,6 +243,7 @@
   // Trigger Delete Confirmation
   function promptDelete(world: WorldItemDto) {
     worldToDelete = world;
+    sheetError = null;
     deleteSheetOpen = true;
   }
 
@@ -250,7 +261,9 @@
       worldToDelete = null;
       await loadWorlds();
     } catch (err) {
-      notify('error', 'Ошибка удаления мира', String(err));
+      sheetError = err;
+      const formatted = formatError(err, 'workshop');
+      notify('error', formatted.title, formatted.description);
     } finally {
       isDeleting = false;
     }
@@ -262,7 +275,8 @@
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('workshop_open_path', { path });
     } catch (err) {
-      notify('warning', 'Не удалось открыть в проводнике', String(err));
+      const formatted = formatError(err, 'workshop');
+      notify('error', formatted.title, formatted.description);
     }
   }
 
@@ -533,6 +547,17 @@
     <p class="dialog-text">
       Копии для мира <strong>«{selectedWorldForBackups?.display_name}»</strong>:
     </p>
+
+    {#if sheetError}
+      <div style="margin-bottom: 12px;">
+        <ErrorState
+          error={sheetError}
+          domain="workshop"
+          compact={true}
+          onclose={() => (sheetError = null)}
+        />
+      </div>
+    {/if}
 
     {#if backups.length === 0}
       <div class="empty-modal-state">

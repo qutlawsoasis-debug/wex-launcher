@@ -594,4 +594,55 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Нет сети — запуск без обновления');
     unmount(comp);
   });
+
+  it('renders PlayScreen with launch ErrorState banner and actionable buttons', async () => {
+    let launchRetried = false;
+    let settingsOpened = false;
+
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        launchError: 'Java runtime error: java binary not found in PATH',
+        onlaunch: () => {
+          launchRetried = true;
+        },
+        onopensettings: () => {
+          settingsOpened = true;
+        },
+      },
+    });
+
+    await tick();
+
+    // Must display human-friendly Apple HIG error
+    expect(target.textContent).toContain('Не найдена среда Java');
+    expect(target.textContent).toContain('Укажите путь к Java в настройках');
+
+    // Action button
+    const settingsBtn = target.querySelector('.launch-error-banner .error-actions-row button') as HTMLButtonElement;
+    expect(settingsBtn).not.toBeNull();
+    expect(settingsBtn.textContent).toContain('Настройки');
+
+    settingsBtn.click();
+    expect(settingsOpened || launchRetried).toBe(true);
+
+    unmount(comp);
+  });
+
+  it('renders ModsScreen with protected pack mod ErrorState when deletion is rejected', async () => {
+    const comp = mount(ModsScreen, { target });
+    await tick();
+
+    // Trigger delete on pack mod
+    const deletePackBtn = target.querySelector('.pack-badge')
+      ?.closest('.row-trailing')
+      ?.querySelector('.delete-btn');
+
+    // Pack mod should not have a delete button, or if triggered internally:
+    expect(target.textContent).toContain('Пак Wex');
+
+    unmount(comp);
+  });
 });

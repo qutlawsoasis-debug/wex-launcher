@@ -29,7 +29,8 @@
       | 'trash'
       | 'cpu'
       | 'workshop'
-      | 'wifi-off';
+      | 'wifi-off'
+      | 'copy';
     size?: number;
     color?: string;
     class?: string;
@@ -157,6 +158,9 @@
     <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path>
     <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
     <line x1="12" y1="20" x2="12.01" y2="20"></line>
+  {:else if name === 'copy'}
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
   {/if}
 </svg>
 
