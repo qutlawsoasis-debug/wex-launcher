@@ -11,6 +11,7 @@ import type {
     LobbyCreateResponseDto,
     LobbyJoinResponseDto,
     LobbyStatusResponseDto,
+    LanWorldDto,
     ModManifestEntryDto,
     ModMismatchItemDto,
     NetOpenRoomDto,
@@ -38,7 +39,7 @@ export type InstallInstanceRequest = { version: string, force_reinstall: boolean
 
 export type InstallInstanceResponse = { success: boolean, version: string, message: string, };;
 
-export type LaunchGameRequest = { version: string, nickname: string, jvm_args: Array<string> | null, };;
+export type LaunchGameRequest = { version: string, nickname: string, jvm_args: Array<string> | null, quick_play_multiplayer: string | null, };;
 
 export type LaunchGameResponse = { success: boolean, pid: number | null, message: string, };;
 
@@ -83,6 +84,14 @@ export type NetLobbyKickRequest = { code: string, host_token: string, player: st
 export type NetListOpenRoomsRequest = { player_name: string | null, };;
 
 export type NetListOpenRoomsResponse = { rooms: Array<NetOpenRoomDto>, };;
+
+export type NetLanListDiscoveredRequest = Record<string, never>;;
+
+export type NetLanListDiscoveredResponse = { worlds: Array<LanWorldDto>, };;
+
+export type NetLanConnectRequest = { address: string, };;
+
+export type NetLanConnectResponse = { success: boolean, message: string, };;
 
 export type NetCompareManifestsRequest = { client_manifest: Array<ModManifestEntryDto>, host_manifest: Array<ModManifestEntryDto>, };;
 
@@ -198,6 +207,8 @@ export const COMMANDS = {
     NET_LOBBY_KICK: "net_lobby_kick",
     NET_LOBBY_TUNNEL_CONFIG: "net_lobby_tunnel_config",
     NET_LOBBY_LIST_OPEN_ROOMS: "net_lobby_list_open_rooms",
+    NET_LAN_LIST_DISCOVERED: "net_lan_list_discovered",
+    NET_LAN_CONNECT: "net_lan_connect",
     NET_COMPARE_MANIFESTS: "net_compare_manifests",
     NET_COMPUTE_MANIFEST_HASH: "net_compute_manifest_hash",
     NET_TUNNEL_START: "net_tunnel_start",

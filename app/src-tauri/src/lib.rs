@@ -256,6 +256,10 @@ pub fn run() {
             commands::lobby::close_lobby_room,
             commands::lobby::kick_lobby_player,
             commands::lobby::list_open_rooms,
+            commands::lobby::net_lan_list_discovered,
+            commands::lobby::list_lan_worlds,
+            commands::lobby::record_lan_world,
+            commands::lobby::connect_lan_world,
             // Friends & Social commands
             commands::friends::social_login,
             commands::friends::social_get_friends,

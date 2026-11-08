@@ -206,6 +206,23 @@ pub struct NetOpenRoomDto {
     pub status: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct LanWorldDto {
+    pub motd: String,
+    pub address: String,
+    pub port: u16,
+}
+
+impl From<wex_net::DiscoveredLanWorld> for LanWorldDto {
+    fn from(w: wex_net::DiscoveredLanWorld) -> Self {
+        Self {
+            motd: w.clean_motd,
+            address: w.address,
+            port: w.port,
+        }
+    }
+}
+
 impl From<wex_net::lobby::TunnelConfigResponse> for TunnelConfigResponseDto {
     fn from(r: wex_net::lobby::TunnelConfigResponse) -> Self {
         Self {

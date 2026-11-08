@@ -74,6 +74,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         LobbyStatusResponseDto::decl(),
         TunnelConfigResponseDto::decl(),
         NetOpenRoomDto::decl(),
+        LanWorldDto::decl(),
         ModManifestEntryDto::decl(),
         ModMismatchTypeDto::decl(),
         ModMismatchItemDto::decl(),
@@ -132,6 +133,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
     cmd_ts.push_str("    LobbyCreateResponseDto,\n");
     cmd_ts.push_str("    LobbyJoinResponseDto,\n");
     cmd_ts.push_str("    LobbyStatusResponseDto,\n");
+    cmd_ts.push_str("    LanWorldDto,\n");
     cmd_ts.push_str("    ModManifestEntryDto,\n");
     cmd_ts.push_str("    ModMismatchItemDto,\n");
     cmd_ts.push_str("    NetOpenRoomDto,\n");
@@ -183,6 +185,10 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         NetLobbyKickRequest::decl(),
         NetListOpenRoomsRequest::decl(),
         NetListOpenRoomsResponse::decl(),
+        NetLanListDiscoveredRequest::decl(),
+        NetLanListDiscoveredResponse::decl(),
+        NetLanConnectRequest::decl(),
+        NetLanConnectResponse::decl(),
         NetCompareManifestsRequest::decl(),
         NetCompareManifestsResponse::decl(),
         NetComputeManifestHashRequest::decl(),
@@ -263,6 +269,8 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ("NET_LOBBY_KICK", CMD_NET_LOBBY_KICK),
         ("NET_LOBBY_TUNNEL_CONFIG", CMD_NET_LOBBY_TUNNEL_CONFIG),
         ("NET_LOBBY_LIST_OPEN_ROOMS", CMD_NET_LOBBY_LIST_OPEN_ROOMS),
+        ("NET_LAN_LIST_DISCOVERED", CMD_NET_LAN_LIST_DISCOVERED),
+        ("NET_LAN_CONNECT", CMD_NET_LAN_CONNECT),
         ("NET_COMPARE_MANIFESTS", CMD_NET_COMPARE_MANIFESTS),
         ("NET_COMPUTE_MANIFEST_HASH", CMD_NET_COMPUTE_MANIFEST_HASH),
         ("NET_TUNNEL_START", CMD_NET_TUNNEL_START),

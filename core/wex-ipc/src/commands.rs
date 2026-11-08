@@ -34,6 +34,8 @@ pub struct LaunchGameRequest {
     pub version: String,
     pub nickname: String,
     pub jvm_args: Option<Vec<String>>,
+    #[serde(default)]
+    pub quick_play_multiplayer: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
@@ -78,6 +80,8 @@ pub const CMD_NET_LOBBY_LEAVE: &str = "net_lobby_leave";
 pub const CMD_NET_LOBBY_KICK: &str = "net_lobby_kick";
 pub const CMD_NET_LOBBY_TUNNEL_CONFIG: &str = "net_lobby_tunnel_config";
 pub const CMD_NET_LOBBY_LIST_OPEN_ROOMS: &str = "net_lobby_list_open_rooms";
+pub const CMD_NET_LAN_LIST_DISCOVERED: &str = "net_lan_list_discovered";
+pub const CMD_NET_LAN_CONNECT: &str = "net_lan_connect";
 pub const CMD_NET_COMPARE_MANIFESTS: &str = "net_compare_manifests";
 pub const CMD_NET_COMPUTE_MANIFEST_HASH: &str = "net_compute_manifest_hash";
 pub const CMD_NET_TUNNEL_START: &str = "net_tunnel_start";
@@ -191,6 +195,25 @@ pub struct NetListOpenRoomsRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct NetListOpenRoomsResponse {
     pub rooms: Vec<NetOpenRoomDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetLanListDiscoveredRequest {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetLanListDiscoveredResponse {
+    pub worlds: Vec<LanWorldDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetLanConnectRequest {
+    pub address: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetLanConnectResponse {
+    pub success: bool,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
