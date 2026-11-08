@@ -17,5 +17,3 @@ ts-rs = "10.1"
 
 [dev-dependencies]
 tempfile = "3.12"
-
-[workspace]
