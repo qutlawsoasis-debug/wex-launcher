@@ -259,6 +259,12 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         SocialGetNewsRequest::decl(),
         SocialGetNewsResponse::decl(),
         SocialCheckLauncherUpdateRequest::decl(),
+        // Music
+        MusicTrackDto::decl(),
+        MusicPlaylistResponse::decl(),
+        MusicGetTrackDataRequest::decl(),
+        MusicGetTrackDataResponse::decl(),
+        MusicSettingsDto::decl(),
     ];
     for decl in cmd_decls {
         cmd_ts.push_str(&format!("export {};\n\n", decl));
@@ -352,6 +358,11 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
             "SOCIAL_CHECK_LAUNCHER_UPDATE",
             CMD_SOCIAL_CHECK_LAUNCHER_UPDATE,
         ),
+        ("MUSIC_GET_PLAYLIST", CMD_MUSIC_GET_PLAYLIST),
+        ("MUSIC_GET_TRACK_DATA", CMD_MUSIC_GET_TRACK_DATA),
+        ("MUSIC_OPEN_FOLDER", CMD_MUSIC_OPEN_FOLDER),
+        ("MUSIC_GET_SETTINGS", CMD_MUSIC_GET_SETTINGS),
+        ("MUSIC_SET_SETTINGS", CMD_MUSIC_SET_SETTINGS),
     ];
     for (k, v) in command_names {
         cmd_ts.push_str(&format!("    {}: \"{}\",\n", k, v));

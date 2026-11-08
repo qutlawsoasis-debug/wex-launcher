@@ -1,6 +1,7 @@
 pub mod crash;
 pub mod discord;
 pub mod import;
+pub mod music;
 pub mod presets;
 pub mod skins;
 
@@ -11,6 +12,7 @@ pub use import::{
     import_from_dir, ImportedCape, ImportedServer, ImportedSkin, ImportedWardrobeItem,
     OldLauncherData,
 };
+pub use music::{AudioTrack, MusicError, MusicManager, MusicSettings};
 pub use presets::{
     apply_preset, get_default_presets, GraphicsPreset, PresetApplyResult, PresetTier,
 };

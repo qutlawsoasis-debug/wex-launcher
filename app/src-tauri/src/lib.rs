@@ -269,6 +269,12 @@ pub fn run() {
             commands::wardrobe::wardrobe_delete_history,
             commands::wardrobe::wardrobe_get_state,
             commands::wardrobe::wardrobe_apply,
+            // Music commands
+            commands::music::music_get_playlist,
+            commands::music::music_get_track_data,
+            commands::music::music_open_folder,
+            commands::music::music_get_settings,
+            commands::music::music_set_settings,
             // Friends & Social commands
             commands::friends::social_login,
             commands::friends::social_get_friends,

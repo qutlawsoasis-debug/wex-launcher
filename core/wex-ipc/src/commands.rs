@@ -539,3 +539,48 @@ pub struct SocialCheckLauncherUpdateRequest {
     pub current_version: String,
     pub target_platform: Option<String>,
 }
+
+// ============================================================================
+// Music Commands
+// ============================================================================
+
+pub const CMD_MUSIC_GET_PLAYLIST: &str = "music_get_playlist";
+pub const CMD_MUSIC_GET_TRACK_DATA: &str = "music_get_track_data";
+pub const CMD_MUSIC_OPEN_FOLDER: &str = "music_open_folder";
+pub const CMD_MUSIC_GET_SETTINGS: &str = "music_get_settings";
+pub const CMD_MUSIC_SET_SETTINGS: &str = "music_set_settings";
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicTrackDto {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub file_name: String,
+    pub cover_data_url: Option<String>,
+    pub duration_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicPlaylistResponse {
+    pub tracks: Vec<MusicTrackDto>,
+    pub music_dir: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicGetTrackDataRequest {
+    pub file_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicGetTrackDataResponse {
+    pub file_name: String,
+    pub mime_type: String,
+    pub audio_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicSettingsDto {
+    pub enabled: bool,
+    pub volume: u8,
+    pub auto_pause_on_launch: bool,
+}
