@@ -383,9 +383,11 @@ mod tests {
         let mock_core = MockLauncherCore::new();
 
         // Save customized settings
-        let mut custom = LauncherSettingsDto::default();
-        custom.player_name = "CustomUser".to_string();
-        custom.ram_mb = 6144;
+        let custom = LauncherSettingsDto {
+            player_name: "CustomUser".to_string(),
+            ram_mb: 6144,
+            ..Default::default()
+        };
         save_launcher_settings_impl(custom, &paths, &mock_core)
             .await
             .unwrap();
