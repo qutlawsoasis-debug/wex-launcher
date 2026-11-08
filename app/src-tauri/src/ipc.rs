@@ -53,9 +53,9 @@ impl Default for LauncherConfig {
 
 fn default_game_dir() -> String {
     if let Ok(appdata) = std::env::var("APPDATA") {
-        format!("{appdata}\\.minecraft")
+        format!("{appdata}\\Wex")
     } else {
-        "./.minecraft".to_string()
+        "./Wex".to_string()
     }
 }
 
@@ -65,6 +65,7 @@ pub struct SystemInfo {
     pub total_memory_mb: u32,
     pub os_name: String,
     pub launcher_version: String,
+    pub data_dir: String,
 }
 
 /// Version description for UI selectors.

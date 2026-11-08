@@ -25,7 +25,7 @@
   // System & configuration state
   let totalMemoryMb = $state(16384);
   let ramMb = $state(4096);
-  let gameDir = $state('C:\\Users\\Player\\AppData\\Roaming\\.minecraft');
+  let gameDir = $state('C:\\Users\\User\\AppData\\Roaming\\Wex');
   let graphicsPreset = $state('High');
   let launcherVersion = $state('1.0.0');
   let osName = $state('windows');
@@ -59,11 +59,12 @@
   async function loadConfig() {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const sys = await invoke<{ total_memory_mb: number; os_name: string; launcher_version: string }>('get_system_info');
-      if (sys && sys.total_memory_mb) {
-        totalMemoryMb = sys.total_memory_mb;
-        osName = sys.os_name;
-        launcherVersion = sys.launcher_version;
+      const sys = await invoke<{ total_memory_mb: number; os_name: string; launcher_version: string; data_dir?: string }>('get_system_info');
+      if (sys) {
+        if (sys.total_memory_mb) totalMemoryMb = sys.total_memory_mb;
+        if (sys.os_name) osName = sys.os_name;
+        if (sys.launcher_version) launcherVersion = sys.launcher_version;
+        if (sys.data_dir) gameDir = sys.data_dir;
       }
 
       const cfg = await invoke<{
@@ -87,6 +88,15 @@
       }
     } catch {
       // In-browser mock fallback
+    }
+  }
+
+  async function handleOpenDataDir() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('open_data_dir');
+    } catch {
+      // Browser fallback
     }
   }
 
@@ -174,6 +184,7 @@
             <Button
               variant="secondary"
               size="small"
+              onclick={handleOpenDataDir}
               title="Открыть папку данных в Проводнике"
             >
               <Icon name="restore" size={13} color="var(--color-secondary-label)" />

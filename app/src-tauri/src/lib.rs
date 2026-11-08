@@ -85,12 +85,55 @@ impl Default for AppState {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn get_system_info() -> SystemInfo {
+fn get_system_info(state: State<'_, PlayState>) -> SystemInfo {
     SystemInfo {
         total_memory_mb: get_total_ram_mb(),
         os_name: std::env::consts::OS.to_string(),
         launcher_version: "1.0.0".to_string(),
+        data_dir: state.paths.root.to_string_lossy().to_string(),
     }
+}
+
+#[tauri::command]
+fn get_data_dir(state: State<'_, PlayState>) -> String {
+    state.paths.root.to_string_lossy().to_string()
+}
+
+#[tauri::command]
+fn open_data_dir(state: State<'_, PlayState>) -> Result<(), String> {
+    let path = &state.paths.root;
+    if !path.exists() {
+        let _ = std::fs::create_dir_all(path);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn social_get_news(state: State<'_, PlayState>) -> Vec<wex_social::ReleaseNoteVersion> {
+    let cache_dir = state.paths.root.join("news");
+    let mgr = wex_social::NewsManager::new(cache_dir);
+    mgr.load_cached_or_default()
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +187,7 @@ async fn add_server(
     list.push(new_server.clone());
 
     if let Ok(appdata) = std::env::var("APPDATA") {
-        let servers_dat_path = PathBuf::from(appdata).join(".minecraft").join("servers.dat");
+        let servers_dat_path = PathBuf::from(appdata).join("Wex").join("servers.dat");
         if let Some(parent) = servers_dat_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -180,7 +223,7 @@ fn remove_server(address: String, state: State<'_, AppState>) -> Result<(), Stri
     list.retain(|s| s.address != address);
 
     if let Ok(appdata) = std::env::var("APPDATA") {
-        let servers_dat_path = PathBuf::from(appdata).join(".minecraft").join("servers.dat");
+        let servers_dat_path = PathBuf::from(appdata).join("Wex").join("servers.dat");
         let mut root = wex_net::load_servers_dat(&servers_dat_path).unwrap_or_else(|_| {
             wex_net::NbtTag::Compound(vec![(
                 "servers".to_string(),
@@ -326,6 +369,9 @@ pub fn run() {
             commands::launch::set_config,
             // System info
             get_system_info,
+            get_data_dir,
+            open_data_dir,
+            social_get_news,
             // Servers commands
             list_servers,
             ping_server,

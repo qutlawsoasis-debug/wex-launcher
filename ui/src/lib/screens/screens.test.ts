@@ -123,13 +123,31 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders ServersScreen with official servers, live ping, and add button', () => {
+  it('renders PlayScreen with authentic empty states for news and servers when without IPC data', () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+      },
+    });
+
+    // Without IPC, changelog must show authentic empty state: «Новостей пока нет»
+    expect(target.textContent).toContain('Новостей пока нет');
+    // Without IPC, recent server must show authentic empty state: «Вы ещё не играли на серверах»
+    expect(target.textContent).toContain('Вы ещё не играли на серверах');
+    // Zero hardcoded fabricated numbers or mock domains
+    expect(target.textContent).not.toContain('mc.wexmc.net');
+    expect(target.textContent).not.toContain('Сборка 2.4');
+
+    unmount(comp);
+  });
+
+  it('renders ServersScreen with empty state when without IPC data and has add server action', () => {
     const comp = mount(ServersScreen, { target });
-    const rows = target.querySelectorAll('.apple-row');
-    expect(rows.length).toBeGreaterThan(0);
-    expect(target.textContent).toContain('Официальный сервер Wex');
-    expect(target.textContent).toContain('mc.wexmc.net');
+    expect(target.textContent).toContain('Список серверов пуст');
     expect(target.textContent).toContain('Добавить сервер');
+    expect(target.textContent).not.toContain('mc.wexmc.net');
     unmount(comp);
   });
 
@@ -172,6 +190,8 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Графический пресет');
     expect(target.textContent).toContain('О программе');
     expect(target.textContent).toContain('Tauri 2');
+    expect(target.textContent).not.toContain('.minecraft');
+    expect(target.textContent).toContain('Wex');
     unmount(comp);
   });
 });

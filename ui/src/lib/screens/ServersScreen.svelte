@@ -36,28 +36,7 @@
   let newServerAddress = $state('');
   let isRefreshingAll = $state(false);
 
-  let servers = $state<ServerEntry[]>([
-    {
-      id: 'wex-main',
-      name: 'Официальный сервер Wex — Survival & PvP',
-      address: 'mc.wexmc.net',
-      version: '1.21.1 / 1.20.1',
-      motd: 'Официальный сервер Wex • Стабильный 20 TPS',
-      ping_ms: 24,
-      online: 184,
-      max_players: 300,
-    },
-    {
-      id: 'wex-modded',
-      name: 'Сообщество Wex — Сборка модов',
-      address: 'pack.wexmc.net',
-      version: '1.21.1',
-      motd: 'Сборка Wex • Синхронизация в 1 клик',
-      ping_ms: 38,
-      online: 62,
-      max_players: 150,
-    },
-  ]);
+  let servers = $state<ServerEntry[]>([]);
 
   let filteredServers = $derived(
     servers.filter(

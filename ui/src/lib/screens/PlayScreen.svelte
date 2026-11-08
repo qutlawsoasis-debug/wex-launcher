@@ -52,23 +52,39 @@
     selectedVersion === '1.20.1' ? 'Java 17 • 64-bit' : 'Java 21 • 64-bit'
   );
 
+  // News items dynamically fetched from wex-social / IPC
+  let newsTitle = $state<string>('');
+  let newsItems = $state<string[]>([]);
+
   // Recent server state from IPC
   let recentServer = $state<{ name: string; address: string; ping_ms?: number } | null>(null);
 
   onMount(async () => {
+    // 1. Fetch servers from IPC
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const list = await invoke<Array<{ name: string; address: string; ping_ms?: number }>>('list_servers');
       if (list && list.length > 0) {
         recentServer = list[0];
+      } else {
+        recentServer = null;
       }
     } catch {
-      // Fallback local server display for dev/preview
-      recentServer = {
-        name: 'Официальный сервер Wex — Survival & PvP',
-        address: 'mc.wexmc.net',
-        ping_ms: 24,
-      };
+      recentServer = null;
+    }
+
+    // 2. Fetch news from wex-social / IPC
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const news = await invoke<Array<{ version?: string; short_title?: string; items?: Array<{ text: string }> }>>('social_get_news');
+      if (news && news.length > 0) {
+        newsTitle = news[0].version || news[0].short_title || '';
+        newsItems = (news[0].items || []).map((i) => i.text).filter(Boolean);
+      } else {
+        newsItems = [];
+      }
+    } catch {
+      newsItems = [];
     }
   });
 </script>
@@ -89,13 +105,19 @@
         <div class="card-title-row">
           <Icon name="play" size={15} color="var(--color-system-blue)" />
           <span class="card-title">Журнал изменений</span>
-          <span class="card-meta">Сборка 2.4</span>
+          {#if newsTitle}
+            <span class="card-meta">{newsTitle}</span>
+          {/if}
         </div>
-        <ul class="changelog-points">
-          <li>Устранение пересвета заката и корректное отсечение горизонта</li>
-          <li>Синхронизация модов и автоматическая сверка в лобби</li>
-          <li>Оптимизация рендера и снижение задержки вывода кадров</li>
-        </ul>
+        {#if newsItems.length > 0}
+          <ul class="changelog-points">
+            {#each newsItems as item}
+              <li>{item}</li>
+            {/each}
+          </ul>
+        {:else}
+          <div class="empty-status-text">Новостей пока нет</div>
+        {/if}
       </div>
 
       <!-- Recent Server & Friends Glance -->
@@ -111,12 +133,12 @@
             <div class="server-text-wrap">
               <span class="server-display-name">{recentServer.name}</span>
               <span class="server-network-meta">
-                {recentServer.address}{recentServer.ping_ms ? ` • ${recentServer.ping_ms} мс` : ''}
+                {recentServer.address}{recentServer.ping_ms !== undefined ? ` • ${recentServer.ping_ms} мс` : ''}
               </span>
             </div>
           </div>
         {:else}
-          <div class="empty-status-text">Нет добавленных серверов</div>
+          <div class="empty-status-text">Вы ещё не играли на серверах</div>
         {/if}
 
         <div class="shelf-card-divider"></div>
@@ -219,39 +241,40 @@
     flex-direction: column;
     justify-content: space-between;
     height: 100%;
-    padding: 32px 36px 28px;
+    padding: 36px 44px 28px;
     box-sizing: border-box;
   }
 
-  /* Header Area */
+  /* Header Area: Apple Large Title */
   .app-header-area {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
+    padding-top: 24px;
   }
 
   .game-heading {
-    font-size: 36px;
+    font-size: 46px;
     font-weight: 700;
-    letter-spacing: -0.025em;
-    line-height: 1.1;
-    margin: 0 0 4px;
+    letter-spacing: -0.03em;
+    line-height: 1.08;
+    margin: 0 0 6px;
     color: var(--color-label);
   }
 
   .game-subheading {
-    font-size: var(--text-subheadline);
+    font-size: 16px;
     color: var(--color-secondary-label);
     margin: 0;
     font-weight: 500;
   }
 
-  /* Shelf Cards */
+  /* Shelf Cards: Elevated Composition */
   .dashboard-shelf {
     display: flex;
-    gap: 20px;
-    margin-top: auto;
-    margin-bottom: 24px;
+    gap: 24px;
+    margin-top: 24px;
+    margin-bottom: auto;
     flex-wrap: wrap;
   }
 

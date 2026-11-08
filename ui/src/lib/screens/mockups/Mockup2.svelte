@@ -138,7 +138,7 @@
     <section class="grid-column">
       <div class="column-header">
         <h3 class="section-title">Журнал изменений</h3>
-        <span class="section-badge">Сборка 2.4</span>
+        <span class="section-badge">Сборка Wex</span>
       </div>
 
       <div class="content-card">
