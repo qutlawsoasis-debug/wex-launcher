@@ -26,6 +26,7 @@
   import ErrorState from '../components/ErrorState.svelte';
   import { formatError } from '../design/errors';
   import { network } from '../design/network.svelte';
+  import { t, i18n } from '../i18n';
 
   interface FriendItem {
     id: string;
@@ -124,9 +125,9 @@
 
   // Tab options for segmented control with dynamic counter
   let tabOptions = $derived([
-    { value: 'friends', label: 'Друзья' },
-    { value: 'requests', label: requests.length > 0 ? `Заявки (${requests.length})` : 'Заявки' },
-    { value: 'achievements', label: 'Достижения' },
+    { value: 'friends', label: t('friends.tab_friends') },
+    { value: 'requests', label: requests.length > 0 ? `${t('friends.tab_requests')} (${requests.length})` : t('friends.tab_requests') },
+    { value: 'achievements', label: t('friends.tab_achievements') },
   ]);
 
   // Achievements stats
@@ -367,10 +368,10 @@
       <input
         type="text"
         class="friend-code-input"
-        placeholder="Код друга (#A7X9)..."
+        placeholder={i18n.locale === 'en' ? 'Friend code (#A7X9)...' : 'Код друга (#A7X9)...'}
         bind:value={friendCodeInput}
         onkeydown={(e) => e.key === 'Enter' && handleSendRequest()}
-        aria-label="Код друга"
+        aria-label={t('friends.add_friend_placeholder')}
       />
       <Button
         variant="primary"
@@ -379,7 +380,7 @@
         loading={isSubmitting}
         onclick={handleSendRequest}
       >
-        <span>Добавить друга</span>
+        <span>{t('friends.add_friend_button')}</span>
       </Button>
     </div>
   </div>
@@ -409,22 +410,22 @@
     {:else}
       <div class="tab-pane">
         <div class="search-wrap">
-          <SearchField placeholder="Поиск среди друзей..." bind:value={searchQuery} />
+          <SearchField placeholder={t('friends.search_placeholder')} bind:value={searchQuery} />
         </div>
 
         {#if filteredFriends.length > 0}
-          <List header="Список друзей ({filteredFriends.length})">
+          <List header="{i18n.locale === 'en' ? 'Friend List' : 'Список друзей'} ({filteredFriends.length})">
             {#each filteredFriends as friend (friend.id)}
               <Row
                 title={friend.nick}
                 subtitle={
                   friend.status === 'playing'
-                    ? `В игре: ${friend.game_version || 'Minecraft'}`
+                    ? (i18n.locale === 'en' ? `In Game: ${friend.game_version || 'Minecraft'}` : `В игре: ${friend.game_version || 'Minecraft'}`)
                     : friend.status === 'in_lobby'
-                      ? `В лобби ${friend.lobby_code || ''}`
+                      ? (i18n.locale === 'en' ? `In Lobby ${friend.lobby_code || ''}` : `В лобби ${friend.lobby_code || ''}`)
                       : friend.status === 'online'
-                        ? 'В сети'
-                        : 'Не в сети'
+                        ? t('friends.status_online')
+                        : t('friends.status_offline')
                 }
               >
                 {#snippet leading()}
@@ -445,7 +446,7 @@
                       onclick={() => handleSendLobbyInvite(friend)}
                     >
                       <Icon name="lobby" size={13} color="var(--color-system-blue)" />
-                      <span>Пригласить в лобби</span>
+                      <span>{i18n.locale === 'en' ? 'Invite to Lobby' : 'Пригласить в лобби'}</span>
                     </Button>
                   {/if}
                 {/snippet}
@@ -457,11 +458,11 @@
             <div class="empty-icon-wrap">
               <Icon name="friends" size={40} color="var(--color-tertiary-label)" />
             </div>
-            <h2 class="empty-title">Список друзей пуст</h2>
+            <h2 class="empty-title">{t('friends.empty_friends_title')}</h2>
             <p class="empty-desc">
               {searchQuery
-                ? 'По запросу «' + searchQuery + '» ни одного игрока не найдено.'
-                : 'У вас пока нет добавленных друзей. Введите код друга в поле выше, чтобы отправить первое приглашение.'}
+                ? (i18n.locale === 'en' ? `No players found for “${searchQuery}”.` : `По запросу «${searchQuery}» ни одного игрока не найдено.`)
+                : (i18n.locale === 'en' ? 'You have no friends added yet. Enter a friend code in the field above to send your first invitation.' : 'У вас пока нет добавленных друзей. Введите код друга в поле выше, чтобы отправить первое приглашение.')}
             </p>
           </div>
         {/if}
@@ -475,11 +476,11 @@
     {:else}
       <div class="tab-pane">
         {#if requests.length > 0}
-          <List header="Входящие заявки в друзья ({requests.length})">
+          <List header="{i18n.locale === 'en' ? 'Incoming Friend Requests' : 'Входящие заявки в друзья'} ({requests.length})">
             {#each requests as req (req.id)}
               <Row
                 title={req.from_nick}
-                subtitle="Хочет добавить вас в список друзей"
+                subtitle={i18n.locale === 'en' ? 'Wants to add you as a friend' : 'Хочет добавить вас в список друзей'}
               >
                 {#snippet leading()}
                   <div class="avatar-capsule">
@@ -494,14 +495,14 @@
                       size="small"
                       onclick={() => handleAcceptRequest(req)}
                     >
-                      <span>Принять</span>
+                      <span>{t('friends.action_accept')}</span>
                     </Button>
                     <Button
                       variant="secondary"
                       size="small"
                       onclick={() => handleDeclineRequest(req)}
                     >
-                      <span>Отклонить</span>
+                      <span>{t('friends.action_decline')}</span>
                     </Button>
                   </div>
                 {/snippet}
@@ -513,9 +514,9 @@
             <div class="empty-icon-wrap">
               <Icon name="friends" size={40} color="var(--color-tertiary-label)" />
             </div>
-            <h2 class="empty-title">Нет входящих заявок</h2>
+            <h2 class="empty-title">{t('friends.empty_requests_title')}</h2>
             <p class="empty-desc">
-              Когда другие игроки отправят вам заявку по вашему коду дружбы, она появится в этом разделе.
+              {i18n.locale === 'en' ? 'When other players send you a friend request via your code, it will appear here.' : 'Когда другие игроки отправят вам заявку по вашему коду дружбы, она появится в этом разделе.'}
             </p>
           </div>
         {/if}
@@ -528,8 +529,8 @@
       <!-- Achievements Overview Card -->
       <div class="achievements-summary-card">
         <div class="summary-info">
-          <span class="summary-label">Достижения лаунчера</span>
-          <span class="summary-count">{unlockedCount} из {achievements.length} получено</span>
+          <span class="summary-label">{t('friends.achievements_header')}</span>
+          <span class="summary-count">{unlockedCount} {i18n.locale === 'en' ? 'of' : 'из'} {achievements.length} {i18n.locale === 'en' ? 'unlocked' : 'получено'}</span>
         </div>
         <div class="summary-progress">
           <ProgressBar percentage={overallPercentage} label="Общий прогресс достижений" height={8} />
@@ -537,8 +538,8 @@
       </div>
 
       <List
-        header="Список достижений"
-        footer="Прогресс отслеживается автоматически и сохраняется в каталоге лаунчера."
+        header={t('friends.achievements_list')}
+        footer={i18n.locale === 'en' ? 'Progress is tracked automatically and saved in your launcher directory.' : 'Прогресс отслеживается автоматически и сохраняется в каталоге лаунчера.'}
       >
         {#each achievements as ach (ach.id)}
           {@const pct = Math.min(100, Math.round((ach.current / ach.target) * 100))}
