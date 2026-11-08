@@ -7,6 +7,7 @@ pub mod music;
 pub mod network;
 pub mod overview;
 pub mod report;
+pub mod servers;
 pub mod settings;
 pub mod shell;
 pub mod wardrobe;

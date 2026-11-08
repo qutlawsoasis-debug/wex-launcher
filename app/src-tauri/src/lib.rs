@@ -1,12 +1,11 @@
 pub mod commands;
 pub mod ipc;
 
-use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{Manager, State};
+use tauri::Manager;
 
 use commands::launch::PlayState;
-use ipc::{LobbyRoomModel, ServerEntryModel, ServerPingResult};
+use ipc::{LobbyRoomModel, ServerEntryModel};
 use wex_core::config::WexPaths;
 
 pub struct AppState {
@@ -17,159 +16,11 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            servers: Mutex::new(vec![
-                ServerEntryModel {
-                    id: "aura-main".to_string(),
-                    name: "Aura Official — Survival & PvP".to_string(),
-                    address: "mc.auramc.net".to_string(),
-                    icon: None,
-                    ping_ms: None,
-                    online: None,
-                    max_players: None,
-                    motd: Some("Официальный сервер Aura Client • 1.20.1 & 1.21.1".to_string()),
-                    version: Some("1.21.1 / 1.20.1".to_string()),
-                },
-                ServerEntryModel {
-                    id: "aura-modded".to_string(),
-                    name: "Aura Pack Community Server".to_string(),
-                    address: "pack.auramc.net".to_string(),
-                    icon: None,
-                    ping_ms: None,
-                    online: None,
-                    max_players: None,
-                    motd: Some("Сервер сообщества Aura-Pack".to_string()),
-                    version: Some("1.21.1".to_string()),
-                },
-            ]),
+            servers: Mutex::new(Vec::new()),
             active_lobby: Mutex::new(None),
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Servers Management (powered by core/wex-net)
-// ---------------------------------------------------------------------------
-
-#[tauri::command]
-fn list_servers(state: State<'_, AppState>) -> Result<Vec<ServerEntryModel>, String> {
-    state
-        .servers
-        .lock()
-        .map(|s| s.clone())
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn ping_server(address: String) -> Result<ServerPingResult, String> {
-    let pinger = wex_net::ServerPinger::new(2500, 2500, 763);
-    match pinger.ping(&address).await {
-        Ok(res) => Ok(ServerPingResult {
-            latency_ms: res.latency_ms,
-            online: res.players.online,
-            max_players: res.players.max,
-            motd: res.description,
-            version: res.version.name,
-            favicon: res.favicon,
-        }),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-#[tauri::command]
-async fn add_server(
-    name: String,
-    address: String,
-    state: State<'_, AppState>,
-) -> Result<ServerEntryModel, String> {
-    let new_server = ServerEntryModel {
-        id: format!(
-            "server-{}",
-            std::time::SystemTime::now()
-                .elapsed()
-                .unwrap_or_default()
-                .as_millis()
-        ),
-        name: name.clone(),
-        address: address.clone(),
-        icon: None,
-        ping_ms: None,
-        online: None,
-        max_players: None,
-        motd: None,
-        version: None,
-    };
-
-    let mut list = state.servers.lock().map_err(|e| e.to_string())?;
-    list.push(new_server.clone());
-
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        let servers_dat_path = PathBuf::from(appdata).join("Wex").join("servers.dat");
-        if let Some(parent) = servers_dat_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let pack_servers: Vec<wex_net::PackServerEntry> = list
-            .iter()
-            .map(|s| wex_net::PackServerEntry {
-                id: Some(s.id.clone()),
-                name: s.name.clone(),
-                ip: s.address.clone(),
-                icon: s.icon.clone(),
-            })
-            .collect();
-
-        let mut root = wex_net::load_servers_dat(&servers_dat_path).unwrap_or_else(|_| {
-            wex_net::NbtTag::Compound(vec![(
-                "servers".to_string(),
-                wex_net::NbtTag::List {
-                    tag_id: 10,
-                    elements: Vec::new(),
-                },
-            )])
-        });
-        wex_net::merge_pack_servers(&mut root, &pack_servers);
-        let _ = wex_net::save_servers_dat(&servers_dat_path, &root);
-    }
-
-    Ok(new_server)
-}
-
-#[tauri::command]
-fn remove_server(address: String, state: State<'_, AppState>) -> Result<(), String> {
-    let mut list = state.servers.lock().map_err(|e| e.to_string())?;
-    list.retain(|s| s.address != address);
-
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        let servers_dat_path = PathBuf::from(appdata).join("Wex").join("servers.dat");
-        let mut root = wex_net::load_servers_dat(&servers_dat_path).unwrap_or_else(|_| {
-            wex_net::NbtTag::Compound(vec![(
-                "servers".to_string(),
-                wex_net::NbtTag::List {
-                    tag_id: 10,
-                    elements: Vec::new(),
-                },
-            )])
-        });
-        if let Some(wex_net::NbtTag::List { elements, .. }) = root.get_mut("servers") {
-            elements.retain(|elem| {
-                if let wex_net::NbtTag::Compound(fields) = elem {
-                    !fields.iter().any(|(k, v)| {
-                        k == "ip"
-                            && matches!(v, wex_net::NbtTag::String(ip_str) if ip_str == &address)
-                    })
-                } else {
-                    true
-                }
-            });
-        }
-        let _ = wex_net::save_servers_dat(&servers_dat_path, &root);
-    }
-
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Tauri Application Runner
-// ---------------------------------------------------------------------------
 
 pub fn run() {
     tauri::Builder::default()
@@ -232,11 +83,17 @@ pub fn run() {
             commands::overview::extras_apply_import,
             commands::overview::overview_get_playtime,
             commands::overview::overview_record_playtime,
-            // Servers commands
-            list_servers,
-            ping_server,
-            add_server,
-            remove_server,
+            // Servers commands (commands/servers.rs)
+            commands::servers::list_servers,
+            commands::servers::ping_server,
+            commands::servers::add_server,
+            commands::servers::edit_server,
+            commands::servers::remove_server,
+            commands::servers::net_load_servers,
+            commands::servers::net_save_servers,
+            commands::servers::net_merge_servers,
+            commands::servers::net_ping_server,
+            commands::servers::net_resolve_address,
             // Lobby commands (from commands::lobby)
             commands::lobby::net_lobby_create,
             commands::lobby::net_lobby_join,

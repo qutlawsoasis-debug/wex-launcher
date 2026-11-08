@@ -110,7 +110,7 @@ async fn main() -> Result<()> {
             );
 
             let mut process =
-                prepare_and_launch(&paths, &config, &version, &client, events, 8, &jvm_args)
+                prepare_and_launch(&paths, &config, &version, &client, events, 8, &jvm_args, None)
                     .await?;
 
             println!(

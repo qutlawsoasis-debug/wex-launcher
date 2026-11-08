@@ -262,6 +262,7 @@ pub async fn start_game<R: tauri::Runtime>(
     version: String,
     nickname: String,
     jvm_args: Option<Vec<String>>,
+    server: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<LaunchGameResponse, String> {
     // 1. Guard against duplicate starts
@@ -313,7 +314,7 @@ pub async fn start_game<R: tauri::Runtime>(
                     &state.discord,
                     Activity::Playing {
                         version: version.clone(),
-                        world_name: None,
+                        world_name: server.clone(),
                         mod_count: None,
                         start_timestamp: Some(chrono::Utc::now().timestamp()),
                     },
@@ -363,7 +364,7 @@ pub async fn start_game<R: tauri::Runtime>(
             version: version.clone(),
             nickname: nickname.clone(),
             jvm_args: Some(actual_jvm_args),
-            quick_play_multiplayer: None,
+            quick_play_multiplayer: server,
         })
         .await;
 
@@ -545,9 +546,10 @@ pub async fn launch_game<R: tauri::Runtime>(
     app: AppHandle<R>,
     version: String,
     nickname: String,
+    server: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<String, String> {
-    start_game(app, version, nickname, None, state)
+    start_game(app, version, nickname, None, server, state)
         .await
         .map(|r| r.message)
 }

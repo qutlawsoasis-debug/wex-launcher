@@ -35,6 +35,9 @@ pub struct LaunchGameRequest {
     pub nickname: String,
     pub jvm_args: Option<Vec<String>>,
     #[serde(default)]
+    #[serde(alias = "server")]
+    #[serde(alias = "quick_play")]
+    #[serde(alias = "quickPlay")]
     pub quick_play_multiplayer: Option<String>,
 }
 
