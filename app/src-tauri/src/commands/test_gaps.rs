@@ -6,6 +6,9 @@ extern "C" {}
 
 #[path = "test_gaps_more.rs"]
 mod more;
+#[cfg(windows)]
+#[path = "test_gaps_openers.rs"]
+mod openers;
 #[path = "test_gaps_runtime.rs"]
 mod runtime;
 use super::{

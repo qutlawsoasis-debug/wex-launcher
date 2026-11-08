@@ -1,5 +1,122 @@
 use super::*;
 
+#[tokio::test]
+async fn extras_analyze_crash_success_classifies_input_for_both_versions() {
+    let f = Fixture::new().await;
+    for version in ["1.20.1", "1.21.1"] {
+        let result = super::super::crash::extras_analyze_crash(
+            ExtrasAnalyzeCrashRequest {
+                exit_code: Some(1),
+                log_text: Some("java.lang.OutOfMemoryError: Java heap space".into()),
+                crash_report_text: None,
+            },
+            Some(version.into()),
+            f.play(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.kind, CrashKindDto::OutOfMemory);
+    }
+}
+#[tokio::test]
+async fn extras_analyze_crash_missing_logs_returns_unknown_fallback() {
+    let f = Fixture::new().await;
+    let result = super::super::crash::extras_analyze_crash(
+        ExtrasAnalyzeCrashRequest {
+            exit_code: Some(17),
+            log_text: None,
+            crash_report_text: None,
+        },
+        None,
+        f.play(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        result.kind,
+        CrashKindDto::Unknown {
+            exit_code: Some(17)
+        }
+    );
+}
+#[tokio::test]
+async fn crash_get_last_diagnosis_success_uses_only_instance_logs() {
+    let f = Fixture::new().await;
+    for version in ["1.20.1", "1.21.1"] {
+        fs::write(
+            f.paths.instance_dir(version).join("logs/latest.log"),
+            b"java.lang.OutOfMemoryError: Java heap space",
+        )
+        .unwrap();
+        let result =
+            super::super::crash::crash_get_last_diagnosis(Some(version.into()), Some(1), f.play())
+                .await
+                .unwrap();
+        assert_eq!(result.kind, CrashKindDto::OutOfMemory);
+    }
+}
+#[tokio::test]
+async fn crash_get_last_diagnosis_missing_logs_returns_unknown_fallback() {
+    let f = Fixture::new().await;
+    let result = super::super::crash::crash_get_last_diagnosis(None, Some(2), f.play())
+        .await
+        .unwrap();
+    assert_eq!(result.kind, CrashKindDto::Unknown { exit_code: Some(2) });
+}
+#[tokio::test]
+async fn crash_disable_mod_success_preserves_jar_and_other_version() {
+    let f = Fixture::new().await;
+    for version in ["1.20.1", "1.21.1"] {
+        fs::write(
+            f.paths.instance_dir(version).join("mods/fixture-1.jar"),
+            b"jar fixture",
+        )
+        .unwrap();
+    }
+    let result =
+        super::super::crash::crash_disable_mod("fixture".into(), Some("1.20.1".into()), f.play())
+            .await
+            .unwrap();
+    assert_eq!(result, "fixture-1.jar.disabled");
+    assert_eq!(
+        fs::read(
+            f.paths
+                .instance_dir("1.20.1")
+                .join("mods/fixture-1.jar.disabled")
+        )
+        .unwrap(),
+        b"jar fixture"
+    );
+    assert!(f
+        .paths
+        .instance_dir("1.21.1")
+        .join("mods/fixture-1.jar")
+        .exists());
+}
+#[tokio::test]
+async fn crash_disable_mod_error_missing_mod_does_not_rename_neighbors() {
+    let f = Fixture::new().await;
+    let neighbor = f.paths.instance_dir("1.21.1").join("mods/neighbor.jar");
+    fs::write(&neighbor, b"keep").unwrap();
+    assert!(
+        super::super::crash::crash_disable_mod("missing".into(), None, f.play())
+            .await
+            .is_err()
+    );
+    assert!(neighbor.exists());
+}
+#[tokio::test]
+async fn crash_open_log_file_error_blocked_logs_directory_avoids_explorer() {
+    let f = Fixture::new().await;
+    let logs = f.paths.instance_dir("1.21.1").join("logs");
+    fs::remove_dir(&logs).unwrap();
+    fs::write(&logs, b"keep").unwrap();
+    assert!(super::super::crash::crash_open_log_file(None, f.play())
+        .await
+        .is_err());
+    assert_eq!(fs::read(logs).unwrap(), b"keep");
+}
+
 fn host_session() -> lobby::ActiveLobbySession {
     lobby::ActiveLobbySession {
         code: "ABC123".into(),
