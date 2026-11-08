@@ -18,7 +18,9 @@ pub struct WexPaths {
 impl WexPaths {
     pub fn new(custom_root: Option<PathBuf>) -> Self {
         let root = custom_root.unwrap_or_else(|| {
-            if let Ok(app_data) = std::env::var("APPDATA") {
+            if let Ok(custom_data_dir) = std::env::var("WEX_DATA_DIR") {
+                PathBuf::from(custom_data_dir)
+            } else if let Ok(app_data) = std::env::var("APPDATA") {
                 PathBuf::from(app_data).join("Wex")
             } else if let Some(base_dirs) = directories::BaseDirs::new() {
                 base_dirs.data_dir().join("Wex")
@@ -256,6 +258,17 @@ mod tests {
         assert!(paths.instance_dir("1.20.1").join("mods").exists());
         assert!(paths.instance_dir("1.21.1").join("mods").exists());
         assert!(paths.assets_indexes_dir().exists());
+    }
+
+    #[test]
+    fn test_wex_paths_env_override() {
+        let tmp = tempdir().unwrap();
+        let custom_dir = tmp.path().join("WexCustom");
+        std::env::set_var("WEX_DATA_DIR", &custom_dir);
+
+        let paths = WexPaths::new(None);
+        assert_eq!(paths.root, custom_dir);
+        std::env::remove_var("WEX_DATA_DIR");
     }
 
     #[test]
