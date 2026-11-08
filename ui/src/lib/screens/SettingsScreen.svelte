@@ -64,56 +64,44 @@
     { value: 'auto', label: 'Авто' },
   ];
 
-  // Discord Rich Presence preview state
-  let discordPreviewMode = $state<'launcher' | 'installing' | 'playing' | 'server' | 'lobby'>('launcher');
-
-  const discordPreviewOptions = [
-    { value: 'launcher', label: 'В лаунчере' },
-    { value: 'installing', label: 'Установка' },
-    { value: 'playing', label: 'В игре' },
-    { value: 'server', label: 'На сервере' },
-    { value: 'lobby', label: 'В лобби' },
-  ];
-
-  const discordPreviewData = $derived.by(() => {
-    switch (discordPreviewMode) {
-      case 'launcher':
-        return {
-          title: 'В главном меню',
-          state: 'Выбирает режим игры',
-          badge: null,
-          time: null,
-        };
-      case 'installing':
-        return {
-          title: `Установка Minecraft ${selectedVersion}`,
-          state: 'Этап: Загрузка библиотек',
-          badge: `Minecraft ${selectedVersion}`,
-          time: null,
-        };
-      case 'playing':
-        return {
-          title: `В мире Minecraft (${selectedVersion})`,
-          state: 'Сборка Wex • Модов: 142',
-          badge: `Minecraft ${selectedVersion}`,
-          time: '00:18:42 прошло',
-        };
-      case 'server':
-        return {
-          title: 'На сервере: mc.auramc.net',
-          state: 'Сборка Wex • Выживание',
-          badge: `Minecraft ${selectedVersion}`,
-          time: '01:05:12 прошло',
-        };
-      case 'lobby':
-        return {
-          title: 'В лобби #WEX77',
-          state: `Игроков: 4/8 • Хост: ${playerName || 'Player'}`,
-          badge: 'P2P Multiplayer',
-          time: null,
-        };
-    }
+  // Discord Rich Presence preview state (reflects actual backend activity)
+  let discordPreview = $state<{
+    is_enabled: boolean;
+    is_connected: boolean;
+    title: string;
+    details: string;
+    state: string;
+    small_text: string | null;
+    has_timestamp: boolean;
+  }>({
+    is_enabled: true,
+    is_connected: false,
+    title: 'Wex Launcher',
+    details: 'В главном меню',
+    state: 'Выбирает режим игры',
+    small_text: null,
+    has_timestamp: false,
   });
+
+  async function updateDiscordPreview() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const prev = await invoke<{
+        is_enabled: boolean;
+        is_connected: boolean;
+        title: string;
+        details: string;
+        state: string;
+        small_text: string | null;
+        has_timestamp: boolean;
+      }>('get_discord_rpc_preview');
+      if (prev) {
+        discordPreview = prev;
+      }
+    } catch {
+      // Offline / unit test fallback
+    }
+  }
 
   const accents: { key: AccentColor; title: string; color: string }[] = Object.entries(
     AccentPresets
@@ -202,6 +190,7 @@
         theme.setReduceMotion(cfg.reduce_motion ?? false);
         theme.setReduceTransparency(cfg.reduce_transparency ?? false);
       }
+      await updateDiscordPreview();
     } catch {
       // In-browser mock fallback
     }
@@ -415,6 +404,7 @@
             onchange={(checked) => {
               discordRpc = checked;
               saveConfig();
+              updateDiscordPreview();
             }}
           />
         {/snippet}
@@ -422,42 +412,36 @@
 
       <Row
         title="Превью статуса Discord"
-        subtitle={discordRpc ? "Интерактивный предварительный просмотр для профиля Discord" : "Трансляция активности выключена в настройках"}
+        subtitle={discordRpc ? "Фактическое состояние активности профиля в Discord" : "Трансляция активности выключена в настройках"}
       >
         <div class="discord-preview-wrap">
           {#if discordRpc}
-            <div class="discord-mode-nav">
-              <SegmentedControl
-                options={discordPreviewOptions}
-                value={discordPreviewMode}
-                onchange={(val) => {
-                  discordPreviewMode = val as any;
-                }}
-              />
-            </div>
-
             <div class="discord-card">
               <div class="discord-card-header">
-                <span class="discord-card-tag">ИГРАЕТ В ИГРУ</span>
+                <span class="discord-card-tag">Активность в Discord</span>
               </div>
               <div class="discord-card-body">
                 <div class="discord-avatar-wrap">
                   <div class="discord-avatar">
                     <Icon name="server" size={26} color="var(--color-system-blue)" />
                   </div>
-                  <span class="discord-status-dot" title="В сети"></span>
+                  <span
+                    class="discord-status-dot"
+                    class:online={discordPreview.is_connected}
+                    title={discordPreview.is_connected ? "Подключено к Discord" : "Ожидание подключения"}
+                  ></span>
                 </div>
                 <div class="discord-content">
-                  <div class="discord-app-title">Wex Launcher</div>
-                  <div class="discord-detail-title">{discordPreviewData.title}</div>
-                  <div class="discord-state-text">{discordPreviewData.state}</div>
-                  {#if discordPreviewData.time}
-                    <div class="discord-time-text">{discordPreviewData.time}</div>
+                  <div class="discord-app-title">{discordPreview.title || 'Wex Launcher'}</div>
+                  <div class="discord-detail-title">{discordPreview.details}</div>
+                  <div class="discord-state-text">{discordPreview.state}</div>
+                  {#if discordPreview.small_text}
+                    <div class="discord-meta-text">{discordPreview.small_text}</div>
+                  {/if}
+                  {#if !discordPreview.is_connected}
+                    <div class="discord-offline-hint">Discord не запущен или ожидается подключение</div>
                   {/if}
                 </div>
-              </div>
-              <div class="discord-card-footer">
-                <div class="discord-mock-btn">Скачать Wex Launcher</div>
               </div>
             </div>
           {:else}
@@ -728,11 +712,6 @@
     margin-top: 6px;
   }
 
-  .discord-mode-nav {
-    display: flex;
-    width: 100%;
-  }
-
   .discord-card {
     background: var(--color-fill-secondary);
     border: 1px solid var(--color-separator);
@@ -751,8 +730,7 @@
 
   .discord-card-tag {
     font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
+    font-weight: 600;
     color: var(--color-tertiary-label);
   }
 
@@ -787,8 +765,12 @@
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: var(--color-system-green);
+    background: var(--color-system-gray);
     border: 2px solid var(--color-window-bg);
+  }
+
+  .discord-status-dot.online {
+    background: var(--color-system-green);
   }
 
   .discord-content {
@@ -818,26 +800,16 @@
     line-height: 1.3;
   }
 
-  .discord-time-text {
+  .discord-meta-text {
     font-size: 11px;
-    color: var(--color-tertiary-label);
+    color: var(--color-secondary-label);
     margin-top: 2px;
   }
 
-  .discord-card-footer {
-    display: flex;
-    padding-top: 4px;
-  }
-
-  .discord-mock-btn {
-    background: var(--color-fill-tertiary);
-    border: 1px solid var(--color-separator);
-    border-radius: 6px;
-    padding: 6px 14px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--color-label);
-    text-align: center;
+  .discord-offline-hint {
+    font-size: 11px;
+    color: var(--color-tertiary-label);
+    margin-top: 2px;
   }
 
   .discord-disabled-card {

@@ -71,6 +71,17 @@ vi.mock('@tauri-apps/api/core', () => {
           language: 'ru',
         };
       }
+      if (cmd === 'get_discord_rpc_preview') {
+        return {
+          is_enabled: true,
+          is_connected: true,
+          title: 'Wex Launcher',
+          details: 'В главном меню',
+          state: 'Выбирает режим игры',
+          small_text: null,
+          has_timestamp: false,
+        };
+      }
       return [];
     }),
   };
@@ -516,21 +527,17 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders SettingsScreen with interactive Discord RPC status preview card', async () => {
+  it('renders SettingsScreen with actual Discord RPC status preview card and no mock fakes', async () => {
     const comp = mount(SettingsScreen, { target });
     expect(target.textContent).toContain('Discord Rich Presence');
     expect(target.textContent).toContain('Превью статуса Discord');
     expect(target.textContent).toContain('Wex Launcher');
     expect(target.textContent).toContain('В главном меню');
     expect(target.textContent).toContain('Выбирает режим игры');
-    expect(target.textContent).toContain('Скачать Wex Launcher');
-
-    // Check preview mode options exist
-    expect(target.textContent).toContain('В лаунчере');
-    expect(target.textContent).toContain('Установка');
-    expect(target.textContent).toContain('В игре');
-    expect(target.textContent).toContain('На сервере');
-    expect(target.textContent).toContain('В лобби');
+    expect(target.textContent).not.toContain('Скачать Wex Launcher');
+    expect(target.textContent).not.toContain('ИГРАЕТ В ИГРУ');
+    expect(target.textContent).not.toContain('Модов: 142');
+    expect(target.textContent).not.toContain('auramc');
 
     unmount(comp);
   });
