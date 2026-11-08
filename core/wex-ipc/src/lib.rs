@@ -58,6 +58,7 @@ mod tests {
                 version: "1.21.1".to_string(),
                 nickname: "AuraFan".to_string(),
                 jvm_args: None,
+                quick_play_multiplayer: None,
             })
             .await
             .unwrap();
@@ -79,6 +80,7 @@ mod tests {
                 version: "1.21.1".to_string(),
                 nickname: "AuraFan".to_string(),
                 jvm_args: None,
+                quick_play_multiplayer: None,
             })
             .await;
         assert!(fail_res.is_err());
