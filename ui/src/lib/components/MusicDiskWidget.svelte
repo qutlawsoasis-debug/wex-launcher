@@ -10,11 +10,17 @@
   - Volume control and mute toggle.
 -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import Button from './Button.svelte';
   import { COMMANDS } from '../ipc/generated/commands';
-  import type { MusicTrackDto, MusicPlaylistResponse, MusicGetTrackDataResponse, MusicSettingsDto } from '../ipc/generated';
+  import type {
+    MusicTrackDto,
+    MusicPlaylistResponse,
+    MusicGetTrackDataResponse,
+    MusicSettingsDto,
+    MusicCheckCommandResponse,
+  } from '../ipc/generated';
 
   interface Props {
     isGameRunning?: boolean;
@@ -241,16 +247,252 @@
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   }
 
-  // Auto-pause when Minecraft game starts
+  // Windows SMTC (System Media Transport Controls) & Session Synchronization
+  let fadeInterval: ReturnType<typeof setInterval> | null = null;
+  let commandPollInterval: ReturnType<typeof setInterval> | null = null;
+  let isFadingOut = $state(false);
+  let prevGameRunning = false;
+
+  export function getIsPlaying(): boolean {
+    return isPlaying;
+  }
+
+  export function getIsFadingOut(): boolean {
+    return isFadingOut;
+  }
+
+  export function getAudioVolume(): number {
+    return audioElement ? audioElement.volume : 0;
+  }
+
+  export function getCurrentTrack(): MusicTrackDto | null {
+    return currentTrack;
+  }
+
+  export function fadeOutAndPause(durationMs = 1200): Promise<void> {
+    return new Promise((resolve) => {
+      if (!audioElement || !isPlaying) {
+        pause();
+        resolve();
+        return;
+      }
+
+      isFadingOut = true;
+      const initialVol = audioElement.volume;
+      const steps = 20;
+      const stepDuration = Math.max(10, Math.floor(durationMs / steps));
+      let currentStep = 0;
+
+      if (fadeInterval) {
+        clearInterval(fadeInterval);
+        fadeInterval = null;
+      }
+
+      fadeInterval = setInterval(() => {
+        currentStep++;
+        const factor = Math.max(0, 1 - currentStep / steps);
+        if (audioElement) {
+          audioElement.volume = initialVol * factor;
+        }
+
+        if (currentStep >= steps || !isPlaying) {
+          if (fadeInterval) {
+            clearInterval(fadeInterval);
+            fadeInterval = null;
+          }
+          pause();
+          isFadingOut = false;
+          // Restore volume setting so user can resume playback later
+          if (audioElement) {
+            audioElement.volume = (isMuted ? 0 : volume) / 100;
+          }
+          resolve();
+        }
+      }, stepDuration);
+    });
+  }
+
+  // Smooth fade-out on Minecraft game launch; strictly do NOT auto-resume when game exits
   $effect(() => {
-    if (isGameRunning && isPlaying) {
-      pause();
+    const running = isGameRunning;
+    if (running && !prevGameRunning) {
+      prevGameRunning = true;
+      if (isPlaying) {
+        fadeOutAndPause();
+      }
+    } else if (!running && prevGameRunning) {
+      prevGameRunning = false;
+      // Parity Item 48: "после выхода сама не включается" -> leave paused
     }
+  });
+
+  export function updateMediaSession() {
+    if (
+      typeof navigator === 'undefined' ||
+      !('mediaSession' in navigator) ||
+      !navigator.mediaSession
+    ) {
+      return;
+    }
+
+    const track = currentTrack;
+    if (!track || !isEnabled) {
+      try {
+        navigator.mediaSession.metadata = null;
+        navigator.mediaSession.playbackState = 'none';
+      } catch {}
+      return;
+    }
+
+    try {
+      const artwork = track.cover_data_url
+        ? [{ src: track.cover_data_url, sizes: '512x512', type: 'image/png' }]
+        : [{ src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' }];
+
+      const MetaClass =
+        typeof window !== 'undefined' && (window as any).MediaMetadata
+          ? (window as any).MediaMetadata
+          : null;
+
+      if (MetaClass) {
+        navigator.mediaSession.metadata = new MetaClass({
+          title: track.title,
+          artist: track.artist,
+          album: 'Wex Music',
+          artwork,
+        });
+      }
+
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    } catch {}
+  }
+
+  export function updateMediaSessionPosition() {
+    if (
+      typeof navigator === 'undefined' ||
+      !('mediaSession' in navigator) ||
+      !navigator.mediaSession ||
+      !('setPositionState' in navigator.mediaSession) ||
+      durationSeconds <= 0
+    ) {
+      return;
+    }
+
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: durationSeconds,
+        playbackRate: 1.0,
+        position: Math.min(positionSeconds, durationSeconds),
+      });
+    } catch {}
+  }
+
+  export function setupMediaSessionHandlers() {
+    if (
+      typeof navigator === 'undefined' ||
+      !('mediaSession' in navigator) ||
+      !navigator.mediaSession
+    ) {
+      return;
+    }
+
+    try {
+      navigator.mediaSession.setActionHandler('play', () => {
+        play();
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        pause();
+      });
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        previous();
+      });
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        next();
+      });
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined && audioElement) {
+          audioElement.currentTime = details.seekTime;
+          positionSeconds = Math.floor(details.seekTime);
+          syncBackendSession();
+        }
+      });
+    } catch {}
+  }
+
+  export async function syncBackendSession() {
+    const track = currentTrack;
+    try {
+      await callTauri(COMMANDS.MUSIC_UPDATE_SESSION, {
+        request: {
+          session: {
+            has_active_session: Boolean(track && isEnabled),
+            source_app: 'Wex',
+            app_id: 'WexLauncher',
+            title: track?.title || '',
+            artist: track?.artist || '',
+            album: 'Wex Music',
+            is_playing: isPlaying,
+            position_seconds: positionSeconds,
+            duration_seconds: durationSeconds,
+            thumbnail_base64: track?.cover_data_url || null,
+            timestamp_ms: BigInt(Date.now()),
+          },
+        },
+      });
+    } catch {}
+  }
+
+  export async function pollCommands() {
+    try {
+      const res = await callTauri<MusicCheckCommandResponse>(COMMANDS.MUSIC_CHECK_COMMAND);
+      if (res?.command) {
+        switch (res.command.toLowerCase()) {
+          case 'play':
+            play();
+            break;
+          case 'pause':
+            pause();
+            break;
+          case 'toggle':
+            togglePlayPause();
+            break;
+          case 'next':
+            next();
+            break;
+          case 'previous':
+          case 'prev':
+            previous();
+            break;
+        }
+      }
+    } catch {}
+  }
+
+  $effect(() => {
+    // React to track, playback, and enabled changes
+    const _track = currentTrack;
+    const _playing = isPlaying;
+    const _enabled = isEnabled;
+    updateMediaSession();
+    syncBackendSession();
   });
 
   onMount(() => {
     loadPlaylist();
     loadSettings();
+    setupMediaSessionHandlers();
+    commandPollInterval = setInterval(pollCommands, 1000);
+  });
+
+  onDestroy(() => {
+    if (fadeInterval) {
+      clearInterval(fadeInterval);
+      fadeInterval = null;
+    }
+    if (commandPollInterval) {
+      clearInterval(commandPollInterval);
+      commandPollInterval = null;
+    }
   });
 </script>
 

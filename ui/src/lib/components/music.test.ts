@@ -13,6 +13,33 @@ describe('MusicDiskWidget and Background Music', () => {
     // Mock HTMLMediaElement play/pause
     window.HTMLMediaElement.prototype.play = vi.fn().mockImplementation(() => Promise.resolve());
     window.HTMLMediaElement.prototype.pause = vi.fn();
+
+    // Mock MediaMetadata and navigator.mediaSession for Windows SMTC
+    class MockMediaMetadata {
+      title: string;
+      artist: string;
+      album: string;
+      artwork: any[];
+      constructor(init?: any) {
+        this.title = init?.title || '';
+        this.artist = init?.artist || '';
+        this.album = init?.album || '';
+        this.artwork = init?.artwork || [];
+      }
+    }
+    (window as any).MediaMetadata = MockMediaMetadata;
+
+    const handlers = new Map<string, Function>();
+    (navigator as any).mediaSession = {
+      metadata: null,
+      playbackState: 'none',
+      handlers,
+      setActionHandler: vi.fn((action: string, handler: Function | null) => {
+        if (handler) handlers.set(action, handler);
+        else handlers.delete(action);
+      }),
+      setPositionState: vi.fn(),
+    };
   });
 
   afterEach(() => {
@@ -162,6 +189,109 @@ describe('MusicDiskWidget and Background Music', () => {
 
     const toggle = target.querySelector('[aria-label="Фоновая музыка"]');
     expect(toggle).not.toBeNull();
+
+    unmount(comp);
+  });
+
+  it('synchronizes track metadata and transport controls with Windows SMTC (navigator.mediaSession)', async () => {
+    const mockTracks = [
+      {
+        id: '1',
+        title: 'Wet Hands',
+        artist: 'C418',
+        file_name: 'C418 - Wet Hands.mp3',
+        cover_data_url: 'data:image/png;base64,mockcover',
+        duration_seconds: 130,
+      },
+      {
+        id: '2',
+        title: 'Mice on Venus',
+        artist: 'C418',
+        file_name: 'C418 - Mice on Venus.mp3',
+        cover_data_url: null,
+        duration_seconds: 281,
+      },
+    ];
+
+    const comp = mount(MusicDiskWidget, {
+      target,
+      props: {
+        initialTracks: mockTracks,
+      },
+    });
+
+    await tick();
+
+    // Verify SMTC metadata is set on navigator.mediaSession
+    expect((navigator as any).mediaSession.metadata).not.toBeNull();
+    expect((navigator as any).mediaSession.metadata.title).toBe('Wet Hands');
+    expect((navigator as any).mediaSession.metadata.artist).toBe('C418');
+    expect((navigator as any).mediaSession.metadata.album).toBe('Wex Music');
+    expect((navigator as any).mediaSession.metadata.artwork).toHaveLength(1);
+    expect((navigator as any).mediaSession.metadata.artwork[0].src).toBe('data:image/png;base64,mockcover');
+
+    // Verify SMTC action handlers are registered
+    const handlers = (navigator as any).mediaSession.handlers;
+    expect(handlers.has('play')).toBe(true);
+    expect(handlers.has('pause')).toBe(true);
+    expect(handlers.has('nexttrack')).toBe(true);
+    expect(handlers.has('previoustrack')).toBe(true);
+
+    // Trigger nexttrack via SMTC handler
+    const nextHandler = handlers.get('nexttrack');
+    nextHandler();
+    await tick();
+
+    expect((navigator as any).mediaSession.metadata.title).toBe('Mice on Venus');
+
+    unmount(comp);
+  });
+
+  it('smoothly fades out volume when game launches and strictly does not auto-resume on game exit', async () => {
+    const mockTracks = [
+      {
+        id: '1',
+        title: 'Sweden',
+        artist: 'C418',
+        file_name: 'C418 - Sweden.mp3',
+        cover_data_url: null,
+        duration_seconds: 215,
+      },
+    ];
+
+    const comp = mount(MusicDiskWidget, {
+      target,
+      props: {
+        initialTracks: mockTracks,
+        isGameRunning: false,
+      },
+    });
+
+    await tick();
+
+    // Set audio src so playback can start without backend IPC fetch in unit test
+    const audio = target.querySelector('audio') as HTMLAudioElement;
+    if (audio) {
+      audio.src = 'data:audio/mp3;base64,mockaudio';
+    }
+
+    // Start playback
+    (comp as any).play();
+    await tick();
+    expect((comp as any).getIsPlaying()).toBe(true);
+
+    // Call fadeOutAndPause with short duration for test (50ms)
+    const fadePromise = (comp as any).fadeOutAndPause(50);
+    expect((comp as any).getIsFadingOut()).toBe(true);
+
+    await fadePromise;
+    expect((comp as any).getIsFadingOut()).toBe(false);
+    expect((comp as any).getIsPlaying()).toBe(false);
+    expect(window.HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+
+    // Verify after game exits, playback stays paused (does not auto-resume)
+    await tick();
+    expect((comp as any).getIsPlaying()).toBe(false);
 
     unmount(comp);
   });
