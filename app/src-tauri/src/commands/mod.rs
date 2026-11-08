@@ -5,6 +5,7 @@ pub mod lobby;
 pub mod mods;
 pub mod network;
 pub mod overview;
+pub mod report;
 pub mod settings;
 pub mod shell;
 pub mod wardrobe;

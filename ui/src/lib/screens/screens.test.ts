@@ -831,6 +831,32 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Process finished with exit code -1');
     expect(target.textContent).toContain('Скопировать отчёт');
     expect(target.textContent).toContain('Открыть лог');
+    expect(target.textContent).toContain('Отправить отчёт');
+    unmount(comp);
+  });
+
+  it('opens ReportSheet from CrashSheet with anonymized bug report details', async () => {
+    const comp = mount(CrashSheet, {
+      target,
+      props: {
+        open: true,
+        version: '1.21.1',
+        diagnosis: {
+          kind: 'OutOfMemory',
+          title: 'Нехватка оперативной памяти (OutOfMemoryError)',
+          user_advice: 'Выделите больше памяти в настройках.',
+          technical_summary: 'OutOfMemoryError at C:\\Users\\User1\\launch.jar',
+        },
+      },
+    });
+
+    const reportBtn = target.querySelector('[data-testid="btn-open-report"]') as HTMLElement;
+    expect(reportBtn).not.toBeNull();
+    reportBtn.click();
+    await tick();
+
+    expect(target.textContent).toContain('Отчёт об ошибке');
+    expect(target.textContent).toContain('Сохранить на рабочий стол (.zip)');
     unmount(comp);
   });
 
