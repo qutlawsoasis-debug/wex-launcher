@@ -27,6 +27,7 @@
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Toggle from '../components/Toggle.svelte';
   import Icon from '../components/icons/Icon.svelte';
+  import { t, i18n } from '../i18n';
   import type { WorldItemDto, WorldBackupItemDto, ScreenshotItemDto } from '../ipc/generated';
 
   export interface ResourcePackItem {
@@ -477,10 +478,10 @@
       <div class="section-segmented">
         <SegmentedControl
           options={[
-            { value: 'worlds', label: 'Миры' },
-            { value: 'resourcepacks', label: 'Ресурс-паки' },
-            { value: 'shaders', label: 'Шейдеры' },
-            { value: 'screenshots', label: 'Скриншоты' },
+            { value: 'worlds', label: t('workshop.tab_worlds') },
+            { value: 'resourcepacks', label: t('workshop.tab_resourcepacks') },
+            { value: 'shaders', label: t('workshop.tab_shaders') },
+            { value: 'screenshots', label: t('workshop.tab_screenshots') },
           ]}
           bind:value={activeTab}
           onchange={(val: string) => {
@@ -509,36 +510,36 @@
           variant="secondary"
           size="small"
           onclick={() => triggerAddPack('resourcepack')}
-          title="Добавить ZIP файл ресурс-пака"
+          title={i18n.locale === 'en' ? 'Add ZIP resource pack archive' : 'Добавить ZIP файл ресурс-пака'}
         >
           <Icon name="folder" size={14} color="var(--color-label)" />
-          <span>Добавить ZIP…</span>
+          <span>{t('workshop.add_pack')}</span>
         </Button>
         <Button
           variant="ghost"
           size="small"
           onclick={() => openFolderForType('resourcepack')}
-          title="Открыть папку ресурс-паков в проводнике"
+          title={i18n.locale === 'en' ? 'Open resource packs folder in Explorer' : 'Открыть папку ресурс-паков в проводнике'}
         >
-          <span>Папка паков</span>
+          <span>{t('workshop.folder_packs')}</span>
         </Button>
       {:else if activeTab === 'shaders'}
         <Button
           variant="secondary"
           size="small"
           onclick={() => triggerAddPack('shaderpack')}
-          title="Добавить ZIP файл шейдеров"
+          title={i18n.locale === 'en' ? 'Add ZIP shader pack archive' : 'Добавить ZIP файл шейдеров'}
         >
           <Icon name="folder" size={14} color="var(--color-label)" />
-          <span>Добавить ZIP…</span>
+          <span>{t('workshop.add_pack')}</span>
         </Button>
         <Button
           variant="ghost"
           size="small"
           onclick={() => openFolderForType('shaderpack')}
-          title="Открыть папку шейдеров в проводнике"
+          title={i18n.locale === 'en' ? 'Open shader packs folder in Explorer' : 'Открыть папку шейдеров в проводнике'}
         >
-          <span>Папка шейдеров</span>
+          <span>{t('workshop.folder_shaders')}</span>
         </Button>
       {/if}
 
@@ -547,10 +548,10 @@
         size="small"
         onclick={refreshCurrentTab}
         loading={isLoading}
-        title="Обновить список"
+        title={t('common.refresh')}
       >
         <Icon name="refresh" size={15} color="var(--color-secondary-label)" />
-        <span>Обновить</span>
+        <span>{t('common.refresh')}</span>
       </Button>
     </div>
   </header>
@@ -564,9 +565,9 @@
           <div class="empty-icon-wrap">
             <Icon name="folder" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h3 class="empty-title">Сохранённых миров нет</h3>
+          <h3 class="empty-title">{t('workshop.worlds_empty_title')}</h3>
           <p class="empty-description">
-            Создайте одиночный мир в игре Minecraft {currentVersion}, чтобы управлять им здесь.
+            {t('workshop.worlds_empty_desc', { version: currentVersion })}, {i18n.locale === 'en' ? 'to manage it here.' : 'чтобы управлять им здесь.'}
           </p>
         </div>
       {:else}
@@ -658,13 +659,13 @@
           <div class="empty-icon-wrap">
             <Icon name="folder" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h3 class="empty-title">Ресурс-паков пока нет</h3>
+          <h3 class="empty-title">{t('workshop.resourcepacks_empty_title')}</h3>
           <p class="empty-description">
-            Поместите ZIP-архив с ресурс-паком в папку resourcepacks инстанса Minecraft {currentVersion} или нажмите кнопку «Добавить ZIP…».
+            {t('workshop.resourcepacks_empty_desc')}
           </p>
           <div style="margin-top: 16px;">
             <Button variant="secondary" size="small" onclick={() => openFolderForType('resourcepack')}>
-              <span>Открыть папку ресурс-паков</span>
+              <span>{t('workshop.folder_packs')}</span>
             </Button>
           </div>
         </div>
@@ -752,13 +753,13 @@
           <div class="empty-icon-wrap">
             <Icon name="sun" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h3 class="empty-title">Шейдер-паков пока нет</h3>
+          <h3 class="empty-title">{t('workshop.shaders_empty_title')}</h3>
           <p class="empty-description">
-            Поместите ZIP-архив с шейдерами в папку shaderpacks инстанса Minecraft {currentVersion} или нажмите кнопку «Добавить ZIP…».
+            {t('workshop.shaders_empty_desc')}
           </p>
           <div style="margin-top: 16px;">
             <Button variant="secondary" size="small" onclick={() => openFolderForType('shaderpack')}>
-              <span>Открыть папку шейдеров</span>
+              <span>{t('workshop.folder_shaders')}</span>
             </Button>
           </div>
         </div>
@@ -886,9 +887,9 @@
           <div class="empty-icon-wrap">
             <Icon name="sun" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h3 class="empty-title">Снимков экрана пока нет</h3>
+          <h3 class="empty-title">{t('workshop.screenshots_empty_title')}</h3>
           <p class="empty-description">
-            Нажмите клавишу F2 во время игры, чтобы сделать снимок экрана в Minecraft {currentVersion}.
+            {t('workshop.screenshots_empty_desc')}
           </p>
         </div>
       {:else}

@@ -9,6 +9,8 @@
   - Human Interface Guidelines: Toolbars & Windows
 -->
 <script lang="ts">
+  import { t } from '../i18n';
+
   interface Props {
     playerName?: string;
     isOnline?: boolean;
@@ -50,7 +52,10 @@
 <div
   class="apple-profile-badge"
   role="status"
-  aria-label="Профиль игрока: {playerName}, {isOnline ? 'в сети' : 'не в сети'}"
+  aria-label={t('toolbar.profile_aria', {
+    player: playerName,
+    status: isOnline ? t('toolbar.status_online') : t('toolbar.status_offline'),
+  })}
   data-tauri-drag-region="false"
 >
   <!-- Avatar: Head skin or initial letter -->

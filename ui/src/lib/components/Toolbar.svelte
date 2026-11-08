@@ -11,6 +11,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import Icon from './icons/Icon.svelte';
+  import { t } from '../i18n';
 
   interface Props {
     title?: string;
@@ -68,9 +69,9 @@
           <button
             type="button"
             class="window-btn minimize"
-            title="Свернуть"
+            title={t('toolbar.minimize')}
             onclick={onminimize}
-            aria-label="Свернуть окно"
+            aria-label={t('toolbar.minimize')}
           >
             <Icon name="minimize" size={12} color="var(--color-secondary-label)" />
           </button>
@@ -78,9 +79,9 @@
           <button
             type="button"
             class="window-btn maximize"
-            title={isMaximized ? 'Восстановить' : 'Развернуть'}
+            title={isMaximized ? t('toolbar.restore') : t('toolbar.maximize')}
             onclick={onmaximize}
-            aria-label={isMaximized ? 'Восстановить окно' : 'Развернуть окно'}
+            aria-label={isMaximized ? t('toolbar.restore') : t('toolbar.maximize')}
           >
             <Icon name={isMaximized ? 'restore' : 'maximize'} size={11} color="var(--color-secondary-label)" />
           </button>
@@ -88,9 +89,9 @@
           <button
             type="button"
             class="window-btn close"
-            title="Закрыть"
+            title={t('toolbar.close')}
             onclick={onclose}
-            aria-label="Закрыть окно"
+            aria-label={t('toolbar.close')}
           >
             <Icon name="close" size={13} color="var(--color-secondary-label)" />
           </button>

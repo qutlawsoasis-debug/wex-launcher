@@ -19,6 +19,7 @@
   import SearchField from '../components/SearchField.svelte';
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Icon from '../components/icons/Icon.svelte';
+  import { t, i18n } from '../i18n';
 
   export interface ModEntryModel {
     id: string;
@@ -57,12 +58,12 @@
     { value: '1.20.1', label: '1.20.1' },
   ];
 
-  const filterTabs = [
-    { value: 'all', label: 'Все моды' },
-    { value: 'enabled', label: 'Включённые' },
-    { value: 'pack', label: 'Пак Wex' },
-    { value: 'custom', label: 'Пользовательские' },
-  ];
+  let filterTabs = $derived([
+    { value: 'all', label: t('mods.tab_all') },
+    { value: 'enabled', label: t('mods.tab_enabled') },
+    { value: 'pack', label: t('mods.tab_pack') },
+    { value: 'custom', label: t('mods.tab_custom') },
+  ]);
 
   let filteredMods = $derived(
     mods.filter((m) => {
@@ -242,7 +243,7 @@
         class="hidden-file-input"
         bind:this={fileInputRef}
         onchange={handleFileSelected}
-        aria-label="Выбрать файл мода .jar"
+        aria-label={t('mods.add_mod')}
       />
       <Button
         variant="primary"
@@ -251,17 +252,17 @@
         disabled={isAdding}
       >
         <Icon name="plus" size={13} color="#ffffff" />
-        <span>Добавить мод...</span>
+        <span>{t('mods.add_mod')}</span>
       </Button>
 
       <Button
         variant="secondary"
         size="small"
         onclick={handleOpenModsDir}
-        title="Открыть папку инстанса с модами в Проводнике"
+        title={t('mods.open_folder')}
       >
         <Icon name="folder" size={13} color="var(--color-secondary-label)" />
-        <span>Папка с модами</span>
+        <span>{t('mods.open_folder')}</span>
       </Button>
     </div>
   </div>
@@ -269,7 +270,7 @@
   <!-- Search & Category Filters -->
   <div class="screen-filters">
     <div class="search-wrap">
-      <SearchField placeholder="Поиск модов..." bind:value={searchQuery} />
+      <SearchField placeholder={t('mods.search_placeholder')} bind:value={searchQuery} />
     </div>
     <div class="tabs-wrap">
       <SegmentedControl options={filterTabs} bind:value={filterTab} size="small" />
@@ -278,11 +279,11 @@
 
   <!-- Mods List Area -->
   <div class="mods-content">
-    <List header="Установленные моды (версия {selectedVersion}) • {filteredMods.length} из {mods.length}">
+    <List header={i18n.locale === 'en' ? `Installed Mods (version ${selectedVersion}) • ${filteredMods.length} of ${mods.length}` : `Установленные моды (версия ${selectedVersion}) • ${filteredMods.length} из ${mods.length}`}>
       {#if loading}
         <div class="empty-state">
           <Icon name="refresh" size={28} color="var(--color-tertiary-label)" />
-          <span class="empty-title">Загрузка модов...</span>
+          <span class="empty-title">{t('common.loading')}</span>
         </div>
       {:else}
         {#each filteredMods as m (m.file_name)}
@@ -303,14 +304,14 @@
             {#snippet trailing()}
               <div class="mod-controls">
                 {#if m.is_pack_mod}
-                  <span class="pack-badge" title="Мод входит в официальную сборку Wex и защищён от удаления">Пак Wex</span>
+                  <span class="pack-badge" title="Мод входит в официальную сборку Wex и защищён от удаления">{t('mods.pack_badge')}</span>
                 {:else}
                   <button
                     type="button"
                     class="delete-btn"
                     onclick={() => handleDeleteMod(m)}
-                    title="Удалить пользовательский мод"
-                    aria-label="Удалить {m.name}"
+                    title={t('mods.delete_tooltip')}
+                    aria-label="{t('mods.delete_tooltip')} {m.name}"
                   >
                     <Icon name="trash" size={14} color="var(--color-system-red)" />
                   </button>
@@ -327,10 +328,10 @@
           <div class="empty-state">
             <Icon name="mods" size={32} color="var(--color-tertiary-label)" />
             <span class="empty-title">
-              {searchQuery ? `По запросу «${searchQuery}» ничего не найдено` : 'Моды не найдены'}
+              {searchQuery ? t('mods.empty_search', { query: searchQuery }) : t('mods.empty_title')}
             </span>
             <span class="empty-subtitle">
-              {searchQuery ? 'Попробуйте изменить поисковый запрос или категорию' : 'В папке инстанса пока нет модов. Нажмите «Добавить мод...», чтобы установить первый мод'}
+              {searchQuery ? (i18n.locale === 'en' ? 'Try changing your search query or filter tab' : 'Попробуйте изменить поисковый запрос или категорию') : t('mods.empty_default')}
             </span>
           </div>
         {/each}

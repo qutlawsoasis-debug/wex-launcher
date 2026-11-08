@@ -14,6 +14,7 @@
   import List from '../components/List.svelte';
   import Row from '../components/Row.svelte';
   import Icon from '../components/icons/Icon.svelte';
+  import { t, i18n } from '../i18n';
   import { COMMANDS } from '../ipc/generated/commands';
   import type { WardrobeItemDto, WardrobeStateDto, SkinValidationResultDto } from '../ipc/generated';
 
@@ -44,22 +45,22 @@
   let capeInputRef: HTMLInputElement | null = null;
   let canvasRef: HTMLCanvasElement | null = null;
 
-  const modelOptions = [
-    { value: 'default', label: 'Классическая (4 px)' },
-    { value: 'slim', label: 'Тонкая (3 px)' },
-  ];
+  let modelOptions = $derived([
+    { value: 'default', label: t('wardrobe.model_default') },
+    { value: 'slim', label: t('wardrobe.model_slim') },
+  ]);
 
-  const viewOptions = [
-    { value: 'front', label: 'Спереди' },
-    { value: 'back', label: 'Сзади' },
-  ];
+  let viewOptions = $derived([
+    { value: 'front', label: t('wardrobe.view_front') },
+    { value: 'back', label: t('wardrobe.view_back') },
+  ]);
 
-  const capeOptions = [
-    { id: 'none', name: 'Без плаща', desc: 'Стандартный вид без накидки' },
-    { id: 'cyan', name: 'Aura Cyan', desc: 'Официальный лазурный плащ Aura' },
-    { id: 'silver', name: 'Aura Silver', desc: 'Официальный серебристый плащ Aura' },
-    { id: 'custom', name: 'Пользовательский', desc: 'Загрузить файл накидки (PNG)' },
-  ];
+  let capeOptions = $derived([
+    { id: 'none', name: t('wardrobe.cape_none'), desc: t('wardrobe.cape_none_desc') },
+    { id: 'cyan', name: t('wardrobe.cape_cyan'), desc: t('wardrobe.cape_cyan_desc') },
+    { id: 'silver', name: t('wardrobe.cape_silver'), desc: t('wardrobe.cape_silver_desc') },
+    { id: 'custom', name: t('wardrobe.cape_custom'), desc: t('wardrobe.cape_custom_desc') },
+  ]);
 
   async function callTauri<T>(command: string, args: Record<string, any> = {}): Promise<T> {
     try {
@@ -553,7 +554,7 @@
             disabled={isValidating}
           >
             <Icon name="folder" size={14} color="var(--color-label)" />
-            <span>Загрузить скин (PNG)</span>
+            <span>{t('wardrobe.upload_skin')}</span>
           </Button>
 
           <Button
@@ -561,7 +562,7 @@
             size="small"
             onclick={handleResetDefault}
           >
-            <span>Сбросить на стандартный</span>
+            <span>{t('wardrobe.reset_default')}</span>
           </Button>
         </div>
       </div>
@@ -577,7 +578,7 @@
       {/if}
 
       <!-- Model Type Segmented Control -->
-      <List header="Тип модели персонажа">
+      <List header={i18n.locale === 'en' ? 'Character Model' : 'Тип модели персонажа'}>
         <div class="list-control-wrap">
           <SegmentedControl
             options={modelOptions}
@@ -588,7 +589,7 @@
       </List>
 
       <!-- Capes Selection Section -->
-      <List header="Плащ игрока">
+      <List header={i18n.locale === 'en' ? 'Player Cape' : 'Плащ игрока'}>
         {#each capeOptions as cape}
           {@const isSelected = selectedCapeId === cape.id}
           <Row
@@ -617,7 +618,7 @@
                       capeInputRef?.click();
                     }}
                   >
-                    Обзор...
+                    {i18n.locale === 'en' ? 'Browse...' : 'Обзор...'}
                   </button>
                 {/if}
 
@@ -633,16 +634,16 @@
       </List>
 
       <!-- History of Skins Section -->
-      <List header="История скинов" footer="Ранее использованные скины сохраняются локально в профиле лаунчера.">
+      <List header={i18n.locale === 'en' ? 'Wardrobe History' : 'История скинов'} footer={i18n.locale === 'en' ? 'Previously used skins are saved locally in your launcher profile.' : 'Ранее использованные скины сохраняются локально в профиле лаунчера.'}>
         {#if historyItems.length === 0}
           <div class="empty-history">
-            <span class="empty-text">История гардероба пуста</span>
+            <span class="empty-text">{t('wardrobe.history_empty')}</span>
           </div>
         {:else}
           {#each historyItems as item}
             <Row
               title={item.name}
-              subtitle={`${item.model === 'slim' ? 'Тонкая' : 'Классическая'} • ${item.created_utc.slice(0, 10)}`}
+              subtitle={`${item.model === 'slim' ? (i18n.locale === 'en' ? 'Slim' : 'Тонкая') : (i18n.locale === 'en' ? 'Classic' : 'Классическая')} • ${item.created_utc.slice(0, 10)}`}
               clickable
               onclick={() => selectHistorySkin(item)}
             >
@@ -651,7 +652,7 @@
                   <button
                     type="button"
                     class="delete-item-btn"
-                    title="Удалить из истории"
+                    title={t('common.delete')}
                     onclick={(e) => deleteHistorySkin(item, e)}
                   >
                     <Icon name="close" size={14} color="var(--color-secondary-label)" />
@@ -671,7 +672,7 @@
           onclick={applyWardrobe}
           disabled={isApplying}
         >
-          <span>{isApplying ? 'Применение...' : 'Применить к игре'}</span>
+          <span>{isApplying ? t('wardrobe.applying') : t('wardrobe.apply_to_game')}</span>
         </Button>
       </div>
     </div>

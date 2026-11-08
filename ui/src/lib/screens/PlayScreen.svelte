@@ -18,6 +18,7 @@
   import Icon from '../components/icons/Icon.svelte';
   import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
   import { theme } from '../design/theme.svelte';
+  import { t, i18n } from '../i18n';
 
   interface ReleaseNoteItem {
     category?: string;
@@ -251,7 +252,7 @@
       <div class="header-main-row">
         <div class="header-titles">
           <h1 class="game-heading">Minecraft</h1>
-          <p class="game-subheading">Клиент Wex • Версия {selectedVersion}</p>
+          <p class="game-subheading">{t('play.client_title')} • {t('play.version_label')} {selectedVersion}</p>
         </div>
         <div class="header-tools">
           <Button
@@ -261,7 +262,7 @@
             title="Мастер импорта данных из старого лаунчера"
           >
             <Icon name="folder" size={14} color="var(--color-secondary-label)" />
-            <span>Импорт</span>
+            <span>{t('import.action_import')}</span>
           </Button>
         </div>
       </div>
@@ -335,7 +336,7 @@
           />
           <div class="dock-cancel-action dock-cancel">
             <Button variant="secondary" size="regular" onclick={oncancel}>
-              Отмена
+              {t('common.cancel')}
             </Button>
           </div>
         </div>
@@ -343,7 +344,7 @@
         <div class="dock-controls-row">
           <!-- Version Selector -->
           <div class="dock-block version-block">
-            <span class="dock-caption">Версия игры</span>
+            <span class="dock-caption">{t('play.version_label')}</span>
             <div class="version-segmented-container">
               <SegmentedControl
                 options={versions}
@@ -357,17 +358,17 @@
 
           <!-- Player Nickname -->
           <div class="dock-block nickname-block">
-            <span class="dock-caption">Имя игрока</span>
+            <span class="dock-caption">{t('play.account_label')}</span>
             <div class="nickname-field-box">
               <Icon name="friends" size={15} color="var(--color-tertiary-label)" />
               <input
                 type="text"
                 bind:value={playerName}
-                placeholder="Имя игрока"
+                placeholder={t('play.nickname_placeholder')}
                 class="player-name-input nickname-input"
                 maxlength={16}
                 disabled={isLaunching || isRunning}
-                aria-label="Имя игрока"
+                aria-label={t('play.nickname_placeholder')}
               />
             </div>
           </div>
@@ -377,12 +378,12 @@
           <!-- Java Environment & Core Status -->
           <div class="dock-block tech-block">
             <span class="dock-caption">
-              {isRunning ? 'Статус сессии' : 'Среда выполнения'}
+              {isRunning ? (i18n.locale === 'en' ? 'Session Status' : 'Статус сессии') : (i18n.locale === 'en' ? 'Runtime Environment' : 'Среда выполнения')}
             </span>
             <div class="tech-runtime-box">
               <span class="tech-runtime-text">{javaRuntime}</span>
               {#if isRunning}
-                <span class="tech-status-badge running">• В игре</span>
+                <span class="tech-status-badge running">• {i18n.locale === 'en' ? 'Playing' : 'В игре'}</span>
               {:else if clientStatus}
                 <span class="tech-status-badge">• {clientStatus}</span>
               {/if}
@@ -396,10 +397,10 @@
                 variant="secondary"
                 size="large"
                 onclick={onstop}
-                title="Остановить процесс Minecraft"
+                title={i18n.locale === 'en' ? 'Stop Minecraft process' : 'Остановить процесс Minecraft'}
               >
                 <span class="running-indicator-dot"></span>
-                <span>В игре • Остановить</span>
+                <span>{i18n.locale === 'en' ? 'Playing • Stop' : 'В игре • Остановить'}</span>
               </Button>
             {:else}
               <Button
@@ -409,7 +410,7 @@
                 disabled={!playerName.trim() || isLaunching || isRunning}
               >
                 <Icon name="play" size={18} color="#ffffff" />
-                <span>Играть</span>
+                <span>{t('play.launch')}</span>
               </Button>
             {/if}
           </div>
