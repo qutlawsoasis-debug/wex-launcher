@@ -257,101 +257,6 @@ fn remove_server(address: String, state: State<'_, AppState>) -> Result<(), Stri
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// Lobby Management (SPEC.md 1.4)
-// ---------------------------------------------------------------------------
-
-#[tauri::command]
-async fn create_lobby_room(
-    world_name: String,
-    state: State<'_, AppState>,
-) -> Result<LobbyRoomModel, String> {
-    let code = format!(
-        "#{:X}",
-        std::time::SystemTime::now()
-            .elapsed()
-            .unwrap_or_default()
-            .as_millis()
-            % 0xFFFF
-    );
-
-    let room = LobbyRoomModel {
-        code,
-        host_name: "HostPlayer".to_string(),
-        world_name,
-        tunnel_address: Some("tunnel.playit.gg:25565".to_string()),
-        tunnel_active: true,
-        is_host: true,
-        players: vec![LobbyPlayerModel {
-            name: "HostPlayer".to_string(),
-            is_host: true,
-            ping_ms: 0,
-            mods_synced: true,
-        }],
-        mod_mismatch_count: 0,
-        total_mods: 142,
-    };
-
-    let mut active = state.active_lobby.lock().map_err(|e| e.to_string())?;
-    *active = Some(room.clone());
-    Ok(room)
-}
-
-#[tauri::command]
-async fn join_lobby_room(
-    code: String,
-    state: State<'_, AppState>,
-) -> Result<LobbyRoomModel, String> {
-    let room = LobbyRoomModel {
-        code: code.clone(),
-        host_name: "HostPlayer".to_string(),
-        world_name: "Survival World".to_string(),
-        tunnel_address: Some("tunnel.playit.gg:25565".to_string()),
-        tunnel_active: true,
-        is_host: false,
-        players: vec![
-            LobbyPlayerModel {
-                name: "HostPlayer".to_string(),
-                is_host: true,
-                ping_ms: 24,
-                mods_synced: true,
-            },
-            LobbyPlayerModel {
-                name: "Player".to_string(),
-                is_host: false,
-                ping_ms: 18,
-                mods_synced: true,
-            },
-        ],
-        mod_mismatch_count: 0,
-        total_mods: 142,
-    };
-
-    let mut active = state.active_lobby.lock().map_err(|e| e.to_string())?;
-    *active = Some(room.clone());
-    Ok(room)
-}
-
-#[tauri::command]
-fn get_lobby_status(
-    code: String,
-    state: State<'_, AppState>,
-) -> Result<Option<LobbyRoomModel>, String> {
-    let active = state.active_lobby.lock().map_err(|e| e.to_string())?;
-    if let Some(ref r) = *active {
-        if r.code == code {
-            return Ok(Some(r.clone()));
-        }
-    }
-    Ok(None)
-}
-
-#[tauri::command]
-fn close_lobby_room(_code: String, state: State<'_, AppState>) -> Result<(), String> {
-    let mut active = state.active_lobby.lock().map_err(|e| e.to_string())?;
-    *active = None;
-    Ok(())
-}
 
 // ---------------------------------------------------------------------------
 // Tauri Application Runner
@@ -362,9 +267,15 @@ pub fn run() {
         .setup(|app| {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();
-            let play_state = PlayState::new_real(paths, app.handle().clone());
+            let play_state = PlayState::new_real(paths.clone(), app.handle().clone());
             app.manage(play_state);
             app.manage(AppState::default());
+            let lobby_state = commands::lobby::LobbyState::new(
+                paths.root.join("tools"),
+                commands::lobby::DEFAULT_LOBBY_API_URL,
+                commands::lobby::DEFAULT_OLD_BACKEND_URL,
+            );
+            app.manage(lobby_state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -391,11 +302,27 @@ pub fn run() {
             ping_server,
             add_server,
             remove_server,
-            // Lobby commands
-            create_lobby_room,
-            join_lobby_room,
-            get_lobby_status,
-            close_lobby_room,
+            // Lobby commands (from commands::lobby)
+            commands::lobby::net_lobby_create,
+            commands::lobby::net_lobby_join,
+            commands::lobby::net_lobby_open,
+            commands::lobby::net_lobby_status,
+            commands::lobby::net_lobby_heartbeat,
+            commands::lobby::net_lobby_close,
+            commands::lobby::net_lobby_leave,
+            commands::lobby::net_lobby_kick,
+            commands::lobby::net_lobby_tunnel_config,
+            commands::lobby::net_lobby_list_open_rooms,
+            commands::lobby::net_tunnel_ensure_binary,
+            commands::lobby::net_tunnel_start,
+            commands::lobby::net_tunnel_stop,
+            commands::lobby::net_tunnel_status,
+            commands::lobby::create_lobby_room,
+            commands::lobby::join_lobby_room,
+            commands::lobby::get_lobby_status,
+            commands::lobby::close_lobby_room,
+            commands::lobby::kick_lobby_player,
+            commands::lobby::list_open_rooms,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -165,6 +165,28 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  it('renders LobbyScreen cloud mode with honest service unavailable state without fake rooms', async () => {
+    const comp = mount(LobbyScreen, { target });
+
+    // Switch to cloud mode
+    const cloudBtn = Array.from(target.querySelectorAll('button')).find(
+      (b) => b.textContent?.includes('Облачные миры')
+    );
+    expect(cloudBtn).not.toBeUndefined();
+    cloudBtn?.click();
+
+    // Trigger fetchCloudRooms or allow effect to settle
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Must show authentic service unavailable or empty state, strictly zero fake rooms
+    expect(target.textContent).toContain('Сервис недоступен');
+    expect(target.textContent).toContain('Повторить попытку');
+    expect(target.textContent).not.toContain('mc.wexmc.net');
+    expect(target.textContent).not.toContain('Aura Official');
+
+    unmount(comp);
+  });
+
   it('renders FriendsScreen with clean empty state and search action', () => {
     const comp = mount(FriendsScreen, { target });
     expect(target.textContent).toContain('Список друзей пуст');
