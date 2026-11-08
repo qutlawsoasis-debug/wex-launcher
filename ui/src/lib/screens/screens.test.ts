@@ -11,6 +11,7 @@ import ModsScreen from './ModsScreen.svelte';
 import SettingsScreen from './SettingsScreen.svelte';
 import WorkshopScreen from './WorkshopScreen.svelte';
 import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
+import CrashSheet from '../components/CrashSheet.svelte';
 
 vi.mock('@tauri-apps/api/core', () => {
   return {
@@ -640,6 +641,28 @@ describe('Wex Launcher Screens', () => {
     });
 
     expect(target.textContent).toContain('Нет сети — запуск без обновления');
+    unmount(comp);
+  });
+
+  it('renders CrashSheet with honest unknown diagnosis without fake reasons', () => {
+    const comp = mount(CrashSheet, {
+      target,
+      props: {
+        open: true,
+        version: '1.21.1',
+        diagnosis: {
+          kind: { Unknown: { exit_code: -1 } },
+          title: 'Игра завершилась с ошибкой (код -1)',
+          user_advice: 'Причина сбоя не определена.',
+          technical_summary: 'Process finished with exit code -1',
+        },
+      },
+    });
+
+    expect(target.textContent).toContain('Причина не определена');
+    expect(target.textContent).toContain('Process finished with exit code -1');
+    expect(target.textContent).toContain('Скопировать отчёт');
+    expect(target.textContent).toContain('Открыть лог');
     unmount(comp);
   });
 });

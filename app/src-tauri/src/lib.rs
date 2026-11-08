@@ -290,6 +290,11 @@ pub fn run() {
             commands::workshop_packs::workshop_add_pack_file,
             commands::workshop_packs::workshop_delete_pack_file,
             commands::workshop_packs::workshop_open_packs_folder,
+            // Crash diagnosis commands (SPEC 2.10)
+            commands::crash::extras_analyze_crash,
+            commands::crash::crash_get_last_diagnosis,
+            commands::crash::crash_open_log_file,
+            commands::crash::crash_disable_mod,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
