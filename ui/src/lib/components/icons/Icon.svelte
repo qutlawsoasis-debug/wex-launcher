@@ -34,7 +34,11 @@
       | 'copy'
       | 'trophy'
       | 'camera'
-      | 'clock';
+      | 'clock'
+      | 'forward'
+      | 'backward'
+      | 'volume'
+      | 'volume-x';
     size?: number;
     color?: string;
     class?: string;
@@ -179,6 +183,19 @@
   {:else if name === 'clock'}
     <circle cx="12" cy="12" r="10"></circle>
     <polyline points="12 6 12 12 16 14"></polyline>
+  {:else if name === 'forward'}
+    <polygon points="5 4 15 12 5 20 5 4" fill={color} stroke="none"></polygon>
+    <line x1="19" y1="5" x2="19" y2="19"></line>
+  {:else if name === 'backward'}
+    <polygon points="19 20 9 12 19 4 19 20" fill={color} stroke="none"></polygon>
+    <line x1="5" y1="19" x2="5" y2="5"></line>
+  {:else if name === 'volume'}
+    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+  {:else if name === 'volume-x'}
+    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+    <line x1="23" y1="9" x2="17" y2="15"></line>
+    <line x1="17" y1="9" x2="23" y2="15"></line>
   {/if}
 </svg>
 
