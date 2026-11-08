@@ -151,6 +151,14 @@ pub fn resolve_trusted_public_key(
     explicit_key: Option<&str>,
     app: Option<&AppHandle>,
 ) -> Option<String> {
+    resolve_trusted_public_key_internal(explicit_key, app, cfg!(debug_assertions))
+}
+
+pub fn resolve_trusted_public_key_internal(
+    explicit_key: Option<&str>,
+    app: Option<&AppHandle>,
+    allow_debug_env: bool,
+) -> Option<String> {
     if let Some(key) = explicit_key {
         let trimmed = key.trim();
         if !trimmed.is_empty() {
@@ -158,15 +166,19 @@ pub fn resolve_trusted_public_key(
         }
     }
 
-    if let Ok(key) =
-        std::env::var("WEX_UPDATER_PUBKEY").or_else(|_| std::env::var("TAURI_UPDATER_PUBKEY"))
-    {
-        let trimmed = key.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_string());
+    // Environment variables are strictly allowed only under cfg(debug_assertions)
+    if allow_debug_env {
+        if let Ok(key) =
+            std::env::var("WEX_UPDATER_PUBKEY").or_else(|_| std::env::var("TAURI_UPDATER_PUBKEY"))
+        {
+            let trimmed = key.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
         }
     }
 
+    // In release builds, public key is sourced strictly from embedded binary config in AppHandle
     if let Some(handle) = app {
         if let Some(plugin_val) = handle.config().plugins.0.get("updater") {
             if let Some(pubkey) = plugin_val.get("pubkey").and_then(|v| v.as_str()) {
@@ -178,23 +190,7 @@ pub fn resolve_trusted_public_key(
         }
     }
 
-    // Fallback: check tauri.conf.json on disk
-    for path in ["app/src-tauri/tauri.conf.json", "tauri.conf.json"] {
-        if let Ok(content) = std::fs::read_to_string(path) {
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(pubkey) = val
-                    .pointer("/plugins/updater/pubkey")
-                    .and_then(|v| v.as_str())
-                {
-                    let trimmed = pubkey.trim();
-                    if !trimmed.is_empty() {
-                        return Some(trimmed.to_string());
-                    }
-                }
-            }
-        }
-    }
-
+    // Security hardening: reading tauri.conf.json from disk is completely removed to prevent key injection
     None
 }
 
@@ -986,5 +982,53 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_disk_tauri_conf_with_foreign_key_is_not_used() {
+        let fake_conf_path = std::env::current_dir()
+            .unwrap()
+            .join("tauri.conf.json.security-test");
+        let fake_conf_content = r#"{
+            "plugins": {
+                "updater": {
+                    "pubkey": "RWMaliciousAttackerInjectedKey1234567890=="
+                }
+            }
+        }"#;
+        std::fs::write(&fake_conf_path, fake_conf_content).unwrap();
+
+        // Without AppHandle and without explicit key, resolve must return None
+        // and MUST NOT read anything from disk!
+        let key = resolve_trusted_public_key_internal(None, None, false);
+        assert!(
+            key.is_none(),
+            "Key from disk file must never be used in resolution"
+        );
+
+        let _ = std::fs::remove_file(&fake_conf_path);
+    }
+
+    #[test]
+    fn test_env_var_ignored_in_release_build() {
+        let fake_env_key = "RWAttackerEnvKey123456789012345678901234==";
+        std::env::set_var("WEX_UPDATER_PUBKEY", fake_env_key);
+
+        // 1. In release mode (allow_debug_env = false), environment variables are strictly ignored
+        let release_key = resolve_trusted_public_key_internal(None, None, false);
+        assert!(
+            release_key.is_none(),
+            "Environment variable must be strictly ignored in release mode"
+        );
+
+        // 2. In debug assertions mode (allow_debug_env = true), environment variable is accepted
+        let debug_key = resolve_trusted_public_key_internal(None, None, true);
+        assert_eq!(
+            debug_key.as_deref(),
+            Some(fake_env_key),
+            "Environment variable should be accepted when allow_debug_env is true"
+        );
+
+        std::env::remove_var("WEX_UPDATER_PUBKEY");
     }
 }
