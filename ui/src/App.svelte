@@ -29,6 +29,7 @@
   let playerName = $state('Player');
   let clientStatus = $state('Клиент Wex готов');
   let isLaunching = $state(false);
+  let isGameRunning = $state(false);
   let progressPercentage = $state(0);
   let progressStage = $state('Готов к запуску');
   let progressDetail = $state('Нажмите «Играть» для старта');
@@ -113,7 +114,7 @@
   let cancelLaunchSimulation = false;
 
   async function handleLaunch() {
-    if (isLaunching) return;
+    if (isLaunching || isGameRunning) return;
     isLaunching = true;
     cancelLaunchSimulation = false;
     progressPercentage = 0;
@@ -158,6 +159,7 @@
       }
 
       isLaunching = false;
+      isGameRunning = true;
       progressStage = 'Minecraft запущен';
       progressDetail = `Сессия ${selectedVersion} активна`;
       progressSpeed = '';
@@ -229,13 +231,20 @@
           clientStatus = s.message;
           if (s.state === 'running') {
             isLaunching = false;
+            isGameRunning = true;
             addToast('success', 'Minecraft запущен', s.message);
           } else if (s.state === 'cancelled') {
             isLaunching = false;
+            isGameRunning = false;
             addToast('warning', 'Запуск отменён', s.message);
           } else if (s.state === 'error') {
             isLaunching = false;
+            isGameRunning = false;
             addToast('error', 'Ошибка запуска', s.message);
+          } else if (s.state === 'idle') {
+            isLaunching = false;
+            isGameRunning = false;
+            addToast('info', 'Сессия завершена', s.message);
           }
         }).then((fn) => {
           unlistenStatus = fn;
@@ -298,6 +307,7 @@
           bind:playerName
           {clientStatus}
           {isLaunching}
+          isRunning={isGameRunning}
           {progressPercentage}
           {progressStage}
           {progressDetail}
