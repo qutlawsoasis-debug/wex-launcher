@@ -359,6 +359,7 @@
         placeholder="Код друга (#A7X9)..."
         bind:value={friendCodeInput}
         onkeydown={(e) => e.key === 'Enter' && handleSendRequest()}
+        aria-label="Код друга"
       />
       <Button
         variant="primary"
@@ -604,6 +605,7 @@
 
   .friend-code-input:focus {
     border-color: var(--color-system-blue);
+    box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
   }
 
   .tab-pane {
