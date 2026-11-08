@@ -210,6 +210,7 @@
     selectedVersion?: string;
     serversCount: number;
     skinsCount: number;
+    worldsCount?: number;
   }) {
     if (result.nickname) {
       playerName = result.nickname;

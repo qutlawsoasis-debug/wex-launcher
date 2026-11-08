@@ -52,7 +52,9 @@ export type ImportedCapeDto = { file_name: string, path: string, hash: string, }
 
 export type ImportedWardrobeItemDto = { id: string, item_type: string, name: string, hash: string, model: string, };;
 
-export type OldLauncherDataDto = { nickname: string, ram_mb: number, selected_version: string, graphics_preset: string | null, total_play_time_seconds: bigint, total_game_launches: number, servers: Array<ImportedServerDto>, skins: Array<ImportedSkinDto>, capes: Array<ImportedCapeDto>, wardrobe_history: Array<ImportedWardrobeItemDto>, };;
+export type ImportedWorldDto = { folder_name: string, display_name: string, version: string | null, source_path: string, size_bytes: bigint, };;
+
+export type OldLauncherDataDto = { nickname: string, ram_mb: number, selected_version: string, graphics_preset: string | null, total_play_time_seconds: bigint, total_game_launches: number, servers: Array<ImportedServerDto>, skins: Array<ImportedSkinDto>, capes: Array<ImportedCapeDto>, wardrobe_history: Array<ImportedWardrobeItemDto>, worlds?: Array<ImportedWorldDto>, };;
 
 export type PresetTierDto = "Low" | "Medium" | "High" | "Ultra";;
 
