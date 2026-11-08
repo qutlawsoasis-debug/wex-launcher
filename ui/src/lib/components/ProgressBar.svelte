@@ -29,10 +29,10 @@
   let clampedPct = $derived(Math.max(0, Math.min(100, percentage)));
 </script>
 
-<div class="apple-progress-container" aria-label={label || 'Progress'}>
+<div class="apple-progress-container" aria-label={label || 'Прогресс'}>
   {#if label || detail || !indeterminate}
     <div class="progress-info">
-      <span class="progress-label">{label || (indeterminate ? 'Выполнение...' : 'Синхронизация...')}</span>
+      <span class="progress-label">{label || (indeterminate ? 'Выполнение...' : 'Прогресс')}</span>
       <span class="progress-detail">
         {#if detail}
           {detail}
@@ -57,6 +57,7 @@
         class="progress-fill"
         style="width: {clampedPct}%; background-color: {color};"
         role="progressbar"
+        aria-label={label || 'Прогресс'}
         aria-valuenow={Math.round(clampedPct)}
         aria-valuemin="0"
         aria-valuemax="100"
