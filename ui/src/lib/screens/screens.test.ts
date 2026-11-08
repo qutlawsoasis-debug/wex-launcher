@@ -482,6 +482,31 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  it('falls back to 2D character preview in WardrobeScreen when WebGL is unavailable', () => {
+    const comp = mount(WardrobeScreen, {
+      target,
+      props: {
+        playerName: 'Alex',
+      },
+    });
+
+    // In jsdom without WebGL, fallback triggers automatically
+    const canvas2d = target.querySelector('canvas.character-canvas-2d');
+    expect(canvas2d).not.toBeNull();
+    expect(canvas2d?.classList.contains('hidden')).toBe(false);
+
+    // 3D canvas is present but marked hidden in fallback mode
+    const canvas3d = target.querySelector('canvas.character-canvas-3d');
+    expect(canvas3d).not.toBeNull();
+    expect(canvas3d?.classList.contains('hidden')).toBe(true);
+
+    // 2D view controls (front/back) are active
+    expect(target.textContent).toContain('Спереди');
+    expect(target.textContent).toContain('Сзади');
+
+    unmount(comp);
+  });
+
   it('renders WorkshopScreen with tabs, version selector, and authentic empty states', () => {
     const comp = mount(WorkshopScreen, {
       target,
