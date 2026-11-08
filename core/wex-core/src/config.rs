@@ -153,6 +153,13 @@ pub struct LauncherConfig {
 
     #[serde(default = "default_accent")]
     pub accent: String,
+
+    #[serde(
+        default = "default_game_window_behavior",
+        alias = "game_window_behavior",
+        alias = "gameWindowBehavior"
+    )]
+    pub game_window_behavior: String,
 }
 
 fn deserialize_ram<'de, D>(deserializer: D) -> std::result::Result<u32, D::Error>
@@ -203,6 +210,10 @@ fn default_java_mode() -> String {
     "auto".to_string()
 }
 
+fn default_game_window_behavior() -> String {
+    "minimize".to_string()
+}
+
 impl Default for LauncherConfig {
     fn default() -> Self {
         Self {
@@ -219,6 +230,7 @@ impl Default for LauncherConfig {
             reduce_transparency: false,
             appearance: default_appearance(),
             accent: default_accent(),
+            game_window_behavior: default_game_window_behavior(),
         }
     }
 }
@@ -243,6 +255,7 @@ impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
             reduce_transparency: ipc.reduce_transparency,
             appearance: ipc.appearance,
             accent: ipc.accent,
+            game_window_behavior: default_game_window_behavior(),
         }
     }
 }
@@ -330,6 +343,7 @@ mod tests {
         let loaded = LauncherConfig::load_or_default(&config_path);
         assert_eq!(loaded.nickname, "TestUser");
         assert_eq!(loaded.max_memory_mb, 8192);
+        assert_eq!(loaded.game_window_behavior, "minimize");
         assert_eq!(loaded.selected_version, "1.20.1");
     }
 }

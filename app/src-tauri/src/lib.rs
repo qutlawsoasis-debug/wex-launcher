@@ -173,6 +173,9 @@ fn remove_server(address: String, state: State<'_, AppState>) -> Result<(), Stri
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            commands::tray::restore_window(app);
+        }))
         .setup(|app| {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();
@@ -190,9 +193,15 @@ pub fn run() {
                 commands::lobby::DEFAULT_OLD_BACKEND_URL,
             );
             app.manage(lobby_state);
+            app.manage(commands::tray::TrayState::default());
+            let _ = commands::tray::setup_tray(app);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Tray & Window behavior commands
+            commands::tray::tray_apply_launch_behavior,
+            commands::tray::tray_restore_window,
+            commands::tray::tray_get_window_behavior,
             // Network & Connectivity commands
             commands::network::get_network_status,
             // Standard wex-ipc commands

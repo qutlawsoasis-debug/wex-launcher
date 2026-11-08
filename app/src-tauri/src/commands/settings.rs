@@ -59,6 +59,7 @@ pub struct LauncherSettingsDto {
     pub accent: String,     // "blue" | "purple" | "pink" | "orange" | "green" | "mint" | "graphite"
     pub reduce_motion: bool,
     pub reduce_transparency: bool,
+    pub game_window_behavior: String, // "keep" | "minimize" | "tray"
 }
 
 impl Default for LauncherSettingsDto {
@@ -80,6 +81,7 @@ impl Default for LauncherSettingsDto {
             accent: "blue".to_string(),
             reduce_motion: false,
             reduce_transparency: false,
+            game_window_behavior: "minimize".to_string(),
         }
     }
 }
@@ -170,6 +172,7 @@ pub fn get_launcher_settings_impl(paths: &WexPaths) -> LauncherSettingsDto {
         accent: cfg.accent,
         reduce_motion: cfg.reduce_motion,
         reduce_transparency: cfg.reduce_transparency,
+        game_window_behavior: cfg.game_window_behavior,
     }
 }
 
@@ -207,6 +210,7 @@ pub async fn save_launcher_settings_impl(
     cfg.accent = new_settings.accent;
     cfg.reduce_motion = new_settings.reduce_motion;
     cfg.reduce_transparency = new_settings.reduce_transparency;
+    cfg.game_window_behavior = new_settings.game_window_behavior;
 
     cfg.save(&paths.config_file)
         .map_err(|e| format!("Не удалось сохранить конфигурацию: {}", e))?;
@@ -356,6 +360,7 @@ mod tests {
         updated.custom_java_path = Some(r"C:\Java\jdk-21\bin\javaw.exe".to_string());
         updated.discord_rpc = false;
         updated.language = "en".to_string();
+        updated.game_window_behavior = "tray".to_string();
 
         save_launcher_settings_impl(updated, &paths, &mock_core)
             .await
@@ -373,6 +378,7 @@ mod tests {
         );
         assert!(!reloaded.discord_rpc);
         assert_eq!(reloaded.language, "en");
+        assert_eq!(reloaded.game_window_behavior, "tray");
     }
 
     #[tokio::test]

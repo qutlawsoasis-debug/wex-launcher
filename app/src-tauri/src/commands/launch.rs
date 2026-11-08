@@ -375,6 +375,11 @@ pub async fn start_game(
                 *v = Some(version.clone());
             }
 
+            // Apply game window behavior (minimize / hide to tray / keep)
+            let config = wex_core::LauncherConfig::load_or_default(&state.paths.config_file);
+            super::tray::apply_launch_window_behavior(&app, &config.game_window_behavior);
+            super::tray::update_tray_game_running(&app, true);
+
             let _ = app.emit(
                 EVT_LAUNCH_STATUS,
                 LaunchStatusPayload {
@@ -407,6 +412,10 @@ pub async fn start_game(
                     let mut v = running_version_clone.lock().await;
                     *v = None;
                 }
+
+                // Restore launcher window and update tray
+                super::tray::restore_window(&app_clone);
+                super::tray::update_tray_game_running(&app_clone, false);
 
                 // Switch Discord RPC back to InLauncher
                 set_discord_rpc(&discord_clone, Activity::InLauncher).await;
@@ -504,7 +513,11 @@ pub async fn is_game_running(state: State<'_, PlayState>) -> Result<bool, String
 
 /// Force kill the game instance.
 #[tauri::command]
-pub async fn kill_game(version: Option<String>, state: State<'_, PlayState>) -> Result<(), String> {
+pub async fn kill_game(
+    app: AppHandle,
+    version: Option<String>,
+    state: State<'_, PlayState>,
+) -> Result<(), String> {
     let ver = match version {
         Some(v) => v,
         None => {
@@ -518,6 +531,9 @@ pub async fn kill_game(version: Option<String>, state: State<'_, PlayState>) -> 
     }
     state.is_running.store(false, Ordering::SeqCst);
     state.is_launching.store(false, Ordering::SeqCst);
+
+    super::tray::restore_window(&app);
+    super::tray::update_tray_game_running(&app, false);
 
     set_discord_rpc(&state.discord, Activity::InLauncher).await;
 
