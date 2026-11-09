@@ -7,7 +7,7 @@ use tauri::State;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
-use wex_core::config::WexPaths;
+use wex_core::config::{LauncherConfig as CoreConfig, WexPaths};
 use wex_extras::crash::analyze_crash;
 
 /// Anonymizes personal user paths, player nicknames, secret tokens, and friends' IP addresses in text.
@@ -74,20 +74,23 @@ fn mask_user_directories(text: &str) -> String {
                 output.push_str(marker);
                 let after_marker = &remainder[pos + marker.len()..];
 
-                // Consume username until next separator (/ or \), quote, newline, or whitespace
-                let username_end = after_marker
-                    .find(|c: char| {
-                        c == '\\'
-                            || c == '/'
-                            || c == '"'
-                            || c == '\''
-                            || c == '\n'
-                            || c == '\r'
-                            || c == ' '
-                            || c == ':'
-                            || c == ';'
-                    })
-                    .unwrap_or(after_marker.len());
+                // If already masked (e.g. repeated anonymization passes), preserve *** and advance
+                let username_end = if after_marker.starts_with("***") {
+                    3
+                } else {
+                    // Look for path separator (\ or /) before quotes, newlines, or delimiters
+                    let next_sep = after_marker.find(['\\', '/']);
+                    let next_delim = after_marker.find(['"', '\'', '\n', '\r', '\t', ';', ':']);
+
+                    match (next_sep, next_delim) {
+                        (Some(sep), Some(delim)) if sep < delim && sep <= 64 => sep,
+                        (Some(sep), None) if sep <= 64 => sep,
+                        (_, Some(delim)) => delim,
+                        _ => after_marker
+                            .find([' ', '\n', '\r', '\t'])
+                            .unwrap_or(after_marker.len()),
+                    }
+                };
 
                 if username_end > 0 {
                     output.push_str("***");
@@ -459,12 +462,47 @@ pub fn prepare_report_preview_impl(
 
     // 5. System info
     let os_info = get_os_info();
-    let java_version = if ver.starts_with("1.20") {
-        "Java 17 (Mojang Runtime)".to_string()
+    let cfg = CoreConfig::load_or_default(&paths.config_file);
+
+    let memory_info = if cfg.max_memory_mb > 0 {
+        format!("{} MB", cfg.max_memory_mb)
     } else {
-        "Java 21 (Mojang Runtime)".to_string()
+        "Не указано".to_string()
     };
-    let memory_info = "4096 MB (Default)".to_string();
+
+    let java_version = if cfg.java_mode == "custom" {
+        if let Some(custom_path) = &cfg.custom_java_path {
+            let path_str = custom_path.to_string_lossy();
+            let masked = anonymize_text(&path_str, player_name);
+            format!("Пользовательская ({})", masked)
+        } else {
+            "Пользовательская (не указана)".to_string()
+        }
+    } else {
+        let is_17 = ver.starts_with("1.20");
+        let exe_name = if cfg!(target_os = "windows") {
+            "javaw.exe"
+        } else {
+            "java"
+        };
+        let mojang_dir_name = if is_17 {
+            "java-runtime-gamma"
+        } else {
+            "java-runtime-delta"
+        };
+        let mojang_bin = paths
+            .runtime_dir
+            .join(mojang_dir_name)
+            .join("bin")
+            .join(exe_name);
+        let java_tag = if is_17 { "Java 17" } else { "Java 21" };
+
+        if mojang_bin.exists() {
+            format!("{} (Mojang Runtime)", java_tag)
+        } else {
+            format!("{} (автозагрузка / не установлена)", java_tag)
+        }
+    };
 
     let anon_error = error_text.map(|e| anonymize_text(e, player_name));
     let anon_comment = user_comment.map(|c| anonymize_text(c, player_name));
@@ -1140,5 +1178,65 @@ mod tests {
         let opened = mock.opened_paths.lock().unwrap();
         assert_eq!(opened.len(), 1);
         assert!(opened[0].ends_with(&res.file_name));
+    }
+
+    #[test]
+    fn test_anonymize_username_with_spaces_and_idempotence() {
+        let input = "Exception in C:\\Users\\John Doe\\AppData\\Local\\Wex\\log.txt and C:\\Users\\Иван Иванов\\game.log. Привет мир! 🚀";
+        let anonymized = anonymize_text(input, None);
+
+        // Neither 'John' nor 'Doe' should be present
+        assert!(!anonymized.contains("John Doe"));
+        assert!(!anonymized.contains("John"));
+        assert!(!anonymized.contains("Doe"));
+        assert!(anonymized.contains("C:\\Users\\***\\AppData"));
+
+        // Cyrillic username with space masked
+        assert!(!anonymized.contains("Иван Иванов"));
+        assert!(!anonymized.contains("Иван"));
+        assert!(!anonymized.contains("Иванов"));
+        assert!(anonymized.contains("C:\\Users\\***\\game.log"));
+
+        // Russian text and emoji preserved
+        assert!(anonymized.contains("Привет мир! 🚀"));
+
+        // Idempotency: calling anonymize_text a second and third time must yield identical result
+        let double_anonymized = anonymize_text(&anonymized, None);
+        assert_eq!(anonymized, double_anonymized);
+        let triple_anonymized = anonymize_text(&double_anonymized, None);
+        assert_eq!(double_anonymized, triple_anonymized);
+    }
+
+    #[test]
+    fn test_report_preview_reflects_actual_configured_memory_and_java() {
+        let temp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(temp.path().to_path_buf()));
+
+        // Save a custom config with 6144 MB RAM and custom Java path
+        let cfg = CoreConfig {
+            max_memory_mb: 6144,
+            java_mode: "custom".to_string(),
+            custom_java_path: Some(PathBuf::from(r"C:\Users\John Doe\jdk-21\bin\javaw.exe")),
+            ..Default::default()
+        };
+        cfg.save(&paths.config_file).unwrap();
+
+        let preview = prepare_report_preview_impl(
+            &paths,
+            Some("1.21.1"),
+            Some("Crash log with error"),
+            Some("My comment"),
+            Some("SecretPlayer"),
+        );
+
+        // Configured RAM must be reflected in DTO and JSON preview, not hardcoded 4096 MB
+        assert_eq!(preview.memory_info, "6144 MB");
+        assert!(preview.full_json_preview.contains(r#""memory": "6144 MB""#));
+
+        // Custom Java must be masked and indicated as custom, without leaking 'John Doe'
+        assert!(preview.java_version.contains("Пользовательская"));
+        assert!(!preview.java_version.contains("John Doe"));
+        assert!(preview.java_version.contains("C:\\Users\\***\\jdk-21"));
+        assert!(preview.full_json_preview.contains("Пользовательская"));
     }
 }
