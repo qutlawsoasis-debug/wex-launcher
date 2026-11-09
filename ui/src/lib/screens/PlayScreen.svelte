@@ -202,7 +202,20 @@
   let fetchedUpdateInfo = $state<UpdateInfo | null>(null);
   let updateInfo = $derived(initialUpdateInfo !== null ? initialUpdateInfo : fetchedUpdateInfo);
   let updateBannerDismissed = $state(false);
+  let isClosingBanner = $state(false);
   let showUpdateBanner = $derived(Boolean(updateInfo?.update_available) && !updateBannerDismissed);
+
+  function dismissUpdateBanner() {
+    if (theme.reduceMotion || import.meta.env?.MODE === 'test') {
+      updateBannerDismissed = true;
+      return;
+    }
+    isClosingBanner = true;
+    setTimeout(() => {
+      updateBannerDismissed = true;
+      isClosingBanner = false;
+    }, 240);
+  }
 
   // Import wizard sheet state
   let manualImportWizardOpen = $state(false);
@@ -483,7 +496,7 @@
   <div class="play-content-container">
     <!-- Unobtrusive Update Notification Banner (Apple HIG Banners & Alerts) -->
     {#if showUpdateBanner && updateInfo}
-      <div class="update-banner" role="status" aria-live="polite">
+      <div class="update-banner" class:closing={isClosingBanner} role="status" aria-live="polite">
         <div class="update-banner-icon">
           <Icon name="info" size={16} color="var(--color-system-blue)" />
         </div>
@@ -499,7 +512,7 @@
           <Button
             variant="ghost"
             size="small"
-            onclick={() => (updateBannerDismissed = true)}
+            onclick={dismissUpdateBanner}
             title="Закрыть уведомление"
           >
             <Icon name="close" size={14} color="var(--color-secondary-label)" />
@@ -776,18 +789,66 @@
     border-radius: var(--radius-lg);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
     margin-bottom: 12px;
-    animation: fadeIn 0.3s ease;
+    animation: updateBannerSlideDown var(--motion-duration-normal, 300ms) var(--motion-curve-spring-gentle, cubic-bezier(0.16, 1, 0.3, 1)) both;
+    overflow: hidden;
   }
 
-  @keyframes fadeIn {
-    from {
+  .update-banner.closing {
+    animation: updateBannerCollapse 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes updateBannerSlideDown {
+    0% {
       opacity: 0;
-      transform: translateY(-4px);
+      transform: translateY(-8px) scale(0.98);
+      max-height: 0;
+      margin-bottom: 0;
+      padding-top: 0;
+      padding-bottom: 0;
     }
-    to {
+    40% {
+      opacity: 0.6;
+      max-height: 70px;
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+    100% {
       opacity: 1;
-      transform: translateY(0);
+      transform: translateY(0) scale(1);
+      max-height: 120px;
+      margin-bottom: 12px;
     }
+  }
+
+  @keyframes updateBannerCollapse {
+    0% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      max-height: 100px;
+      margin-bottom: 12px;
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(-6px) scale(0.97);
+      max-height: 0;
+      margin-bottom: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .update-banner,
+    .update-banner.closing {
+      animation: none !important;
+      transform: none !important;
+    }
+  }
+
+  :global([data-reduce-motion='true']) .update-banner,
+  :global([data-reduce-motion='true']) .update-banner.closing {
+    animation: none !important;
+    transform: none !important;
   }
 
   .update-banner-icon {

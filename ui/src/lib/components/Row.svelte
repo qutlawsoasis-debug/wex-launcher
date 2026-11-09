@@ -19,6 +19,7 @@
     showChevron?: boolean;
     clickable?: boolean;
     disabled?: boolean;
+    index?: number;
     role?: string;
     ariaChecked?: boolean;
     ariaPressed?: boolean;
@@ -36,6 +37,7 @@
     showChevron = false,
     clickable = false,
     disabled = false,
+    index,
     role,
     ariaChecked,
     ariaPressed,
@@ -47,6 +49,8 @@
   }: Props = $props();
 
   const isInteractive = $derived(clickable || !!onclick);
+  const cascadeDelayMs = $derived(index !== undefined ? Math.min(index, 7) * 25 : 0);
+  const isCascade = $derived(index !== undefined);
 </script>
 
 {#if isInteractive}
@@ -54,6 +58,8 @@
     type="button"
     class="apple-row clickable"
     class:disabled
+    class:cascade-in={isCascade}
+    style:--cascade-delay="{cascadeDelayMs}ms"
     disabled={disabled}
     onclick={onclick}
     {role}
@@ -94,7 +100,12 @@
     </div>
   </button>
 {:else}
-  <div class="apple-row" class:disabled>
+  <div
+    class="apple-row"
+    class:disabled
+    class:cascade-in={isCascade}
+    style:--cascade-delay="{cascadeDelayMs}ms"
+  >
     {#if leading}
       <div class="row-leading">
         {@render leading()}
@@ -149,6 +160,22 @@
     content-visibility: auto;
     contain-intrinsic-size: 52px;
     outline: none;
+  }
+
+  @keyframes rowCascadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(5px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .apple-row.cascade-in {
+    animation: rowCascadeIn var(--motion-duration-normal, 240ms) var(--motion-curve-spring-gentle, cubic-bezier(0.16, 1, 0.3, 1)) both;
+    animation-delay: var(--cascade-delay, 0ms);
   }
 
   .apple-row:last-child {
@@ -239,9 +266,16 @@
     .apple-row {
       transition: none !important;
     }
+    .apple-row.cascade-in {
+      animation: none !important;
+    }
   }
 
   :global([data-reduce-motion="true"]) .apple-row {
     transition: none !important;
+  }
+
+  :global([data-reduce-motion="true"]) .apple-row.cascade-in {
+    animation: none !important;
   }
 </style>

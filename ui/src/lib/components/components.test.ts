@@ -524,4 +524,32 @@ describe('Apple HIG Svelte 5 Components', () => {
     expect(rowClicked).toBe(true);
     unmount(comp);
   });
+
+  it('applies staggered cascade-in animation delay capped at 8 items', () => {
+    const comp = mount(Row, {
+      target,
+      props: {
+        title: 'Cascade Row 3',
+        index: 3,
+      },
+    });
+
+    const row = target.querySelector('.apple-row') as HTMLElement;
+    expect(row.classList.contains('cascade-in')).toBe(true);
+    // 3 * 25ms = 75ms
+    expect(row.style.getPropertyValue('--cascade-delay')).toBe('75ms');
+    unmount(comp);
+
+    // Capped at index 7 (item index 12 capped at 7 * 25ms = 175ms)
+    const compCapped = mount(Row, {
+      target,
+      props: {
+        title: 'Cascade Row 12',
+        index: 12,
+      },
+    });
+    const rowCapped = target.querySelector('.apple-row') as HTMLElement;
+    expect(rowCapped.style.getPropertyValue('--cascade-delay')).toBe('175ms');
+    unmount(compCapped);
+  });
 });

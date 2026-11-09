@@ -116,6 +116,8 @@
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Icon from '../components/icons/Icon.svelte';
   import OfflineState from '../components/OfflineState.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
   import { network } from '../design/network.svelte';
   import { t, i18n } from '../i18n';
 
@@ -567,10 +569,15 @@
   <div class="servers-content">
     {#if !network.isOnline}
       <OfflineState onretry={() => loadServers(activeVersion)} />
+    {:else if isRefreshingAll && filteredServers.length === 0}
+      <List header="Серверы Minecraft • {activeVersion}">
+        <Skeleton variant="row" count={4} />
+      </List>
     {:else if filteredServers.length > 0}
       <List header="Серверы Minecraft • {activeVersion}">
-        {#each filteredServers as s (s.id)}
+        {#each filteredServers as s, idx (s.id)}
           <Row
+            index={idx}
             title={s.name}
             subtitle={s.pingError && s.errorMessage
               ? `${s.address} • ${s.errorMessage}`
@@ -698,16 +705,15 @@
         {/each}
       </List>
     {:else}
-      <!-- Authentic empty state without fabricated mock data -->
-      <div class="empty-state-card">
-        <Icon name="server" size={44} color="var(--color-tertiary-label)" />
-        <h2 class="empty-title">{t('servers.empty_title')}</h2>
-        <p class="empty-desc">
-          {searchQuery
-            ? t('servers.empty_search', { query: searchQuery })
-            : t('servers.empty_default')}
-        </p>
-      </div>
+      <EmptyState
+        icon="server"
+        title={t('servers.empty_title')}
+        description={searchQuery
+          ? t('servers.empty_search', { query: searchQuery })
+          : t('servers.empty_default')}
+        actionText={searchQuery ? undefined : t('servers.add_server')}
+        onaction={searchQuery ? undefined : () => (addSheetOpen = true)}
+      />
     {/if}
   </div>
 </div>
@@ -984,34 +990,6 @@
 
   .remove-btn:hover :global(svg) {
     stroke: var(--color-system-red);
-  }
-
-  .empty-state-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 64px 24px;
-    gap: 12px;
-    text-align: center;
-    background-color: var(--card-bg);
-    border: 1px dashed var(--glass-border);
-    border-radius: var(--radius-lg);
-  }
-
-  .empty-title {
-    font-size: var(--text-headline);
-    font-weight: 600;
-    color: var(--color-label);
-    margin: 0;
-  }
-
-  .empty-desc {
-    font-size: var(--text-subheadline);
-    color: var(--color-secondary-label);
-    max-width: 380px;
-    line-height: 1.4;
-    margin: 0;
   }
 
   .sheet-form {
