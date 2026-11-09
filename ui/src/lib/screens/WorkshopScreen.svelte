@@ -689,9 +689,11 @@
           <div class="empty-icon-wrap">
             <Icon name="folder" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h2 class="empty-title">Миров пока нет</h2>
+          <h2 class="empty-title">{i18n.locale === 'en' ? 'No Saved Worlds' : 'Миров пока нет'}</h2>
           <p class="empty-description">
-            Создайте мир в одиночной игре Minecraft, и он автоматически появится здесь.
+            {i18n.locale === 'en'
+              ? 'Create a single-player world in Minecraft, and it will appear here automatically.'
+              : 'Создайте мир в одиночной игре Minecraft, и он автоматически появится здесь.'}
           </p>
         </div>
       {:else}
@@ -1031,9 +1033,11 @@
           <div class="empty-icon-wrap">
             <Icon name="sun" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h2 class="empty-title">Скриншотов пока нет</h2>
+          <h2 class="empty-title">{i18n.locale === 'en' ? 'No Screenshots Yet' : 'Скриншотов пока нет'}</h2>
           <p class="empty-description">
-            Нажмите F2 во время игры в Minecraft, чтобы сделать красивый снимок экрана.
+            {i18n.locale === 'en'
+              ? 'Press F2 while playing Minecraft to take a screenshot.'
+              : 'Нажмите F2 во время игры в Minecraft, чтобы сделать красивый снимок экрана.'}
           </p>
           <div style="margin-top: 16px;">
             <Button variant="secondary" size="small" onclick={handleOpenScreenshotsFolder}>
