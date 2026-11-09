@@ -267,6 +267,88 @@ export const ru = {
   'friends.action_invite': 'Пригласить',
   'friends.action_accept': 'Принять',
   'friends.action_decline': 'Отклонить',
+
+  // Screen / Window: What's New & Release Highlights
+  'whats_new.window_title': 'Что нового',
+  'whats_new.version_title': 'Wex {version}',
+  'whats_new.release_date': '9 ноября 2026',
+  'whats_new.subtitle': 'Главные возможности и улучшения обновлённого лаунчера',
+  'whats_new.copy_for_friends': 'Скопировать для друзей',
+  'whats_new.copied_toast': 'Список изменений скопирован в буфер обмена',
+  'whats_new.badge_new': 'Новое',
+  'whats_new.badge_improved': 'Улучшено',
+  'whats_new.badge_fixed': 'Исправлено',
+
+  // Section: Играть и быстрый запуск
+  'whats_new.section_play': 'Играть и быстрый запуск',
+  'whats_new.play_versions': 'Поддержка Minecraft 1.20.1 и 1.21.1 с автоматическим выбором нужной Java.',
+  'whats_new.play_fast_start': 'Предварительная подготовка в фоне для быстрого старта игры.',
+  'whats_new.play_sync': 'Надёжная загрузка файлов с автоматическим возобновлением при сбоях связи.',
+  'whats_new.play_offline': 'Запуск ранее скачанных версий без подключения к интернету.',
+  'whats_new.play_stats': 'Счётчик игровых часов и количества запусков прямо на главном экране.',
+  'whats_new.play_stories': 'Карусель историй с достижениями, свежими скриншотами и списком изменений.',
+  'whats_new.play_import': 'Безопасный перенос ника, памяти, серверов и миров из старого лаунчера.',
+
+  // Section: Серверы
+  'whats_new.section_servers': 'Серверы',
+  'whats_new.servers_ping': 'Проверка пинга, онлайна игроков и значка сервера в реальном времени.',
+  'whats_new.servers_quick_play': 'Вход на выбранный сервер в один клик сразу из списка.',
+  'whats_new.servers_management': 'Удобное добавление, изменение и удаление любимых серверов.',
+  'whats_new.servers_deeplink': 'Подключение к серверу по ссылке wex://server с подтверждением.',
+
+  // Section: Лобби и друзья
+  'whats_new.section_lobby': 'Лобби и друзья',
+  'whats_new.lobby_presence': 'Статус друзей: видно, кто в сети, в лобби или в игре.',
+  'whats_new.lobby_notifications': 'Всплывающие уведомления Windows о входе друзей с защитой от спама.',
+  'whats_new.lobby_rooms': 'Создание лобби с коротким кодом для быстрой игры с друзьями.',
+  'whats_new.lobby_publish': 'Открытие одиночного мира для друзей без настройки роутера.',
+  'whats_new.lobby_deeplink': 'Вход в комнату по ссылке-приглашению wex://join из чата.',
+  'whats_new.lobby_lan': 'Автоматический поиск открытых миров в домашней сети.',
+
+  // Section: Гардероб
+  'whats_new.section_wardrobe': 'Гардероб',
+  'whats_new.wardrobe_3d': '3D-просмотр персонажа с плавным вращением мышью со всех сторон.',
+  'whats_new.wardrobe_models': 'Выбор между классической моделью Стива (4 px) и тонкой Алекс (3 px).',
+  'whats_new.wardrobe_library': 'Своя библиотека скинов с переключением в один клик без поиска файлов.',
+  'whats_new.wardrobe_capes': 'Выбор плащей и накидок с наглядным отображением на персонаже.',
+  'whats_new.wardrobe_security': 'Надёжное хранилище скинов 64x64 и 64x32 без риска для файлов игры.',
+
+  // Section: Мастерская
+  'whats_new.section_workshop': 'Мастерская',
+  'whats_new.workshop_mods': 'Включение и выключение модов переключателем без удаления файлов.',
+  'whats_new.workshop_pack_protect': 'Защита модов официальной сборки от случайного удаления.',
+  'whats_new.workshop_screenshots': 'Галерея скриншотов с быстрым копированием картинки в буфер обмена.',
+  'whats_new.workshop_packs_shaders': 'Быстрый переход к ресурс-пакам, шейдерам и настройкам графики.',
+  'whats_new.workshop_backups': 'Резервные копии миров в один клик и восстановление из истории.',
+
+  // Section: Музыка
+  'whats_new.section_music': 'Музыка',
+  'whats_new.music_turntable': 'Встроенный виниловый проигрыватель с анимацией пластинки.',
+  'whats_new.music_tracks': 'Атмосферные фоновые треки с удобной регулировкой громкости.',
+  'whats_new.music_smtc': 'Музыка в панели громкости Windows и управление с клавиш клавиатуры.',
+  'whats_new.music_fadeout': 'Музыка плавно стихает при старте игры, не заглушая Minecraft.',
+
+  // Section: Настройки
+  'whats_new.section_settings': 'Настройки',
+  'whats_new.settings_ram': 'Ползунок памяти с шагом 512 МБ и понятными подсказками.',
+  'whats_new.settings_graphics': 'Готовые графические профили от низких до ультра.',
+  'whats_new.settings_storage': 'Проверка целостности файлов игры с починкой и безопасная очистка кэша.',
+  'whats_new.settings_lock': 'Защита файлов и блокировка очистки, пока игра запущена.',
+  'whats_new.settings_themes': 'Светлая, тёмная и системная темы с чётким текстом на любом фоне.',
+  'whats_new.settings_a11y': 'Настройки удобства: уменьшение движения и упрощение прозрачности.',
+  'whats_new.settings_discord': 'Статус в Discord с отображением версии и времени в игре.',
+  'whats_new.settings_report': 'Экспорт отчёта об ошибке в один клик для службы поддержки.',
+  'whats_new.settings_lang': 'Мгновенное переключение языка между русским и английским без перезапуска.',
+
+  // Section: Обновления
+  'whats_new.section_updates': 'Обновления',
+  'whats_new.updates_banner': 'Простое уведомление о появлении новой версии на главном экране.',
+  'whats_new.updates_manifest': 'Автоматическая проверка обновлений при наличии интернета.',
+
+  // Section: Что пока не работает
+  'whats_new.section_limitations': 'Что пока не работает',
+  'whats_new.limitations_playit': 'Для открытия одиночного мира в интернет через playit нужен личный ключ сервиса.',
+  'whats_new.limitations_lan': 'Поиск игр в локальной сети проверен на одном ПК; роутер может блокировать поиск в сети.',
 } as const;
 
 export type TranslationKey = keyof typeof ru;

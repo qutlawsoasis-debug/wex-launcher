@@ -269,4 +269,86 @@ export const en: Record<TranslationKey, string> = {
   'friends.action_invite': 'Invite',
   'friends.action_accept': 'Accept',
   'friends.action_decline': 'Decline',
+
+  // Screen / Window: What's New & Release Highlights
+  'whats_new.window_title': 'What’s New',
+  'whats_new.version_title': 'Wex {version}',
+  'whats_new.release_date': 'November 9, 2026',
+  'whats_new.subtitle': 'Key features and improvements in the updated launcher',
+  'whats_new.copy_for_friends': 'Copy for Friends',
+  'whats_new.copied_toast': 'Changelog copied to clipboard',
+  'whats_new.badge_new': 'New',
+  'whats_new.badge_improved': 'Improved',
+  'whats_new.badge_fixed': 'Fixed',
+
+  // Section: Play & Quick Launch
+  'whats_new.section_play': 'Play & Quick Launch',
+  'whats_new.play_versions': 'Support for Minecraft 1.20.1 and 1.21.1 with automatic Java selection.',
+  'whats_new.play_fast_start': 'Background preparation for faster game start.',
+  'whats_new.play_sync': 'Reliable file downloads with automatic resume upon connection drops.',
+  'whats_new.play_offline': 'Offline play for downloaded versions without internet connection.',
+  'whats_new.play_stats': 'Playtime hours and session counter directly on the main dashboard.',
+  'whats_new.play_stories': 'Stories carousel with achievements, recent screenshots, and changelog.',
+  'whats_new.play_import': 'Safe transfer of player name, memory, servers, and worlds from old launcher.',
+
+  // Section: Servers
+  'whats_new.section_servers': 'Servers',
+  'whats_new.servers_ping': 'Live server status check showing ping, player count, and icons.',
+  'whats_new.servers_quick_play': 'One-click direct server launch right from the server list.',
+  'whats_new.servers_management': 'Simple adding, editing, and removal of favorite servers.',
+  'whats_new.servers_deeplink': 'Direct connection via wex://server links with confirmation.',
+
+  // Section: Lobby & Friends
+  'whats_new.section_lobby': 'Lobby & Friends',
+  'whats_new.lobby_presence': 'Friend status: see who is online, in lobby, or in game.',
+  'whats_new.lobby_notifications': 'Windows desktop alerts when friends come online, with spam protection.',
+  'whats_new.lobby_rooms': 'Quick room lobbies with short codes to play together.',
+  'whats_new.lobby_publish': 'Open singleplayer worlds for friends without router configuration.',
+  'whats_new.lobby_deeplink': 'Join room lobbies via wex://join invite links from chat.',
+  'whats_new.lobby_lan': 'Automatic discovery of open worlds on your local network.',
+
+  // Section: Wardrobe
+  'whats_new.section_wardrobe': 'Wardrobe',
+  'whats_new.wardrobe_3d': '3D character preview with smooth mouse rotation from all angles.',
+  'whats_new.wardrobe_models': 'Choose between Classic Steve (4 px) and Slim Alex (3 px) models.',
+  'whats_new.wardrobe_library': 'Personal skin library with one-click switching without browsing files.',
+  'whats_new.wardrobe_capes': 'Cape and cloak selection with live preview on your character.',
+  'whats_new.wardrobe_security': 'Secure skin storage for 64x64 and 64x32 without altering game files.',
+
+  // Section: Workshop
+  'whats_new.section_workshop': 'Workshop',
+  'whats_new.workshop_mods': 'Toggle mods on and off with switches without deleting files.',
+  'whats_new.workshop_pack_protect': 'Official pack mods protected against accidental deletion.',
+  'whats_new.workshop_screenshots': 'Screenshot gallery with one-click copy to clipboard.',
+  'whats_new.workshop_packs_shaders': 'Quick access to resource packs, shaders, and visual settings.',
+  'whats_new.workshop_backups': 'One-click world backups and restoration from history.',
+
+  // Section: Music
+  'whats_new.section_music': 'Music',
+  'whats_new.music_turntable': 'Built-in vinyl player with turntable animation inside the launcher.',
+  'whats_new.music_tracks': 'Atmospheric soundtrack selection with smooth volume controls.',
+  'whats_new.music_smtc': 'Launcher music in Windows volume overlay and keyboard media key controls.',
+  'whats_new.music_fadeout': 'Music smoothly fades out when starting game so Minecraft audio stays clear.',
+
+  // Section: Settings
+  'whats_new.section_settings': 'Settings',
+  'whats_new.settings_ram': 'Memory allocation slider in 512 MB steps with simple guidance.',
+  'whats_new.settings_graphics': 'Ready-made graphics profiles from low to ultra.',
+  'whats_new.settings_storage': 'File integrity check with repairs and safe cache cleanup.',
+  'whats_new.settings_lock': 'File modification and storage cleanup lock while Minecraft is running.',
+  'whats_new.settings_themes': 'Light, dark, and system themes with clear text on any background.',
+  'whats_new.settings_a11y': 'Accessibility options for reduced motion and simplified transparency.',
+  'whats_new.settings_discord': 'Discord status showing your version and active session time.',
+  'whats_new.settings_report': 'One-click diagnostic report export for customer support.',
+  'whats_new.settings_lang': 'Instant language switching between Russian and English without restart.',
+
+  // Section: Updates
+  'whats_new.section_updates': 'Updates',
+  'whats_new.updates_banner': 'Simple update notification banner on the main dashboard.',
+  'whats_new.updates_manifest': 'Automatic check for new versions whenever internet is available.',
+
+  // Section: Known Limitations
+  'whats_new.section_limitations': 'Known Limitations',
+  'whats_new.limitations_playit': 'Sharing a singleplayer world online via playit requires a personal account key.',
+  'whats_new.limitations_lan': 'Local network play is verified on a single PC; some routers may block local discovery.',
 };
