@@ -145,6 +145,10 @@ pub fn run() {
             commands::music::music_open_folder,
             commands::music::music_get_settings,
             commands::music::music_set_settings,
+            commands::music::music_sync_smtc,
+            commands::music::music_get_smtc_state,
+            commands::music::music_update_session,
+            commands::music::music_check_command,
             // Friends & Social commands
             commands::friends::social_login,
             commands::friends::social_get_friends,

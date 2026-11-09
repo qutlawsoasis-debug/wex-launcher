@@ -270,6 +270,10 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         MusicGetTrackDataRequest::decl(),
         MusicGetTrackDataResponse::decl(),
         MusicSettingsDto::decl(),
+        MusicSmtcStateDto::decl(),
+        MusicSessionStateDto::decl(),
+        MusicUpdateSessionRequest::decl(),
+        MusicCheckCommandResponse::decl(),
     ];
     for decl in cmd_decls {
         cmd_ts.push_str(&format!("export {};\n\n", decl));
@@ -370,6 +374,10 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ("MUSIC_OPEN_FOLDER", CMD_MUSIC_OPEN_FOLDER),
         ("MUSIC_GET_SETTINGS", CMD_MUSIC_GET_SETTINGS),
         ("MUSIC_SET_SETTINGS", CMD_MUSIC_SET_SETTINGS),
+        ("MUSIC_SYNC_SMTC", CMD_MUSIC_SYNC_SMTC),
+        ("MUSIC_GET_SMTC_STATE", CMD_MUSIC_GET_SMTC_STATE),
+        ("MUSIC_UPDATE_SESSION", CMD_MUSIC_UPDATE_SESSION),
+        ("MUSIC_CHECK_COMMAND", CMD_MUSIC_CHECK_COMMAND),
     ];
     for (k, v) in command_names {
         cmd_ts.push_str(&format!("    {}: \"{}\",\n", k, v));

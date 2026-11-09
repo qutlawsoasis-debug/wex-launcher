@@ -12,7 +12,7 @@ pub use import::{
     import_from_dir, ImportedCape, ImportedServer, ImportedSkin, ImportedWardrobeItem,
     ImportedWorld, OldLauncherData,
 };
-pub use music::{AudioTrack, MusicError, MusicManager, MusicSettings};
+pub use music::{AudioTrack, MediaSessionState, MusicError, MusicManager, MusicSettings};
 pub use presets::{
     apply_preset, get_default_presets, GraphicsPreset, PresetApplyResult, PresetTier,
 };
