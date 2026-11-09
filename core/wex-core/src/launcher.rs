@@ -471,6 +471,7 @@ pub async fn launch_game_process(
             while let Ok(Some(line)) = reader.next_line().await {
                 if let Ok(mut f) = log_file_clone.lock() {
                     let _ = writeln!(f, "{}", line);
+                    let _ = f.flush();
                 }
                 events_clone.on_event(&Event::GameOutput { line });
             }
@@ -486,6 +487,7 @@ pub async fn launch_game_process(
             while let Ok(Some(line)) = reader.next_line().await {
                 if let Ok(mut f) = log_file_clone.lock() {
                     let _ = writeln!(f, "[STDERR] {}", line);
+                    let _ = f.flush();
                 }
                 events_clone.on_event(&Event::GameOutput { line });
             }

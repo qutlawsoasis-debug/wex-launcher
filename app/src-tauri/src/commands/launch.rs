@@ -252,14 +252,16 @@ impl PlayState {
                 .build()
                 .unwrap_or_default();
             let events = Arc::new(wex_core::NoopEventHandler);
-            let _ = wex_core::install_full_environment(
-                &paths_clone,
-                &version,
-                &client,
-                events.as_ref(),
-                4,
-            )
-            .await;
+            if !wex_core::is_fast_path_ready(&paths_clone, &version) {
+                let _ = wex_core::install_full_environment(
+                    &paths_clone,
+                    &version,
+                    &client,
+                    events.as_ref(),
+                    4,
+                )
+                .await;
+            }
 
             if cfg.fast_launch {
                 state_clone
