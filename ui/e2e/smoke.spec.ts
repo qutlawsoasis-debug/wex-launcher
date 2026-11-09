@@ -407,7 +407,9 @@ test.describe('Wex UI Smoke Tests', () => {
         await assertViewIntegrity(page, `Lobby Initial (${theme})`, consoleErrors, pageErrors);
 
         // Step 2: Create room
-        const createBtn = page.locator('.host-card button.btn-primary, .host-card button:has-text("Открыть мир")');
+        const createBtn = page.locator(
+          '[data-testid="create-room-btn"] button, .host-card button:has-text("Создать комнату"), .host-card button:has-text("Create Room"), .host-card button:has-text("Открыть мир")'
+        );
         await expect(createBtn).toBeVisible();
         await createBtn.click();
 

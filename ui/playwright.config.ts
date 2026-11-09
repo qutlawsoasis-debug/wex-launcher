@@ -27,7 +27,7 @@ export default defineConfig({
   webServer: {
     command: 'node ./node_modules/vite/bin/vite.js preview --port 4173 --host 127.0.0.1',
     port: 4173,
-    reuseExistingServer: false,
+    reuseExistingServer: true,
     timeout: 15000,
   },
 });
