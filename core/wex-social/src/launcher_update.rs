@@ -295,6 +295,29 @@ mod tests {
     }
 
     #[test]
+    fn test_check_update_unsigned_notify_only() {
+        let manifest_json = r#"{
+            "version": "1.6.0",
+            "notes": "Unsigned test release",
+            "platforms": {
+                "windows-x86_64": {
+                    "signature": "",
+                    "url": "https://download.wex.app/1.6.0.zip"
+                }
+            }
+        }"#;
+
+        let res = check_update_from_manifest("1.0.0", "windows-x86_64", manifest_json).unwrap();
+        assert!(res.update_available);
+        assert_eq!(res.latest_version.as_deref(), Some("1.6.0"));
+        assert!(res.signature.is_none());
+        assert_eq!(
+            res.download_url.as_deref(),
+            Some("https://download.wex.app/1.6.0.zip")
+        );
+    }
+
+    #[test]
     fn test_scenario_3_invalid_signature_format_rejection() {
         let manifest_json = r#"{
             "version": "1.2.0",

@@ -42,10 +42,13 @@
   interface UpdateInfo {
     update_available: boolean;
     current_version: string;
-    latest_version?: string;
-    notes?: string;
+    latest_version?: string | null;
+    notes?: string | null;
     download_url?: string | null;
     signature?: string | null;
+    is_signed?: boolean;
+    can_auto_update?: boolean;
+    mode?: 'auto' | 'notify_only';
   }
 
   interface PlaytimeSummary {
@@ -169,7 +172,7 @@
 
   function getSafeAssetUrl(filePath: string | null): string | null {
     if (!filePath) return null;
-    if (filePath.startsWith('data:') || filePath.startsWith('blob:')) return filePath;
+    if (filePath.startsWith('data:') || filePath.startsWith('blob:') || filePath.startsWith('http:') || filePath.startsWith('https:')) return filePath;
     try {
       return (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
         ? `https://asset.localhost/${encodeURIComponent(filePath.replace(/\\/g, '/'))}`
@@ -233,6 +236,69 @@
       updateBannerDismissed = true;
       isClosingBanner = false;
     }, 240);
+  }
+
+  // Auto-updater lifecycle: 'available' -> 'downloading' -> 'ready_to_restart' | 'error'
+  let updateStage = $state<'available' | 'downloading' | 'ready_to_restart' | 'error'>('available');
+  let updateProgressPct = $state(0);
+  let updateProgressText = $state('');
+  let updateErrorMessage = $state('');
+
+  let canAutoUpdate = $derived.by(() => {
+    if (!updateInfo) return false;
+    if (typeof updateInfo.can_auto_update === 'boolean') return updateInfo.can_auto_update;
+    if (typeof updateInfo.is_signed === 'boolean') return updateInfo.is_signed;
+    return Boolean(updateInfo.signature && updateInfo.signature.trim().length >= 32);
+  });
+
+  async function handleStartUpdate() {
+    if (!updateInfo) return;
+    updateStage = 'downloading';
+    updateProgressPct = 0;
+    updateProgressText = 'Подключение к серверу обновлений…';
+    updateErrorMessage = '';
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<{ status: string; message: string }>('updater_install', {
+        downloadUrl: updateInfo.download_url || '',
+        signature: updateInfo.signature || null,
+        version: updateInfo.latest_version || 'latest',
+      });
+      if (res && res.status === 'ready_to_restart') {
+        updateStage = 'ready_to_restart';
+      } else {
+        updateStage = 'error';
+        updateErrorMessage = res?.message || 'Не удалось завершить обновление';
+      }
+    } catch (err: any) {
+      updateStage = 'error';
+      const msg = typeof err === 'string' ? err : err?.message || 'Ошибка загрузки обновления';
+      updateErrorMessage = msg.includes('Прежняя версия')
+        ? msg
+        : `${msg}. Прежняя версия сохранена.`;
+    }
+  }
+
+  async function handleRestart() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('updater_restart');
+    } catch {
+      if (typeof window !== 'undefined') window.location.reload();
+    }
+  }
+
+  async function handleOpenDownloadUrl() {
+    const url =
+      updateInfo?.download_url ||
+      'https://github.com/qutlawsoasis-debug/wex-launcher/releases';
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('updater_open_download_url', { url });
+    } catch {
+      if (typeof window !== 'undefined') window.open(url, '_blank');
+    }
   }
 
   // Import wizard sheet state
@@ -385,37 +451,52 @@
     }
   });
 
-  onMount(async () => {
-    // Parallelize all startup IPC calls using Promise.allSettled for fastest first-frame render
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
+  onMount(() => {
+    let unlistenProgress: (() => void) | undefined;
 
-      const fetchServers = invoke<Array<{ name: string; address: string; ping_ms?: number }>>('list_servers')
-        .then((list) => {
-          recentServer = list && list.length > 0 ? list[0] : null;
-        })
-        .catch(() => {
-          recentServer = null;
+    (async () => {
+      // 1. Listen to updater download progress
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        unlistenProgress = await listen<any>('updater-progress', (event) => {
+          if (event.payload) {
+            updateProgressPct = event.payload.percentage ?? 0;
+            updateProgressText = event.payload.status_text ?? '';
+          }
         });
+      } catch {}
 
-      const fetchNews = initialNews === undefined
-        ? invoke<any>('overview_get_news')
-            .then((res) => {
-              if (Array.isArray(res) && res.length > 0) {
-                fetchedNews = res;
-              } else if (res?.versions && Array.isArray(res.versions) && res.versions.length > 0) {
-                fetchedNews = res.versions;
-              } else {
+      // 2. Parallelize all startup IPC calls using Promise.allSettled for fastest first-frame render
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+
+        const fetchServers = invoke<Array<{ name: string; address: string; ping_ms?: number }>>('list_servers')
+          .then((list) => {
+            recentServer = list && list.length > 0 ? list[0] : null;
+          })
+          .catch(() => {
+            recentServer = null;
+          });
+
+        const fetchNews = initialNews === undefined
+          ? invoke<any>('overview_get_news')
+              .then((res) => {
+                if (Array.isArray(res) && res.length > 0) {
+                  fetchedNews = res;
+                } else if (res?.versions && Array.isArray(res.versions) && res.versions.length > 0) {
+                  fetchedNews = res.versions;
+                } else {
+                  fetchedNews = [];
+                }
+              })
+              .catch(() => {
                 fetchedNews = [];
-              }
-            })
-            .catch(() => {
-              fetchedNews = [];
-            })
-        : Promise.resolve();
+              })
+          : Promise.resolve();
 
       const fetchUpdates = initialUpdateInfo === null
-        ? invoke<UpdateInfo>('overview_check_update')
+        ? invoke<UpdateInfo>('updater_check')
+            .catch(() => invoke<UpdateInfo>('overview_check_update'))
             .then((res) => {
               if (res && res.update_available) {
                 fetchedUpdateInfo = res;
@@ -439,17 +520,17 @@
             })
         : Promise.resolve();
 
-      const checkOldLauncher = (typeof localStorage !== 'undefined' && !localStorage.getItem('wex_import_checked'))
-        ? (async () => {
-            localStorage.setItem('wex_import_checked', 'true');
-            try {
-              const detected = await invoke<string | null>('extras_detect_old_launcher');
-              if (detected) {
-                manualImportWizardOpen = true;
-              }
-            } catch {}
-          })()
-        : Promise.resolve();
+        const checkOldLauncher = (typeof localStorage !== 'undefined' && !localStorage.getItem('wex_import_checked'))
+          ? (async () => {
+              localStorage.setItem('wex_import_checked', 'true');
+              try {
+                const detected = await invoke<string | null>('extras_detect_old_launcher');
+                if (detected) {
+                  manualImportWizardOpen = true;
+                }
+              } catch {}
+            })()
+          : Promise.resolve();
 
       const fetchScreenshots = initialScreenshots === undefined
         ? invoke<any[]>('workshop_list_screenshots', { version: selectedVersion })
@@ -505,46 +586,51 @@
 
     // Load latest screenshot from Workshop
     loadLatestScreenshot();
-  });
+  })();
 
-  async function loadOnlineData() {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      if (initialNews === undefined) {
-        try {
-          const res = await invoke<any>('overview_get_news');
-          if (Array.isArray(res) && res.length > 0) {
-            fetchedNews = res;
-          } else if (res?.versions && Array.isArray(res.versions) && res.versions.length > 0) {
-            fetchedNews = res.versions;
-          }
-        } catch {}
-      }
-      if (initialUpdateInfo === null) {
-        try {
-          const res = await invoke<UpdateInfo>('overview_check_update');
-          if (res && res.update_available) {
-            fetchedUpdateInfo = res;
-          }
-        } catch {}
-      }
+  return () => {
+    if (unlistenProgress) unlistenProgress();
+  };
+});
+
+async function loadOnlineData() {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    if (initialNews === undefined) {
       try {
-        const list = await invoke<any[]>('list_servers');
-        if (list && list.length > 0) {
-          recentServer = list[0];
+        const res = await invoke<any>('overview_get_news');
+        if (Array.isArray(res) && res.length > 0) {
+          fetchedNews = res;
+        } else if (res?.versions && Array.isArray(res.versions) && res.versions.length > 0) {
+          fetchedNews = res.versions;
         }
       } catch {}
-    } catch {}
-  }
-
-  let prevOnline = network.isOnline;
-  $effect(() => {
-    const currentOnline = network.isOnline;
-    if (currentOnline && !prevOnline) {
-      loadOnlineData();
     }
-    prevOnline = currentOnline;
-  });
+    if (initialUpdateInfo === null) {
+      try {
+        const res = await invoke<UpdateInfo>('updater_check').catch(() => invoke<UpdateInfo>('overview_check_update'));
+        if (res && res.update_available) {
+          fetchedUpdateInfo = res;
+        }
+      } catch {}
+    }
+    try {
+      const list = await invoke<any[]>('list_servers');
+      if (list && list.length > 0) {
+        recentServer = list[0];
+      }
+    } catch {}
+  } catch {}
+}
+
+let prevOnline = network.isOnline;
+$effect(() => {
+  const currentOnline = network.isOnline;
+  if (currentOnline && !prevOnline) {
+    loadOnlineData();
+  }
+  prevOnline = currentOnline;
+});
 
   function handleImportCompleted(result: {
     nickname?: string;
@@ -597,48 +683,134 @@
     <!-- Unobtrusive Update Notification Banner (Apple HIG Banners & Alerts) -->
     {#if showUpdateBanner && updateInfo}
       <div class="update-banner" class:closing={isClosingBanner} role="status" aria-live="polite">
-        <div class="update-banner-icon">
-          <Icon name="info" size={16} color="var(--color-system-blue)" />
+        <div class="update-banner-icon {updateStage}">
+          {#if updateStage === 'ready_to_restart'}
+            <Icon name="check" size={16} color="var(--color-system-green)" />
+          {:else if updateStage === 'error'}
+            <Icon name="error" size={16} color="var(--color-system-red)" />
+          {:else if updateStage === 'downloading'}
+            <Icon name="refresh" size={16} color="var(--color-system-blue)" />
+          {:else}
+            <Icon name="info" size={16} color="var(--color-system-blue)" />
+          {/if}
         </div>
         <div class="update-banner-body">
-          <div class="update-banner-headline-row">
-            <span class="update-banner-headline">
-              Доступно обновление • Доступна новая версия Wex {updateInfo.latest_version || ''}
-            </span>
-            {#if !isSigned}
-              <span class="badge badge-general">только ссылка</span>
+          {#if updateStage === 'available'}
+            <div class="update-banner-headline-row">
+              <span class="update-banner-headline">
+                Доступно обновление • Доступна новая версия Wex {updateInfo.latest_version || ''}
+              </span>
+              {#if !canAutoUpdate}
+                <span class="badge badge-general">только ссылка</span>
+              {/if}
+            </div>
+            {#if updateInfo.notes}
+              <span class="update-banner-subtext">{updateInfo.notes}</span>
+            {:else if !canAutoUpdate}
+              <span class="update-banner-subtext">
+                Автоматическая установка недоступна без цифровой подписи. Доступна только ссылка на внешнюю загрузку.
+              </span>
             {/if}
-          </div>
-          {#if updateInfo.notes}
-            <span class="update-banner-subtext">{updateInfo.notes}</span>
-          {:else if !isSigned}
+          {:else if updateStage === 'downloading'}
+            <span class="update-banner-headline">
+              Загрузка обновления Wex {updateInfo.latest_version || ''}
+            </span>
             <span class="update-banner-subtext">
-              Автоматическая установка недоступна без цифровой подписи. Доступна только ссылка на внешнюю загрузку.
+              {updateProgressText || `Скачиваем обновление… ${updateProgressPct}%`}
+            </span>
+            <div class="update-banner-progress">
+              <ProgressBar percentage={updateProgressPct} height={4} />
+            </div>
+          {:else if updateStage === 'ready_to_restart'}
+            <span class="update-banner-headline">
+              Обновление готово к установке
+            </span>
+            <span class="update-banner-subtext">
+              Перезапустите лаунчер, чтобы применить версию {updateInfo.latest_version || ''}
+            </span>
+          {:else if updateStage === 'error'}
+            <span class="update-banner-headline update-banner-headline-error">
+              Не удалось обновить лаунчер
+            </span>
+            <span class="update-banner-subtext">
+              {updateErrorMessage || 'Ошибка при загрузке. Прежняя версия сохранена и готова к работе.'}
             </span>
           {/if}
         </div>
         <div class="update-banner-actions">
-          {#if !isSigned && updateInfo.download_url}
+          {#if updateStage === 'available'}
+            {#if canAutoUpdate}
+              <Button
+                variant="primary"
+                size="small"
+                onclick={handleStartUpdate}
+                title="Скачать и установить обновление"
+              >
+                <Icon name="refresh" size={14} color="#ffffff" />
+                <span>Обновить</span>
+              </Button>
+            {:else}
+              <Button
+                variant="secondary"
+                size="small"
+                onclick={handleOpenDownloadUrl}
+                title="Перейти к загрузке установщика"
+              >
+                <Icon name="link" size={14} color="var(--color-secondary-label)" />
+                <span>Ссылка</span>
+              </Button>
+            {/if}
+            <div class="update-banner-close">
+              <Button
+                variant="ghost"
+                size="small"
+                onclick={dismissUpdateBanner}
+                title="Закрыть уведомление"
+              >
+                <Icon name="close" size={14} color="var(--color-secondary-label)" />
+              </Button>
+            </div>
+          {:else if updateStage === 'ready_to_restart'}
+            <Button
+              variant="primary"
+              size="small"
+              onclick={handleRestart}
+              title="Перезапустить лаунчер сейчас"
+            >
+              <Icon name="refresh" size={14} color="#ffffff" />
+              <span>Перезапуск</span>
+            </Button>
+            <div class="update-banner-close">
+              <Button
+                variant="ghost"
+                size="small"
+                onclick={dismissUpdateBanner}
+                title="Отложить перезапуск"
+              >
+                <span>Позже</span>
+              </Button>
+            </div>
+          {:else if updateStage === 'error'}
             <Button
               variant="secondary"
               size="small"
-              onclick={openUpdateDownloadUrl}
-              title="Открыть ссылку на загрузку в браузере"
+              onclick={handleStartUpdate}
+              title="Повторить попытку обновления"
             >
-              <Icon name="link" size={14} color="var(--color-label)" />
-              <span>Ссылка</span>
+              <Icon name="refresh" size={14} color="var(--color-secondary-label)" />
+              <span>Повторить</span>
             </Button>
+            <div class="update-banner-close">
+              <Button
+                variant="ghost"
+                size="small"
+                onclick={dismissUpdateBanner}
+                title="Закрыть уведомление"
+              >
+                <Icon name="close" size={14} color="var(--color-secondary-label)" />
+              </Button>
+            </div>
           {/if}
-          <div class="update-banner-close">
-            <Button
-              variant="ghost"
-              size="small"
-              onclick={dismissUpdateBanner}
-              title="Закрыть уведомление"
-            >
-              <Icon name="close" size={14} color="var(--color-secondary-label)" />
-            </Button>
-          </div>
         </div>
       </div>
     {:else if updateError && !updateBannerDismissed}
@@ -661,6 +833,8 @@
           >
             <Icon name="close" size={14} color="var(--color-secondary-label)" />
           </Button>
+        </div>
+      </div>
         </div>
       </div>
     {/if}
@@ -763,6 +937,7 @@
               }
             }}
             title="Нажмите, чтобы открыть в Мастерской"
+            aria-label="Последний скриншот. Нажмите, чтобы открыть в Мастерской"
           >
             <div class="glance-img-container">
               <img
@@ -1147,6 +1322,52 @@
   .update-banner-subtext {
     font-size: var(--text-caption-1);
     color: var(--color-secondary-label);
+  }
+
+  .update-banner-headline-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .update-banner-headline-error {
+    color: var(--color-system-red);
+  }
+
+  .update-banner-progress {
+    margin-top: 6px;
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .update-banner-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .update-banner-icon.ready_to_restart {
+    background: rgba(48, 209, 88, 0.16);
+  }
+
+  .update-banner-icon.error {
+    background: rgba(255, 69, 58, 0.16);
+  }
+
+  .update-banner-icon.downloading {
+    background: rgba(0, 145, 255, 0.16);
+    animation: spinSlow 3s linear infinite;
+  }
+
+  @keyframes spinSlow {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .update-banner-close {

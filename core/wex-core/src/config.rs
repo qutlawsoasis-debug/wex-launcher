@@ -172,6 +172,13 @@ pub struct LauncherConfig {
     )]
     pub fast_start_jvm: bool,
 
+    #[serde(
+        default = "default_fast_launch",
+        alias = "fastLaunch",
+        alias = "fast_launch"
+    )]
+    pub fast_launch: bool,
+
     #[serde(default)]
     pub window_state: WindowStateConfig,
 
@@ -189,6 +196,13 @@ pub struct LauncherConfig {
         alias = "friend_notifications"
     )]
     pub friend_notifications: bool,
+
+    #[serde(
+        default = "default_game_window_behavior",
+        alias = "game_window_behavior",
+        alias = "gameWindowBehavior"
+    )]
+    pub game_window_behavior: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -334,8 +348,51 @@ fn default_java_mode() -> String {
     "auto".to_string()
 }
 
+#[cfg(windows)]
+pub fn get_system_total_memory_mb() -> u32 {
+    use std::mem::zeroed;
+    #[repr(C)]
+    struct MemoryStatusEx {
+        length: u32,
+        memory_load: u32,
+        total_phys: u64,
+        avail_phys: u64,
+        total_page_file: u64,
+        avail_page_file: u64,
+        total_virtual: u64,
+        avail_virtual: u64,
+        avail_extended_virtual: u64,
+    }
+    extern "system" {
+        fn GlobalMemoryStatusEx(status: *mut MemoryStatusEx) -> i32;
+    }
+    unsafe {
+        let mut status: MemoryStatusEx = zeroed();
+        status.length = std::mem::size_of::<MemoryStatusEx>() as u32;
+        if GlobalMemoryStatusEx(&mut status) != 0 {
+            (status.total_phys / (1024 * 1024)) as u32
+        } else {
+            16384
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn get_system_total_memory_mb() -> u32 {
+    16384
+}
+
+pub fn default_fast_launch() -> bool {
+    // Enabled by default only when system RAM >= 16 GB (~15360 MB)
+    get_system_total_memory_mb() >= 15360
+}
+
 fn default_true() -> bool {
     true
+}
+
+fn default_game_window_behavior() -> String {
+    "minimize".to_string()
 }
 
 impl Default for LauncherConfig {
@@ -356,9 +413,11 @@ impl Default for LauncherConfig {
             appearance: default_appearance(),
             accent: default_accent(),
             fast_start_jvm: false,
+            fast_launch: default_fast_launch(),
             window_state: WindowStateConfig::default(),
             minimize_to_tray: default_minimize_to_tray(),
             friend_notifications: true,
+            game_window_behavior: default_game_window_behavior(),
         }
     }
 }
@@ -385,9 +444,11 @@ impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
             appearance: ipc.appearance,
             accent: ipc.accent,
             fast_start_jvm: ipc.fast_start_jvm,
+            fast_launch: ipc.fast_launch,
             window_state: WindowStateConfig::default(),
             minimize_to_tray: default_minimize_to_tray(),
             friend_notifications: default_true(),
+            game_window_behavior: default_game_window_behavior(),
         }
     }
 }
@@ -403,6 +464,7 @@ impl From<LauncherConfig> for wex_ipc::models::LauncherConfig {
             appearance: core.appearance,
             accent: core.accent,
             fast_start_jvm: core.fast_start_jvm,
+            fast_launch: core.fast_launch,
         }
     }
 }
@@ -476,6 +538,7 @@ mod tests {
         let loaded = LauncherConfig::load_or_default(&config_path);
         assert_eq!(loaded.nickname, "TestUser");
         assert_eq!(loaded.max_memory_mb, 8192);
+        assert_eq!(loaded.game_window_behavior, "minimize");
         assert_eq!(loaded.selected_version, "1.20.1");
     }
 

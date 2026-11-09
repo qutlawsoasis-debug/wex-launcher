@@ -346,6 +346,18 @@ export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
     workshop_add_pack_file: 'Faithful-64x.zip',
     workshop_copy_screenshot_image: true,
 
+    // Onboarding
+    onboarding_get_specs: {
+      total_memory_mb: 16384,
+      available_memory_mb: 8192,
+      cpu_cores: 8,
+      os_name: 'Windows 11',
+      recommended_memory_mb: 4096,
+    },
+    onboarding_prewarm_game: true,
+    onboarding_complete: true,
+    onboarding_detect_old_launcher: null,
+
     // Import & Crash
     extras_detect_old_launcher: null, // do not auto-open import wizard on every page visit
     extras_import_old_launcher: { profiles: ['Default'], accounts: ['Alex'], last_version: '1.21.1' },
@@ -396,7 +408,9 @@ export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
       return null;
     },
   };
-  (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {};
+  (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+    unregisterListener: (_event?: string, _id?: number) => {},
+  };
 
   (window as any).__TRIGGER_CRASH__ = () => {
     const handlers = listeners.get('game-crash') || [];

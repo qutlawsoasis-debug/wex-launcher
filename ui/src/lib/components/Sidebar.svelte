@@ -37,14 +37,30 @@
   let { items, activeId = $bindable('play'), collapsed = false, onselect, footer }: Props = $props();
 
   let activeIndex = $derived(items.findIndex((item) => item.id === activeId));
+  let buttonEls: HTMLButtonElement[] = $state([]);
 
   function selectItem(id: string) {
     activeId = id;
     onselect?.(id);
   }
+
+  function handleKeyDown(e: KeyboardEvent, index: number) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const nextIndex = (index + 1) % items.length;
+      buttonEls[nextIndex]?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prevIndex = (index - 1 + items.length) % items.length;
+      buttonEls[prevIndex]?.focus();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      selectItem(items[index].id);
+    }
+  }
 </script>
 
-<aside class="apple-sidebar" class:collapsed aria-label="Main Navigation">
+<aside class="apple-sidebar" class:collapsed aria-label="Основная навигация">
   <div class="sidebar-header" data-tauri-drag-region>
     <div class="app-brand">
       <div class="brand-glyph">
@@ -67,15 +83,18 @@
       ></div>
     {/if}
     <ul class="nav-list">
-      {#each items as item (item.id)}
+      {#each items as item, i (item.id)}
         {@const isActive = item.id === activeId}
         <li>
           <button
             type="button"
+            bind:this={buttonEls[i]}
             class="nav-item"
             class:active={isActive}
             aria-current={isActive ? 'page' : undefined}
+            aria-label={item.label}
             onclick={() => selectItem(item.id)}
+            onkeydown={(e) => handleKeyDown(e, i)}
             title={collapsed ? item.label : undefined}
           >
             <span class="item-icon">

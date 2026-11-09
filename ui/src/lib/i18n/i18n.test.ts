@@ -179,7 +179,7 @@ describe('i18n Reactive Manager & Translation Helper', () => {
     // 5. WorkshopScreen
     const compWorkshop = mount(WorkshopScreen, { target });
     await tick();
-    await new Promise((r) => setTimeout(r, 60));
+    await vi.waitFor(() => expect(target.textContent).toContain('No Saved Worlds'), { timeout: 3000 });
     expect(target.textContent).toContain('Worlds');
     expect(target.textContent).toContain('Resource Packs');
     expect(target.textContent).toContain('Shaders');
