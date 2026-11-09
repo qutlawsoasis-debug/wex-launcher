@@ -97,6 +97,10 @@ export type NetLanConnectRequest = { address: string, };;
 
 export type NetLanConnectResponse = { success: boolean, message: string, };;
 
+export type NetLanPublishRequest = { motd: string, port: number, host_name: string | null, };;
+
+export type NetLanPublishResponse = { code: string, host_name: string, world_name: string, tunnel_address: string, port: number, };;
+
 export type NetCompareManifestsRequest = { client_manifest: Array<ModManifestEntryDto>, host_manifest: Array<ModManifestEntryDto>, };;
 
 export type NetCompareManifestsResponse = { mismatches: Array<ModMismatchItemDto>, manifest_hash: string, };;
@@ -136,6 +140,10 @@ export type WardrobeApplyResponse = { success: boolean, message: string, };;
 export type WardrobeDeleteHistoryRequest = { history_dir: string, item_id: string, };;
 
 export type WardrobeDeleteHistoryResponse = { success: boolean, };;
+
+export type WardrobeGetSkinRequest = { history_dir: string, item_id: string, };;
+
+export type WardrobeGetSkinResponse = { item: WardrobeItemDto, skin_bytes_base64: string, };;
 
 export type ExtrasDiscordSetActivityRequest = { activity: DiscordActivityDto, };;
 
@@ -209,6 +217,16 @@ export type StorageClearCacheRequest = Record<string, never>;;
 
 export type StorageClearCacheResponse = { result: ClearStorageCacheResultDto, };;
 
+export type MusicTrackDto = { id: string, title: string, artist: string, file_name: string, cover_data_url: string | null, duration_seconds: bigint | null, };;
+
+export type MusicPlaylistResponse = { tracks: Array<MusicTrackDto>, music_dir: string, };;
+
+export type MusicGetTrackDataRequest = { file_name: string, };;
+
+export type MusicGetTrackDataResponse = { file_name: string, mime_type: string, audio_base64: string, };;
+
+export type MusicSettingsDto = { enabled: boolean, volume: number, auto_pause_on_launch: boolean, };;
+
 export const COMMANDS = {
     CORE_GET_CONFIG: "core_get_config",
     CORE_SAVE_CONFIG: "core_save_config",
@@ -235,6 +253,7 @@ export const COMMANDS = {
     NET_LOBBY_LIST_OPEN_ROOMS: "net_lobby_list_open_rooms",
     NET_LAN_LIST_DISCOVERED: "net_lan_list_discovered",
     NET_LAN_CONNECT: "net_lan_connect",
+    NET_LAN_PUBLISH: "net_lan_publish",
     NET_COMPARE_MANIFESTS: "net_compare_manifests",
     NET_COMPUTE_MANIFEST_HASH: "net_compute_manifest_hash",
     NET_TUNNEL_START: "net_tunnel_start",
@@ -250,6 +269,7 @@ export const COMMANDS = {
     WARDROBE_GET_STATE: "wardrobe_get_state",
     WARDROBE_APPLY: "wardrobe_apply",
     WARDROBE_DELETE_HISTORY: "wardrobe_delete_history",
+    WARDROBE_GET_SKIN: "wardrobe_get_skin",
     EXTRAS_DISCORD_SET_ACTIVITY: "extras_discord_set_activity",
     EXTRAS_DISCORD_CLEAR_ACTIVITY: "extras_discord_clear_activity",
     EXTRAS_IMPORT_OLD_LAUNCHER: "extras_import_old_launcher",
@@ -275,6 +295,11 @@ export const COMMANDS = {
     STORAGE_VERIFY_FILES: "storage_verify_files",
     STORAGE_GET_CACHE_INFO: "storage_get_cache_info",
     STORAGE_CLEAR_CACHE: "storage_clear_cache",
+    MUSIC_GET_PLAYLIST: "music_get_playlist",
+    MUSIC_GET_TRACK_DATA: "music_get_track_data",
+    MUSIC_OPEN_FOLDER: "music_open_folder",
+    MUSIC_GET_SETTINGS: "music_get_settings",
+    MUSIC_SET_SETTINGS: "music_set_settings",
 } as const;
 
 export type IpcCommandName = typeof COMMANDS[keyof typeof COMMANDS];

@@ -5,6 +5,7 @@ use tokio::sync::Mutex;
 
 use wex_core::config::WexPaths;
 use wex_core::event::{Event, EventHandler, LogLevel};
+use wex_core::playtime::{PlaytimeStore, PlaytimeSummary};
 use wex_core::WexLauncherCore;
 use wex_extras::crash::{analyze_crash, CrashKind};
 use wex_extras::discord::{Activity, DiscordRpcClient, DEFAULT_DISCORD_APP_ID};
@@ -257,11 +258,12 @@ pub async fn get_installed_versions(
 
 /// Start game with specified version and nickname. Blocks duplicate start if already running.
 #[tauri::command]
-pub async fn start_game(
-    app: AppHandle,
+pub async fn start_game<R: tauri::Runtime>(
+    app: AppHandle<R>,
     version: String,
     nickname: String,
     jvm_args: Option<Vec<String>>,
+    server: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<LaunchGameResponse, String> {
     // 1. Guard against duplicate starts
@@ -313,7 +315,7 @@ pub async fn start_game(
                     &state.discord,
                     Activity::Playing {
                         version: version.clone(),
-                        world_name: None,
+                        world_name: server.clone(),
                         mod_count: None,
                         start_timestamp: Some(chrono::Utc::now().timestamp()),
                     },
@@ -321,11 +323,16 @@ pub async fn start_game(
                 .await;
             }
 
+            let prep_msg = if cfg.fast_start_jvm {
+                format!("Быстрый запуск и подготовка Minecraft {}...", version)
+            } else {
+                format!("Подготовка к запуску Minecraft {}...", version)
+            };
             let _ = app.emit(
                 EVT_LAUNCH_STATUS,
                 LaunchStatusPayload {
                     state: "preparing".to_string(),
-                    message: format!("Подготовка к запуску Minecraft {}...", version),
+                    message: prep_msg,
                     exit_code: None,
                 },
             );
@@ -363,7 +370,7 @@ pub async fn start_game(
             version: version.clone(),
             nickname: nickname.clone(),
             jvm_args: Some(actual_jvm_args),
-            quick_play_multiplayer: None,
+            quick_play_multiplayer: server,
         })
         .await;
 
@@ -393,6 +400,8 @@ pub async fn start_game(
             let discord_clone = state.discord.clone();
             let instance_dir = state.paths.instance_dir(&version);
             let version_clone = version.clone();
+            let playtime_file = state.paths.playtime_file.clone();
+            let session_start = std::time::Instant::now();
 
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -402,6 +411,12 @@ pub async fn start_game(
                         _ => break,
                     }
                 }
+
+                // Record session duration into persistent playtime store
+                let elapsed_sec = session_start.elapsed().as_secs();
+                let mut store = PlaytimeStore::load_or_default(&playtime_file);
+                store.record_session(&version_clone, elapsed_sec);
+                let _ = store.save(&playtime_file);
 
                 is_running_clone.store(false, Ordering::SeqCst);
                 {
@@ -487,7 +502,10 @@ pub async fn start_game(
 
 /// Request cancellation of an ongoing launch.
 #[tauri::command]
-pub async fn cancel_launch(app: AppHandle, state: State<'_, PlayState>) -> Result<(), String> {
+pub async fn cancel_launch<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, PlayState>,
+) -> Result<(), String> {
     let _ = state.core.cancel_launch().await;
     state.is_launching.store(false, Ordering::SeqCst);
 
@@ -538,13 +556,14 @@ pub async fn kill_game(version: Option<String>, state: State<'_, PlayState>) -> 
 // ============================================================================
 
 #[tauri::command]
-pub async fn launch_game(
-    app: AppHandle,
+pub async fn launch_game<R: tauri::Runtime>(
+    app: AppHandle<R>,
     version: String,
     nickname: String,
+    server: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<String, String> {
-    start_game(app, version, nickname, None, state)
+    start_game(app, version, nickname, None, server, state)
         .await
         .map(|r| r.message)
 }
@@ -555,6 +574,25 @@ pub async fn set_config(
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
     save_config(new_config, state).await
+}
+
+/// Retrieve playtime statistics summary.
+#[tauri::command]
+pub async fn get_playtime_summary(
+    version: Option<String>,
+    state: State<'_, PlayState>,
+) -> Result<PlaytimeSummary, String> {
+    let store = PlaytimeStore::load_or_default(&state.paths.playtime_file);
+    Ok(store.get_summary(version.as_deref()))
+}
+
+/// Compatibility alias for playtime retrieval.
+#[tauri::command]
+pub async fn playtime_get_summary(
+    version: Option<String>,
+    state: State<'_, PlayState>,
+) -> Result<PlaytimeSummary, String> {
+    get_playtime_summary(version, state).await
 }
 
 // ============================================================================
@@ -731,5 +769,25 @@ mod tests {
             }
             other => panic!("Expected OfflineForbidden, got {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn test_playtime_summary_lifecycle() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let mut store = PlaytimeStore::load_or_default(&paths.playtime_file);
+
+        // Record sessions
+        store.record_session("1.20.1", 3600);
+        store.record_session("1.21.1", 1800);
+        store.save(&paths.playtime_file).unwrap();
+
+        let loaded = PlaytimeStore::load_or_default(&paths.playtime_file);
+        let summary = loaded.get_summary(Some("1.20.1"));
+        assert_eq!(summary.total_seconds, 5400);
+        assert_eq!(summary.total_formatted, "1 ч. 30 мин.");
+        assert_eq!(summary.current_version_formatted, "1 ч.");
+        assert_eq!(summary.total_launches, 2);
+        assert_eq!(summary.summary_text, "В игре: 1 ч. 30 мин. • Запусков: 2");
     }
 }

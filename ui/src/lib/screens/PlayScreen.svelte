@@ -18,7 +18,10 @@
   import Icon from '../components/icons/Icon.svelte';
   import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
   import ErrorState from '../components/ErrorState.svelte';
+  import StoriesCarousel, { type StorySlideData } from '../components/StoriesCarousel.svelte';
   import { theme } from '../design/theme.svelte';
+  import { t, i18n } from '../i18n';
+  import type { ScreenshotItemDto } from '../ipc/generated';
 
   interface ReleaseNoteItem {
     category?: string;
@@ -42,6 +45,16 @@
     notes?: string;
   }
 
+  interface PlaytimeSummary {
+    total_seconds: number;
+    total_formatted: string;
+    version_seconds: number;
+    version_formatted: string;
+    version_summary: string;
+    total_launches: number;
+    last_played_utc?: string | null;
+  }
+
   interface Props {
     selectedVersion?: string;
     playerName?: string;
@@ -56,10 +69,16 @@
     initialNews?: ReleaseNoteVersion[];
     initialUpdateInfo?: UpdateInfo | null;
     initialShowImportWizard?: boolean;
+    initialScreenshots?: Array<{ file_name: string; file_path: string; preview_data_url?: string; created_at?: string }>;
+    initialAchievements?: { achievements: any[]; progress: any[] } | null;
+    initialPlaytime?: { total_seconds: number; total_launches: number; formatted_play_time: string; last_played_utc?: string } | null;
     onlaunch?: () => void;
     oncancel?: () => void;
     onstop?: () => void;
     onopensettings?: () => void;
+    onnavigatescreen?: (screen: string) => void;
+    ontoast?: (toast: { type: 'info' | 'success' | 'warning' | 'error'; title: string; message: string }) => void;
+    onopenworkshop?: (subtab?: string) => void;
   }
 
   let {
@@ -76,10 +95,16 @@
     initialNews = undefined,
     initialUpdateInfo = null,
     initialShowImportWizard = false,
+    initialScreenshots = undefined,
+    initialAchievements = undefined,
+    initialPlaytime = undefined,
     onlaunch,
     oncancel,
     onstop,
     onopensettings,
+    onnavigatescreen,
+    ontoast,
+    onopenworkshop,
   }: Props = $props();
 
   const versions = [
@@ -136,6 +161,42 @@
   // Recent server state from IPC
   let recentServer = $state<{ name: string; address: string; ping_ms?: number } | null>(null);
 
+  // Latest screenshot from Workshop (Parity Item 10)
+  let latestScreenshot = $state<ScreenshotItemDto | null>(null);
+
+  function getSafeAssetUrl(filePath: string | null): string | null {
+    if (!filePath) return null;
+    try {
+      return (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+        ? `https://asset.localhost/${encodeURIComponent(filePath.replace(/\\/g, '/'))}`
+        : filePath;
+    } catch {
+      return filePath;
+    }
+  }
+
+  async function loadLatestScreenshot() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const list = await invoke<ScreenshotItemDto[]>('workshop_list_screenshots', {
+        version: selectedVersion,
+      });
+      if (list && list.length > 0) {
+        latestScreenshot = list[0];
+      } else {
+        latestScreenshot = null;
+      }
+    } catch {
+      latestScreenshot = null;
+    }
+  }
+
+  $effect(() => {
+    if (selectedVersion) {
+      loadLatestScreenshot();
+    }
+  });
+
   // Unobtrusive update notification banner state
   let fetchedUpdateInfo = $state<UpdateInfo | null>(null);
   let updateInfo = $derived(initialUpdateInfo !== null ? initialUpdateInfo : fetchedUpdateInfo);
@@ -145,6 +206,152 @@
   // Import wizard sheet state
   let manualImportWizardOpen = $state(false);
   let isImportWizardOpen = $derived(Boolean(initialShowImportWizard) || manualImportWizardOpen);
+
+  // Screenshots state (from workshop_list_screenshots)
+  let fetchedScreenshots = $state<Array<{ file_name: string; file_path: string; preview_data_url?: string; created_at?: string }>>([]);
+  let screenshotsList = $derived(initialScreenshots !== undefined ? initialScreenshots : fetchedScreenshots);
+
+  // Achievements state (from social_list_achievements)
+  let fetchedAchievements = $state<{ achievements: any[]; progress: any[] } | null>(null);
+  let achievementsData = $derived(initialAchievements !== undefined ? initialAchievements : fetchedAchievements);
+  let achievementsSummary = $derived.by(() => {
+    if (!achievementsData || !achievementsData.achievements) return null;
+    const defs = achievementsData.achievements;
+    const prog = achievementsData.progress || [];
+    const unlockedList = prog.filter((p: any) => p.unlocked);
+    const unlockedCount = unlockedList.length;
+    const totalCount = defs.length;
+
+    let latestAch: any = undefined;
+    if (unlockedList.length > 0) {
+      const lastP = unlockedList[unlockedList.length - 1];
+      const foundDef = defs.find((d: any) => d.id === lastP.id);
+      if (foundDef) {
+        latestAch = {
+          id: foundDef.id,
+          title: foundDef.title,
+          description: foundDef.description,
+          icon: foundDef.icon,
+          unlockedAt: lastP.unlocked_at,
+        };
+      }
+    } else if (defs.length > 0) {
+      latestAch = {
+        id: defs[0].id,
+        title: defs[0].title,
+        description: defs[0].description,
+        icon: defs[0].icon,
+      };
+    }
+
+    return {
+      unlockedCount,
+      totalCount,
+      latestAchievement: latestAch,
+    };
+  });
+
+  // Playtime state (from overview_get_playtime)
+  let fetchedPlaytime = $state<{ total_seconds: number; total_launches: number; formatted_play_time: string; last_played_utc?: string } | null>(null);
+  let playtimeData = $derived(initialPlaytime !== undefined ? initialPlaytime : fetchedPlaytime);
+
+  // Stories Carousel Slides (Strictly only real data! Card without data is not displayed)
+  let storySlides = $derived.by<StorySlideData[]>(() => {
+    const list: StorySlideData[] = [];
+
+    // 1. What's new / Changelog
+    if (newsVersions.length > 0 && latestVersionNote && formattedNewsItems.length > 0) {
+      list.push({
+        type: 'news',
+        version: latestVersionNote.version,
+        dateText: latestVersionNote.date_text,
+        shortTitle: latestVersionNote.short_title,
+        items: formattedNewsItems,
+      });
+    }
+
+    // 2. Latest Screenshot
+    if (latestScreenshot) {
+      list.push({
+        type: 'screenshot',
+        fileName: latestScreenshot.file_name,
+        filePath: latestScreenshot.file_path,
+        previewUrl: (latestScreenshot as any).preview_data_url || (latestScreenshot.file_path ? getSafeAssetUrl(latestScreenshot.file_path) || undefined : undefined),
+        createdAt: latestScreenshot.created_at ?? undefined,
+      });
+    }
+
+    // 3. Achievements
+    if (achievementsSummary && (achievementsSummary.unlockedCount > 0 || achievementsSummary.totalCount > 0)) {
+      list.push({
+        type: 'achievements',
+        unlockedCount: achievementsSummary.unlockedCount,
+        totalCount: achievementsSummary.totalCount,
+        latestAchievement: achievementsSummary.latestAchievement,
+      });
+    }
+
+    // 4. Playtime (only if real seconds or launches recorded)
+    if (playtimeData && (playtimeData.total_seconds > 0 || playtimeData.total_launches > 0)) {
+      list.push({
+        type: 'playtime',
+        totalSeconds: playtimeData.total_seconds,
+        formattedPlayTime: playtimeData.formatted_play_time || `${Math.floor(playtimeData.total_seconds / 60)} мин.`,
+        totalLaunches: playtimeData.total_launches,
+        lastPlayed: playtimeData.last_played_utc ? new Date(playtimeData.last_played_utc).toLocaleDateString() : undefined,
+      });
+    }
+
+    return list;
+  });
+
+  // Session playtime auto-tracking
+  let gameSessionStartTime: number | null = null;
+  $effect(() => {
+    if (isRunning && gameSessionStartTime === null) {
+      gameSessionStartTime = Date.now();
+    } else if (!isRunning && gameSessionStartTime !== null) {
+      const elapsedSec = Math.floor((Date.now() - gameSessionStartTime) / 1000);
+      gameSessionStartTime = null;
+      if (elapsedSec >= 5) {
+        import('@tauri-apps/api/core').then(({ invoke }) => {
+          invoke<any>('overview_record_playtime', { addedSeconds: elapsedSec, incLaunch: false })
+            .then((res) => {
+              if (res) fetchedPlaytime = res;
+              loadPlaytime();
+            })
+            .catch(() => {});
+        }).catch(() => {});
+      }
+    }
+  });
+
+  // Playtime summary state
+  let playtimeSummary = $state<PlaytimeSummary | null>(null);
+
+  async function loadPlaytime() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<PlaytimeSummary>('get_playtime_summary', { version: selectedVersion });
+      if (res) {
+        playtimeSummary = res;
+      }
+    } catch {
+      playtimeSummary = null;
+    }
+  }
+
+  $effect(() => {
+    if (selectedVersion) {
+      loadPlaytime();
+    }
+  });
+
+  $effect(() => {
+    if (!isRunning) {
+      loadPlaytime();
+    }
+  });
 
   onMount(async () => {
     // Parallelize all startup IPC calls using Promise.allSettled for fastest first-frame render
@@ -197,10 +404,60 @@
           })()
         : Promise.resolve();
 
-      await Promise.allSettled([fetchServers, fetchNews, fetchUpdates, checkOldLauncher]);
+      const fetchScreenshots = initialScreenshots === undefined
+        ? invoke<any[]>('workshop_list_screenshots', { version: selectedVersion })
+            .then((list) => {
+              if (Array.isArray(list) && list.length > 0) {
+                fetchedScreenshots = list;
+              } else {
+                fetchedScreenshots = [];
+              }
+            })
+            .catch(() => {
+              fetchedScreenshots = [];
+            })
+        : Promise.resolve();
+
+      const fetchAchievements = initialAchievements === undefined
+        ? invoke<any>('social_list_achievements')
+            .then((res) => {
+              if (res && res.achievements) {
+                fetchedAchievements = res;
+              }
+            })
+            .catch(() => {
+              fetchedAchievements = null;
+            })
+        : Promise.resolve();
+
+      const fetchPlaytime = initialPlaytime === undefined
+        ? invoke<any>('overview_get_playtime')
+            .then((res) => {
+              if (res && (res.total_seconds > 0 || res.total_launches > 0)) {
+                fetchedPlaytime = res;
+              }
+            })
+            .catch(() => {
+              fetchedPlaytime = null;
+            })
+        : Promise.resolve();
+
+      await Promise.allSettled([
+        fetchServers,
+        fetchNews,
+        fetchUpdates,
+        checkOldLauncher,
+        fetchScreenshots,
+        fetchAchievements,
+        fetchPlaytime,
+        loadPlaytime(),
+      ]);
     } catch {
       recentServer = null;
     }
+
+    // Load latest screenshot from Workshop
+    loadLatestScreenshot();
   });
 
   function handleImportCompleted(result: {
@@ -209,6 +466,7 @@
     selectedVersion?: string;
     serversCount: number;
     skinsCount: number;
+    worldsCount?: number;
   }) {
     if (result.nickname) {
       playerName = result.nickname;
@@ -254,7 +512,12 @@
       <div class="header-main-row">
         <div class="header-titles">
           <h1 class="game-heading">Minecraft</h1>
-          <p class="game-subheading">Клиент Wex • Версия {selectedVersion}</p>
+          <p class="game-subheading">
+            {t('play.client_title')} • {t('play.version_label')} {selectedVersion}
+            {#if playtimeSummary && playtimeSummary.total_seconds > 0}
+              <span class="header-playtime-meta">• {playtimeSummary.version_seconds > 0 ? (i18n.locale === 'en' ? `${playtimeSummary.version_formatted} on this version` : `${playtimeSummary.version_formatted} на этой версии`) : (i18n.locale === 'en' ? `${playtimeSummary.total_formatted} total` : `${playtimeSummary.total_formatted} всего`)}</span>
+            {/if}
+          </p>
         </div>
         <div class="header-tools">
           <Button
@@ -264,7 +527,7 @@
             title="Мастер импорта данных из старого лаунчера"
           >
             <Icon name="folder" size={14} color="var(--color-secondary-label)" />
-            <span>Импорт</span>
+            <span>{t('import.action_import')}</span>
           </Button>
         </div>
       </div>
@@ -272,27 +535,14 @@
 
     <!-- Middle Shelf: Real Updates & Activity Glance -->
     <div class="dashboard-shelf">
-      <!-- Changelog Card: STRICTLY HIDDEN IF NO NEWS SOURCE (Apple HIG & Task Spec) -->
-      {#if newsVersions.length > 0 && latestVersionNote}
-        <div class="glass-card updates-card">
-          <div class="card-title-row">
-            <Icon name="play" size={15} color="var(--color-system-blue)" />
-            <span class="card-title">Журнал изменений</span>
-            <span class="card-meta">
-              {latestVersionNote.version}{latestVersionNote.date_text ? ` • ${latestVersionNote.date_text}` : ''}
-            </span>
-          </div>
-
-          {#if formattedNewsItems.length > 0}
-            <div class="changelog-entries">
-              {#each formattedNewsItems as item (item.badgeText + '-' + item.text)}
-                <div class="changelog-entry-row">
-                  <span class="badge badge-{item.categoryClass}">{item.badgeText}</span>
-                  <span class="changelog-entry-text">{item.text}</span>
-                </div>
-              {/each}
-            </div>
-          {/if}
+      <!-- Stories Carousel: STRICTLY REAL DATA ONLY (Parity with StoriesCarousel.xaml) -->
+      {#if storySlides.length > 0}
+        <div class="stories-shelf-col updates-card">
+          <StoriesCarousel
+            slides={storySlides}
+            {onnavigatescreen}
+            {ontoast}
+          />
         </div>
       {/if}
 
@@ -324,6 +574,43 @@
           <span class="friends-status-label">Нет друзей в игре</span>
         </div>
       </div>
+
+      <!-- Recent Screenshot Glance (Parity Item 10) -->
+      {#if latestScreenshot}
+        <div class="glass-card screenshot-glance-card" data-testid="latest-screenshot-card">
+          <div class="card-title-row">
+            <Icon name="sun" size={15} color="var(--color-system-orange)" />
+            <span class="card-title">Свежий скриншот</span>
+            <span class="card-meta">
+              {latestScreenshot.file_name}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            class="screenshot-glance-btn"
+            onclick={() => {
+              if (onopenworkshop) {
+                onopenworkshop('screenshots');
+              }
+            }}
+            title="Нажмите, чтобы открыть в Мастерской"
+          >
+            <div class="glance-img-container">
+              <img
+                src={getSafeAssetUrl(latestScreenshot.file_path) || ''}
+                alt={latestScreenshot.file_name}
+                class="glance-img"
+                loading="lazy"
+              />
+              <div class="glance-hover-hint">
+                <Icon name="folder" size={15} color="#ffffff" />
+                <span>Открыть в Мастерской</span>
+              </div>
+            </div>
+          </button>
+        </div>
+      {/if}
     </div>
 
     <!-- Launch Error Banner (Apple HIG Alert State) -->
@@ -354,7 +641,7 @@
           />
           <div class="dock-cancel-action dock-cancel">
             <Button variant="secondary" size="regular" onclick={oncancel}>
-              Отмена
+              {t('common.cancel')}
             </Button>
           </div>
         </div>
@@ -362,7 +649,7 @@
         <div class="dock-controls-row">
           <!-- Version Selector -->
           <div class="dock-block version-block">
-            <span class="dock-caption">Версия игры</span>
+            <span class="dock-caption">{t('play.version_label')}</span>
             <div class="version-segmented-container">
               <SegmentedControl
                 options={versions}
@@ -376,17 +663,17 @@
 
           <!-- Player Nickname -->
           <div class="dock-block nickname-block">
-            <span class="dock-caption">Имя игрока</span>
+            <span class="dock-caption">{t('play.account_label')}</span>
             <div class="nickname-field-box">
               <Icon name="friends" size={15} color="var(--color-tertiary-label)" />
               <input
                 type="text"
                 bind:value={playerName}
-                placeholder="Имя игрока"
+                placeholder={t('play.nickname_placeholder')}
                 class="player-name-input nickname-input"
                 maxlength={16}
                 disabled={isLaunching || isRunning}
-                aria-label="Имя игрока"
+                aria-label={t('play.nickname_placeholder')}
               />
             </div>
           </div>
@@ -396,16 +683,24 @@
           <!-- Java Environment & Core Status -->
           <div class="dock-block tech-block">
             <span class="dock-caption">
-              {isRunning ? 'Статус сессии' : 'Среда выполнения'}
+              {isRunning ? (i18n.locale === 'en' ? 'Session Status' : 'Статус сессии') : (i18n.locale === 'en' ? 'Java Runtime' : 'Среда выполнения')}
             </span>
             <div class="tech-runtime-box">
               <span class="tech-runtime-text">{javaRuntime}</span>
               {#if isRunning}
-                <span class="tech-status-badge running">• В игре</span>
+                <span class="tech-status-badge running">• {i18n.locale === 'en' ? 'Playing' : 'В игре'}</span>
               {:else if clientStatus}
                 <span class="tech-status-badge">• {clientStatus}</span>
               {/if}
             </div>
+            {#if playtimeSummary && playtimeSummary.total_seconds > 0}
+              <div class="tech-playtime-line" title="Суммарно: {playtimeSummary.total_formatted} • Запусков: {playtimeSummary.total_launches}">
+                <Icon name="clock" size={11} color="var(--color-tertiary-label)" />
+                <span class="tech-playtime-label">
+                  {playtimeSummary.version_seconds > 0 ? `В игре: ${playtimeSummary.version_formatted}` : `В игре: ${playtimeSummary.total_formatted}`}
+                </span>
+              </div>
+            {/if}
           </div>
 
           <!-- Action Button: Play (systemBlue) -> In Game / Stop (neutral) -->
@@ -415,10 +710,10 @@
                 variant="secondary"
                 size="large"
                 onclick={onstop}
-                title="Остановить процесс Minecraft"
+                title={i18n.locale === 'en' ? 'Stop Minecraft' : 'Остановить процесс Minecraft'}
               >
                 <span class="running-indicator-dot"></span>
-                <span>В игре • Остановить</span>
+                <span>{i18n.locale === 'en' ? 'Stop Minecraft' : 'В игре • Остановить'}</span>
               </Button>
             {:else}
               <Button
@@ -428,7 +723,7 @@
                 disabled={!playerName.trim() || isLaunching || isRunning}
               >
                 <Icon name="play" size={18} color="#ffffff" />
-                <span>Играть</span>
+                <span>{t('play.launch')}</span>
               </Button>
             {/if}
           </div>
@@ -598,9 +893,12 @@
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
   }
 
-  .updates-card {
+  .updates-card,
+  .stories-shelf-col {
     flex: 1 1 380px;
     max-width: 520px;
+    display: flex;
+    flex-direction: column;
   }
 
   .status-card {
@@ -608,6 +906,69 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
+  }
+
+  .screenshot-glance-card {
+    flex: 0 1 240px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .screenshot-glance-btn {
+    all: unset;
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    display: block;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .screenshot-glance-btn:hover {
+    transform: scale(1.02);
+  }
+
+  .screenshot-glance-btn:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 2px;
+  }
+
+  .glance-img-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--color-secondary-system-fill);
+    border-radius: var(--radius-md);
+  }
+
+  .screenshot-glance-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .glance-hover-hint {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #ffffff;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .screenshot-glance-btn:hover .glance-hover-hint {
+    opacity: 1;
   }
 
   .card-title-row {
@@ -621,65 +982,6 @@
     font-size: var(--text-subheadline);
     font-weight: 600;
     color: var(--color-label);
-  }
-
-  .card-meta {
-    margin-left: auto;
-    font-size: var(--text-caption-2);
-    color: var(--color-tertiary-label);
-  }
-
-  /* Changelog entries with Apple HIG badges */
-  .changelog-entries {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .changelog-entry-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    line-height: 1.4;
-  }
-
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 9999px;
-    padding: 1px 7px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    flex-shrink: 0;
-    margin-top: 2px;
-  }
-
-  .badge-new {
-    background: rgba(0, 145, 255, 0.16);
-    color: var(--color-system-blue);
-  }
-
-  .badge-improved {
-    background: var(--color-secondary-system-fill);
-    color: var(--color-label);
-  }
-
-  .badge-fixed {
-    background: rgba(255, 159, 10, 0.16);
-    color: var(--color-system-orange);
-  }
-
-  .badge-general {
-    background: var(--color-tertiary-system-fill);
-    color: var(--color-secondary-label);
-  }
-
-  .changelog-entry-text {
-    font-size: var(--text-footnote);
-    color: var(--color-secondary-label);
-    flex: 1;
   }
 
   .recent-server-item {
@@ -862,6 +1164,24 @@
   .tech-status-badge.running {
     color: var(--color-system-green);
     font-weight: 600;
+  }
+
+  .tech-playtime-line {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--color-secondary-label);
+    margin-top: -2px;
+  }
+
+  .tech-playtime-label {
+    line-height: 1;
+  }
+
+  .header-playtime-meta {
+    color: var(--color-secondary-label);
+    font-weight: var(--font-weight-regular);
   }
 
   .running-indicator-dot {

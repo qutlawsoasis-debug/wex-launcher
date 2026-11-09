@@ -8,6 +8,7 @@
   import { theme } from './lib/design/theme.svelte';
   import { network } from './lib/design/network.svelte';
   import { formatError } from './lib/design/errors';
+  import { i18n, t } from './lib/i18n';
   import Sidebar, { type SidebarItem } from './lib/components/Sidebar.svelte';
   import Toolbar from './lib/components/Toolbar.svelte';
   import ProfileBadge from './lib/components/ProfileBadge.svelte';
@@ -25,11 +26,14 @@
   import SettingsScreen from './lib/screens/SettingsScreen.svelte';
   import ShowcaseScreen from './lib/screens/ShowcaseScreen.svelte';
   import CrashSheet from './lib/components/CrashSheet.svelte';
+  import MusicDiskWidget from './lib/components/MusicDiskWidget.svelte';
   import type { CrashDiagnosisDto } from './lib/ipc/generated/models';
+  import { initIdleManager, setGameRunning, createIdleInterval } from './lib/design/idleManager';
 
   // Navigation state
   let activeTab = $state('play');
   let friendsSubtab = $state<'friends' | 'requests' | 'achievements'>('friends');
+  let workshopSubtab = $state<'worlds' | 'resourcepacks' | 'shaders' | 'screenshots'>('worlds');
   let isMaximized = $state(false);
 
   // Crash report modal state
@@ -51,6 +55,10 @@
       if (themeParam === 'light' || themeParam === 'dark') {
         theme.setAppearance(themeParam);
       }
+      const langParam = params.get('lang');
+      if (langParam === 'ru' || langParam === 'en') {
+        i18n.setLocale(langParam);
+      }
     }
   });
 
@@ -60,6 +68,9 @@
   let clientStatus = $state('Клиент Wex готов');
   let isLaunching = $state(false);
   let isGameRunning = $state(false);
+  $effect(() => {
+    setGameRunning(isGameRunning);
+  });
   let isOnline = $state(true);
   let skinHeadUrl = $state<string | undefined>(undefined);
   let progressPercentage = $state(0);
@@ -96,28 +107,28 @@
   }
 
   // Sidebar navigation destinations per SPEC.md 1.2
-  const sidebarItems: SidebarItem[] = [
-    { id: 'play', label: 'Играть', icon: 'play' },
-    { id: 'servers', label: 'Серверы', icon: 'server' },
-    { id: 'lobby', label: 'Лобби', icon: 'lobby' },
-    { id: 'friends', label: 'Друзья', icon: 'friends' },
-    { id: 'wardrobe', label: 'Гардероб', icon: 'wardrobe' },
-    { id: 'workshop', label: 'Мастерская', icon: 'workshop' },
-    { id: 'mods', label: 'Моды', icon: 'mods' },
-    { id: 'settings', label: 'Настройки', icon: 'settings' },
-  ];
+  let sidebarItems = $derived<SidebarItem[]>([
+    { id: 'play', label: t('sidebar.play'), icon: 'play' },
+    { id: 'servers', label: t('sidebar.servers'), icon: 'server' },
+    { id: 'lobby', label: t('sidebar.lobby'), icon: 'lobby' },
+    { id: 'friends', label: t('sidebar.friends'), icon: 'friends' },
+    { id: 'wardrobe', label: t('sidebar.wardrobe'), icon: 'wardrobe' },
+    { id: 'workshop', label: t('sidebar.workshop'), icon: 'workshop' },
+    { id: 'mods', label: t('sidebar.mods'), icon: 'mods' },
+    { id: 'settings', label: t('sidebar.settings'), icon: 'settings' },
+  ]);
 
-  const screenTitles: Record<string, string> = {
-    play: 'Играть',
-    servers: 'Серверы',
-    lobby: 'Кооператив и Лобби',
-    friends: 'Друзья',
-    wardrobe: 'Гардероб',
-    workshop: 'Мастерская',
-    mods: 'Моды и шейдеры',
-    settings: 'Настройки',
-    showcase: 'Компоненты Apple HIG',
-  };
+  let screenTitles = $derived<Record<string, string>>({
+    play: t('sidebar.play'),
+    servers: t('sidebar.servers'),
+    lobby: t('sidebar.lobby'),
+    friends: t('sidebar.friends'),
+    wardrobe: t('sidebar.wardrobe'),
+    workshop: t('sidebar.workshop'),
+    mods: t('sidebar.mods'),
+    settings: t('sidebar.settings'),
+    showcase: 'Showcase',
+  });
 
   // Tauri Window Control Actions
   async function minimizeWindow() {
@@ -159,12 +170,25 @@
     }
   }
 
+  let playerPlaytimeFormatted = $state<string | undefined>(undefined);
+
   async function loadProfile() {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const prof = await invoke<{ nickname: string; initials: string; is_online: boolean; skin_head_url?: string }>('shell_get_profile', { nickname: playerName });
+      const prof = await invoke<{
+        nickname: string;
+        initials: string;
+        is_online: boolean;
+        skin_head_url?: string;
+        total_playtime_seconds?: number;
+        total_playtime_formatted?: string;
+        total_launches?: number;
+      }>('shell_get_profile', { nickname: playerName });
       if (prof.skin_head_url) {
         skinHeadUrl = prof.skin_head_url;
+      }
+      if (prof.total_playtime_formatted) {
+        playerPlaytimeFormatted = prof.total_playtime_formatted;
       }
     } catch {
       skinHeadUrl = undefined;
@@ -286,6 +310,10 @@
       if (t === 'light' || t === 'dark') {
         theme.setAppearance(t);
       }
+      const l = params.get('lang');
+      if (l === 'ru' || l === 'en') {
+        i18n.setLocale(l);
+      }
       const v = params.get('version');
       if (v === '1.20.1' || v === '1.21.1') {
         selectedVersion = v;
@@ -363,6 +391,8 @@
       })(),
     ]);
 
+    const cleanupIdle = initIdleManager();
+
     if (typeof window !== 'undefined') {
       window.addEventListener('online', checkNetwork);
       window.addEventListener('offline', () => {
@@ -370,7 +400,7 @@
       });
     }
 
-    const netInterval = setInterval(checkNetwork, 30000);
+    const cleanupNet = createIdleInterval(checkNetwork, 30000);
 
     // Tauri 2 Event Listeners (install-progress & launch-status as per SPEC.md)
     let unlistenProgress: (() => void) | undefined;
@@ -467,11 +497,12 @@
     }
 
     return () => {
+      cleanupIdle?.();
       window.removeEventListener('hashchange', applyHashRoute);
       if (typeof window !== 'undefined') {
         window.removeEventListener('online', checkNetwork);
       }
-      clearInterval(netInterval);
+      cleanupNet();
       unlistenProgress?.();
       unlistenStatus?.();
       unlistenAchievement?.();
@@ -494,6 +525,7 @@
   >
     {#snippet footer()}
       <div class="sidebar-footer-controls">
+        <MusicDiskWidget {isGameRunning} />
         <div class="theme-quick-toggle">
           <Button
             variant="ghost"
@@ -524,6 +556,7 @@
           {playerName}
           isOnline={network.isOnline}
           {skinHeadUrl}
+          playtimeFormatted={playerPlaytimeFormatted}
         />
       {/snippet}
     </Toolbar>
@@ -549,6 +582,16 @@
           onopensettings={() => {
             activeTab = 'settings';
           }}
+          onnavigatescreen={(screen: string) => {
+            activeTab = screen as any;
+          }}
+          ontoast={(t: { type: 'info' | 'success' | 'warning' | 'error'; title: string; message: string }) => addToast(t.type, t.title, t.message)}
+          onopenworkshop={(subtab?: string) => {
+            activeTab = 'workshop';
+            if (subtab && ['worlds', 'resourcepacks', 'shaders', 'screenshots'].includes(subtab)) {
+              workshopSubtab = subtab as any;
+            }
+          }}
         />
       {:else if activeTab === 'servers'}
         <ServersScreen />
@@ -559,7 +602,7 @@
       {:else if activeTab === 'wardrobe'}
         <WardrobeScreen {playerName} ontoast={addToast} />
       {:else if activeTab === 'workshop'}
-        <WorkshopScreen {selectedVersion} ontoast={addToast} />
+        <WorkshopScreen {selectedVersion} initialTab={workshopSubtab} ontoast={addToast} />
       {:else if activeTab === 'mods'}
         <ModsScreen />
       {:else if activeTab === 'settings'}

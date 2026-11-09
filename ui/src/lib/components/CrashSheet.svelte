@@ -17,6 +17,7 @@
   import Sheet from './Sheet.svelte';
   import Button from './Button.svelte';
   import Icon from './icons/Icon.svelte';
+  import ReportSheet from './ReportSheet.svelte';
   import type { CrashDiagnosisDto, CrashKindDto } from '../ipc/generated/models';
 
   interface Props {
@@ -41,6 +42,7 @@
   let isOpeningLog = $state(false);
   let copyFeedback = $state(false);
   let modDisabledSuccess = $state(false);
+  let isReportSheetOpen = $state(false);
 
   interface ParsedCategory {
     badge: string;
@@ -345,6 +347,14 @@
         >
           <span data-testid="btn-open-log">Открыть лог</span>
         </Button>
+
+        <Button
+          variant="secondary"
+          size="regular"
+          onclick={() => (isReportSheetOpen = true)}
+        >
+          <span data-testid="btn-open-report">Отправить отчёт</span>
+        </Button>
       </div>
 
       <div class="actions-right">
@@ -354,6 +364,14 @@
       </div>
     </div>
   </div>
+
+  <ReportSheet
+    bind:open={isReportSheetOpen}
+    {version}
+    errorText={technicalSnippet}
+    diagnosisTitle={displayTitle}
+    {ontoast}
+  />
 </Sheet>
 
 <style>

@@ -14,11 +14,15 @@ describe('WorkshopScreen Resource Packs and Shaders (SPEC 1.7)', () => {
   beforeEach(() => {
     target = document.createElement('div');
     document.body.appendChild(target);
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (cmd: string, args: Record<string, unknown>) => invokeMock(cmd, args),
+    };
     vi.clearAllMocks();
   });
 
   afterEach(() => {
     target.remove();
+    delete (window as any).__TAURI_INTERNALS__;
   });
 
   it('renders resource packs with Aura-Pack protection badge and toggling', async () => {

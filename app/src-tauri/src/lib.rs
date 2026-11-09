@@ -1,12 +1,13 @@
 pub mod commands;
 pub mod ipc;
 
-use std::path::PathBuf;
+pub use commands::servers::*;
+
 use std::sync::Mutex;
-use tauri::{Manager, State};
+use tauri::Manager;
 
 use commands::launch::PlayState;
-use ipc::{LobbyRoomModel, ServerEntryModel, ServerPingResult};
+use ipc::{LobbyRoomModel, ServerEntryModel};
 use wex_core::config::WexPaths;
 
 pub struct AppState {
@@ -17,159 +18,11 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            servers: Mutex::new(vec![
-                ServerEntryModel {
-                    id: "aura-main".to_string(),
-                    name: "Aura Official — Survival & PvP".to_string(),
-                    address: "mc.auramc.net".to_string(),
-                    icon: None,
-                    ping_ms: None,
-                    online: None,
-                    max_players: None,
-                    motd: Some("Официальный сервер Aura Client • 1.20.1 & 1.21.1".to_string()),
-                    version: Some("1.21.1 / 1.20.1".to_string()),
-                },
-                ServerEntryModel {
-                    id: "aura-modded".to_string(),
-                    name: "Aura Pack Community Server".to_string(),
-                    address: "pack.auramc.net".to_string(),
-                    icon: None,
-                    ping_ms: None,
-                    online: None,
-                    max_players: None,
-                    motd: Some("Сервер сообщества Aura-Pack".to_string()),
-                    version: Some("1.21.1".to_string()),
-                },
-            ]),
+            servers: Mutex::new(Vec::new()),
             active_lobby: Mutex::new(None),
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Servers Management (powered by core/wex-net)
-// ---------------------------------------------------------------------------
-
-#[tauri::command]
-fn list_servers(state: State<'_, AppState>) -> Result<Vec<ServerEntryModel>, String> {
-    state
-        .servers
-        .lock()
-        .map(|s| s.clone())
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn ping_server(address: String) -> Result<ServerPingResult, String> {
-    let pinger = wex_net::ServerPinger::new(2500, 2500, 763);
-    match pinger.ping(&address).await {
-        Ok(res) => Ok(ServerPingResult {
-            latency_ms: res.latency_ms,
-            online: res.players.online,
-            max_players: res.players.max,
-            motd: res.description,
-            version: res.version.name,
-            favicon: res.favicon,
-        }),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-#[tauri::command]
-async fn add_server(
-    name: String,
-    address: String,
-    state: State<'_, AppState>,
-) -> Result<ServerEntryModel, String> {
-    let new_server = ServerEntryModel {
-        id: format!(
-            "server-{}",
-            std::time::SystemTime::now()
-                .elapsed()
-                .unwrap_or_default()
-                .as_millis()
-        ),
-        name: name.clone(),
-        address: address.clone(),
-        icon: None,
-        ping_ms: None,
-        online: None,
-        max_players: None,
-        motd: None,
-        version: None,
-    };
-
-    let mut list = state.servers.lock().map_err(|e| e.to_string())?;
-    list.push(new_server.clone());
-
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        let servers_dat_path = PathBuf::from(appdata).join("Wex").join("servers.dat");
-        if let Some(parent) = servers_dat_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let pack_servers: Vec<wex_net::PackServerEntry> = list
-            .iter()
-            .map(|s| wex_net::PackServerEntry {
-                id: Some(s.id.clone()),
-                name: s.name.clone(),
-                ip: s.address.clone(),
-                icon: s.icon.clone(),
-            })
-            .collect();
-
-        let mut root = wex_net::load_servers_dat(&servers_dat_path).unwrap_or_else(|_| {
-            wex_net::NbtTag::Compound(vec![(
-                "servers".to_string(),
-                wex_net::NbtTag::List {
-                    tag_id: 10,
-                    elements: Vec::new(),
-                },
-            )])
-        });
-        wex_net::merge_pack_servers(&mut root, &pack_servers);
-        let _ = wex_net::save_servers_dat(&servers_dat_path, &root);
-    }
-
-    Ok(new_server)
-}
-
-#[tauri::command]
-fn remove_server(address: String, state: State<'_, AppState>) -> Result<(), String> {
-    let mut list = state.servers.lock().map_err(|e| e.to_string())?;
-    list.retain(|s| s.address != address);
-
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        let servers_dat_path = PathBuf::from(appdata).join("Wex").join("servers.dat");
-        let mut root = wex_net::load_servers_dat(&servers_dat_path).unwrap_or_else(|_| {
-            wex_net::NbtTag::Compound(vec![(
-                "servers".to_string(),
-                wex_net::NbtTag::List {
-                    tag_id: 10,
-                    elements: Vec::new(),
-                },
-            )])
-        });
-        if let Some(wex_net::NbtTag::List { elements, .. }) = root.get_mut("servers") {
-            elements.retain(|elem| {
-                if let wex_net::NbtTag::Compound(fields) = elem {
-                    !fields.iter().any(|(k, v)| {
-                        k == "ip"
-                            && matches!(v, wex_net::NbtTag::String(ip_str) if ip_str == &address)
-                    })
-                } else {
-                    true
-                }
-            });
-        }
-        let _ = wex_net::save_servers_dat(&servers_dat_path, &root);
-    }
-
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Tauri Application Runner
-// ---------------------------------------------------------------------------
 
 pub fn run() {
     tauri::Builder::default()
@@ -203,6 +56,8 @@ pub fn run() {
             commands::launch::cancel_launch,
             commands::launch::is_game_running,
             commands::launch::kill_game,
+            commands::launch::get_playtime_summary,
+            commands::launch::playtime_get_summary,
             // UI compatibility aliases
             commands::launch::launch_game,
             commands::launch::set_config,
@@ -216,6 +71,10 @@ pub fn run() {
             commands::settings::get_launcher_config,
             commands::settings::save_launcher_config,
             commands::settings::open_data_dir,
+            commands::settings::verify_instance_files,
+            commands::settings::settings_verify_files,
+            commands::settings::cleanup_cache,
+            commands::settings::settings_cleanup_cache,
             // Storage commands (commands/storage.rs)
             commands::storage::get_storage_cache_info,
             commands::storage::clear_storage_cache,
@@ -234,11 +93,19 @@ pub fn run() {
             commands::overview::extras_detect_old_launcher,
             commands::overview::extras_import_old_launcher,
             commands::overview::extras_apply_import,
-            // Servers commands
-            list_servers,
-            ping_server,
-            add_server,
-            remove_server,
+            commands::overview::overview_get_playtime,
+            commands::overview::overview_record_playtime,
+            // Servers commands (commands/servers.rs)
+            commands::servers::list_servers,
+            commands::servers::ping_server,
+            commands::servers::add_server,
+            commands::servers::edit_server,
+            commands::servers::remove_server,
+            commands::servers::net_load_servers,
+            commands::servers::net_save_servers,
+            commands::servers::net_merge_servers,
+            commands::servers::net_ping_server,
+            commands::servers::net_resolve_address,
             // Lobby commands (from commands::lobby)
             commands::lobby::net_lobby_create,
             commands::lobby::net_lobby_join,
@@ -261,9 +128,11 @@ pub fn run() {
             commands::lobby::kick_lobby_player,
             commands::lobby::list_open_rooms,
             commands::lobby::net_lan_list_discovered,
+            commands::lobby::net_lan_publish,
             commands::lobby::list_lan_worlds,
             commands::lobby::record_lan_world,
             commands::lobby::connect_lan_world,
+            commands::lobby::publish_lan_world,
             // Wardrobe commands
             commands::wardrobe::extras_validate_skin,
             commands::wardrobe::extras_convert_skin,
@@ -271,8 +140,15 @@ pub fn run() {
             commands::wardrobe::extras_list_skin_history,
             commands::wardrobe::extras_generate_csl_config,
             commands::wardrobe::wardrobe_delete_history,
+            commands::wardrobe::wardrobe_get_skin,
             commands::wardrobe::wardrobe_get_state,
             commands::wardrobe::wardrobe_apply,
+            // Music commands
+            commands::music::music_get_playlist,
+            commands::music::music_get_track_data,
+            commands::music::music_open_folder,
+            commands::music::music_get_settings,
+            commands::music::music_set_settings,
             // Friends & Social commands
             commands::friends::social_login,
             commands::friends::social_get_friends,
@@ -298,6 +174,7 @@ pub fn run() {
             commands::workshop::workshop_list_screenshots,
             commands::workshop::social_list_screenshots,
             commands::workshop::workshop_open_path,
+            commands::workshop::workshop_copy_screenshot_image,
             // Workshop packs and shaders commands (SPEC 1.7)
             commands::workshop_packs::workshop_list_resource_packs,
             commands::workshop_packs::workshop_toggle_resource_pack,
@@ -320,6 +197,10 @@ pub fn run() {
             commands::shell::shell_minimize_window,
             commands::shell::shell_toggle_maximize_window,
             commands::shell::shell_close_window,
+            // Report commands (SPEC 2.10)
+            commands::report::report_get_preview,
+            commands::report::report_save_zip,
+            commands::report::report_copy_text,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

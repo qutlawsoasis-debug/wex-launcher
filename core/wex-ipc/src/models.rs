@@ -16,6 +16,13 @@ pub struct LauncherConfig {
     pub reduce_transparency: bool,
     pub appearance: String, // "dark" | "light" | "auto"
     pub accent: String,     // "blue" | "mono" | etc.
+    #[serde(
+        default,
+        alias = "fastStartJvm",
+        alias = "fast_start_jvm",
+        alias = "prewarmGame"
+    )]
+    pub fast_start_jvm: bool,
 }
 
 impl Default for LauncherConfig {
@@ -28,6 +35,7 @@ impl Default for LauncherConfig {
             reduce_transparency: false,
             appearance: "dark".to_string(),
             accent: "blue".to_string(),
+            fast_start_jvm: false,
         }
     }
 }
@@ -606,6 +614,15 @@ pub struct ImportedWardrobeItemDto {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct ImportedWorldDto {
+    pub folder_name: String,
+    pub display_name: String,
+    pub version: Option<String>,
+    pub source_path: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct OldLauncherDataDto {
     pub nickname: String,
     pub ram_mb: u32,
@@ -617,6 +634,8 @@ pub struct OldLauncherDataDto {
     pub skins: Vec<ImportedSkinDto>,
     pub capes: Vec<ImportedCapeDto>,
     pub wardrobe_history: Vec<ImportedWardrobeItemDto>,
+    #[serde(default)]
+    pub worlds: Vec<ImportedWorldDto>,
 }
 
 impl From<wex_extras::OldLauncherData> for OldLauncherDataDto {
@@ -665,6 +684,17 @@ impl From<wex_extras::OldLauncherData> for OldLauncherDataDto {
                     name: w.name,
                     hash: w.hash,
                     model: w.model,
+                })
+                .collect(),
+            worlds: d
+                .worlds
+                .into_iter()
+                .map(|w| ImportedWorldDto {
+                    folder_name: w.folder_name,
+                    display_name: w.display_name,
+                    version: w.version,
+                    source_path: w.source_path.to_string_lossy().to_string(),
+                    size_bytes: w.size_bytes,
                 })
                 .collect(),
         }

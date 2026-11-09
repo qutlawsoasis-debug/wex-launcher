@@ -32,6 +32,26 @@ vi.mock('@tauri-apps/api/core', () => {
       if (cmd === 'connect_lan_world') {
         return `Подключение к ${args?.address} (PID 12345)`;
       }
+      if (cmd === 'publish_lan_world') {
+        return {
+          code: '#B2C3',
+          host_name: 'Player',
+          world_name: args?.motd || 'Мир LAN',
+          tunnel_address: `lan-host.tun.ply.gg:${args?.port || 25565}`,
+          tunnel_active: true,
+          is_host: true,
+          players: [
+            {
+              name: 'Player',
+              is_host: true,
+              ping_ms: 0,
+              mods_synced: true,
+            },
+          ],
+          mod_mismatch_count: 0,
+          total_mods: 142,
+        };
+      }
       if (cmd === 'list_mods') {
         if (args?.version === '1.20.1') {
           return [];
@@ -97,6 +117,37 @@ vi.mock('@tauri-apps/api/core', () => {
       }
       if (cmd === 'is_game_running') {
         return false;
+      }
+      if (cmd === 'get_playtime_summary') {
+        return {
+          total_seconds: 7200,
+          total_formatted: '2 ч. 0 мин.',
+          version_seconds: 3600,
+          version_formatted: '1 ч. 0 мин.',
+          version_summary: 'В игре: 1 ч. 0 мин. • Запусков: 2',
+          total_launches: 4,
+          last_played_utc: '2026-11-08T18:00:00Z',
+        };
+      }
+      if (cmd === 'verify_instance_files') {
+        return {
+          success: true,
+          total_files: 264,
+          verified_files: 264,
+          repaired_files: 0,
+          corrupted_files: 0,
+          errors: [],
+          message: 'Все 264 файлов проверены, повреждений не обнаружено',
+        };
+      }
+      if (cmd === 'cleanup_cache') {
+        return {
+          success: true,
+          freed_bytes: 15204352,
+          freed_formatted: '14.5 МБ',
+          deleted_files_count: 8,
+          message: 'Кэш очищен: освобождено 14.5 МБ (удалено 8 файлов)',
+        };
       }
       return [];
     }),
@@ -351,7 +402,28 @@ describe('Wex Launcher Screens', () => {
     const comp = mount(ServersScreen, { target });
     expect(target.textContent).toContain('Список серверов пуст');
     expect(target.textContent).toContain('Добавить сервер');
+    expect(target.textContent).toContain('Обновить');
+    expect(target.textContent).toContain('1.21.1');
+    expect(target.textContent).toContain('1.20.1');
     expect(target.textContent).not.toContain('mc.wexmc.net');
+    unmount(comp);
+  });
+
+  it('renders ServersScreen with version segments and opens add server sheet on click', async () => {
+    const comp = mount(ServersScreen, { target });
+    const addBtn = Array.from(target.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Добавить сервер')
+    );
+    expect(addBtn).toBeDefined();
+
+    addBtn?.click();
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Modal Sheet should now be present in DOM with form fields
+    expect(document.querySelector('.sheet-card')).not.toBeNull();
+    expect(document.querySelector('#new-srv-name')).not.toBeNull();
+    expect(document.querySelector('#new-srv-addr')).not.toBeNull();
+
     unmount(comp);
   });
 
@@ -428,6 +500,29 @@ describe('Wex Launcher Screens', () => {
 
     await new Promise((r) => setTimeout(r, 50));
     expect(target.textContent).toContain('Подключение к 192.168.1.105:54321');
+
+    unmount(comp);
+  });
+
+  it('publishes discovered LAN world to cloud lobby via «Открыть друзьям» action', async () => {
+    const comp = mount(LobbyScreen, { target });
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(target.textContent).toContain('Локальные миры в сети (LAN)');
+    expect(target.textContent).toContain('Alex - Creative Studio');
+
+    const publishBtn = Array.from(target.querySelectorAll('button')).find(
+      (b) => b.textContent?.includes('Открыть друзьям') && b.closest('.lan-worlds-section')
+    );
+    expect(publishBtn).not.toBeUndefined();
+    publishBtn?.click();
+
+    await new Promise((r) => setTimeout(r, 50));
+    // Should transition to active room view
+    expect(target.textContent).toContain('#B2C3');
+    expect(target.textContent).toContain('Alex - Creative Studio');
+    expect(target.textContent).toContain('Туннель активен: lan-host.tun.ply.gg:54321');
+    expect(target.textContent).toContain('Закрыть комнату');
 
     unmount(comp);
   });
@@ -538,6 +633,8 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Язык интерфейса');
     expect(target.textContent).toContain('О программе');
     expect(target.textContent).toContain('Tauri 2');
+    expect(target.textContent).toContain('Проверить файлы игры');
+    expect(target.textContent).toContain('Очистить кэш');
     expect(target.textContent).not.toContain('.minecraft');
     expect(target.textContent).toContain('Wex');
     // Storage section (SPEC items 40–41: wex-verify-files)
@@ -588,6 +685,26 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  it('triggers verify instance files and clean cache in SettingsScreen', async () => {
+    const comp = mount(SettingsScreen, { target });
+    await tick();
+
+    const buttons = Array.from(target.querySelectorAll('button'));
+    const verifyBtn = buttons.find((b) => b.textContent?.includes('Проверить'));
+    const cleanBtn = buttons.find((b) => b.textContent?.includes('Очистить'));
+
+    expect(verifyBtn).toBeDefined();
+    expect(cleanBtn).toBeDefined();
+
+    verifyBtn?.click();
+    await tick();
+
+    cleanBtn?.click();
+    await tick();
+
+    unmount(comp);
+  });
+
   it('renders WardrobeScreen with 2D character preview, model selector, capes, and authentic empty history', () => {
     const comp = mount(WardrobeScreen, {
       target,
@@ -616,6 +733,93 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Применить к игре');
 
     // Check authentic empty state
+    expect(target.textContent).toContain('История гардероба пуста');
+
+    unmount(comp);
+  });
+
+  it('renders WardrobeScreen skins library with quick-switch and deletion', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    (invoke as any).mockImplementation((cmd: string, args: any) => {
+      if (cmd === 'extras_list_skin_history') {
+        return Promise.resolve({
+          items: [
+            {
+              id: 'skin_123',
+              item_type: 'skin',
+              name: 'Warrior Alex',
+              hash: '1234567890abcdef',
+              model: 'slim',
+              relative_path: 'skins/1234567890abcdef.png',
+              created_utc: '2026-11-08T18:00:00Z',
+            },
+          ],
+        });
+      }
+      if (cmd === 'wardrobe_get_skin') {
+        return Promise.resolve({
+          item: {
+            id: 'skin_123',
+            name: 'Warrior Alex',
+            model: 'slim',
+          },
+          skin_bytes_base64:
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        });
+      }
+      if (cmd === 'wardrobe_delete_history') {
+        return Promise.resolve({ success: true });
+      }
+      return Promise.resolve(null);
+    });
+
+    const comp = mount(WardrobeScreen, {
+      target,
+      props: {
+        playerName: 'Player1',
+        initialHistory: [
+          {
+            id: 'skin_123',
+            item_type: 'skin',
+            name: 'Warrior Alex',
+            hash: '1234567890abcdef',
+            model: 'slim',
+            relative_path: 'skins/1234567890abcdef.png',
+            created_utc: '2026-11-08T18:00:00Z',
+          },
+        ],
+      },
+    });
+
+    await tick();
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Verify skins library rendered item
+    expect(target.textContent).toContain('Библиотека скинов');
+    expect(target.textContent).toContain('Warrior Alex');
+    expect(target.textContent).toContain('Тонкая');
+
+    // Click on "Выбрать" button in history actions to quick-switch
+    const selectBtn = target.querySelector('.history-actions button') as HTMLButtonElement;
+    expect(selectBtn).not.toBeNull();
+    selectBtn.click();
+
+    await tick();
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Verify skin name input updated to Warrior Alex
+    const skinInput = target.querySelector('.skin-name-input') as HTMLInputElement;
+    expect(skinInput).not.toBeNull();
+    expect(skinInput.value).toBe('Warrior Alex');
+
+    // Click delete button
+    const deleteBtn = target.querySelector('[aria-label="Удалить из истории"]') as HTMLButtonElement;
+    expect(deleteBtn).not.toBeNull();
+    deleteBtn.click();
+
+    await tick();
+    await new Promise((r) => setTimeout(r, 20));
+
     expect(target.textContent).toContain('История гардероба пуста');
 
     unmount(comp);
@@ -762,6 +966,7 @@ describe('Wex Launcher Screens', () => {
           ],
           capes: [],
           wardrobe_history: [],
+          worlds: [],
         },
       },
     });
@@ -859,6 +1064,32 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Process finished with exit code -1');
     expect(target.textContent).toContain('Скопировать отчёт');
     expect(target.textContent).toContain('Открыть лог');
+    expect(target.textContent).toContain('Отправить отчёт');
+    unmount(comp);
+  });
+
+  it('opens ReportSheet from CrashSheet with anonymized bug report details', async () => {
+    const comp = mount(CrashSheet, {
+      target,
+      props: {
+        open: true,
+        version: '1.21.1',
+        diagnosis: {
+          kind: 'OutOfMemory',
+          title: 'Нехватка оперативной памяти (OutOfMemoryError)',
+          user_advice: 'Выделите больше памяти в настройках.',
+          technical_summary: 'OutOfMemoryError at C:\\Users\\User1\\launch.jar',
+        },
+      },
+    });
+
+    const reportBtn = target.querySelector('[data-testid="btn-open-report"]') as HTMLElement;
+    expect(reportBtn).not.toBeNull();
+    reportBtn.click();
+    await tick();
+
+    expect(target.textContent).toContain('Отчёт об ошибке');
+    expect(target.textContent).toContain('Сохранить на рабочий стол (.zip)');
     unmount(comp);
   });
 

@@ -24,6 +24,7 @@
   import Icon from '../components/icons/Icon.svelte';
   import { theme } from '../design/theme.svelte';
   import { AccentPresets, type AccentColor } from '../design/colors';
+  import { i18n, t, type SupportedLocale } from '../i18n';
 
   interface Props {
     isGameRunning?: boolean;
@@ -54,32 +55,34 @@
   let detectedJava17 = $state<string | null>(null);
   let detectedJava21 = $state<string | null>(null);
   let discordRpc = $state(true);
-  let language = $state('ru');
+  let backgroundMusic = $state(true);
+  let fastStartJvm = $state(false);
+  let language = $state<string>(i18n.locale);
   let launcherVersion = $state('1.0.0');
   let osName = $state('windows');
 
-  const graphicsOptions = [
-    { value: 'Low', label: 'Низкий' },
-    { value: 'Medium', label: 'Средний' },
-    { value: 'High', label: 'Высокий' },
-    { value: 'Ultra', label: 'Ультра' },
-  ];
+  let graphicsOptions = $derived([
+    { value: 'Low', label: t('settings.graphics_low') },
+    { value: 'Medium', label: t('settings.graphics_medium') },
+    { value: 'High', label: t('settings.graphics_high') },
+    { value: 'Ultra', label: t('settings.graphics_ultra') },
+  ]);
 
-  const javaModeOptions = [
-    { value: 'auto', label: 'Автоматически' },
-    { value: 'custom', label: 'Свой путь' },
-  ];
+  let javaModeOptions = $derived([
+    { value: 'auto', label: t('settings.java_auto') },
+    { value: 'custom', label: t('settings.java_custom') },
+  ]);
 
   const languageOptions = [
     { value: 'ru', label: 'Русский' },
     { value: 'en', label: 'English' },
   ];
 
-  const appearanceOptions = [
-    { value: 'dark', label: 'Тёмная' },
-    { value: 'light', label: 'Светлая' },
-    { value: 'auto', label: 'Авто' },
-  ];
+  let appearanceOptions = $derived([
+    { value: 'dark', label: t('settings.theme_dark') },
+    { value: 'light', label: t('settings.theme_light') },
+    { value: 'auto', label: t('settings.theme_auto') },
+  ]);
 
   const accents: { key: AccentColor; title: string; color: string }[] = Object.entries(
     AccentPresets
@@ -91,11 +94,24 @@
 
   function formatRam(val: number): string {
     const gb = (val / 1024).toFixed(1);
-    return `${gb} ГБ (${val} МБ)`;
+    const unitGb = i18n.locale === 'en' ? 'GB' : 'ГБ';
+    const unitMb = i18n.locale === 'en' ? 'MB' : 'МБ';
+    return `${gb} ${unitGb} (${val} ${unitMb})`;
   }
 
   let ramHint = $derived.by(() => {
     const totalGb = Math.round(totalMemoryMb / 1024);
+    if (i18n.locale === 'en') {
+      if (ramMb <= 4096) {
+        return `For Minecraft and lightweight mods · System memory: ${totalGb} GB`;
+      } else if (ramMb <= 8192) {
+        return `For Wex Pack and Iris shaders · System memory: ${totalGb} GB`;
+      } else if (ramMb <= totalMemoryMb * 0.75) {
+        return `For large resource packs and longer render distances · System memory: ${totalGb} GB`;
+      } else {
+        return `Using more than 75% of system memory may slow down your computer · Total: ${totalGb} GB`;
+      }
+    }
     if (ramMb <= 4096) {
       return `Рекомендуется для базовой игры и лёгких модов • Всего в системе: ${totalGb} ГБ`;
     } else if (ramMb <= 8192) {
@@ -109,15 +125,16 @@
 
   let activeJavaDisplay = $derived.by(() => {
     if (javaMode === 'custom') {
-      return customJavaPath ? customJavaPath : 'Путь к javaw.exe не указан';
+      return customJavaPath ? customJavaPath : (i18n.locale === 'en' ? 'Choose a Java installation.' : 'Путь к javaw.exe не указан');
     }
     const detected = selectedVersion === '1.20.1' ? detectedJava17 : detectedJava21;
     if (detected) {
       return detected;
     }
+    const autoSuffix = i18n.locale === 'en' ? 'Automatic' : 'Автоматически';
     return selectedVersion === '1.20.1'
-      ? 'Mojang JRE 17 • Автоматически'
-      : 'Mojang JRE 21 • Автоматически';
+      ? `Mojang JRE 17 • ${autoSuffix}`
+      : `Mojang JRE 21 • ${autoSuffix}`;
   });
 
   async function loadConfig() {
@@ -143,6 +160,7 @@
         detected_java_17?: string | null;
         detected_java_21?: string | null;
         discord_rpc?: boolean;
+        fast_start_jvm?: boolean;
         language?: string;
         appearance?: string;
         accent?: string;
@@ -162,15 +180,37 @@
         if (cfg.detected_java_17 !== undefined) detectedJava17 = cfg.detected_java_17;
         if (cfg.detected_java_21 !== undefined) detectedJava21 = cfg.detected_java_21;
         if (cfg.discord_rpc !== undefined) discordRpc = cfg.discord_rpc;
-        if (cfg.language) language = cfg.language;
+        if (cfg.fast_start_jvm !== undefined) fastStartJvm = cfg.fast_start_jvm;
+        if (cfg.language === 'ru' || cfg.language === 'en') {
+          language = cfg.language;
+          i18n.setLocale(cfg.language);
+        }
         if (cfg.appearance) theme.setAppearance(cfg.appearance as 'dark' | 'light' | 'auto');
         if (cfg.accent) theme.setAccent(cfg.accent as AccentColor);
         theme.setReduceMotion(cfg.reduce_motion ?? false);
         theme.setReduceTransparency(cfg.reduce_transparency ?? false);
       }
+
+      const musicSettings = await invoke<{ enabled?: boolean }>('music_get_settings');
+      if (musicSettings && musicSettings.enabled !== undefined) {
+        backgroundMusic = musicSettings.enabled;
+      }
     } catch {
       // In-browser mock fallback
     }
+  }
+
+  async function saveMusicSettings() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('music_set_settings', {
+        settings: {
+          enabled: backgroundMusic,
+          volume: 75,
+          auto_pause_on_launch: true,
+        },
+      });
+    } catch {}
   }
 
   async function handleOpenDataDir() {
@@ -198,6 +238,7 @@
           detected_java_17: detectedJava17,
           detected_java_21: detectedJava21,
           discord_rpc: discordRpc,
+          fast_start_jvm: fastStartJvm,
           language,
           appearance: theme.appearance,
           accent: theme.accent,
@@ -219,6 +260,7 @@
         java_mode?: string;
         custom_java_path?: string | null;
         discord_rpc?: boolean;
+        fast_start_jvm?: boolean;
         language?: string;
       }>('reset_settings');
 
@@ -228,7 +270,14 @@
         if (reset.java_mode) javaMode = reset.java_mode;
         customJavaPath = '';
         if (reset.discord_rpc !== undefined) discordRpc = reset.discord_rpc;
-        if (reset.language) language = reset.language;
+        if (reset.fast_start_jvm !== undefined) fastStartJvm = reset.fast_start_jvm;
+        if (reset.language === 'ru' || reset.language === 'en') {
+          language = reset.language;
+          i18n.setLocale(reset.language);
+        } else {
+          language = 'ru';
+          i18n.setLocale('ru');
+        }
       }
     } catch {
       // Browser reset fallback
@@ -237,7 +286,9 @@
       javaMode = 'auto';
       customJavaPath = '';
       discordRpc = true;
+      fastStartJvm = false;
       language = 'ru';
+      i18n.setLocale('ru');
     }
 
     theme.setAppearance('dark');
@@ -264,8 +315,22 @@
 
   function handleLanguageChange(val: string) {
     language = val;
+    if (val === 'ru' || val === 'en') {
+      i18n.setLocale(val as SupportedLocale);
+    }
     saveConfig();
   }
+
+  // Aliases for compatibility
+  let isVerifyingFiles = $derived(isCheckingIntegrity);
+  let verifyStatus = $derived(
+    integrityDetail
+      ? integrityStatus
+        ? `${integrityStatus} — ${integrityDetail}`
+        : integrityDetail
+      : integrityStatus
+  );
+  let cleanCacheStatus = $derived(cleanupStatus);
 
   async function loadCacheInfo() {
     try {
@@ -346,6 +411,8 @@
     }
   }
 
+  const handleCleanCache = handleClearCache;
+
   onMount(() => {
     loadConfig();
     loadCacheInfo();
@@ -379,9 +446,9 @@
 <div class="settings-screen">
   <div class="settings-content">
     <!-- Performance & Memory -->
-    <List header="Производительность и память">
+    <List header={t('settings.header_perf')}>
       <Row
-        title="Выделение оперативной памяти"
+        title={t('settings.ram_title')}
         subtitle={ramHint}
       >
         <div class="slider-wrapper">
@@ -392,14 +459,14 @@
             step={512}
             formatValue={formatRam}
             onchange={handleRamChange}
-            label="ОЗУ для Minecraft"
+            label={t('settings.ram_label')}
           />
         </div>
       </Row>
 
       <Row
-        title="Графический пресет"
-        subtitle="Оптимизация шейдеров Iris и настроек Sodium для вашей видеокарты"
+        title={t('settings.graphics_title')}
+        subtitle={t('settings.graphics_subtitle')}
       >
         {#snippet trailing()}
           <div style="width: 320px;">
@@ -411,13 +478,29 @@
           </div>
         {/snippet}
       </Row>
+
+      <Row
+        title="Быстрый запуск игры"
+        subtitle="Экспериментальный предварительный прогрев виртуальной машины Java (PrewarmGame)"
+      >
+        {#snippet trailing()}
+          <Toggle
+            ariaLabel="Быстрый запуск игры"
+            checked={fastStartJvm}
+            onchange={(checked) => {
+              fastStartJvm = checked;
+              saveConfig();
+            }}
+          />
+        {/snippet}
+      </Row>
     </List>
 
     <!-- Java Runtime -->
-    <List header="Среда выполнения Java">
+    <List header={t('settings.header_java')}>
       <Row
-        title="Выбор исполняемого файла Java"
-        subtitle="1.20.1 требует Java 17, 1.21.1 требует Java 21"
+        title={t('settings.java_choice_title')}
+        subtitle={t('settings.java_choice_subtitle')}
       >
         {#snippet trailing()}
           <div style="width: 260px;">
@@ -432,7 +515,7 @@
       </Row>
 
       <Row
-        title={javaMode === 'auto' ? 'Используемый рантайм Java' : 'Путь к javaw.exe'}
+        title={javaMode === 'auto' ? t('settings.java_used_title') : t('settings.java_path_title')}
         subtitle={activeJavaDisplay}
       >
         {#if javaMode === 'custom'}
@@ -440,10 +523,10 @@
             <input
               type="text"
               class="apple-text-field"
-              placeholder="C:\Program Files\Java\jdk-21\bin\javaw.exe"
+              placeholder={t('settings.java_placeholder')}
               bind:value={customJavaPath}
               onchange={() => saveConfig()}
-              aria-label="Путь к javaw.exe"
+              aria-label={t('settings.java_path_title')}
             />
           </div>
         {/if}
@@ -451,10 +534,10 @@
     </List>
 
     <!-- Data Directory & Network -->
-    <List header="Папки и файлы данных">
+    <List header={t('settings.header_dirs')}>
       <Row
-        title="Рабочая папка игры"
-        subtitle={gameDir || 'Не определена'}
+        title={t('settings.gamedir_title')}
+        subtitle={gameDir || t('settings.gamedir_undefined')}
       >
         {#snippet trailing()}
           <div class="dir-actions">
@@ -462,10 +545,10 @@
               variant="secondary"
               size="small"
               onclick={handleOpenDataDir}
-              title="Открыть папку данных в Проводнике"
+              title={t('settings.gamedir_open_tooltip')}
             >
               <Icon name="folder" size={13} color="var(--color-secondary-label)" />
-              <span>Открыть</span>
+              <span>{t('settings.gamedir_open')}</span>
             </Button>
           </div>
         {/snippet}
@@ -524,10 +607,10 @@
     </List>
 
     <!-- Integrations & Localization -->
-    <List header="Интеграции и язык">
+    <List header={t('settings.header_integrations')}>
       <Row
-        title="Discord Rich Presence"
-        subtitle="Отображение текущей версии Wex Client, статуса игры и длительности сессии в Discord"
+        title={t('settings.discord_title')}
+        subtitle={t('settings.discord_subtitle')}
       >
         {#snippet trailing()}
           <Toggle
@@ -542,8 +625,24 @@
       </Row>
 
       <Row
-        title="Язык интерфейса"
-        subtitle="Локализация меню лаунчера и игровых подсказок"
+        title={i18n.locale === 'en' ? 'Background Music' : 'Фоновая музыка'}
+        subtitle={i18n.locale === 'en' ? 'Play atmospheric soundtracks from Wex/music' : 'Воспроизведение саундтрека из папки Wex/music во время работы лаунчера'}
+      >
+        {#snippet trailing()}
+          <Toggle
+            ariaLabel={i18n.locale === 'en' ? 'Background music' : 'Фоновая музыка'}
+            checked={backgroundMusic}
+            onchange={(checked) => {
+              backgroundMusic = checked;
+              saveMusicSettings();
+            }}
+          />
+        {/snippet}
+      </Row>
+
+      <Row
+        title={t('settings.lang_title')}
+        subtitle={t('settings.lang_subtitle')}
       >
         {#snippet trailing()}
           <div style="width: 260px;">
@@ -560,8 +659,8 @@
     </List>
 
     <!-- Appearance & Theme Section -->
-    <List header="Оформление">
-      <Row title="Тема оформления" subtitle="Тёмная, светлая или системная тема">
+    <List header={t('settings.header_appearance')}>
+      <Row title={t('settings.theme_title')} subtitle={t('settings.theme_subtitle')}>
         {#snippet trailing()}
           <div style="width: 280px;">
             <SegmentedControl
@@ -577,7 +676,7 @@
         {/snippet}
       </Row>
 
-      <Row title="Цветовой акцент" subtitle="Основной цвет элементов интерфейса">
+      <Row title={t('settings.accent_title')} subtitle={t('settings.accent_subtitle')}>
         {#snippet trailing()}
           <div class="accent-picker" role="radiogroup" aria-label="Цветовой акцент">
             {#each accents as acc (acc.key)}
@@ -606,10 +705,10 @@
     </List>
 
     <!-- Accessibility / Универсальный доступ -->
-    <List header="Универсальный доступ">
+    <List header={t('settings.header_a11y')}>
       <Row
-        title="Уменьшение движения"
-        subtitle="Отключение пружинных анимаций и динамических сдвигов"
+        title={t('settings.reduce_motion_title')}
+        subtitle={t('settings.reduce_motion_subtitle')}
       >
         {#snippet trailing()}
           <Toggle
@@ -624,8 +723,8 @@
       </Row>
 
       <Row
-        title="Уменьшение прозрачности"
-        subtitle="Замена эффектов размытия фона на контрастные непрозрачные заливки"
+        title={t('settings.reduce_transparency_title')}
+        subtitle={t('settings.reduce_transparency_subtitle')}
       >
         {#snippet trailing()}
           <Toggle
@@ -641,15 +740,15 @@
     </List>
 
     <!-- About Section -->
-    <List header="О программе">
+    <List header={t('settings.header_about')}>
       <Row
-        title="Лаунчер Wex"
-        subtitle="Версия {launcherVersion} • ОС: {osName} • 64-бит"
+        title={t('settings.about_title')}
+        subtitle={t('settings.about_subtitle', { version: launcherVersion, os: osName })}
         trailingText="Wex Project"
       />
       <Row
-        title="Технологический стек"
-        subtitle="Tauri 2 • Svelte 5 • TypeScript 5.8 • Rust (core/wex-core, wex-extras)"
+        title={t('settings.about_stack_title')}
+        subtitle={t('settings.about_stack_subtitle')}
         trailingText="v1.0.0"
       />
     </List>
@@ -660,7 +759,7 @@
         variant="secondary"
         onclick={handleResetDefaults}
       >
-        Сбросить настройки по умолчанию
+        {t('settings.reset_defaults')}
       </Button>
     </div>
   </div>

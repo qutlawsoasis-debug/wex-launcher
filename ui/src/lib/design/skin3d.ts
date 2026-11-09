@@ -12,6 +12,8 @@
  * - Pure WebGL implementation (0 npm dependencies, <15 KB)
  */
 
+import { onIdleStateChange, isIdleSuspended } from './idleManager';
+
 export type ModelType = 'default' | 'slim';
 
 export interface UVRect {
@@ -521,6 +523,8 @@ export class Skin3DRenderer {
   private prefersReducedMotion = false;
   private animationId: number | null = null;
   private destroyed = false;
+  private isPaused = false;
+  private cleanupIdleListener: () => void = () => {};
 
   constructor(private options: RendererOptions) {
     this.model = options.model || 'default';
@@ -533,6 +537,15 @@ export class Skin3DRenderer {
         this.prefersReducedMotion = e.matches;
       });
     }
+
+    this.isPaused = isIdleSuspended();
+    this.cleanupIdleListener = onIdleStateChange((suspended) => {
+      if (suspended) {
+        this.pause();
+      } else {
+        this.resume();
+      }
+    });
 
     this.initGL();
     this.initListeners();
@@ -730,9 +743,29 @@ export class Skin3DRenderer {
 
   private cleanupListeners: () => void = () => {};
 
+  public pause(): void {
+    this.isPaused = true;
+    if (this.animationId !== null) {
+      cancelAnimationFrame(this.animationId);
+      this.animationId = null;
+    }
+  }
+
+  public resume(): void {
+    if (this.destroyed || !this.isPaused) return;
+    this.isPaused = false;
+    if (this.animationId === null) {
+      this.startLoop();
+    }
+  }
+
   private startLoop() {
+    if (this.destroyed || this.isPaused) return;
     const renderFrame = () => {
-      if (this.destroyed) return;
+      if (this.destroyed || this.isPaused) {
+        this.animationId = null;
+        return;
+      }
 
       this.stepPhysics();
       this.render();
@@ -857,6 +890,7 @@ export class Skin3DRenderer {
 
   public destroy() {
     this.destroyed = true;
+    this.cleanupIdleListener();
     if (this.animationId !== null) {
       cancelAnimationFrame(this.animationId);
       this.animationId = null;

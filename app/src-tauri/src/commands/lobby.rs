@@ -14,10 +14,10 @@ use tauri::State;
 use tokio::sync::Mutex;
 
 use wex_ipc::commands::{
-    NetLanListDiscoveredRequest, NetLanListDiscoveredResponse, NetListOpenRoomsRequest,
-    NetListOpenRoomsResponse, NetLobbyCloseRequest, NetLobbyCreateRequest,
-    NetLobbyHeartbeatRequest, NetLobbyJoinRequest, NetLobbyKickRequest, NetLobbyLeaveRequest,
-    NetLobbyOpenRequest, NetLobbyStatusRequest, NetTunnelEnsureBinaryRequest,
+    NetLanListDiscoveredRequest, NetLanListDiscoveredResponse, NetLanPublishRequest,
+    NetLanPublishResponse, NetListOpenRoomsRequest, NetListOpenRoomsResponse, NetLobbyCloseRequest,
+    NetLobbyCreateRequest, NetLobbyHeartbeatRequest, NetLobbyJoinRequest, NetLobbyKickRequest,
+    NetLobbyLeaveRequest, NetLobbyOpenRequest, NetLobbyStatusRequest, NetTunnelEnsureBinaryRequest,
     NetTunnelEnsureBinaryResponse, NetTunnelStartRequest, NetTunnelStartResponse,
 };
 use wex_ipc::error::{IpcError, IpcResult};
@@ -71,7 +71,7 @@ impl LobbyState {
             });
 
         let lan_discovery = Arc::new(LanDiscoveryService::default());
-        std::mem::drop(lan_discovery.clone().spawn_listener());
+        lan_discovery.clone().spawn_listener();
 
         Self {
             client,
@@ -775,6 +775,27 @@ pub async fn net_lan_list_discovered(
 }
 
 #[tauri::command]
+pub async fn net_lan_publish(
+    request: NetLanPublishRequest,
+    state: State<'_, LobbyState>,
+) -> IpcResult<NetLanPublishResponse> {
+    let room = publish_lan_world_internal(&state, &request.motd, request.port, request.host_name)
+        .await
+        .map_err(|e| IpcError::new("NET_LOBBY_API_ERROR", e, None))?;
+
+    let clean_code = room.code.trim_start_matches('#').to_string();
+    Ok(NetLanPublishResponse {
+        code: clean_code,
+        host_name: room.host_name,
+        world_name: room.world_name,
+        tunnel_address: room
+            .tunnel_address
+            .unwrap_or_else(|| format!("tunnel.playit.gg:{}", request.port)),
+        port: request.port,
+    })
+}
+
+#[tauri::command]
 pub async fn list_lan_worlds(state: State<'_, LobbyState>) -> Result<Vec<LanWorldDto>, String> {
     let worlds = state.lan_discovery.get_discovered_worlds().await;
     Ok(worlds.into_iter().map(lan_world_to_dto).collect())
@@ -828,6 +849,105 @@ pub async fn connect_lan_world(
         }
         Err(e) => Err(format!("Ошибка автоподключения к LAN-миру: {}", e.message)),
     }
+}
+
+async fn publish_lan_world_internal(
+    state: &LobbyState,
+    motd: &str,
+    port: u16,
+    player_name: Option<String>,
+) -> Result<LobbyRoomModel, String> {
+    let host = player_name.unwrap_or_else(|| "Player".to_string());
+    let clean_motd = if motd.trim().is_empty() {
+        format!("Мир LAN ({})", port)
+    } else {
+        motd.trim().to_string()
+    };
+
+    let created = state
+        .client
+        .create_lobby(&host, None)
+        .await
+        .map_err(|e| format_lobby_error(&e))?;
+
+    let tunnel_cfg = state.client.get_tunnel_config().await.ok();
+    let tunnel_addr = tunnel_cfg
+        .as_ref()
+        .and_then(|c| {
+            c.public_address.as_ref().map(|a| {
+                if let Some(p) = c.public_port {
+                    format!("{a}:{p}")
+                } else {
+                    a.clone()
+                }
+            })
+        })
+        .unwrap_or_else(|| format!("tunnel.playit.gg:{}", port));
+
+    let _ = state
+        .client
+        .open_lobby(&created.code, &created.host_token, &tunnel_addr, port)
+        .await;
+
+    let hb = state.client.start_heartbeat_loop(
+        created.code.clone(),
+        created.host_token.clone(),
+        Duration::from_secs(15),
+    );
+    {
+        let mut hb_lock = state.heartbeat_handle.lock().await;
+        if let Some(old_hb) = hb_lock.replace(hb) {
+            old_hb.stop();
+        }
+    }
+
+    let display_code = if created.code.starts_with('#') {
+        created.code.clone()
+    } else {
+        format!("#{}", created.code)
+    };
+
+    let room = LobbyRoomModel {
+        code: display_code,
+        host_name: host.clone(),
+        world_name: clean_motd.clone(),
+        tunnel_address: Some(tunnel_addr.clone()),
+        tunnel_active: true,
+        is_host: true,
+        players: vec![LobbyPlayerModel {
+            name: host.clone(),
+            is_host: true,
+            ping_ms: 0,
+            mods_synced: true,
+        }],
+        mod_mismatch_count: 0,
+        total_mods: 142,
+    };
+
+    let session = ActiveLobbySession {
+        code: created.code,
+        host_token: Some(created.host_token),
+        host_name: host.clone(),
+        world_name: clean_motd,
+        player_name: host,
+        is_host: true,
+        tunnel_address: Some(tunnel_addr),
+    };
+
+    let mut session_lock = state.active_session.lock().await;
+    *session_lock = Some(session);
+
+    Ok(room)
+}
+
+#[tauri::command]
+pub async fn publish_lan_world(
+    motd: String,
+    port: u16,
+    player_name: Option<String>,
+    state: State<'_, LobbyState>,
+) -> Result<LobbyRoomModel, String> {
+    publish_lan_world_internal(&state, &motd, port, player_name).await
 }
 
 // ============================================================================
@@ -1096,5 +1216,78 @@ mod tests {
         assert_eq!(dto.motd, "Steve's Underground Base");
         assert_eq!(dto.address, "192.168.1.77:51234");
         assert_eq!(dto.port, 51234);
+    }
+
+    #[tokio::test]
+    async fn test_publish_lan_world_flow() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/lobby"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "code": "B2C3",
+                "hostToken": "host_tok_456",
+                "status": "open",
+                "createdAt": 1731000000
+            })))
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/api/tunnel-config"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "secret": "lan_tunnel_sec",
+                "publicAddress": "lan-host.tun.ply.gg",
+                "publicPort": 45123
+            })))
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/open"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/heartbeat"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        let tmp = tempdir().unwrap();
+        let state = LobbyState::new(
+            tmp.path().to_path_buf(),
+            &mock_server.uri(),
+            &mock_server.uri(),
+        );
+
+        let room = publish_lan_world_internal(
+            &state,
+            "Steve's Multiplayer Survival",
+            51234,
+            Some("Steve".to_string()),
+        )
+        .await
+        .expect("should publish LAN world");
+
+        assert_eq!(room.code, "#B2C3");
+        assert_eq!(room.world_name, "Steve's Multiplayer Survival");
+        assert_eq!(room.host_name, "Steve");
+        assert_eq!(
+            room.tunnel_address.as_deref(),
+            Some("lan-host.tun.ply.gg:45123")
+        );
+        assert!(room.tunnel_active);
+        assert!(room.is_host);
+
+        // Verify session in state
+        let session = state.active_session.lock().await;
+        assert!(session.is_some());
+        let s = session.as_ref().unwrap();
+        assert_eq!(s.code, "B2C3");
+        assert_eq!(s.world_name, "Steve's Multiplayer Survival");
+        assert_eq!(s.player_name, "Steve");
+        assert!(s.is_host);
     }
 }

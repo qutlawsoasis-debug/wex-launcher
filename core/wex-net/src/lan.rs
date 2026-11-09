@@ -149,64 +149,88 @@ impl LanDiscoveryService {
     }
 
     /// Start background UDP multicast listener on `224.0.2.60:4445`.
-    /// Returns cancellation token / abort handle if successfully bound.
-    pub fn spawn_listener(self: Arc<Self>) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
-            let multicast_ip: Ipv4Addr = match MINECRAFT_LAN_MULTICAST_ADDR.parse() {
-                Ok(ip) => ip,
-                Err(e) => {
-                    warn!("Failed to parse LAN multicast IP: {}", e);
-                    return;
-                }
-            };
+    /// Safe to call both inside and outside of an active Tokio runtime.
+    pub fn spawn_listener(self: Arc<Self>) {
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                self.listen_loop().await;
+            });
+        } else {
+            std::thread::Builder::new()
+                .name("wex-lan-discovery".to_string())
+                .spawn(move || {
+                    if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                    {
+                        rt.block_on(async move {
+                            self.listen_loop().await;
+                        });
+                    }
+                })
+                .ok();
+        }
+    }
 
-            let bind_addr = SocketAddr::from(([0, 0, 0, 0], MINECRAFT_LAN_PORT));
-
-            // Create UDP socket
-            let std_socket = match std::net::UdpSocket::bind(bind_addr) {
-                Ok(s) => s,
-                Err(e) => {
-                    debug!("LAN discovery bind on 0.0.0.0:{} failed (may be already bound or blocked): {}", MINECRAFT_LAN_PORT, e);
-                    return;
-                }
-            };
-
-            if let Err(e) = std_socket.join_multicast_v4(&multicast_ip, &Ipv4Addr::UNSPECIFIED) {
-                debug!("LAN discovery join_multicast_v4 failed: {}", e);
+    /// Background UDP multicast receiver loop.
+    pub async fn listen_loop(self: Arc<Self>) {
+        let multicast_ip: Ipv4Addr = match MINECRAFT_LAN_MULTICAST_ADDR.parse() {
+            Ok(ip) => ip,
+            Err(e) => {
+                warn!("Failed to parse LAN multicast IP: {}", e);
                 return;
             }
+        };
 
-            let _ = std_socket.set_nonblocking(true);
+        let bind_addr = SocketAddr::from(([0, 0, 0, 0], MINECRAFT_LAN_PORT));
 
-            let socket = match tokio::net::UdpSocket::from_std(std_socket) {
-                Ok(s) => s,
-                Err(e) => {
-                    debug!("Failed to convert std UdpSocket to tokio: {}", e);
-                    return;
+        // Create UDP socket
+        let std_socket = match std::net::UdpSocket::bind(bind_addr) {
+            Ok(s) => s,
+            Err(e) => {
+                debug!(
+                    "LAN discovery bind on 0.0.0.0:{} failed (may be already bound or blocked): {}",
+                    MINECRAFT_LAN_PORT, e
+                );
+                return;
+            }
+        };
+
+        if let Err(e) = std_socket.join_multicast_v4(&multicast_ip, &Ipv4Addr::UNSPECIFIED) {
+            debug!("LAN discovery join_multicast_v4 failed: {}", e);
+            return;
+        }
+
+        let _ = std_socket.set_nonblocking(true);
+
+        let socket = match tokio::net::UdpSocket::from_std(std_socket) {
+            Ok(s) => s,
+            Err(e) => {
+                debug!("Failed to convert std UdpSocket to tokio: {}", e);
+                return;
+            }
+        };
+
+        debug!(
+            "Minecraft LAN discovery listener active on 224.0.2.60:{}",
+            MINECRAFT_LAN_PORT
+        );
+
+        let mut buf = [0u8; 2048];
+        loop {
+            match socket.recv_from(&mut buf).await {
+                Ok((len, peer)) => {
+                    if let Ok(text) = std::str::from_utf8(&buf[..len]) {
+                        let peer_ip = peer.ip().to_string();
+                        self.record_announcement(text, &peer_ip).await;
+                    }
                 }
-            };
-
-            debug!(
-                "Minecraft LAN discovery listener active on 224.0.2.60:{}",
-                MINECRAFT_LAN_PORT
-            );
-
-            let mut buf = [0u8; 2048];
-            loop {
-                match socket.recv_from(&mut buf).await {
-                    Ok((len, peer)) => {
-                        if let Ok(text) = std::str::from_utf8(&buf[..len]) {
-                            let peer_ip = peer.ip().to_string();
-                            self.record_announcement(text, &peer_ip).await;
-                        }
-                    }
-                    Err(e) => {
-                        debug!("LAN discovery recv error: {}", e);
-                        tokio::time::sleep(Duration::from_millis(500)).await;
-                    }
+                Err(e) => {
+                    debug!("LAN discovery recv error: {}", e);
+                    tokio::time::sleep(Duration::from_millis(500)).await;
                 }
             }
-        })
+        }
     }
 }
 
