@@ -1190,12 +1190,20 @@ pub async fn get_prewarm_status(
     let cfg = wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file);
     let ver = version.unwrap_or_else(|| cfg.selected_version.clone());
     let is_prewarming = state.is_prewarming.load(Ordering::SeqCst);
-    let is_ready = state.has_valid_prewarm(&ver, &cfg.nickname, cfg.max_memory_mb).await;
+    let is_ready = state
+        .has_valid_prewarm(&ver, &cfg.nickname, cfg.max_memory_mb)
+        .await;
 
     Ok(PrewarmStatusDto {
         is_prewarming,
         is_ready,
-        progress: if is_ready { 100.0 } else if is_prewarming { 48.0 } else { 0.0 },
+        progress: if is_ready {
+            100.0
+        } else if is_prewarming {
+            48.0
+        } else {
+            0.0
+        },
         stage: if is_ready {
             "Готово к запуску".to_string()
         } else if is_prewarming {

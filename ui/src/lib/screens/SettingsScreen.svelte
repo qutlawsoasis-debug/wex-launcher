@@ -1748,33 +1748,6 @@
     margin-bottom: 8px;
   }
 
-  .network-status-badge {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: var(--text-caption-1, 11px);
-    font-weight: 500;
-  }
-
-  .network-status-badge.online {
-    background: rgba(48, 209, 88, 0.12);
-    color: var(--color-system-green);
-  }
-
-  .network-status-badge.offline {
-    background: rgba(255, 159, 10, 0.12);
-    color: var(--color-system-orange);
-  }
-
-  .status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-  }
-
   .slider-wrapper {
     width: 100%;
     padding: 10px 0 4px;
@@ -1814,33 +1787,6 @@
     display: flex;
     align-items: center;
     gap: 8px;
-  }
-
-  .storage-action-wrap {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .storage-status-badge {
-    font-size: var(--text-footnote);
-    color: var(--color-secondary-label);
-    padding: 2px 8px;
-    border-radius: var(--radius-sm);
-    background-color: var(--color-tertiary-system-fill);
-    white-space: nowrap;
-  }
-
-  .storage-status-badge.checking {
-    color: var(--color-system-blue);
-  }
-
-  .storage-status-badge.success {
-    color: var(--color-system-green);
-  }
-
-  .storage-status-badge.result {
-    color: var(--color-secondary-label);
   }
 
   .accent-picker {
@@ -2044,11 +1990,6 @@
   .disabled-desc {
     font-size: 12px;
     color: var(--color-tertiary-label);
-  }
-
-  .updating-text {
-    font-size: var(--text-caption-1);
-    color: var(--color-secondary-label);
   }
 
   /* Scenery Art Contrast Parity (wex-contrast): text over art is always white with shadow */
