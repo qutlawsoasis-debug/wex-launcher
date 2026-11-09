@@ -71,6 +71,33 @@ vi.mock('@tauri-apps/api/core', () => {
           language: 'ru',
         };
       }
+      if (cmd === 'get_storage_cache_info') {
+        return {
+          total_bytes: 52428800,
+          formatted_size: '50.00 МБ',
+        };
+      }
+      if (cmd === 'clear_storage_cache') {
+        return {
+          bytes_freed: 52428800,
+          formatted_freed: '50.00 МБ',
+          files_deleted: 14,
+          status_text: 'Очищено 50.00 МБ (14 файлов)',
+        };
+      }
+      if (cmd === 'verify_game_files') {
+        return {
+          total_files: 264,
+          checked_files: 264,
+          corrupted_files: 0,
+          repaired_files: 0,
+          status: 'Всё в порядке',
+          message: 'Все 264 файлов проверены, повреждений не обнаружено',
+        };
+      }
+      if (cmd === 'is_game_running') {
+        return false;
+      }
       return [];
     }),
   };
@@ -513,6 +540,51 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Tauri 2');
     expect(target.textContent).not.toContain('.minecraft');
     expect(target.textContent).toContain('Wex');
+    // Storage section (SPEC items 40–41: wex-verify-files)
+    expect(target.textContent).toContain('Хранилище');
+    expect(target.textContent).toContain('Проверить файлы игры');
+    expect(target.textContent).toContain('Очистить кэш');
+    unmount(comp);
+  });
+
+  it('renders SettingsScreen with disabled storage actions when game is running', async () => {
+    const comp = mount(SettingsScreen, {
+      target,
+      props: {
+        isGameRunning: true,
+      },
+    });
+
+    expect(target.textContent).toContain('Хранилище');
+    const buttons = target.querySelectorAll('button');
+    const verifyBtn = Array.from(buttons).find((b) => b.textContent?.includes('Проверить'));
+    const clearBtn = Array.from(buttons).find((b) => b.textContent?.includes('Очистить'));
+
+    expect(verifyBtn).not.toBeNull();
+    expect(clearBtn).not.toBeNull();
+    expect((verifyBtn as HTMLButtonElement).disabled).toBe(true);
+    expect((clearBtn as HTMLButtonElement).disabled).toBe(true);
+    unmount(comp);
+  });
+
+  it('allows clicking verify and clear cache when game is not running', async () => {
+    const comp = mount(SettingsScreen, {
+      target,
+      props: {
+        isGameRunning: false,
+      },
+    });
+
+    const buttons = target.querySelectorAll('button');
+    const verifyBtn = Array.from(buttons).find((b) => b.textContent?.includes('Проверить')) as HTMLButtonElement;
+    const clearBtn = Array.from(buttons).find((b) => b.textContent?.includes('Очистить')) as HTMLButtonElement;
+
+    expect(verifyBtn.disabled).toBe(false);
+    expect(clearBtn.disabled).toBe(false);
+
+    verifyBtn.click();
+    clearBtn.click();
+
     unmount(comp);
   });
 

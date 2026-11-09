@@ -216,6 +216,10 @@ pub fn run() {
             commands::settings::get_launcher_config,
             commands::settings::save_launcher_config,
             commands::settings::open_data_dir,
+            // Storage commands (commands/storage.rs)
+            commands::storage::get_storage_cache_info,
+            commands::storage::clear_storage_cache,
+            commands::storage::verify_game_files,
             // Mods commands (commands/mods.rs)
             commands::mods::list_mods,
             commands::mods::toggle_mod,

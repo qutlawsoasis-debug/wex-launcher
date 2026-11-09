@@ -98,3 +98,9 @@ export type ReleaseNoteVersionDto = { version: string, internal_version: string,
 
 export type UpdateCheckResultDto = { update_available: boolean, current_version: string, latest_version: string | null, notes: string | null, download_url: string | null, signature: string | null, pub_date: string | null, };;
 
+export type IntegrityCheckResultDto = { total_files: number, checked_files: number, corrupted_files: number, repaired_files: number, status: string, message: string, };;
+
+export type StorageCacheInfoDto = { total_bytes: bigint, formatted_size: string, logs_bytes: bigint, crash_reports_bytes: bigint, temp_bytes: bigint, file_count: number, };;
+
+export type ClearStorageCacheResultDto = { bytes_freed: bigint, formatted_freed: string, files_deleted: number, status_text: string, };;
+

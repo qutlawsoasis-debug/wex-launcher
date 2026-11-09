@@ -563,7 +563,7 @@
       {:else if activeTab === 'mods'}
         <ModsScreen />
       {:else if activeTab === 'settings'}
-        <SettingsScreen />
+        <SettingsScreen isGameRunning={isGameRunning} version={selectedVersion} />
       {:else if activeTab === 'showcase'}
         <ShowcaseScreen />
       {/if}

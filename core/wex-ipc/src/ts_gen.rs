@@ -132,6 +132,9 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ReleaseNoteItemDto::decl(),
         ReleaseNoteVersionDto::decl(),
         UpdateCheckResultDto::decl(),
+        IntegrityCheckResultDto::decl(),
+        StorageCacheInfoDto::decl(),
+        ClearStorageCacheResultDto::decl(),
     ];
     for decl in models_decls {
         models_ts.push_str(&format!("export {};\n\n", decl));
@@ -143,11 +146,13 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
     cmd_ts.push_str("import type {\n");
     cmd_ts.push_str("    AchievementDefinitionDto,\n");
     cmd_ts.push_str("    AchievementProgressDto,\n");
+    cmd_ts.push_str("    ClearStorageCacheResultDto,\n");
     cmd_ts.push_str("    CrashDiagnosisDto,\n");
     cmd_ts.push_str("    DiscordActivityDto,\n");
     cmd_ts.push_str("    FriendItemDto,\n");
     cmd_ts.push_str("    FriendProfileDto,\n");
     cmd_ts.push_str("    GraphicsPresetDto,\n");
+    cmd_ts.push_str("    IntegrityCheckResultDto,\n");
     cmd_ts.push_str("    LobbyCreateResponseDto,\n");
     cmd_ts.push_str("    LobbyJoinResponseDto,\n");
     cmd_ts.push_str("    LobbyStatusResponseDto,\n");
@@ -163,6 +168,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
     cmd_ts.push_str("    ScreenshotItemDto,\n");
     cmd_ts.push_str("    ServerPingResponseDto,\n");
     cmd_ts.push_str("    SkinModelDto,\n");
+    cmd_ts.push_str("    StorageCacheInfoDto,\n");
     cmd_ts.push_str("    SkinValidationResultDto,\n");
     cmd_ts.push_str("    SyncResponseDto,\n");
     cmd_ts.push_str("    TunnelConfigResponseDto,\n");
@@ -259,6 +265,13 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         SocialGetNewsRequest::decl(),
         SocialGetNewsResponse::decl(),
         SocialCheckLauncherUpdateRequest::decl(),
+        SocialCheckLauncherUpdateResponse::decl(),
+        StorageVerifyFilesRequest::decl(),
+        StorageVerifyFilesResponse::decl(),
+        StorageGetCacheInfoRequest::decl(),
+        StorageGetCacheInfoResponse::decl(),
+        StorageClearCacheRequest::decl(),
+        StorageClearCacheResponse::decl(),
     ];
     for decl in cmd_decls {
         cmd_ts.push_str(&format!("export {};\n\n", decl));
@@ -352,6 +365,9 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
             "SOCIAL_CHECK_LAUNCHER_UPDATE",
             CMD_SOCIAL_CHECK_LAUNCHER_UPDATE,
         ),
+        ("STORAGE_VERIFY_FILES", CMD_STORAGE_VERIFY_FILES),
+        ("STORAGE_GET_CACHE_INFO", CMD_STORAGE_GET_CACHE_INFO),
+        ("STORAGE_CLEAR_CACHE", CMD_STORAGE_CLEAR_CACHE),
     ];
     for (k, v) in command_names {
         cmd_ts.push_str(&format!("    {}: \"{}\",\n", k, v));
