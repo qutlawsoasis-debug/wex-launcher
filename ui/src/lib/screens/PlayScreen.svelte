@@ -78,6 +78,9 @@
     initialScreenshots?: Array<{ file_name: string; file_path: string; preview_data_url?: string; created_at?: string }>;
     initialAchievements?: { achievements: any[]; progress: any[] } | null;
     initialPlaytime?: { total_seconds: number; total_launches: number; formatted_play_time: string; last_played_utc?: string } | null;
+    prewarmState?: 'idle' | 'prewarming' | 'ready' | 'running';
+    prewarmProgress?: number;
+    prewarmDetail?: string;
     onlaunch?: () => void;
     oncancel?: () => void;
     onstop?: () => void;
@@ -104,6 +107,9 @@
     initialScreenshots = undefined,
     initialAchievements = undefined,
     initialPlaytime = undefined,
+    prewarmState = undefined,
+    prewarmProgress = undefined,
+    prewarmDetail = undefined,
     onlaunch,
     oncancel,
     onstop,
@@ -112,6 +118,70 @@
     ontoast,
     onopenworkshop,
   }: Props = $props();
+
+  // Fast-launch prewarm lifecycle states
+  let currentPrewarmState = $state<'idle' | 'prewarming' | 'ready' | 'running'>('idle');
+  let currentPrewarmProgress = $state<number>(0);
+  let currentPrewarmDetail = $state<string>('');
+
+  $effect(() => {
+    if (prewarmState !== undefined) {
+      currentPrewarmState = prewarmState;
+    }
+  });
+
+  $effect(() => {
+    if (prewarmProgress !== undefined) {
+      currentPrewarmProgress = prewarmProgress;
+    }
+  });
+
+  $effect(() => {
+    if (prewarmDetail !== undefined) {
+      currentPrewarmDetail = prewarmDetail;
+    }
+  });
+
+  $effect(() => {
+    if (isRunning) {
+      currentPrewarmState = 'running';
+    } else if (currentPrewarmState === 'running' && prewarmState !== 'running') {
+      currentPrewarmState = 'idle';
+    }
+  });
+
+  let effectiveState = $derived.by(() => {
+    if (isRunning) return 'running';
+    if (currentPrewarmState === 'running') return 'running';
+    if (currentPrewarmState === 'prewarming') return 'prewarming';
+    if (currentPrewarmState === 'ready') return 'ready';
+    return 'idle';
+  });
+
+  let buttonTitle = $derived.by(() => {
+    if (effectiveState === 'running') {
+      return i18n.locale === 'en' ? 'Stop Minecraft' : 'Остановить процесс Minecraft';
+    }
+    if (effectiveState === 'prewarming') {
+      return i18n.locale === 'en'
+        ? `Game prewarming: ${Math.round(currentPrewarmProgress)}%`
+        : `Игра догружается: ${Math.round(currentPrewarmProgress)}%`;
+    }
+    if (effectiveState === 'ready') {
+      return i18n.locale === 'en'
+        ? 'Ready to launch (prewarm complete)'
+        : 'Готово к запуску (прогрев завершён)';
+    }
+    return t('play.launch');
+  });
+
+  function handleActionClick() {
+    if (effectiveState === 'running') {
+      onstop?.();
+    } else {
+      onlaunch?.();
+    }
+  }
 
   const versions = [
     { value: '1.20.1', label: '1.20.1' },
@@ -438,15 +508,69 @@
 
   onMount(() => {
     let unlistenProgress: (() => void) | undefined;
+    let unlistenPrewarm: (() => void) | undefined;
+
+    function checkHash() {
+      if (typeof window !== 'undefined' && window.location.hash) {
+        const p = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        const state = p.get('playState') || p.get('prewarmState') || p.get('stage');
+        const progress = p.get('progress') || p.get('prewarmProgress');
+        if (state === 'prewarming' || state === 'downloading') {
+          currentPrewarmState = 'prewarming';
+          currentPrewarmProgress = progress ? parseInt(progress, 10) : 48;
+          currentPrewarmDetail = 'Синхронизация библиотек (1.2 МБ / 2.4 МБ)';
+        } else if (state === 'ready' || state === 'prewarmed') {
+          currentPrewarmState = 'ready';
+          currentPrewarmProgress = 100;
+        } else if (state === 'running' || state === 'playing') {
+          currentPrewarmState = 'running';
+        } else if (state === 'idle' || state === 'reset' || state === 'exit' || state === 'idle_restored') {
+          currentPrewarmState = 'idle';
+          currentPrewarmProgress = 0;
+        }
+      }
+    }
+
+    checkHash();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('hashchange', checkHash);
+      (window as any).__setPlayFastLaunchState = (
+        state: 'idle' | 'prewarming' | 'ready' | 'running',
+        progress = 48,
+        detail = ''
+      ) => {
+        currentPrewarmState = state;
+        currentPrewarmProgress = progress;
+        currentPrewarmDetail = detail;
+      };
+    }
 
     (async () => {
-      // 1. Listen to updater download progress
+      // 1. Listen to updater download progress and prewarm status
       try {
         const { listen } = await import('@tauri-apps/api/event');
         unlistenProgress = await listen<any>('updater-progress', (event) => {
           if (event.payload) {
             updateProgressPct = event.payload.percentage ?? 0;
             updateProgressText = event.payload.status_text ?? '';
+          }
+        });
+
+        unlistenPrewarm = await listen<any>('prewarm-status', (event) => {
+          if (event.payload) {
+            const s = event.payload.state;
+            if (s === 'prewarming') {
+              currentPrewarmState = 'prewarming';
+              currentPrewarmProgress = event.payload.progress ?? 48;
+              currentPrewarmDetail = event.payload.message ?? 'Игра догружается…';
+            } else if (s === 'ready') {
+              currentPrewarmState = 'ready';
+              currentPrewarmProgress = 100;
+              currentPrewarmDetail = event.payload.message ?? 'Готово к запуску';
+            } else if (s === 'idle') {
+              currentPrewarmState = 'idle';
+              currentPrewarmProgress = 0;
+            }
           }
         });
       } catch {}
@@ -560,6 +684,11 @@
 
   return () => {
     if (unlistenProgress) unlistenProgress();
+    if (unlistenPrewarm) unlistenPrewarm();
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('hashchange', checkHash);
+      delete (window as any).__setPlayFastLaunchState;
+    }
   };
 });
 
@@ -993,28 +1122,54 @@ $effect(() => {
             {/if}
           </div>
 
-          <!-- Action Button: Play (systemBlue) -> In Game / Stop (neutral) -->
-          <div class="dock-primary-action dock-action" class:is-running={isRunning}>
-            {#if isRunning}
-              <Button
-                variant="secondary"
-                size="large"
-                onclick={onstop}
-                title={i18n.locale === 'en' ? 'Stop Minecraft' : 'Остановить процесс Minecraft'}
-              >
-                <span>{i18n.locale === 'en' ? 'Stop Minecraft' : 'В игре • Остановить'}</span>
-              </Button>
-            {:else}
-              <Button
-                variant="primary"
-                size="large"
-                onclick={onlaunch}
-                disabled={!playerName.trim() || isLaunching || isRunning}
-              >
-                <Icon name="play" size={18} color="#ffffff" />
-                <span>{t('play.launch')}</span>
-              </Button>
-            {/if}
+          <!-- Action Button: Play / Prewarming / Ready / In Game -->
+          <div
+            class="dock-primary-action dock-action"
+            class:is-running={effectiveState === 'running'}
+            class:is-ready={effectiveState === 'ready'}
+            class:is-prewarming={effectiveState === 'prewarming'}
+          >
+            <button
+              type="button"
+              class="play-morph-btn {effectiveState} {effectiveState === 'running' ? 'secondary' : 'primary'}"
+              data-testid="play-btn-{effectiveState}"
+              disabled={(!playerName.trim() && effectiveState === 'idle') || (isLaunching && effectiveState !== 'prewarming')}
+              onclick={handleActionClick}
+              title={buttonTitle}
+            >
+              {#if effectiveState === 'prewarming'}
+                <!-- Honest progress fill layer inside button -->
+                <div
+                  class="prewarm-progress-fill"
+                  style="width: {Math.max(0, Math.min(100, currentPrewarmProgress))}%;"
+                  data-testid="prewarm-progress-fill"
+                ></div>
+                <div class="prewarm-btn-content">
+                  <div class="prewarm-spinner" aria-hidden="true"></div>
+                  <span class="prewarm-btn-title">Игра догружается…</span>
+                  <span class="prewarm-btn-pct">{Math.round(currentPrewarmProgress)}%</span>
+                </div>
+              {:else if effectiveState === 'ready'}
+                <div class="ready-btn-content">
+                  <Icon name="play" size={17} color="#ffffff" />
+                  <div class="ready-btn-text">
+                    <span class="ready-title">Готово к запуску</span>
+                    <span class="ready-sub">Прогрев готов</span>
+                  </div>
+                </div>
+              {:else if effectiveState === 'running'}
+                <div class="running-btn-content">
+                  <span class="running-icon-stop" aria-hidden="true"></span>
+                  <span class="running-title">В игре • Остановить</span>
+                </div>
+              {:else}
+                <!-- Idle State: Play -->
+                <div class="idle-btn-content">
+                  <Icon name="play" size={18} color="#ffffff" />
+                  <span class="idle-title">{t('play.launch')}</span>
+                </div>
+              {/if}
+            </button>
           </div>
         </div>
       {/if}
@@ -1712,6 +1867,220 @@ $effect(() => {
 
   .dock-cancel-action {
     flex-shrink: 0;
+  }
+
+  /* ========================================================================
+     Action Button: Morphing States (Idle -> Prewarming -> Ready -> Running)
+     Apple HIG Kinetics & Spring Specifications
+     ======================================================================== */
+  .play-morph-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 160px;
+    height: 44px;
+    padding: 0 20px;
+    border-radius: 12px;
+    font-family: var(--font-system);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-decoration: none;
+    cursor: pointer;
+    user-select: none;
+    overflow: hidden;
+    border: 1px solid transparent;
+    transition:
+      transform var(--motion-duration-press, 120ms) var(--motion-curve-spring-system, cubic-bezier(0.16, 1, 0.3, 1)),
+      background-color var(--motion-duration-morph, 300ms) var(--motion-curve-spring-bouncy, cubic-bezier(0.2, 0.9, 0.3, 1.05)),
+      border-color var(--motion-duration-morph, 300ms) var(--motion-curve-spring-bouncy, cubic-bezier(0.2, 0.9, 0.3, 1.05)),
+      color var(--motion-duration-short, 150ms) ease,
+      min-width var(--motion-duration-morph, 300ms) var(--motion-curve-spring-bouncy, cubic-bezier(0.2, 0.9, 0.3, 1.05)),
+      box-shadow var(--motion-duration-hover, 160ms) ease;
+    outline: none;
+  }
+
+  .play-morph-btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .play-morph-btn:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 2px;
+  }
+
+  .play-morph-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none !important;
+  }
+
+  /* Idle State: Standard Prominent System Blue */
+  .play-morph-btn.idle {
+    background-color: var(--color-system-blue);
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.28);
+  }
+
+  .play-morph-btn.idle:hover:not(:disabled) {
+    filter: brightness(1.06);
+    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.36);
+  }
+
+  .idle-btn-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  /* Prewarming State: Honest progress bar directly inside the button */
+  .play-morph-btn.prewarming {
+    min-width: 220px;
+    background-color: rgba(0, 122, 255, 0.12);
+    border-color: rgba(0, 122, 255, 0.38);
+    color: var(--color-label);
+    padding: 0 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  .prewarm-progress-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    background: rgba(0, 122, 255, 0.28);
+    border-radius: inherit;
+    transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .prewarm-btn-content {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .prewarm-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(0, 122, 255, 0.3);
+    border-top-color: var(--color-system-blue);
+    border-radius: 50%;
+    animation: prewarmSpin 0.75s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes prewarmSpin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .prewarm-btn-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-label);
+    white-space: nowrap;
+  }
+
+  .prewarm-btn-pct {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--color-system-blue);
+    padding: 2px 6px;
+    background: rgba(0, 122, 255, 0.16);
+    border-radius: 6px;
+    margin-left: auto;
+  }
+
+  /* Ready State: Prewarm ready, instant start */
+  .play-morph-btn.ready {
+    min-width: 195px;
+    background-color: var(--color-system-blue);
+    color: #ffffff;
+    box-shadow: 0 2px 10px rgba(0, 122, 255, 0.34);
+  }
+
+  .play-morph-btn.ready:hover:not(:disabled) {
+    filter: brightness(1.06);
+    box-shadow: 0 4px 14px rgba(0, 122, 255, 0.44);
+  }
+
+  .ready-btn-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-align: left;
+  }
+
+  .ready-btn-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.15;
+  }
+
+  .ready-title {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  .ready-sub {
+    font-size: 11px;
+    font-weight: 400;
+    opacity: 0.88;
+    letter-spacing: 0;
+  }
+
+  /* Running State: Neutral glass stop button */
+  .play-morph-btn.running {
+    min-width: 185px;
+    background-color: var(--color-fill-secondary);
+    border-color: var(--color-separator);
+    color: var(--color-label);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  }
+
+  .play-morph-btn.running:hover:not(:disabled) {
+    background-color: var(--color-fill-tertiary);
+    border-color: rgba(255, 59, 48, 0.4);
+    color: var(--color-system-red);
+  }
+
+  .running-btn-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .running-icon-stop {
+    width: 10px;
+    height: 10px;
+    background-color: currentColor;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  :global([data-effects="off"]) .play-morph-btn,
+  :global([data-reduce-motion="true"]) .play-morph-btn,
+  :global([data-effects="off"]) .prewarm-progress-fill,
+  :global([data-reduce-motion="true"]) .prewarm-progress-fill {
+    transition: opacity 150ms ease !important;
+    animation: none !important;
+    transform: none !important;
   }
 
   :global([data-reduce-transparency="true"]) .launch-dock,
