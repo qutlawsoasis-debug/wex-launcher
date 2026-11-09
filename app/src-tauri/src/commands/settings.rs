@@ -84,13 +84,14 @@ fn default_window_behavior() -> String {
 
 impl Default for LauncherSettingsDto {
     fn default() -> Self {
+        let def_core = CoreConfig::default();
         Self {
             selected_version: "1.21.1".to_string(),
             player_name: "Player".to_string(),
-            ram_mb: 4096,
+            ram_mb: def_core.max_memory_mb,
             total_memory_mb: get_total_ram_mb(),
             game_dir: String::new(),
-            graphics_preset: "High".to_string(),
+            graphics_preset: def_core.graphics_preset,
             java_mode: "auto".to_string(),
             custom_java_path: None,
             detected_java_17: None,
@@ -721,9 +722,10 @@ mod tests {
 
         // 1. Initial settings
         let settings = get_launcher_settings_impl(&paths);
+        let default_core = CoreConfig::default();
         assert_eq!(settings.player_name, "Player");
-        assert_eq!(settings.ram_mb, 4096);
-        assert_eq!(settings.graphics_preset, "High");
+        assert_eq!(settings.ram_mb, default_core.max_memory_mb);
+        assert_eq!(settings.graphics_preset, default_core.graphics_preset);
         assert_eq!(settings.java_mode, "auto");
         assert!(settings.discord_rpc);
         assert_eq!(settings.language, "ru");
@@ -783,9 +785,10 @@ mod tests {
 
         // Reset
         let reset = reset_settings_impl(&paths, &mock_core).await.unwrap();
+        let default_core = CoreConfig::default();
         assert_eq!(reset.player_name, "Player");
-        assert_eq!(reset.ram_mb, 4096);
-        assert_eq!(reset.graphics_preset, "High");
+        assert_eq!(reset.ram_mb, default_core.max_memory_mb);
+        assert_eq!(reset.graphics_preset, default_core.graphics_preset);
         assert_eq!(reset.java_mode, "auto");
         assert!(reset.discord_rpc);
         assert!(reset.minimize_to_tray);

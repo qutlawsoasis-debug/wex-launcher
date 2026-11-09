@@ -37,12 +37,13 @@ pub struct LauncherConfig {
 
 impl Default for LauncherConfig {
     fn default() -> Self {
+        let def_core = wex_core::config::LauncherConfig::default();
         Self {
             selected_version: "1.21.1".to_string(),
             player_name: "Player".to_string(),
-            ram_mb: 4096,
+            ram_mb: def_core.max_memory_mb,
             game_dir: default_game_dir(),
-            graphics_preset: "High".to_string(),
+            graphics_preset: def_core.graphics_preset,
             appearance: "dark".to_string(),
             accent: "blue".to_string(),
             reduce_motion: false,
