@@ -141,7 +141,6 @@ export const en: Record<TranslationKey, string> = {
   'settings.header_about': 'About',
   'settings.about_title': 'Wex Launcher',
   'settings.about_subtitle': 'Version {version} • OS: {os} • 64-bit',
-  'settings.about_stack_title': 'Technology Stack',
   'settings.about_stack_subtitle': 'Tauri 2 • Svelte 5 • TypeScript 5.8 • Rust (core/wex-core, wex-extras)',
   'settings.reset_defaults': 'Reset to Defaults',
 
