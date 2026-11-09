@@ -31,6 +31,7 @@
   import DeepLinkConfirmationModal, { type DeepLinkAction } from './lib/components/DeepLinkConfirmationModal.svelte';
   import type { CrashDiagnosisDto } from './lib/ipc/generated/models';
   import { initIdleManager, setGameRunning, createIdleInterval } from './lib/design/idleManager';
+  import { friendsLive, parseWexJoinUri } from './lib/services/friendsLive';
 
   // Navigation state
   let activeTab = $state('play');
@@ -182,9 +183,14 @@
   // Toast stack
   let toasts = $state<ToastMessage[]>([]);
 
-  function addToast(type: 'info' | 'success' | 'warning' | 'error', title: string, description?: string) {
+  function addToast(
+    type: 'info' | 'success' | 'warning' | 'error',
+    title: string,
+    description?: string,
+    action?: { label: string; onClick: () => void }
+  ) {
     const id = `toast-${Date.now()}-${Math.random()}`;
-    toasts = [...toasts, { id, type, title, description, duration: 4000 }];
+    toasts = [...toasts, { id, type, title, description, duration: 5000, action }];
   }
 
   function dismissToast(id: string) {
@@ -494,16 +500,31 @@
         };
         crashSheetOpen = true;
       }
-
       // Hash deeplink triggers for tests, protocol launches, and previews
       const deeplinkParam = params.get('deeplink') || params.get('uri');
       if (deeplinkParam) {
         handleRawDeepLink(deeplinkParam);
       }
+
+      // Support wex://join and #join=ROOM123 deep links
+      const joinCode = parseWexJoinUri(window.location.hash) || parseWexJoinUri(window.location.search);
+      if (joinCode) {
+        activeTab = 'lobby';
+        void friendsLive.handleJoin(joinCode);
+      }
     }
 
     applyHashRoute();
     window.addEventListener('hashchange', applyHashRoute);
+
+    // Real-time Friends Poller & Notifications
+    friendsLive.start();
+    const unlistenLiveNotifs = friendsLive.onNotification((notif) => {
+      addToast('info', notif.title, notif.description, notif.action);
+    });
+    const unlistenLiveJoin = friendsLive.onJoin(() => {
+      activeTab = 'lobby';
+    });
 
     // Initial checks: parallelized network, profile, and active running game state
     Promise.allSettled([
@@ -516,6 +537,15 @@
           isGameRunning = running;
           if (running) {
             clientStatus = 'Minecraft запущен';
+          }
+        } catch {}
+      })(),
+      (async () => {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const cfg = await invoke<{ friend_notifications?: boolean }>('get_launcher_settings');
+          if (cfg && cfg.friend_notifications !== undefined) {
+            friendsLive.setNotificationsEnabled(cfg.friend_notifications);
           }
         } catch {}
       })(),
@@ -633,12 +663,19 @@
         window.removeEventListener('online', checkNetwork);
       }
       cleanupNet();
+      unlistenLiveNotifs();
+      unlistenLiveJoin();
+      friendsLive.stop();
       unlistenProgress?.();
       unlistenStatus?.();
       unlistenAchievement?.();
       unlistenInvite?.();
       unlistenCrash?.();
     };
+  });
+
+  $effect(() => {
+    friendsLive.setGameRunning(isGameRunning);
   });
 </script>
 

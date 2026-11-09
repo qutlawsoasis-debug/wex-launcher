@@ -62,6 +62,8 @@ pub struct LauncherSettingsDto {
     pub fast_start_jvm: bool,
     #[serde(default = "default_true")]
     pub minimize_to_tray: bool,
+    #[serde(default = "default_true")]
+    pub friend_notifications: bool,
 }
 
 fn default_true() -> bool {
@@ -89,6 +91,7 @@ impl Default for LauncherSettingsDto {
             reduce_transparency: false,
             fast_start_jvm: false,
             minimize_to_tray: true,
+            friend_notifications: true,
         }
     }
 }
@@ -181,6 +184,7 @@ pub fn get_launcher_settings_impl(paths: &WexPaths) -> LauncherSettingsDto {
         reduce_transparency: cfg.reduce_transparency,
         fast_start_jvm: cfg.fast_start_jvm,
         minimize_to_tray: cfg.minimize_to_tray,
+        friend_notifications: cfg.friend_notifications,
     }
 }
 
@@ -220,6 +224,7 @@ pub async fn save_launcher_settings_impl(
     cfg.reduce_transparency = new_settings.reduce_transparency;
     cfg.fast_start_jvm = new_settings.fast_start_jvm;
     cfg.minimize_to_tray = new_settings.minimize_to_tray;
+    cfg.friend_notifications = new_settings.friend_notifications;
 
     cfg.save(&paths.config_file)
         .map_err(|e| format!("Не удалось сохранить конфигурацию: {}", e))?;
