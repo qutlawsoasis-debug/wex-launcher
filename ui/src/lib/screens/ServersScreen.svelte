@@ -528,7 +528,6 @@
         <SegmentedControl
           options={versionOptions}
           value={activeVersion}
-          size="small"
           onchange={onVersionChange}
         />
       </div>

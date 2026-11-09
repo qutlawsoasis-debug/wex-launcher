@@ -147,10 +147,10 @@ describe('Apple HIG Svelte 5 Components', () => {
       },
     });
 
-    const tabs = target.querySelectorAll('[role="tab"]');
-    expect(tabs.length).toBe(2);
-    expect(tabs[1].classList.contains('selected')).toBe(true);
-    expect(tabs[1].getAttribute('aria-selected')).toBe('true');
+    const radios = target.querySelectorAll('[role="radio"]');
+    expect(radios.length).toBe(2);
+    expect(radios[1].classList.contains('selected')).toBe(true);
+    expect(radios[1].getAttribute('aria-checked')).toBe('true');
 
     unmount(comp);
   });
@@ -469,18 +469,17 @@ describe('Apple HIG Svelte 5 Components', () => {
           { value: 'third', label: 'Третий' },
         ],
         value: current,
-        size: 'small',
         onchange: (val) => {
           current = val;
         },
       },
     });
 
-    expect(target.querySelector('.apple-segmented-control')?.classList.contains('small')).toBe(true);
-    const tabs = target.querySelectorAll('[role="tab"]');
-    expect(tabs.length).toBe(3);
+    expect(target.querySelector('.apple-segmented-control')).not.toBeNull();
+    const radios = target.querySelectorAll('[role="radio"]');
+    expect(radios.length).toBe(3);
 
-    tabs[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    radios[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
     expect(current).toBe('second');
 
     unmount(comp);
