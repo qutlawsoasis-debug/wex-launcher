@@ -269,4 +269,86 @@ export const en: Record<TranslationKey, string> = {
   'friends.action_invite': 'Invite',
   'friends.action_accept': 'Accept',
   'friends.action_decline': 'Decline',
+
+  // Screen / Window: What's New & Release Highlights
+  'whats_new.window_title': 'What’s New',
+  'whats_new.version_title': 'Wex {version}',
+  'whats_new.release_date': 'November 9, 2026',
+  'whats_new.subtitle': 'Overview of features and improvements in the updated launcher',
+  'whats_new.copy_for_friends': 'Copy for Friends',
+  'whats_new.copied_toast': 'Changelog copied to clipboard',
+  'whats_new.badge_new': 'New',
+  'whats_new.badge_improved': 'Improved',
+  'whats_new.badge_fixed': 'Fixed',
+
+  // Section: Play & Quick Launch
+  'whats_new.section_play': 'Play & Quick Launch',
+  'whats_new.play_versions': 'Support for Minecraft 1.20.1 and 1.21.1 with automatic Java runtime selection (Java 17 or Java 21).',
+  'whats_new.play_fast_start': 'Background JVM prewarm for significantly faster game launch.',
+  'whats_new.play_sync': 'Robust pack sync with integrity verification and automatic resumption upon network hiccups.',
+  'whats_new.play_offline': 'Offline game launch without network connection when client files are downloaded.',
+  'whats_new.play_stats': 'Total playtime counter and session tracker directly on the main dashboard.',
+  'whats_new.play_stories': 'Informative Stories carousel featuring stats, latest screenshot, and quick changelog copy.',
+  'whats_new.play_import': 'Safe import wizard transferring player name, memory settings, servers, skins, and worlds from the previous launcher.',
+
+  // Section: Servers
+  'whats_new.section_servers': 'Servers',
+  'whats_new.servers_ping': 'Live server status monitoring (SLP ping) displaying player counts, latency, and icons.',
+  'whats_new.servers_quick_play': 'One-click direct server launch straight into multiplayer gameplay.',
+  'whats_new.servers_management': 'Add, edit, and remove servers with instant synchronization to servers.dat.',
+  'whats_new.servers_deeplink': 'Support for wex://server links for seamless connection with a safety confirmation prompt.',
+
+  // Section: Lobby & Friends
+  'whats_new.section_lobby': 'Lobby & Friends',
+  'whats_new.lobby_presence': 'Real-time friend activity status: online, in lobby, or in game with version details.',
+  'whats_new.lobby_notifications': 'Windows desktop notifications when friends join games or lobbies, with spam cooldown protection.',
+  'whats_new.lobby_rooms': 'Multiplayer room lobbies with short codes for quick party assembly.',
+  'whats_new.lobby_publish': 'Publish singleplayer worlds to friends via built-in tunneling without manual port forwarding.',
+  'whats_new.lobby_deeplink': 'Instant room joining via wex://join invite links from messaging apps.',
+  'whats_new.lobby_lan': 'Automatic discovery of LAN worlds published on your local network.',
+
+  // Section: Wardrobe
+  'whats_new.section_wardrobe': 'Wardrobe',
+  'whats_new.wardrobe_3d': 'Interactive 3D character mannequin with smooth rotation and front/back view switching.',
+  'whats_new.wardrobe_models': 'Support for Classic Steve (4 px) and Slim Alex (3 px) character models.',
+  'whats_new.wardrobe_library': 'Local skin library enabling one-click skin switching without reselecting files.',
+  'whats_new.wardrobe_capes': 'Cape and cloak management with accurate preview on the 3D model.',
+  'whats_new.wardrobe_security': 'Secure skin storage verifying PNG dimensions (64x64, 64x32) while protecting game folders.',
+
+  // Section: Workshop
+  'whats_new.section_workshop': 'Workshop',
+  'whats_new.workshop_mods': 'Fabric mod catalog with quick search, toggle switches, and no accidental file deletion.',
+  'whats_new.workshop_pack_protect': 'Official Wex pack mods marked with badges and protected against unintended deletion.',
+  'whats_new.workshop_screenshots': 'Screenshot gallery with one-click copy to clipboard for quick sharing.',
+  'whats_new.workshop_packs_shaders': 'Resource pack and shader manager supporting Sodium and Iris optimizations.',
+  'whats_new.workshop_backups': 'One-click world backup archives and restoration from backup history.',
+
+  // Section: Music
+  'whats_new.section_music': 'Music',
+  'whats_new.music_turntable': 'Built-in vinyl turntable MusicDiskWidget with interactive record and tonearm animation.',
+  'whats_new.music_tracks': 'Atmospheric soundtrack selection with smooth volume controls.',
+  'whats_new.music_smtc': 'Windows Media Controls integration (SMTC) to control tracks and pause with hardware media keys.',
+  'whats_new.music_fadeout': 'Smooth 600ms music fade-out upon game launch to keep the game audio clear.',
+
+  // Section: Settings
+  'whats_new.section_settings': 'Settings',
+  'whats_new.settings_ram': 'Intuitive RAM slider in 512 MB steps with physical memory detection and recommendations.',
+  'whats_new.settings_graphics': 'Optimized graphics presets (Low, Medium, High, Ultra) balancing visuals and performance.',
+  'whats_new.settings_storage': 'Storage section: SHA-256 integrity verification with repair, and safe cache cleanup.',
+  'whats_new.settings_lock': 'File modification and storage cleanup lock while Minecraft is running.',
+  'whats_new.settings_themes': 'Light, dark, and system themes with guaranteed WCAG AA contrast (>= 4.5:1) on scenery backgrounds.',
+  'whats_new.settings_a11y': 'Accessibility options: Reduce Motion and Reduce Transparency following Apple HIG.',
+  'whats_new.settings_discord': 'Discord Rich Presence showing verified version, game activity, and live preview.',
+  'whats_new.settings_report': 'Anonymized diagnostic bug report export for customer support.',
+  'whats_new.settings_lang': 'Instant language switching between Russian and English without restarting the launcher.',
+
+  // Section: Updates
+  'whats_new.section_updates': 'Updates',
+  'whats_new.updates_banner': 'Unobtrusive update notification banner on the Play screen.',
+  'whats_new.updates_manifest': 'Background release manifest checking with graceful offline fallback.',
+
+  // Section: Known Limitations
+  'whats_new.section_limitations': 'Known Limitations',
+  'whats_new.limitations_playit': 'Publishing worlds via playit tunnel requires a personal service key.',
+  'whats_new.limitations_lan': 'Local network (LAN) world discovery has been verified on a single PC; some routers may filter multicast packets.',
 };
