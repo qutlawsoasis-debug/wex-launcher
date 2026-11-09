@@ -712,8 +712,8 @@ pub async fn start_game<R: tauri::Runtime>(
     }
 
     // 3.5. Fast-launch: check prewarm status (cannot be used if custom server or jvm args were specified)
-    let has_custom_server = server.as_ref().map_or(false, |s| !s.trim().is_empty());
-    let has_custom_jvm_args = jvm_args.as_ref().map_or(false, |a| !a.is_empty());
+    let has_custom_server = server.as_ref().is_some_and(|s| !s.trim().is_empty());
+    let has_custom_jvm_args = jvm_args.as_ref().is_some_and(|a| !a.is_empty());
     let can_use_fast_launch = cfg.fast_launch && !has_custom_server && !has_custom_jvm_args;
 
     if cfg.fast_launch && !can_use_fast_launch {
@@ -1743,16 +1743,16 @@ mod tests {
         let jvm_none: Option<Vec<String>> = None;
         let jvm_custom = Some(vec!["-Xcustom".to_string()]);
 
-        let has_custom_server = server_some.as_ref().map_or(false, |s| !s.trim().is_empty());
-        let has_custom_jvm_args = jvm_custom.as_ref().map_or(false, |a| !a.is_empty());
+        let has_custom_server = server_some.as_ref().is_some_and(|s| !s.trim().is_empty());
+        let has_custom_jvm_args = jvm_custom.as_ref().is_some_and(|a| !a.is_empty());
         let can_use_fast_launch = !has_custom_server && !has_custom_jvm_args;
         assert!(
             !can_use_fast_launch,
             "Must not use prewarm for custom server or jvm args"
         );
 
-        let can_use_defaults = !server_none.as_ref().map_or(false, |s| !s.trim().is_empty())
-            && !jvm_none.as_ref().map_or(false, |a| !a.is_empty());
+        let can_use_defaults = !server_none.as_ref().is_some_and(|s| !s.trim().is_empty())
+            && !jvm_none.as_ref().is_some_and(|a| !a.is_empty());
         assert!(
             can_use_defaults,
             "Can use prewarm when no server or jvm args"

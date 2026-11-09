@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tauri::menu::MenuItem;
 use tauri::{AppHandle, Manager, State, Wry};
@@ -179,7 +178,7 @@ pub fn tray_get_window_behavior(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
 
     #[test]
