@@ -498,7 +498,7 @@
         subtitle={t('settings.java_choice_subtitle')}
       >
         {#snippet trailing()}
-          <div style="width: 260px;">
+          <div style="width: 280px;">
             <SegmentedControl
               options={javaModeOptions}
               value={javaMode}
@@ -788,14 +788,16 @@
         subtitle={i18n.locale === 'en' ? 'Animation fidelity and spring motion' : 'Степень плавности и пружинных анимаций'}
       >
         {#snippet trailing()}
-          <SegmentedControl
-            options={effectsOptions}
-            value={theme.effectsMode}
-            onchange={(val) => {
-              theme.setEffectsMode(val as any);
-              saveConfig();
-            }}
-          />
+          <div style="width: 320px;">
+            <SegmentedControl
+              options={effectsOptions}
+              value={theme.effectsMode}
+              onchange={(val) => {
+                theme.setEffectsMode(val as any);
+                saveConfig();
+              }}
+            />
+          </div>
         {/snippet}
       </Row>
 

@@ -105,7 +105,7 @@
 
   // Filtered friends by search query
   let filteredFriends = $derived(
-    friends.filter((f) => f.nick.toLowerCase().includes(searchQuery.toLowerCase()))
+    friends.filter((f) => ((f.nick || (f as any).nickname || '')).toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   // Tab options for segmented control with dynamic counter

@@ -880,8 +880,8 @@
   .preview-header {
     width: 100%;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    align-items: stretch;
     gap: 8px;
     margin-bottom: 12px;
   }
