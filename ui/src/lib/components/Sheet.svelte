@@ -44,8 +44,14 @@
   function close() {
     open = false;
     onclose?.();
-    if (previouslyFocusedEl && typeof previouslyFocusedEl.focus === 'function') {
-      previouslyFocusedEl.focus();
+    const elToFocus = previouslyFocusedEl;
+    if (elToFocus && typeof elToFocus.focus === 'function') {
+      elToFocus.focus();
+      setTimeout(() => {
+        if (elToFocus && (document.activeElement === document.body || !document.activeElement)) {
+          elToFocus.focus();
+        }
+      }, 10);
     }
   }
 

@@ -53,6 +53,9 @@
       e.preventDefault();
       const prevIndex = (index - 1 + items.length) % items.length;
       buttonEls[prevIndex]?.focus();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      selectItem(items[index].id);
     }
   }
 </script>
