@@ -60,6 +60,14 @@ pub struct LauncherSettingsDto {
     pub reduce_motion: bool,
     pub reduce_transparency: bool,
     pub fast_start_jvm: bool,
+    #[serde(default = "default_true")]
+    pub minimize_to_tray: bool,
+    #[serde(default = "default_true")]
+    pub friend_notifications: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for LauncherSettingsDto {
@@ -82,6 +90,8 @@ impl Default for LauncherSettingsDto {
             reduce_motion: false,
             reduce_transparency: false,
             fast_start_jvm: false,
+            minimize_to_tray: true,
+            friend_notifications: true,
         }
     }
 }
@@ -173,6 +183,8 @@ pub fn get_launcher_settings_impl(paths: &WexPaths) -> LauncherSettingsDto {
         reduce_motion: cfg.reduce_motion,
         reduce_transparency: cfg.reduce_transparency,
         fast_start_jvm: cfg.fast_start_jvm,
+        minimize_to_tray: cfg.minimize_to_tray,
+        friend_notifications: cfg.friend_notifications,
     }
 }
 
@@ -211,6 +223,8 @@ pub async fn save_launcher_settings_impl(
     cfg.reduce_motion = new_settings.reduce_motion;
     cfg.reduce_transparency = new_settings.reduce_transparency;
     cfg.fast_start_jvm = new_settings.fast_start_jvm;
+    cfg.minimize_to_tray = new_settings.minimize_to_tray;
+    cfg.friend_notifications = new_settings.friend_notifications;
 
     cfg.save(&paths.config_file)
         .map_err(|e| format!("Не удалось сохранить конфигурацию: {}", e))?;
@@ -252,12 +266,42 @@ pub async fn save_launcher_settings(
     new_settings: LauncherSettingsDto,
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
-    save_launcher_settings_impl(new_settings, &state.paths, state.core.as_ref()).await
+    let discord_rpc = new_settings.discord_rpc;
+    save_launcher_settings_impl(new_settings, &state.paths, state.core.as_ref()).await?;
+
+    let mut lock = state.discord.lock().await;
+    if let Some(client) = lock.as_mut() {
+        client.set_enabled(discord_rpc).await;
+    }
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn reset_settings(state: State<'_, PlayState>) -> Result<LauncherSettingsDto, String> {
-    reset_settings_impl(&state.paths, state.core.as_ref()).await
+    let res = reset_settings_impl(&state.paths, state.core.as_ref()).await?;
+    let mut lock = state.discord.lock().await;
+    if let Some(client) = lock.as_mut() {
+        client.set_enabled(true).await;
+    }
+    Ok(res)
+}
+
+#[tauri::command]
+pub async fn get_discord_rpc_preview(
+    state: State<'_, PlayState>,
+) -> Result<wex_ipc::models::DiscordPreviewDto, String> {
+    let cfg = CoreConfig::load_or_default(&state.paths.config_file);
+    let lock = state.discord.lock().await;
+    let preview = if let Some(client) = lock.as_ref() {
+        client.preview()
+    } else {
+        wex_extras::discord::get_activity_preview(
+            Some(&wex_extras::discord::Activity::InLauncher),
+            cfg.discord_rpc,
+            false,
+        )
+    };
+    Ok(preview.into())
 }
 
 #[tauri::command]
@@ -636,6 +680,7 @@ mod tests {
         assert!(settings.discord_rpc);
         assert_eq!(settings.language, "ru");
         assert!(!settings.fast_start_jvm);
+        assert!(settings.minimize_to_tray);
 
         // 2. Modify and save settings
         let mut updated = settings.clone();
@@ -647,6 +692,7 @@ mod tests {
         updated.discord_rpc = false;
         updated.language = "en".to_string();
         updated.fast_start_jvm = true;
+        updated.minimize_to_tray = false;
 
         save_launcher_settings_impl(updated, &paths, &mock_core)
             .await
@@ -665,6 +711,7 @@ mod tests {
         assert!(!reloaded.discord_rpc);
         assert_eq!(reloaded.language, "en");
         assert!(reloaded.fast_start_jvm);
+        assert!(!reloaded.minimize_to_tray);
     }
 
     #[tokio::test]
@@ -691,6 +738,7 @@ mod tests {
         assert_eq!(reset.graphics_preset, "High");
         assert_eq!(reset.java_mode, "auto");
         assert!(reset.discord_rpc);
+        assert!(reset.minimize_to_tray);
     }
 
     #[test]

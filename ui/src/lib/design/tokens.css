@@ -57,12 +57,31 @@
   --line-caption-2: 13px;
   --weight-caption-2: 400;
 
-  /* Motion & Spring timings */
+  /* Motion & Spring timings (Apple HIG Motion & ui/src/lib/motion) */
   --motion-duration-short: 150ms;
   --motion-duration-normal: 250ms;
   --motion-duration-sheet: 320ms;
+  --motion-duration-screen-enter: 260ms;
+  --motion-duration-screen-exit: 180ms;
+  --motion-duration-sheet-enter: 320ms;
+  --motion-duration-sheet-exit: 220ms;
+  --motion-duration-modal-enter: 260ms;
+  --motion-duration-modal-exit: 180ms;
+  --motion-duration-toast-enter: 240ms;
+  --motion-duration-toast-exit: 180ms;
+  --motion-duration-press: 120ms;
+  --motion-duration-hover: 160ms;
+  --motion-duration-morph: 300ms;
+
   --motion-spring-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-curve-spring-system: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-curve-spring-bouncy: cubic-bezier(0.2, 0.9, 0.3, 1.05);
+  --motion-curve-fast-exit: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --motion-curve-press: cubic-bezier(0.2, 0.8, 0.2, 1);
+
   --motion-press-scale: 0.97;
+  --motion-card-hover-y: -2px;
+  --motion-card-hover-scale: 1.008;
 
   /* Corner radii */
   --radius-xs: 6px;
@@ -215,13 +234,23 @@
   -webkit-backdrop-filter: none !important;
 }
 
-/* Reduce Motion Override */
+/* Reduce Motion & Effects Modes (Apple HIG Motion) */
 @media (prefers-reduced-motion: reduce), (update: slow) {
   :root {
     --motion-duration-short: 0.001ms !important;
     --motion-duration-normal: 0.001ms !important;
     --motion-duration-sheet: 0.001ms !important;
+    --motion-duration-screen-enter: 120ms !important;
+    --motion-duration-screen-exit: 80ms !important;
+    --motion-duration-sheet-enter: 140ms !important;
+    --motion-duration-sheet-exit: 90ms !important;
+    --motion-duration-toast-enter: 120ms !important;
+    --motion-duration-toast-exit: 80ms !important;
+    --motion-duration-press: 0.001ms !important;
+    --motion-duration-morph: 120ms !important;
     --motion-press-scale: 1 !important;
+    --motion-card-hover-y: 0px !important;
+    --motion-card-hover-scale: 1 !important;
   }
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
@@ -231,20 +260,42 @@
   }
 }
 
+:root[data-effects="off"],
 :root[data-reduce-motion="true"] {
-  --motion-duration-short: 0.001ms !important;
-  --motion-duration-normal: 0.001ms !important;
-  --motion-duration-sheet: 0.001ms !important;
+  --motion-duration-short: 120ms !important;
+  --motion-duration-normal: 150ms !important;
+  --motion-duration-sheet: 160ms !important;
+  --motion-duration-screen-enter: 120ms !important;
+  --motion-duration-screen-exit: 80ms !important;
+  --motion-duration-sheet-enter: 140ms !important;
+  --motion-duration-sheet-exit: 90ms !important;
+  --motion-duration-toast-enter: 120ms !important;
+  --motion-duration-toast-exit: 80ms !important;
+  --motion-duration-press: 0.001ms !important;
+  --motion-duration-morph: 120ms !important;
   --motion-press-scale: 1 !important;
+  --motion-card-hover-y: 0px !important;
+  --motion-card-hover-scale: 1 !important;
 }
 
+:root[data-effects="off"] *,
+:root[data-effects="off"] *::before,
+:root[data-effects="off"] *::after,
 :root[data-reduce-motion="true"] *,
 :root[data-reduce-motion="true"] *::before,
 :root[data-reduce-motion="true"] *::after {
-  animation-duration: 0.001ms !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: 0.001ms !important;
-  scroll-behavior: auto !important;
+  transform: none !important;
+}
+
+:root[data-effects="low"] {
+  --motion-press-scale: 0.985;
+  --motion-card-hover-y: -1px;
+  --motion-card-hover-scale: 1;
+  --motion-curve-spring-bouncy: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-duration-screen-enter: 200ms;
+  --motion-duration-screen-exit: 150ms;
+  --motion-duration-sheet-enter: 240ms;
+  --motion-duration-sheet-exit: 170ms;
 }
 
 /* Idle & Energy Conservation: Freeze all animations when minimized or during gameplay */

@@ -171,6 +171,62 @@ pub struct LauncherConfig {
         alias = "prewarmGame"
     )]
     pub fast_start_jvm: bool,
+
+    #[serde(default)]
+    pub window_state: WindowStateConfig,
+
+    #[serde(
+        default = "default_minimize_to_tray",
+        alias = "minimize_to_tray",
+        alias = "minimizeToTray",
+        alias = "minimize_to_tray_on_game_start"
+    )]
+    pub minimize_to_tray: bool,
+
+    #[serde(
+        default = "default_true",
+        alias = "friendNotifications",
+        alias = "friend_notifications"
+    )]
+    pub friend_notifications: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WindowStateConfig {
+    #[serde(default = "default_window_width")]
+    pub width: u32,
+    #[serde(default = "default_window_height")]
+    pub height: u32,
+    #[serde(default)]
+    pub x: Option<i32>,
+    #[serde(default)]
+    pub y: Option<i32>,
+    #[serde(default)]
+    pub is_maximized: bool,
+}
+
+fn default_window_width() -> u32 {
+    1080
+}
+
+fn default_window_height() -> u32 {
+    720
+}
+
+fn default_minimize_to_tray() -> bool {
+    true
+}
+
+impl Default for WindowStateConfig {
+    fn default() -> Self {
+        Self {
+            width: default_window_width(),
+            height: default_window_height(),
+            x: None,
+            y: None,
+            is_maximized: false,
+        }
+    }
 }
 
 fn deserialize_ram<'de, D>(deserializer: D) -> std::result::Result<u32, D::Error>
@@ -221,6 +277,10 @@ fn default_java_mode() -> String {
     "auto".to_string()
 }
 
+fn default_true() -> bool {
+    true
+}
+
 impl Default for LauncherConfig {
     fn default() -> Self {
         Self {
@@ -239,6 +299,9 @@ impl Default for LauncherConfig {
             appearance: default_appearance(),
             accent: default_accent(),
             fast_start_jvm: false,
+            window_state: WindowStateConfig::default(),
+            minimize_to_tray: default_minimize_to_tray(),
+            friend_notifications: true,
         }
     }
 }
@@ -265,6 +328,9 @@ impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
             appearance: ipc.appearance,
             accent: ipc.accent,
             fast_start_jvm: ipc.fast_start_jvm,
+            window_state: WindowStateConfig::default(),
+            minimize_to_tray: default_minimize_to_tray(),
+            friend_notifications: default_true(),
         }
     }
 }
@@ -354,5 +420,42 @@ mod tests {
         assert_eq!(loaded.nickname, "TestUser");
         assert_eq!(loaded.max_memory_mb, 8192);
         assert_eq!(loaded.selected_version, "1.20.1");
+    }
+
+    #[test]
+    fn test_window_state_and_minimize_to_tray_config() {
+        let tmp = tempdir().unwrap();
+        let config_path = tmp.path().join("config.json");
+
+        // Test defaults
+        let default_cfg = LauncherConfig::default();
+        assert!(default_cfg.minimize_to_tray);
+        assert_eq!(default_cfg.window_state.width, 1080);
+        assert_eq!(default_cfg.window_state.height, 720);
+        assert_eq!(default_cfg.window_state.x, None);
+        assert_eq!(default_cfg.window_state.y, None);
+        assert!(!default_cfg.window_state.is_maximized);
+
+        // Test custom state persistence
+        let custom_cfg = LauncherConfig {
+            minimize_to_tray: false,
+            window_state: WindowStateConfig {
+                width: 1440,
+                height: 900,
+                x: Some(250),
+                y: Some(180),
+                is_maximized: true,
+            },
+            ..Default::default()
+        };
+        custom_cfg.save(&config_path).unwrap();
+
+        let loaded = LauncherConfig::load_or_default(&config_path);
+        assert!(!loaded.minimize_to_tray);
+        assert_eq!(loaded.window_state.width, 1440);
+        assert_eq!(loaded.window_state.height, 900);
+        assert_eq!(loaded.window_state.x, Some(250));
+        assert_eq!(loaded.window_state.y, Some(180));
+        assert!(loaded.window_state.is_maximized);
     }
 }

@@ -76,7 +76,7 @@
     text-align: center;
     min-height: 280px;
     width: 100%;
-    animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: fadeIn var(--motion-duration-modal-enter) var(--motion-curve-spring-system);
   }
 
   .offline-icon-bubble {

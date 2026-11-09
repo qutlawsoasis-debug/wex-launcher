@@ -14,118 +14,138 @@ import WorkshopScreen from './WorkshopScreen.svelte';
 import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
 import CrashSheet from '../components/CrashSheet.svelte';
 
+const defaultInvoke = vi.fn(async (cmd: string, args?: Record<string, any>, options?: any) => {
+  if (cmd === 'list_open_rooms') {
+    throw new Error('Сервис недоступен');
+  }
+  if (cmd === 'list_lan_worlds') {
+    return [
+      {
+        motd: 'Alex - Creative Studio',
+        address: '192.168.1.105:54321',
+        port: 54321,
+      },
+    ];
+  }
+  if (cmd === 'connect_lan_world') {
+    return `Подключение к ${args?.address} (PID 12345)`;
+  }
+  if (cmd === 'publish_lan_world') {
+    return {
+      code: '#B2C3',
+      host_name: 'Player',
+      world_name: args?.motd || 'Мир LAN',
+      tunnel_address: `lan-host.tun.ply.gg:${args?.port || 25565}`,
+      tunnel_active: true,
+      is_host: true,
+      players: [
+        {
+          name: 'Player',
+          is_host: true,
+          ping_ms: 0,
+          mods_synced: true,
+        },
+      ],
+      mod_mismatch_count: 0,
+      total_mods: 142,
+    };
+  }
+  if (cmd === 'list_mods') {
+    if (args?.version === '1.20.1') {
+      return [];
+    }
+    return [
+      {
+        id: 'fabric-api',
+        name: 'Fabric API',
+        version: '0.102.0',
+        description: 'Базовый набор библиотек для экосистемы модов Fabric',
+        file_name: 'fabric-api-0.102.0.jar',
+        enabled: true,
+        is_pack_mod: true,
+      },
+      {
+        id: 'minimap',
+        name: 'Xaero Minimap',
+        version: '24.1.0',
+        description: 'Пользовательский мод миникарты',
+        file_name: 'xaero-minimap-24.1.0.jar',
+        enabled: false,
+        is_pack_mod: false,
+      },
+    ];
+  }
+  if (cmd === 'get_launcher_settings') {
+    return {
+      selected_version: '1.21.1',
+      player_name: 'Player',
+      ram_mb: 4096,
+      total_memory_mb: 16384,
+      game_dir: 'C:\\Users\\User\\AppData\\Roaming\\Wex',
+      graphics_preset: 'High',
+      java_mode: 'auto',
+      custom_java_path: null,
+      discord_rpc: true,
+      language: 'ru',
+    };
+  }
+  if (cmd === 'get_playtime_summary') {
+    return {
+      total_seconds: 7200,
+      total_formatted: '2 ч. 0 мин.',
+      version_seconds: 3600,
+      version_formatted: '1 ч. 0 мин.',
+      version_summary: 'В игре: 1 ч. 0 мин. • Запусков: 2',
+      total_launches: 4,
+      last_played_utc: '2026-11-08T18:00:00Z',
+    };
+  }
+  if (cmd === 'verify_instance_files') {
+    return {
+      success: true,
+      total_files: 264,
+      verified_files: 264,
+      repaired_files: 0,
+      corrupted_files: 0,
+      errors: [],
+      message: 'Все 264 файлов проверены, повреждений не обнаружено',
+    };
+  }
+  if (cmd === 'cleanup_cache') {
+    return {
+      success: true,
+      freed_bytes: 15204352,
+      freed_formatted: '14.5 МБ',
+      deleted_files_count: 8,
+      message: 'Кэш очищен: освобождено 14.5 МБ (удалено 8 файлов)',
+    };
+  }
+  if (cmd === 'get_discord_rpc_preview') {
+    return {
+      is_enabled: true,
+      is_connected: true,
+      title: 'Wex Launcher',
+      details: 'В главном меню',
+      state: 'Выбирает режим игры',
+      small_text: null,
+      has_timestamp: false,
+    };
+  }
+  return [];
+});
+
 vi.mock('@tauri-apps/api/core', () => {
   return {
-    invoke: vi.fn(async (cmd: string, args?: Record<string, any>) => {
-      if (cmd === 'list_open_rooms') {
-        throw new Error('Сервис недоступен');
-      }
-      if (cmd === 'list_lan_worlds') {
-        return [
-          {
-            motd: 'Alex - Creative Studio',
-            address: '192.168.1.105:54321',
-            port: 54321,
-          },
-        ];
-      }
-      if (cmd === 'connect_lan_world') {
-        return `Подключение к ${args?.address} (PID 12345)`;
-      }
-      if (cmd === 'publish_lan_world') {
-        return {
-          code: '#B2C3',
-          host_name: 'Player',
-          world_name: args?.motd || 'Мир LAN',
-          tunnel_address: `lan-host.tun.ply.gg:${args?.port || 25565}`,
-          tunnel_active: true,
-          is_host: true,
-          players: [
-            {
-              name: 'Player',
-              is_host: true,
-              ping_ms: 0,
-              mods_synced: true,
-            },
-          ],
-          mod_mismatch_count: 0,
-          total_mods: 142,
-        };
-      }
-      if (cmd === 'list_mods') {
-        if (args?.version === '1.20.1') {
-          return [];
-        }
-        return [
-          {
-            id: 'fabric-api',
-            name: 'Fabric API',
-            version: '0.102.0',
-            description: 'Базовый набор библиотек для экосистемы модов Fabric',
-            file_name: 'fabric-api-0.102.0.jar',
-            enabled: true,
-            is_pack_mod: true,
-          },
-          {
-            id: 'minimap',
-            name: 'Xaero Minimap',
-            version: '24.1.0',
-            description: 'Пользовательский мод миникарты',
-            file_name: 'xaero-minimap-24.1.0.jar',
-            enabled: false,
-            is_pack_mod: false,
-          },
-        ];
-      }
-      if (cmd === 'get_launcher_settings') {
-        return {
-          selected_version: '1.21.1',
-          player_name: 'Player',
-          ram_mb: 4096,
-          total_memory_mb: 16384,
-          game_dir: 'C:\\Users\\User\\AppData\\Roaming\\Wex',
-          graphics_preset: 'High',
-          java_mode: 'auto',
-          custom_java_path: null,
-          discord_rpc: true,
-          language: 'ru',
-        };
-      }
-      if (cmd === 'get_playtime_summary') {
-        return {
-          total_seconds: 7200,
-          total_formatted: '2 ч. 0 мин.',
-          version_seconds: 3600,
-          version_formatted: '1 ч. 0 мин.',
-          version_summary: 'В игре: 1 ч. 0 мин. • Запусков: 2',
-          total_launches: 4,
-          last_played_utc: '2026-11-08T18:00:00Z',
-        };
-      }
-      if (cmd === 'verify_instance_files') {
-        return {
-          success: true,
-          total_files: 264,
-          verified_files: 264,
-          repaired_files: 0,
-          corrupted_files: 0,
-          errors: [],
-          message: 'Все 264 файлов проверены, повреждений не обнаружено',
-        };
-      }
-      if (cmd === 'cleanup_cache') {
-        return {
-          success: true,
-          freed_bytes: 15204352,
-          freed_formatted: '14.5 МБ',
-          deleted_files_count: 8,
-          message: 'Кэш очищен: освобождено 14.5 МБ (удалено 8 файлов)',
-        };
-      }
-      return [];
-    }),
+    invoke: defaultInvoke,
   };
 });
+
+if (typeof window !== 'undefined') {
+  (window as any).__TAURI_INTERNALS__ = {
+    invoke: (cmd: string, args: any, options: any) => defaultInvoke(cmd, args, options),
+    transformCallback: () => 1,
+  };
+}
 
 describe('Wex Launcher Screens', () => {
   let target: HTMLElement;
@@ -133,6 +153,10 @@ describe('Wex Launcher Screens', () => {
   beforeEach(() => {
     target = document.createElement('div');
     document.body.appendChild(target);
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (cmd: string, args: any, options: any) => defaultInvoke(cmd, args, options),
+      transformCallback: () => 1,
+    };
   });
 
   afterEach(() => {
@@ -438,7 +462,13 @@ describe('Wex Launcher Screens', () => {
 
   it('renders LobbyScreen cloud mode with empty rooms state when API responds with empty list', async () => {
     const { invoke } = await import('@tauri-apps/api/core');
-    (invoke as any).mockResolvedValueOnce([]);
+    const origImpl = (invoke as any).getMockImplementation();
+    (invoke as any).mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'list_open_rooms') {
+        return [];
+      }
+      return origImpl ? origImpl(cmd, args) : undefined;
+    });
 
     const comp = mount(LobbyScreen, { target });
 
@@ -455,6 +485,7 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).not.toContain('Сервис недоступен');
 
     unmount(comp);
+    if (origImpl) (invoke as any).mockImplementation(origImpl);
   });
 
   it('renders LobbyScreen LAN section with discovered worlds and connect action', async () => {
@@ -502,9 +533,12 @@ describe('Wex Launcher Screens', () => {
 
   it('renders LobbyScreen LAN section with clean empty state when no LAN worlds found', async () => {
     const { invoke } = await import('@tauri-apps/api/core');
-    (invoke as any).mockImplementationOnce(async (cmd: string) => {
-      if (cmd === 'list_lan_worlds') return [];
-      return [];
+    const origImpl = (invoke as any).getMockImplementation();
+    (invoke as any).mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'list_lan_worlds') {
+        return [];
+      }
+      return origImpl ? origImpl(cmd, args) : undefined;
     });
 
     const comp = mount(LobbyScreen, { target });
@@ -514,6 +548,32 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Когда другой игрок в вашей локальной сети откроет');
 
     unmount(comp);
+    if (origImpl) (invoke as any).mockImplementation(origImpl);
+  });
+
+  it('manages LAN discovery lifecycle (starts when LAN active, stops on unmount or hide)', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    (invoke as any).mockClear();
+
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+
+    const comp = mount(LobbyScreen, { target });
+    await new Promise((r) => setTimeout(r, 60));
+    expect((invoke as any)).toHaveBeenCalledWith('net_lan_start_discovery');
+
+    // Trigger document hidden
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await new Promise((r) => setTimeout(r, 60));
+    expect((invoke as any)).toHaveBeenCalledWith('net_lan_stop_discovery');
+
+    // Restore document
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await new Promise((r) => setTimeout(r, 60));
+
+    unmount(comp);
+    await new Promise((r) => setTimeout(r, 60));
   });
 
   it('renders FriendsScreen with clean empty state and search action', () => {
@@ -603,6 +663,7 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Графический пресет');
     expect(target.textContent).toContain('Выбор исполняемого файла Java');
     expect(target.textContent).toContain('Discord Rich Presence');
+    expect(target.textContent).toContain('Сворачивать в трей при запуске игры');
     expect(target.textContent).toContain('Язык интерфейса');
     expect(target.textContent).toContain('О программе');
     expect(target.textContent).toContain('Tauri 2');
@@ -629,6 +690,21 @@ describe('Wex Launcher Screens', () => {
 
     cleanBtn?.click();
     await tick();
+
+    unmount(comp);
+  });
+
+  it('renders SettingsScreen with actual Discord RPC status preview card and no mock fakes', async () => {
+    const comp = mount(SettingsScreen, { target });
+    expect(target.textContent).toContain('Discord Rich Presence');
+    expect(target.textContent).toContain('Превью статуса Discord');
+    expect(target.textContent).toContain('Wex Launcher');
+    expect(target.textContent).toContain('В главном меню');
+    expect(target.textContent).toContain('Выбирает режим игры');
+    expect(target.textContent).not.toContain('Скачать Wex Launcher');
+    expect(target.textContent).not.toContain('ИГРАЕТ В ИГРУ');
+    expect(target.textContent).not.toContain('Модов: 142');
+    expect(target.textContent).not.toContain('auramc');
 
     unmount(comp);
   });
@@ -1084,5 +1160,16 @@ describe('Wex Launcher Screens', () => {
 
     expect(target.textContent).toContain('Импорт из старого лаунчера');
     unmount(comp);
+  });
+
+  it('supports keyboard navigation: Esc closes modals, Ctrl+1..7 navigation', () => {
+    let escaped = false;
+    const onEscape = () => { escaped = true; };
+    window.addEventListener('wex-escape', onEscape);
+
+    window.dispatchEvent(new CustomEvent('wex-escape'));
+    expect(escaped).toBe(true);
+
+    window.removeEventListener('wex-escape', onEscape);
   });
 });

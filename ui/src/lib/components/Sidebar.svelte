@@ -36,6 +36,8 @@
 
   let { items, activeId = $bindable('play'), collapsed = false, onselect, footer }: Props = $props();
 
+  let activeIndex = $derived(items.findIndex((item) => item.id === activeId));
+
   function selectItem(id: string) {
     activeId = id;
     onselect?.(id);
@@ -57,6 +59,13 @@
   </div>
 
   <nav class="sidebar-nav">
+    {#if activeIndex >= 0}
+      <div
+        class="nav-active-capsule"
+        style="transform: translateY({activeIndex * 40}px);"
+        aria-hidden="true"
+      ></div>
+    {/if}
     <ul class="nav-list">
       {#each items as item (item.id)}
         {@const isActive = item.id === activeId}
@@ -73,7 +82,7 @@
               <Icon
                 name={item.icon}
                 size={18}
-                color={isActive ? 'var(--color-system-blue)' : 'var(--color-secondary-label)'}
+                color={isActive ? 'var(--color-system-cyan)' : 'var(--color-secondary-label)'}
               />
             </span>
 
@@ -155,13 +164,36 @@
   }
 
   .sidebar-nav {
+    position: relative;
     flex: 1;
     padding: 12px 10px;
     overflow-y: auto;
     overflow-x: hidden;
   }
 
+  .nav-active-capsule {
+    position: absolute;
+    top: 12px;
+    left: 10px;
+    right: 10px;
+    height: 38px;
+    border-radius: var(--radius-md);
+    background-color: var(--color-system-fill);
+    pointer-events: none;
+    z-index: 0;
+    transition:
+      transform var(--motion-duration-morph) var(--motion-curve-spring-bouncy),
+      opacity var(--motion-duration-short) ease;
+    will-change: transform;
+  }
+
+  :global([data-theme="dark"]) .nav-active-capsule {
+    background-color: rgba(255, 255, 255, 0.12);
+  }
+
   .nav-list {
+    position: relative;
+    z-index: 1;
     list-style: none;
     display: flex;
     flex-direction: column;
@@ -189,7 +221,7 @@
     text-align: left;
     transition:
       background-color var(--motion-duration-short) ease,
-      transform var(--motion-duration-short) var(--motion-spring-ease);
+      transform var(--motion-duration-press) var(--motion-curve-press);
     outline: none;
   }
 
@@ -212,16 +244,11 @@
   }
 
   .nav-item:active {
-    transform: scale(0.98);
+    transform: scale(var(--motion-press-scale, 0.97));
   }
 
   .nav-item.active {
-    background-color: var(--color-system-fill);
     font-weight: 600;
-  }
-
-  :global([data-theme="dark"]) .nav-item.active {
-    background-color: rgba(255, 255, 255, 0.12);
   }
 
   .item-icon {

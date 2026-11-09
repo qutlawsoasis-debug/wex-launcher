@@ -43,6 +43,39 @@ impl Default for MusicSettings {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MediaSessionState {
+    pub has_active_session: bool,
+    pub source_app: String,
+    pub app_id: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub is_playing: bool,
+    pub position_seconds: f64,
+    pub duration_seconds: f64,
+    pub thumbnail_base64: Option<String>,
+    pub timestamp_ms: i64,
+}
+
+impl Default for MediaSessionState {
+    fn default() -> Self {
+        Self {
+            has_active_session: false,
+            source_app: "Wex".to_string(),
+            app_id: "WexLauncher".to_string(),
+            title: "".to_string(),
+            artist: "".to_string(),
+            album: "Wex Music".to_string(),
+            is_playing: false,
+            position_seconds: 0.0,
+            duration_seconds: 0.0,
+            thumbnail_base64: None,
+            timestamp_ms: 0,
+        }
+    }
+}
+
 pub struct MusicManager {
     music_dir: PathBuf,
 }
@@ -251,6 +284,38 @@ impl MusicManager {
         fs::write(path, content)?;
         Ok(())
     }
+
+    pub fn write_session_state(&self, state: &MediaSessionState) -> Result<(), std::io::Error> {
+        self.ensure_music_dir()?;
+        let path = self.music_dir.join("music_session.json");
+        let tmp_path = self.music_dir.join("music_session.json.tmp");
+        let content = serde_json::to_string_pretty(state)?;
+        fs::write(&tmp_path, content)?;
+        fs::rename(&tmp_path, &path)?;
+        Ok(())
+    }
+
+    pub fn read_session_state(&self) -> Option<MediaSessionState> {
+        let path = self.music_dir.join("music_session.json");
+        let content = fs::read_to_string(&path).ok()?;
+        serde_json::from_str(&content).ok()
+    }
+
+    pub fn check_incoming_command(&self) -> Option<String> {
+        let cmd_path = self.music_dir.join("music_command.json");
+        if !cmd_path.is_file() {
+            return None;
+        }
+        let content = fs::read_to_string(&cmd_path).ok()?;
+        let _ = fs::remove_file(&cmd_path);
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+            val.get("command")
+                .and_then(|c| c.as_str())
+                .map(|s| s.to_string())
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]
@@ -367,5 +432,49 @@ mod tests {
 
         let loaded = manager.load_settings();
         assert_eq!(loaded, custom_settings);
+    }
+
+    #[test]
+    fn test_session_state_write_and_read() {
+        let tmp = tempdir().unwrap();
+        let music_dir = tmp.path().join("music");
+        let manager = MusicManager::new(&music_dir);
+
+        let state = MediaSessionState {
+            has_active_session: true,
+            source_app: "Wex".to_string(),
+            app_id: "WexLauncher".to_string(),
+            title: "Subwoofer Lullaby".to_string(),
+            artist: "C418".to_string(),
+            album: "Minecraft Volume Alpha".to_string(),
+            is_playing: true,
+            position_seconds: 42.0,
+            duration_seconds: 210.0,
+            thumbnail_base64: Some("data:image/png;base64,mock".to_string()),
+            timestamp_ms: 1731000000000,
+        };
+
+        manager.write_session_state(&state).unwrap();
+
+        let read = manager.read_session_state().unwrap();
+        assert_eq!(read, state);
+    }
+
+    #[test]
+    fn test_check_incoming_command() {
+        let tmp = tempdir().unwrap();
+        let music_dir = tmp.path().join("music");
+        fs::create_dir_all(&music_dir).unwrap();
+        let manager = MusicManager::new(&music_dir);
+
+        assert_eq!(manager.check_incoming_command(), None);
+
+        let cmd_file = music_dir.join("music_command.json");
+        fs::write(&cmd_file, r#"{"command":"pause","seek":null}"#).unwrap();
+
+        assert_eq!(manager.check_incoming_command(), Some("pause".to_string()));
+        // File must be deleted after consumption
+        assert!(!cmd_file.exists());
+        assert_eq!(manager.check_incoming_command(), None);
     }
 }

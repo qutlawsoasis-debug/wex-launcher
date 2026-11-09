@@ -12,8 +12,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.0.0", features = [] }
 
 [dependencies]
-tauri = { version = "2.0.0", features = [] }
+tauri = { version = "2.0.0", features = ["tray-icon"] }
 tauri-plugin-shell = "2.0.0"
+tauri-plugin-single-instance = "2.0.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.0", features = ["time", "sync", "rt", "macros"] }
@@ -21,6 +22,7 @@ async-trait = "0.1"
 tracing = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
+regex = "1.10"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 wex-core = { path = "../../core/wex-core" }
@@ -28,6 +30,7 @@ wex-ipc = { path = "../../core/wex-ipc" }
 wex-extras = { path = "../../core/wex-extras" }
 wex-net = { path = "../../core/wex-net" }
 wex-social = { path = "../../core/wex-social" }
+tauri-plugin-notification = "2.8.0"
 
 [dev-dependencies]
 tauri = { version = "2.0.0", features = ["test"] }

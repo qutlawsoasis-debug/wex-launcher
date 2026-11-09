@@ -181,8 +181,7 @@
     justify-content: center;
     padding: 24px;
     z-index: 1000;
-    backdrop-filter: blur(8px);
-    animation: fadeIn var(--motion-duration-short) ease forwards;
+    animation: scrimFadeIn var(--motion-duration-screen-enter) ease forwards;
   }
 
   .sheet-card {
@@ -195,7 +194,7 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    animation: slideUp var(--motion-duration-sheet) var(--motion-spring-ease) forwards;
+    animation: sheetSlideUp var(--motion-duration-sheet-enter) var(--motion-curve-spring-system) forwards;
     outline: none;
   }
 
@@ -247,7 +246,7 @@
     overflow-y: auto;
   }
 
-  @keyframes fadeIn {
+  @keyframes scrimFadeIn {
     from {
       opacity: 0;
     }
@@ -256,9 +255,9 @@
     }
   }
 
-  @keyframes slideUp {
+  @keyframes sheetSlideUp {
     from {
-      transform: translateY(30px) scale(0.97);
+      transform: translateY(48px) scale(0.98);
       opacity: 0;
     }
     to {
@@ -269,20 +268,22 @@
 
   @media (prefers-reduced-motion: reduce) {
     .sheet-scrim {
-      animation: none !important;
+      animation: scrimFadeIn var(--motion-duration-short) ease forwards !important;
     }
     .sheet-card {
-      animation: none !important;
+      animation: scrimFadeIn var(--motion-duration-short) ease forwards !important;
       transform: none !important;
     }
   }
 
-  :global([data-reduce-motion="true"]) .sheet-scrim {
-    animation: none !important;
+  :global([data-effects="off"]) .sheet-card,
+  :global([data-reduce-motion="true"]) .sheet-card {
+    animation: scrimFadeIn var(--motion-duration-short) ease forwards !important;
+    transform: none !important;
   }
 
-  :global([data-reduce-motion="true"]) .sheet-card {
-    animation: none !important;
-    transform: none !important;
+  :global([data-effects="off"]) .sheet-scrim,
+  :global([data-reduce-motion="true"]) .sheet-scrim {
+    animation: scrimFadeIn var(--motion-duration-short) ease forwards !important;
   }
 </style>
