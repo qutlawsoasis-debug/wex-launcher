@@ -11,6 +11,7 @@ pub mod launcher;
 pub mod minecraft;
 pub mod pack;
 pub mod playtime;
+pub mod system_info;
 
 pub use auth::offline_uuid;
 pub use config::{LauncherConfig, WexPaths};
@@ -36,3 +37,7 @@ pub use launcher::{
 };
 pub use pack::{sync_aura_pack, sync_aura_pack_cancellable};
 pub use reqwest;
+pub use system_info::{
+    collect_system_info, evaluate_system_warnings, format_support_text, is_integrated_graphics,
+    sanitize_user_path, SystemInfo, NOT_DETERMINED,
+};

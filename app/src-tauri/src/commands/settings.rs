@@ -84,13 +84,14 @@ fn default_window_behavior() -> String {
 
 impl Default for LauncherSettingsDto {
     fn default() -> Self {
+        let def_core = CoreConfig::default();
         Self {
             selected_version: "1.21.1".to_string(),
             player_name: "Player".to_string(),
-            ram_mb: 4096,
+            ram_mb: def_core.max_memory_mb,
             total_memory_mb: get_total_ram_mb(),
             game_dir: String::new(),
-            graphics_preset: "High".to_string(),
+            graphics_preset: def_core.graphics_preset,
             java_mode: "auto".to_string(),
             custom_java_path: None,
             detected_java_17: None,
@@ -389,13 +390,13 @@ pub fn get_data_dir(state: State<'_, PlayState>) -> String {
 
 #[tauri::command]
 pub async fn get_system_info(state: State<'_, PlayState>) -> Result<SystemInfo, String> {
-    Ok(SystemInfo {
-        total_memory_mb: get_total_ram_mb(),
-        os_name: std::env::consts::OS.to_string(),
-        launcher_version: "1.0.0".to_string(),
-        data_dir: state.paths.root.to_string_lossy().to_string(),
-    })
+    Ok(wex_core::collect_system_info(&state.paths.root, "1.0.0"))
 }
+
+pub use wex_core::{
+    collect_system_info, evaluate_system_warnings, format_support_text, is_integrated_graphics,
+    sanitize_user_path, NOT_DETERMINED,
+};
 
 // ---------------------------------------------------------------------------
 // Backward-compatibility aliases for UI
@@ -720,11 +721,11 @@ mod tests {
         let mock_core = MockLauncherCore::new();
 
         // 1. Initial settings
-        let expected_def = CoreConfig::default();
         let settings = get_launcher_settings_impl(&paths);
+        let default_core = CoreConfig::default();
         assert_eq!(settings.player_name, "Player");
-        assert_eq!(settings.ram_mb, expected_def.max_memory_mb);
-        assert_eq!(settings.graphics_preset, expected_def.graphics_preset);
+        assert_eq!(settings.ram_mb, default_core.max_memory_mb);
+        assert_eq!(settings.graphics_preset, default_core.graphics_preset);
         assert_eq!(settings.java_mode, "auto");
         assert!(settings.discord_rpc);
         assert_eq!(settings.language, "ru");
@@ -783,11 +784,11 @@ mod tests {
             .unwrap();
 
         // Reset
-        let expected_def = CoreConfig::default();
         let reset = reset_settings_impl(&paths, &mock_core).await.unwrap();
+        let default_core = CoreConfig::default();
         assert_eq!(reset.player_name, "Player");
-        assert_eq!(reset.ram_mb, expected_def.max_memory_mb);
-        assert_eq!(reset.graphics_preset, expected_def.graphics_preset);
+        assert_eq!(reset.ram_mb, default_core.max_memory_mb);
+        assert_eq!(reset.graphics_preset, default_core.graphics_preset);
         assert_eq!(reset.java_mode, "auto");
         assert!(reset.discord_rpc);
         assert!(reset.minimize_to_tray);

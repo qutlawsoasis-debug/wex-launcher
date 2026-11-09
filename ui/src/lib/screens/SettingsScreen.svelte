@@ -92,6 +92,53 @@
   let canAutoUpdateSettings = $state(false);
   let updateDownloadUrl = $state('');
 
+  interface SystemInfoState {
+    total_memory_mb: number;
+    free_memory_mb: number;
+    memory_display: string;
+    os_name: string;
+    os_version: string;
+    launcher_version: string;
+    data_dir: string;
+    cpu_name: string;
+    cpu_cores: number;
+    gpu_name: string;
+    gpu_driver: string;
+    is_integrated_gpu: boolean;
+    disk_free_gb: number;
+    disk_total_gb: number;
+    disk_display: string;
+    java_17: string;
+    java_21: string;
+    warnings: string[];
+    support_text: string;
+  }
+
+  let systemInfo = $state<SystemInfoState | null>(null);
+  let copiedSupport = $state(false);
+
+  async function handleCopySupportInfo() {
+    if (!systemInfo) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(systemInfo.support_text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = systemInfo.support_text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      copiedSupport = true;
+      setTimeout(() => {
+        copiedSupport = false;
+      }, 2500);
+    } catch (e) {
+      console.error('Failed to copy support info to clipboard', e);
+    }
+  }
+
   async function handleCheckUpdateSettings() {
     updateChecking = true;
     updateStatusText = 'Проверка обновлений…';
@@ -280,8 +327,9 @@
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const sys = await invoke<{ total_memory_mb: number; os_name: string; launcher_version: string; data_dir?: string }>('get_system_info');
+      const sys = await invoke<SystemInfoState>('get_system_info');
       if (sys) {
+        systemInfo = sys;
         if (sys.total_memory_mb) totalMemoryMb = sys.total_memory_mb;
         if (sys.os_name) osName = sys.os_name;
         if (sys.launcher_version && sys.launcher_version !== '1.0.0') {
@@ -839,6 +887,13 @@
       keywords: ['о программе', 'лаунчер', 'wex', 'версия', 'система', 'about', 'version', 'os'],
     },
     {
+      id: 'about_hardware',
+      group: 'about',
+      title: i18n.locale === 'en' ? 'Hardware & System Info' : 'Оборудование и система',
+      subtitle: i18n.locale === 'en' ? 'Processor, RAM, graphics card, disk space' : 'Процессор, оперативная память, видеокарта, диск',
+      keywords: ['процессор', 'видеокарта', 'память', 'диск', 'железо', 'cpu', 'gpu', 'ram', 'hardware', 'java', 'поддержка', 'support'],
+    },
+    {
       id: 'about_reset',
       group: 'about',
       title: 'Сброс настроек',
@@ -1031,15 +1086,17 @@
             subtitle="Во время игры: действие с окном лаунчера при запуске Minecraft"
           >
             {#snippet trailing()}
-              <SegmentedControl
-                options={gameWindowBehaviorOptions}
-                value={gameWindowBehavior}
-                ariaLabel="Поведение окна"
-                onchange={(val) => {
-                  gameWindowBehavior = val;
-                  saveConfig();
-                }}
-              />
+              <div class="segmented-control-fixed" style="width: 350px;">
+                <SegmentedControl
+                  options={gameWindowBehaviorOptions}
+                  value={gameWindowBehavior}
+                  ariaLabel="Поведение окна"
+                  onchange={(val) => {
+                    gameWindowBehavior = val;
+                    saveConfig();
+                  }}
+                />
+              </div>
             {/snippet}
           </Row>
         {/if}
@@ -1539,6 +1596,66 @@
             subtitle={t('settings.about_subtitle', { version: launcherVersion, os: displayOs })}
             trailingText="Wex Project"
           />
+        {/if}
+
+        {#if isItemVisible('about_hardware')}
+          {#if systemInfo}
+            {#if systemInfo.warnings && systemInfo.warnings.length > 0}
+              {#each systemInfo.warnings as warning}
+                <div class="system-warning-banner">
+                  <Icon name="warning" size={18} color="var(--color-system-orange)" />
+                  <span class="warning-text">{warning}</span>
+                </div>
+              {/each}
+            {/if}
+
+            <Row
+              title={i18n.locale === 'en' ? 'Processor' : 'Процессор'}
+              subtitle={systemInfo.cpu_name ? `${systemInfo.cpu_name} (${systemInfo.cpu_cores} ${i18n.locale === 'en' ? 'cores' : 'ядер'})` : (i18n.locale === 'en' ? 'Could not determine' : 'не удалось определить')}
+            />
+            <Row
+              title={i18n.locale === 'en' ? 'RAM' : 'Оперативная память'}
+              subtitle={systemInfo.memory_display || (i18n.locale === 'en' ? 'Could not determine' : 'не удалось определить')}
+            />
+            <Row
+              title={i18n.locale === 'en' ? 'Graphics Card' : 'Видеокарта'}
+              subtitle={systemInfo.gpu_name ? `${systemInfo.gpu_name} (драйвер ${systemInfo.gpu_driver})` : (i18n.locale === 'en' ? 'Could not determine' : 'не удалось определить')}
+              trailingText={systemInfo.is_integrated_gpu ? (i18n.locale === 'en' ? 'Integrated' : 'Встроенная') : (i18n.locale === 'en' ? 'Discrete' : 'Дискретная')}
+            />
+            <Row
+              title={i18n.locale === 'en' ? 'Operating System' : 'Версия Windows'}
+              subtitle={systemInfo.os_version || (i18n.locale === 'en' ? 'Could not determine' : 'не удалось определить')}
+            />
+            <Row
+              title={i18n.locale === 'en' ? 'Disk Space (Wex)' : 'Свободное место на диске'}
+              subtitle={systemInfo.disk_display || (i18n.locale === 'en' ? 'Could not determine' : 'не удалось определить')}
+            />
+            <Row
+              title="Java (1.20.1)"
+              subtitle={systemInfo.java_17 || (i18n.locale === 'en' ? 'Could not determine' : 'не удалось определить')}
+            />
+            <Row
+              title="Java (1.21.1)"
+              subtitle={systemInfo.java_21 || (i18n.locale === 'en' ? 'Could not determine' : 'не удалось определить')}
+            />
+
+            <div class="system-actions">
+              <Button
+                variant="secondary"
+                onclick={handleCopySupportInfo}
+              >
+                <span class="btn-content">
+                  <Icon name="copy" size={16} />
+                  <span>{copiedSupport ? (i18n.locale === 'en' ? 'Скопировано в буфер' : 'Скопировано в буфер') : (i18n.locale === 'en' ? 'Copy for Support' : 'Скопировать для поддержки')}</span>
+                </span>
+              </Button>
+            </div>
+          {:else}
+            <Row
+              title={i18n.locale === 'en' ? 'Loading system info...' : 'Загрузка данных о системе...'}
+              subtitle={i18n.locale === 'en' ? 'Reading hardware sensors' : 'Опрос оборудования ПК'}
+            />
+          {/if}
         {/if}
 
         {#if isItemVisible('about_reset')}
@@ -2049,6 +2166,36 @@
   .updating-text {
     font-size: var(--text-caption-1);
     color: var(--color-secondary-label);
+  }
+
+  .system-warning-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    margin: 4px 16px;
+    border-radius: 8px;
+    background-color: rgba(255, 149, 0, 0.12);
+    border-left: 3px solid var(--color-system-orange, #ff9500);
+    color: var(--color-label, #ffffff);
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  .warning-text {
+    flex: 1;
+  }
+
+  .system-actions {
+    display: flex;
+    justify-content: flex-start;
+    padding: 10px 16px;
+  }
+
+  .btn-content {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
   }
 
   /* Scenery Art Contrast Parity (wex-contrast): text over art is always white with shadow */
