@@ -249,8 +249,61 @@ fn default_nickname() -> String {
     "Player".to_string()
 }
 
+#[cfg(windows)]
+pub fn get_total_system_ram_mb() -> Option<u64> {
+    unsafe {
+        use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+        let mut status = MEMORYSTATUSEX {
+            dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
+            ..std::mem::zeroed()
+        };
+        if GlobalMemoryStatusEx(&mut status) != 0 {
+            Some(status.ullTotalPhys / (1024 * 1024))
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn get_total_system_ram_mb() -> Option<u64> {
+    None
+}
+
+/// Detect whether the current machine qualifies as weak hardware:
+/// e.g. <= 4 logical CPU cores or <= 8 GB of physical RAM.
+pub fn is_weak_hardware() -> bool {
+    if let Ok(val) = std::env::var("WEX_FORCE_WEAK_PC") {
+        if val == "1" || val.eq_ignore_ascii_case("true") {
+            return true;
+        }
+        if val == "0" || val.eq_ignore_ascii_case("false") {
+            return false;
+        }
+    }
+
+    let logical_cores = std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(4);
+    if logical_cores <= 4 {
+        return true;
+    }
+
+    if let Some(ram_mb) = get_total_system_ram_mb() {
+        if ram_mb <= 8192 {
+            return true;
+        }
+    }
+
+    false
+}
+
 fn default_memory() -> u32 {
-    4096
+    if is_weak_hardware() {
+        3072
+    } else {
+        4096
+    }
 }
 
 fn default_appearance() -> String {
@@ -262,7 +315,11 @@ fn default_accent() -> String {
 }
 
 fn default_graphics_preset() -> String {
-    "High".to_string()
+    if is_weak_hardware() {
+        "Low".to_string()
+    } else {
+        "High".to_string()
+    }
 }
 
 fn default_discord_rpc() -> bool {
@@ -457,5 +514,24 @@ mod tests {
         assert_eq!(loaded.window_state.x, Some(250));
         assert_eq!(loaded.window_state.y, Some(180));
         assert!(loaded.window_state.is_maximized);
+    }
+
+    #[test]
+    fn test_weak_hardware_detection_and_defaults() {
+        std::env::set_var("WEX_FORCE_WEAK_PC", "true");
+        assert!(is_weak_hardware());
+        assert_eq!(default_memory(), 3072);
+        assert_eq!(default_graphics_preset(), "Low");
+
+        let def_cfg = LauncherConfig::default();
+        assert_eq!(def_cfg.max_memory_mb, 3072);
+        assert_eq!(def_cfg.graphics_preset, "Low");
+
+        std::env::set_var("WEX_FORCE_WEAK_PC", "false");
+        assert!(!is_weak_hardware());
+        assert_eq!(default_memory(), 4096);
+        assert_eq!(default_graphics_preset(), "High");
+
+        std::env::remove_var("WEX_FORCE_WEAK_PC");
     }
 }

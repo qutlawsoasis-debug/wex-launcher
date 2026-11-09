@@ -21,8 +21,10 @@ pub use event::{
 };
 pub use ipc_adapter::WexLauncherCore;
 pub use launcher::{
-    build_classpath, build_launch_command, install_full_environment, launch_game_process,
-    prepare_and_launch, prewarm_jvm, GameProcess, LaunchOptions,
+    apply_current_process_affinity, build_classpath, build_launch_command,
+    install_full_environment, launch_game_process, prepare_and_launch, prewarm_jvm,
+    set_current_process_priority_low, set_current_process_priority_normal, GameProcess,
+    LaunchOptions,
 };
 pub use pack::{sync_aura_pack, sync_aura_pack_cancellable};
 pub use reqwest;
