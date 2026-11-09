@@ -153,18 +153,18 @@
 
   function formatBytes(bytes: number | bigint): string {
     const num = Number(bytes);
-    if (num <= 0) return '0 КБ';
-    if (num < 1024) return `${num} Б`;
-    if (num < 1024 * 1024) return `${(num / 1024).toFixed(1)} КБ`;
-    if (num < 1024 * 1024 * 1024) return `${(num / (1024 * 1024)).toFixed(1)} МБ`;
-    return `${(num / (1024 * 1024 * 1024)).toFixed(2)} ГБ`;
+    if (num <= 0) return t('workshop.size_kb', { num: 0 });
+    if (num < 1024) return t('workshop.size_bytes', { num });
+    if (num < 1024 * 1024) return t('workshop.size_kb', { num: (num / 1024).toFixed(1) });
+    if (num < 1024 * 1024 * 1024) return t('workshop.size_mb', { num: (num / (1024 * 1024)).toFixed(1) });
+    return t('workshop.size_gb', { num: (num / (1024 * 1024 * 1024)).toFixed(2) });
   }
 
   function formatTimestamp(ts: number | bigint): string {
     const num = Number(ts);
-    if (!num) return 'Не запускался';
+    if (!num) return t('workshop.never_played');
     const date = new Date(num);
-    return date.toLocaleDateString('ru-RU', {
+    return date.toLocaleDateString(i18n.locale === 'en' ? 'en-US' : 'ru-RU', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -174,10 +174,10 @@
   }
 
   function formatIsoDate(iso: string | null): string {
-    if (!iso) return 'Неизвестно';
+    if (!iso) return t('common.unknown');
     try {
       const date = new Date(iso);
-      return date.toLocaleDateString('ru-RU', {
+      return date.toLocaleDateString(i18n.locale === 'en' ? 'en-US' : 'ru-RU', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -192,15 +192,15 @@
   function getGameModeLabel(mode: string): string {
     switch (mode) {
       case 'Survival':
-        return 'Выживание';
+        return t('workshop.mode_survival');
       case 'Creative':
-        return 'Творческий';
+        return t('workshop.mode_creative');
       case 'Adventure':
-        return 'Приключение';
+        return t('workshop.mode_adventure');
       case 'Spectator':
-        return 'Наблюдатель';
+        return t('workshop.mode_spectator');
       default:
-        return 'Неизвестно';
+        return t('common.unknown');
     }
   }
 
@@ -283,7 +283,7 @@
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('workshop_copy_screenshot_image', { path: shot.file_path });
       if (ontoast) {
-        ontoast('success', 'Скриншот скопирован', 'Изображение скопировано в буфер обмена');
+        ontoast('success', t('workshop.toast_screenshot_copied_title'), t('workshop.img_copied_toast'));
       }
     } catch {
       try {
@@ -296,7 +296,7 @@
               new (window as any).ClipboardItem({ [blob.type || 'image/png']: blob }),
             ]);
             if (ontoast) {
-              ontoast('success', 'Скриншот скопирован', 'Изображение скопировано в буфер обмена');
+              ontoast('success', t('workshop.toast_screenshot_copied_title'), t('workshop.img_copied_toast'));
             }
             return;
           }
@@ -304,7 +304,7 @@
         throw new Error('ClipboardItem unavailable');
       } catch {
         if (ontoast) {
-          ontoast('error', 'Ошибка копирования', 'Не удалось скопировать изображение в буфер обмена');
+          ontoast('error', t('workshop.toast_copy_error_title'), t('workshop.toast_copy_error_desc'));
         }
       }
     }
@@ -338,13 +338,13 @@
         worldName: world.display_name || world.folder_name,
         playerName: playerName || 'Player',
       });
-      notify('success', 'Комната лобби создана', `Мир «${world.display_name}» открыт для друзей`);
+      notify('success', t('workshop.toast_lobby_room_created'), t('workshop.toast_world_opened_friends', { name: world.display_name }));
       if (onopenlobby) {
         onopenlobby(room);
       }
     } catch (err) {
       const formatted = formatError(err, 'workshop');
-      notify('error', 'Не удалось открыть в лобби', formatted.description || String(err));
+      notify('error', t('workshop.toast_lobby_open_error'), formatted.description || String(err));
     } finally {
       isOpeningInLobby = { ...isOpeningInLobby, [world.folder_name]: false };
     }
@@ -358,7 +358,7 @@
         worldFolder: world.folder_path,
         version: currentVersion,
       });
-      notify('success', 'Резервная копия создана', backup.file_name);
+      notify('success', t('workshop.backup_created'), backup.file_name);
     } catch (err) {
       const formatted = formatError(err, 'workshop');
       notify('error', formatted.title, formatted.description);
@@ -413,7 +413,7 @@
         targetWorldFolder: selectedWorldForBackups.folder_path,
         version: currentVersion,
       });
-      notify('success', 'Мир успешно восстановлен', selectedWorldForBackups.display_name);
+      notify('success', t('workshop.world_restored'), selectedWorldForBackups.display_name);
       restoreSheetOpen = false;
       backupsSheetOpen = false;
       await loadWorlds();
@@ -440,7 +440,7 @@
       await invoke('workshop_delete_world', {
         worldFolder: worldToDelete.folder_path,
       });
-      notify('success', 'Мир удалён', worldToDelete.display_name);
+      notify('success', t('workshop.world_deleted'), worldToDelete.display_name);
       deleteSheetOpen = false;
       worldToDelete = null;
       await loadWorlds();
@@ -464,10 +464,10 @@
         enabled,
         version: currentVersion,
       });
-      notify('info', enabled ? 'Ресурс-пак включён' : 'Ресурс-пак отключён', pack.name);
+      notify('info', enabled ? t('workshop.pack_enabled') : t('workshop.pack_disabled'), pack.name);
       await loadResourcePacks();
     } catch (err) {
-      notify('error', 'Не удалось изменить состояние ресурс-пака', String(err));
+      notify('error', t('workshop.pack_state_failed'), String(err));
       pack.is_enabled = !enabled;
     }
   }
@@ -483,12 +483,12 @@
       });
       notify(
         'success',
-        shader ? 'Шейдер-пак выбран' : 'Шейдеры отключены',
-        shader ? shader.name : 'Используется стандартный рендеринг'
+        shader ? t('workshop.shader_selected') : t('workshop.shaders_disabled'),
+        shader ? shader.name : t('workshop.standard_rendering')
       );
       await loadShaderPacks();
     } catch (err) {
-      notify('error', 'Ошибка переключения шейдера', String(err));
+      notify('error', t('workshop.shader_switch_error'), String(err));
     }
   }
 
@@ -500,14 +500,14 @@
         packType: type,
         version: currentVersion,
       }).catch((err) => {
-        notify('warning', 'Не удалось открыть папку', String(err));
+        notify('warning', t('workshop.open_folder_error'), String(err));
       });
     });
   }
 
   function promptDeletePack(pack: { name: string; file_name: string; is_from_pack: boolean }, type: 'resourcepack' | 'shaderpack') {
     if (pack.is_from_pack) {
-      notify('warning', 'Защита файлов Aura-Pack', 'Файлы, входящие в официальную сборку, нельзя удалить.');
+      notify('warning', t('workshop.wex_pack_protect_title'), t('workshop.wex_pack_protect_desc'));
       return;
     }
     packToDelete = {
@@ -529,13 +529,13 @@
         packType: packToDelete.type,
         version: currentVersion,
       });
-      notify('success', 'Файл удалён', packToDelete.name);
+      notify('success', t('workshop.file_deleted'), packToDelete.name);
       deletePackSheetOpen = false;
       packToDelete = null;
       if (activeTab === 'resourcepacks') await loadResourcePacks();
       else if (activeTab === 'shaders') await loadShaderPacks();
     } catch (err) {
-      notify('error', 'Ошибка удаления файла', String(err));
+      notify('error', t('workshop.file_delete_error'), String(err));
     } finally {
       isDeletingPack = false;
     }
@@ -557,13 +557,13 @@
         packType: pendingAddType,
         version: currentVersion,
       });
-      notify('success', 'Пак успешно добавлен', added);
+      notify('success', t('workshop.pack_added'), added);
       addPackSheetOpen = false;
       manualPackPath = '';
       if (pendingAddType === 'resourcepack') await loadResourcePacks();
       else await loadShaderPacks();
     } catch (err) {
-      notify('error', 'Ошибка добавления пака', String(err));
+      notify('error', t('workshop.pack_add_error'), String(err));
     } finally {
       isAddingPack = false;
     }
@@ -632,7 +632,7 @@
           variant="secondary"
           size="small"
           onclick={() => triggerAddPack('resourcepack')}
-          title={i18n.locale === 'en' ? 'Add a resource pack ZIP file' : 'Добавить ZIP файл ресурс-пака'}
+          title={t('workshop.add_resourcepack_title')}
         >
           <Icon name="folder" size={14} color="var(--color-label)" />
           <span>{t('workshop.add_pack')}</span>
@@ -641,7 +641,7 @@
           variant="ghost"
           size="small"
           onclick={() => openFolderForType('resourcepack')}
-          title={i18n.locale === 'en' ? 'Open resource packs folder' : 'Открыть папку ресурс-паков в проводнике'}
+          title={t('workshop.open_resourcepacks_title')}
         >
           <span>{t('workshop.folder_packs')}</span>
         </Button>
@@ -650,7 +650,7 @@
           variant="secondary"
           size="small"
           onclick={() => triggerAddPack('shaderpack')}
-          title={i18n.locale === 'en' ? 'Add a shader pack ZIP file' : 'Добавить ZIP файл шейдеров'}
+          title={t('workshop.add_shaderpack_title')}
         >
           <Icon name="folder" size={14} color="var(--color-label)" />
           <span>{t('workshop.add_pack')}</span>
@@ -659,7 +659,7 @@
           variant="ghost"
           size="small"
           onclick={() => openFolderForType('shaderpack')}
-          title={i18n.locale === 'en' ? 'Open shader packs folder' : 'Открыть папку шейдеров в проводнике'}
+          title={t('workshop.open_shaderpacks_title')}
         >
           <span>{t('workshop.folder_shaders')}</span>
         </Button>
@@ -669,10 +669,10 @@
             variant="secondary"
             size="small"
             onclick={handleOpenScreenshotsFolder}
-            title={i18n.locale === 'en' ? 'Open screenshots folder' : 'Открыть папку со скриншотами'}
+            title={t('workshop.open_screenshots_folder_title')}
           >
             <Icon name="folder" size={14} color="var(--color-label)" />
-            <span>Открыть папку</span>
+            <span>{t('workshop.open_folder')}</span>
           </Button>
         </span>
       {/if}
@@ -698,7 +698,7 @@
         <div class="offline-banner-text">
           <span class="offline-banner-title">{t('offline.title')}</span>
           <span class="offline-banner-desc">
-            {i18n.locale === 'en' ? 'Single-player worlds, resource packs, shaders, and screenshots are fully available offline.' : 'Одиночные миры, ресурс-паки, шейдеры и скриншоты полностью доступны офлайн.'}
+            {t('workshop.offline_banner_desc')}
           </span>
         </div>
       </div>
@@ -706,7 +706,7 @@
         variant="secondary"
         size="small"
         onclick={() => network.check()}
-        title="Проверить подключение к сети"
+        title={t('wardrobe.offline_retry_title')}
       >
         <Icon name="refresh" size={12} color="var(--color-secondary-label)" />
         <span>{t('offline.retry')}</span>
@@ -723,11 +723,9 @@
           <div class="empty-icon-wrap">
             <Icon name="folder" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h2 class="empty-title">{i18n.locale === 'en' ? 'No Saved Worlds' : 'Миров пока нет'}</h2>
+          <h2 class="empty-title">{t('workshop.worlds_empty_title')}</h2>
           <p class="empty-description">
-            {i18n.locale === 'en'
-              ? 'Create a single-player world in Minecraft, and it will appear here automatically.'
-              : 'Создайте мир в одиночной игре Minecraft, и он автоматически появится здесь.'}
+            {t('workshop.worlds_empty_desc')}
           </p>
         </div>
       {:else}
@@ -761,12 +759,12 @@
 
                 <div class="world-meta-row">
                   <span class="meta-item">
-                    <span class="meta-label">Последняя игра:</span>
+                    <span class="meta-label">{t('workshop.last_played')}</span>
                     {formatTimestamp(world.last_played)}
                   </span>
                   <span class="meta-dot">•</span>
                   <span class="meta-item">
-                    <span class="meta-label">Размер:</span>
+                    <span class="meta-label">{t('workshop.size')}</span>
                     {formatBytes(world.size_bytes)}
                   </span>
                   <span class="meta-dot">•</span>
@@ -783,10 +781,10 @@
                     size="small"
                     onclick={() => handleOpenInLobby(world)}
                     loading={isOpeningInLobby[world.folder_name]}
-                    title="Создать комнату в лобби для совместной игры с друзьями"
+                    title={t('workshop.btn_open_lobby_title')}
                   >
                     <Icon name="friends" size={14} color="#ffffff" />
-                    <span>Открыть в лобби</span>
+                    <span>{t('workshop.btn_open_in_lobby')}</span>
                   </Button>
                 </span>
 
@@ -796,10 +794,10 @@
                     size="small"
                     onclick={() => handleCreateBackup(world)}
                     loading={isBackingUp[world.folder_name]}
-                    title="Создать zip-архив мира"
+                    title={t('workshop.backup_btn_title')}
                   >
                     <Icon name="restore" size={14} color="var(--color-label)" />
-                    <span>Резервная копия</span>
+                    <span>{t('workshop.backup_btn')}</span>
                   </Button>
                 </span>
 
@@ -808,9 +806,9 @@
                     variant="secondary"
                     size="small"
                     onclick={() => openBackupsSheet(world)}
-                    title="Восстановить из имеющейся копии"
+                    title={t('workshop.restore_btn_title')}
                   >
-                    <span>Восстановить…</span>
+                    <span>{t('workshop.restore_btn')}</span>
                   </Button>
                 </span>
 
@@ -819,10 +817,10 @@
                     variant="destructive"
                     size="small"
                     onclick={() => promptDelete(world)}
-                    title="Удалить мир с диска"
+                    title={t('workshop.delete_world_btn_title')}
                   >
                     <Icon name="close" size={13} color="#ffffff" />
-                    <span>Удалить</span>
+                    <span>{t('common.delete')}</span>
                   </Button>
                 </span>
               </div>
@@ -877,10 +875,10 @@
                 <div class="pack-title-row">
                   <span class="pack-title">{pack.name}</span>
                   {#if pack.is_from_pack}
-                    <span class="pack-badge from-pack">В сборке</span>
+                    <span class="pack-badge from-pack">{t('workshop.in_pack_badge')}</span>
                   {/if}
                   {#if pack.is_enabled}
-                    <span class="pack-badge active-badge">Включён</span>
+                    <span class="pack-badge active-badge">{t('workshop.enabled_badge')}</span>
                   {/if}
                 </div>
 
@@ -890,7 +888,7 @@
 
                 <div class="pack-meta-row">
                   <span class="meta-item">
-                    <span class="meta-label">Размер:</span>
+                    <span class="meta-label">{t('workshop.size')}</span>
                     {formatBytes(pack.size_bytes)}
                   </span>
                   <span class="meta-dot">•</span>
@@ -901,10 +899,10 @@
               </div>
 
               <div class="pack-actions">
-                <div class="toggle-wrap" title={pack.is_enabled ? 'Отключить ресурс-пак' : 'Включить ресурс-пак'}>
+                <div class="toggle-wrap" title={pack.is_enabled ? t('workshop.toggle_pack_disable') : t('workshop.toggle_pack_enable')}>
                   <Toggle
                     checked={pack.is_enabled}
-                    ariaLabel={`Включить ресурс-пак ${pack.name}`}
+                    ariaLabel={t('workshop.enable_pack_aria', { name: pack.name })}
                     onchange={(checked: boolean) => handleToggleResourcePack(pack, checked)}
                   />
                 </div>
@@ -914,10 +912,10 @@
                     variant="destructive"
                     size="small"
                     onclick={() => promptDeletePack(pack, 'resourcepack')}
-                    title="Удалить ресурс-пак"
+                    title={t('workshop.delete_pack_title')}
                   >
                     <Icon name="close" size={13} color="#ffffff" />
-                    <span>Удалить</span>
+                    <span>{t('common.delete')}</span>
                   </Button>
                 {/if}
               </div>
@@ -956,24 +954,24 @@
 
             <div class="shader-info">
               <div class="shader-title-row">
-                <span class="shader-title">Без шейдеров (OFF)</span>
+                <span class="shader-title">{t('workshop.no_shaders_title')}</span>
                 {#if !shaderPacks.some((s) => s.is_active)}
-                  <span class="pack-badge active-badge">Активен</span>
+                  <span class="pack-badge active-badge">{t('workshop.active_badge')}</span>
                 {/if}
               </div>
-              <p class="shader-description">Стандартный быстрый рендеринг Minecraft без внешних шейдеров.</p>
+              <p class="shader-description">{t('workshop.no_shaders_desc')}</p>
             </div>
 
             <div class="shader-actions">
               {#if !shaderPacks.some((s) => s.is_active)}
-                <span class="active-indicator">Выбрано</span>
+                <span class="active-indicator">{t('workshop.active_badge')}</span>
               {:else}
                 <Button
                   variant="secondary"
                   size="small"
                   onclick={() => handleSelectShader(null)}
                 >
-                  Выбрать
+                  {t('workshop.select_btn')}
                 </Button>
               {/if}
             </div>
@@ -1006,10 +1004,10 @@
                   <div class="shader-title-row">
                     <span class="shader-title">{shader.name}</span>
                     {#if shader.is_from_pack}
-                      <span class="pack-badge from-pack">В сборке</span>
+                      <span class="pack-badge from-pack">{t('workshop.in_pack_badge')}</span>
                     {/if}
                     {#if shader.is_active}
-                      <span class="pack-badge active-badge">Активен</span>
+                      <span class="pack-badge active-badge">{t('workshop.active_badge')}</span>
                     {/if}
                   </div>
 
@@ -1019,7 +1017,7 @@
 
                   <div class="shader-meta-row">
                     <span class="meta-item">
-                      <span class="meta-label">Размер:</span>
+                      <span class="meta-label">{t('workshop.size')}</span>
                       {formatBytes(shader.size_bytes)}
                     </span>
                     <span class="meta-dot">•</span>
@@ -1031,14 +1029,14 @@
 
                 <div class="shader-actions">
                   {#if shader.is_active}
-                    <span class="active-indicator">Активен</span>
+                    <span class="active-indicator">{t('workshop.active_badge')}</span>
                   {:else}
                     <Button
                       variant="secondary"
                       size="small"
                       onclick={() => handleSelectShader(shader)}
                     >
-                      Выбрать
+                      {t('workshop.select_btn')}
                     </Button>
                   {/if}
 
@@ -1047,10 +1045,10 @@
                       variant="destructive"
                       size="small"
                       onclick={() => promptDeletePack(shader, 'shaderpack')}
-                      title="Удалить шейдер-пак"
+                      title={t('workshop.delete_shader_title')}
                     >
                       <Icon name="close" size={13} color="#ffffff" />
-                      <span>Удалить</span>
+                      <span>{t('common.delete')}</span>
                     </Button>
                   {/if}
                 </div>
@@ -1067,16 +1065,14 @@
           <div class="empty-icon-wrap">
             <Icon name="sun" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h2 class="empty-title">{i18n.locale === 'en' ? 'No Screenshots Yet' : 'Скриншотов пока нет'}</h2>
+          <h2 class="empty-title">{t('workshop.screenshots_empty_title')}</h2>
           <p class="empty-description">
-            {i18n.locale === 'en'
-              ? 'Press F2 while playing Minecraft to take a screenshot.'
-              : 'Нажмите F2 во время игры в Minecraft, чтобы сделать красивый снимок экрана.'}
+            {t('workshop.screenshots_empty_desc')}
           </p>
           <div style="margin-top: 16px;">
             <Button variant="secondary" size="small" onclick={handleOpenScreenshotsFolder}>
               <Icon name="folder" size={14} color="var(--color-label)" />
-              <span>Открыть папку</span>
+              <span>{t('workshop.open_folder')}</span>
             </Button>
           </div>
         </div>
@@ -1099,7 +1095,7 @@
                     isScreenshotPreviewOpen = true;
                   }
                 }}
-                title="Нажмите для полноразмерного просмотра"
+                title={t('workshop.screenshot_fullscreen_title')}
               >
                 <div class="screenshot-thumb-wrap">
                   <img
@@ -1121,12 +1117,12 @@
                         type="button"
                         class="overlay-btn"
                         onclick={(e) => handleCopyScreenshot(shot, e)}
-                        title="Скопировать изображение в буфер обмена"
-                        aria-label="Скопировать"
+                        title={t('workshop.screenshot_copy_title')}
+                        aria-label={t('common.copy')}
                         data-testid="copy-screenshot-btn"
                       >
                         <Icon name="copy" size={15} color="#ffffff" />
-                        <span>Скопировать</span>
+                        <span>{t('common.copy')}</span>
                       </button>
                       <button
                         type="button"
@@ -1135,12 +1131,12 @@
                           e.stopPropagation();
                           handleOpenScreenshotsFolder();
                         }}
-                        title="Открыть папку со скриншотами"
-                        aria-label="Открыть папку"
+                        title={t('workshop.screenshot_open_folder_title')}
+                        aria-label={t('workshop.open_folder')}
                         data-testid="open-screenshot-folder-btn"
                       >
                         <Icon name="folder" size={15} color="#ffffff" />
-                        <span>Открыть папку</span>
+                        <span>{t('workshop.open_folder')}</span>
                       </button>
                     </div>
                   </div>
@@ -1164,8 +1160,8 @@
 <!-- Modal Sheet: Screenshot Preview -->
 <Sheet
   bind:open={isScreenshotPreviewOpen}
-  title={previewScreenshot?.file_name || 'Просмотр скриншота'}
-  cancelLabel="Закрыть"
+  title={previewScreenshot?.file_name || t('workshop.tab_screenshots')}
+  cancelLabel={t('common.close')}
   showDone={false}
   maxWidth="720px"
 >
@@ -1193,7 +1189,7 @@
             onclick={() => handleCopyScreenshot(previewScreenshot!)}
           >
             <Icon name="copy" size={16} color="var(--color-primary-label)" />
-            <span>Скопировать</span>
+            <span>{t('common.copy')}</span>
           </Button>
         </span>
         <span data-testid="preview-open-folder-btn">
@@ -1203,7 +1199,7 @@
             onclick={handleOpenScreenshotsFolder}
           >
             <Icon name="folder" size={16} color="var(--color-primary-label)" />
-            <span>Открыть папку</span>
+            <span>{t('workshop.open_folder')}</span>
           </Button>
         </span>
       </div>
@@ -1214,16 +1210,15 @@
 <!-- Modal Sheet: Add Pack File (Manual Path / Import) -->
 <Sheet
   bind:open={addPackSheetOpen}
-  title={pendingAddType === 'resourcepack' ? 'Добавить ресурс-пак' : 'Добавить шейдер-пак'}
-  cancelLabel="Отмена"
-  doneLabel="Добавить"
+  title={pendingAddType === 'resourcepack' ? t('workshop.add_resourcepack') : t('workshop.add_shader')}
+  cancelLabel={t('common.cancel')}
+  doneLabel={t('common.add')}
   showDone={false}
   maxWidth="500px"
 >
   <div class="modal-dialog-body" data-testid="add-pack-modal">
     <p class="dialog-text">
-      Укажите абсолютный путь к ZIP-архиву
-      {pendingAddType === 'resourcepack' ? 'ресурс-пака' : 'шейдер-пака'} на вашем компьютере:
+      {t('workshop.modal_add_pack_desc', { type: pendingAddType === 'resourcepack' ? t('workshop.add_resourcepack') : t('workshop.add_shader') })}
     </p>
 
     <div class="modal-input-wrap">
@@ -1235,13 +1230,12 @@
         onkeydown={(e) => {
           if (e.key === 'Enter') handleConfirmAddPack();
         }}
-        aria-label="Путь к ZIP-архиву"
+        aria-label={t('workshop.modal_add_pack_aria')}
       />
     </div>
 
     <p class="dialog-subtext">
-      Файл будет скопирован в папку
-      {pendingAddType === 'resourcepack' ? 'resourcepacks' : 'shaderpacks'} инстанса {currentVersion}.
+      {t('workshop.modal_add_pack_copy_hint', { folder: pendingAddType === 'resourcepack' ? 'resourcepacks' : 'shaderpacks', version: currentVersion })}
     </p>
 
     <div class="dialog-actions">
@@ -1251,7 +1245,7 @@
         onclick={() => (addPackSheetOpen = false)}
         disabled={isAddingPack}
       >
-        Отмена
+        {t('common.cancel')}
       </Button>
 
       <Button
@@ -1261,7 +1255,7 @@
         loading={isAddingPack}
         disabled={!manualPackPath.trim()}
       >
-        Добавить файл
+        {t('workshop.modal_add_pack_btn')}
       </Button>
     </div>
   </div>
@@ -1270,9 +1264,9 @@
 <!-- Modal Sheet: Delete Pack Confirmation -->
 <Sheet
   bind:open={deletePackSheetOpen}
-  title="Удаление пака"
-  cancelLabel="Отмена"
-  doneLabel="Удалить"
+  title={t('workshop.modal_delete_pack_title')}
+  cancelLabel={t('common.cancel')}
+  doneLabel={t('common.delete')}
   showDone={false}
   maxWidth="460px"
 >
@@ -1282,13 +1276,12 @@
     </div>
 
     <p class="dialog-text">
-      Вы действительно хотите удалить
-      {packToDelete?.type === 'resourcepack' ? 'ресурс-пак' : 'шейдер-пак'}
+      {t('workshop.modal_delete_pack_confirm', { type: packToDelete?.type === 'resourcepack' ? t('workshop.add_resourcepack') : t('workshop.add_shader') })}
       <strong>«{packToDelete?.name}»</strong>?
     </p>
 
     <p class="dialog-subtext">
-      Файл <code>{packToDelete?.file_name}</code> будет безвозвратно удалён из папки инстанса.
+      {t('workshop.modal_delete_pack_hint', { name: packToDelete?.file_name || '' })}
     </p>
 
     <div class="dialog-actions">
@@ -1298,7 +1291,7 @@
         onclick={() => (deletePackSheetOpen = false)}
         disabled={isDeletingPack}
       >
-        Отмена
+        {t('common.cancel')}
       </Button>
 
       <Button
@@ -1307,7 +1300,7 @@
         onclick={handleConfirmDeletePack}
         loading={isDeletingPack}
       >
-        Удалить
+        {t('common.delete')}
       </Button>
     </div>
   </div>
@@ -1316,9 +1309,9 @@
 <!-- Modal Sheet: Delete World Confirmation -->
 <Sheet
   bind:open={deleteSheetOpen}
-  title="Удаление мира"
-  cancelLabel="Отмена"
-  doneLabel="Удалить"
+  title={t('workshop.modal_delete_world_title')}
+  cancelLabel={t('common.cancel')}
+  doneLabel={t('common.delete')}
   showDone={false}
   maxWidth="460px"
 >
@@ -1328,12 +1321,12 @@
     </div>
 
     <p class="dialog-text">
-      Вы действительно хотите удалить мир
+      {t('workshop.modal_delete_world_confirm')}
       <strong>«{worldToDelete?.display_name || worldToDelete?.folder_name}»</strong>?
     </p>
 
     <p class="dialog-subtext">
-      Это действие необратимо. Папка сохранения будет безвозвратно удалена с диска.
+      {t('workshop.modal_delete_world_hint')}
     </p>
 
     <div class="dialog-actions">
@@ -1343,7 +1336,7 @@
         onclick={() => (deleteSheetOpen = false)}
         disabled={isDeleting}
       >
-        Отмена
+        {t('common.cancel')}
       </Button>
 
       <Button
@@ -1352,7 +1345,7 @@
         onclick={handleConfirmDelete}
         loading={isDeleting}
       >
-        Удалить мир
+        {t('workshop.delete_world_btn_title')}
       </Button>
     </div>
   </div>
@@ -1361,14 +1354,14 @@
 <!-- Modal Sheet: Backups List & Restore -->
 <Sheet
   bind:open={backupsSheetOpen}
-  title="Резервные копии"
-  cancelLabel="Закрыть"
+  title={t('workshop.modal_backups_title')}
+  cancelLabel={t('common.close')}
   showDone={false}
   maxWidth="540px"
 >
   <div class="modal-dialog-body" data-testid="backups-modal">
     <p class="dialog-text">
-      Копии для мира <strong>«{selectedWorldForBackups?.display_name}»</strong>:
+      {t('workshop.modal_backups_for_world', { name: selectedWorldForBackups?.display_name || '' })}
     </p>
 
     {#if sheetError}
@@ -1385,7 +1378,7 @@
     {#if backups.length === 0}
       <div class="empty-modal-state" data-testid="empty-backups">
         <Icon name="info" size={24} color="var(--color-secondary-label)" />
-        <p>Резервных копий пока нет. Вы можете создать копию кнопкой «Резервная копия» в списке миров.</p>
+        <p>{t('workshop.modal_backups_empty')}</p>
       </div>
     {:else}
       <div class="modal-list">
@@ -1404,7 +1397,7 @@
                 size="small"
                 onclick={() => promptRestore(b)}
               >
-                Восстановить
+                {t('workshop.restore')}
               </Button>
             </span>
           </div>
@@ -1417,8 +1410,8 @@
 <!-- Modal Sheet: Confirm Restore -->
 <Sheet
   bind:open={restoreSheetOpen}
-  title="Восстановление из копии"
-  cancelLabel="Отмена"
+  title={t('workshop.modal_restore_title')}
+  cancelLabel={t('common.cancel')}
   showDone={false}
   maxWidth="460px"
 >
@@ -1428,12 +1421,12 @@
     </div>
 
     <p class="dialog-text">
-      Восстановить мир <strong>«{selectedWorldForBackups?.display_name}»</strong> из архива
+      {t('workshop.modal_restore_confirm', { name: selectedWorldForBackups?.display_name || '' })}
       <strong>«{backupToRestore?.file_name}»</strong>?
     </p>
 
     <p class="dialog-subtext">
-      Текущее состояние мира будет перезаписано данными из архива.
+      {t('workshop.modal_restore_hint')}
     </p>
 
     <div class="backup-confirm-prompt" data-testid="backup-before-restore-prompt">
@@ -1443,10 +1436,10 @@
           bind:checked={backupBeforeRestore}
           data-testid="backup-before-restore-checkbox"
         />
-        <span>Создать резервную копию текущего мира перед восстановлением</span>
+        <span>{t('workshop.modal_restore_backup_checkbox')}</span>
       </label>
       <p class="backup-confirm-hint">
-        Рекомендуется: сохранит текущие постройки и прогресс в отдельный zip-архив перед откатом.
+        {t('workshop.modal_restore_backup_hint')}
       </p>
     </div>
 
@@ -1457,7 +1450,7 @@
         onclick={() => (restoreSheetOpen = false)}
         disabled={isRestoring}
       >
-        Отмена
+        {t('common.cancel')}
       </Button>
 
       <span data-testid="confirm-restore-btn-wrap">
@@ -1467,7 +1460,7 @@
           onclick={handleConfirmRestore}
           loading={isRestoring}
         >
-          Подтвердить восстановление
+          {t('workshop.modal_restore_btn')}
         </Button>
       </span>
     </div>

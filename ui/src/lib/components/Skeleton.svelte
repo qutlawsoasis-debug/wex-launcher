@@ -8,6 +8,7 @@
 -->
 <script lang="ts">
   import { theme } from '../design/theme.svelte';
+  import { t } from '../i18n';
 
   interface Props {
     variant?: 'text' | 'rect' | 'circle' | 'row' | 'card';
@@ -66,7 +67,7 @@
     <div
       class="apple-skeleton-row {className}"
       role="progressbar"
-      aria-label="Загрузка содержимого"
+      aria-label={t('skeleton.loading_content')}
       style:--cascade-delay="{Math.min(index, 7) * 25}ms"
       data-testid="skeleton-row"
     >
@@ -81,7 +82,7 @@
     <div
       class="apple-skeleton-card {className}"
       role="progressbar"
-      aria-label="Загрузка карточки"
+      aria-label={t('skeleton.loading_card')}
       style:--cascade-delay="{Math.min(index, 7) * 25}ms"
       data-testid="skeleton-card"
     >
@@ -96,7 +97,7 @@
       class="apple-skeleton {variant} {className}"
       class:reduce-motion={theme.reduceMotion}
       role="progressbar"
-      aria-label="Загрузка"
+      aria-label={t('common.loading')}
       style:width={computedWidth}
       style:height={computedHeight}
       style:border-radius={computedRadius}

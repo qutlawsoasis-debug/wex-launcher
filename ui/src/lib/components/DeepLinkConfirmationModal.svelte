@@ -16,6 +16,7 @@
   import Button from './Button.svelte';
   import Icon from './icons/Icon.svelte';
   import { theme } from '../design/theme.svelte';
+  import { t } from '../i18n';
 
   export interface DeepLinkAction {
     kind: 'join' | 'server' | 'friend' | 'custom';
@@ -74,13 +75,13 @@
   const kindLabel = $derived.by(() => {
     switch (action?.kind) {
       case 'join':
-        return 'Лобби P2P';
+        return t('deeplink.badge_lobby');
       case 'server':
-        return 'Игровой сервер';
+        return t('deeplink.badge_server');
       case 'friend':
-        return 'Друзья';
+        return t('deeplink.badge_friend');
       default:
-        return 'Ссылка wex://';
+        return t('deeplink.badge_generic');
     }
   });
 
@@ -136,11 +137,11 @@
         <div class="deeplink-target-row">
           <span class="target-label">
             {#if action.kind === 'join'}
-              Код комнаты:
+              {t('deeplink.lbl_room_code')}
             {:else if action.kind === 'server'}
-              Адрес подключения:
+              {t('deeplink.lbl_address')}
             {:else}
-              Игрок:
+              {t('deeplink.lbl_player')}
             {/if}
           </span>
           <span class="target-value">{action.target}</span>
@@ -154,10 +155,10 @@
 
       <div class="deeplink-actions">
         <Button variant="secondary" onclick={handleCancel}>
-          Отмена
+          {t('deeplink.btn_cancel')}
         </Button>
         <Button variant="primary" onclick={handleConfirm}>
-          {action.confirm_text || 'Подтвердить'}
+          {action.confirm_text || t('deeplink.btn_confirm_default')}
         </Button>
       </div>
     </div>

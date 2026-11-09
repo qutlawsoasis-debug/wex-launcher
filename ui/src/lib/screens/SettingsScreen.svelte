@@ -44,7 +44,7 @@
   let isGameActive = $derived(isGameRunning || ipcGameRunning);
 
   // Storage section state (SPEC items 40–41: wex-verify-files)
-  let cacheSizeFormatted = $state('0 Б');
+  let cacheSizeFormatted = $state('0 B');
   let isCheckingIntegrity = $state(false);
   let isCleaningCache = $state(false);
   let integrityStatus = $state<string | null>(null);
@@ -79,9 +79,9 @@
   ]);
 
   let effectsOptions = $derived([
-    { value: 'full', label: i18n.locale === 'en' ? 'Full' : 'Полные' },
-    { value: 'low', label: i18n.locale === 'en' ? 'Low' : 'Умеренные' },
-    { value: 'off', label: i18n.locale === 'en' ? 'Off' : 'Отключены' },
+    { value: 'full', label: t('settings.effects_full') },
+    { value: 'low', label: t('settings.effects_low') },
+    { value: 'off', label: t('settings.effects_off') },
   ]);
 
   let javaModeOptions = $derived([
@@ -113,8 +113,8 @@
     is_enabled: true,
     is_connected: false,
     title: 'Wex Launcher',
-    details: 'В главном меню',
-    state: 'Выбирает режим игры',
+    details: t('settings.discord_main_menu'),
+    state: t('settings.discord_choosing_mode'),
     small_text: null,
     has_timestamp: false,
   });
@@ -149,44 +149,31 @@
 
   function formatRam(val: number): string {
     const gb = (val / 1024).toFixed(1);
-    const unitGb = i18n.locale === 'en' ? 'GB' : 'ГБ';
-    const unitMb = i18n.locale === 'en' ? 'MB' : 'МБ';
-    return `${gb} ${unitGb} (${val} ${unitMb})`;
+    return `${gb} GB (${val} MB)`;
   }
 
   let ramHint = $derived.by(() => {
     const totalGb = Math.round(totalMemoryMb / 1024);
-    if (i18n.locale === 'en') {
-      if (ramMb <= 4096) {
-        return `For Minecraft and lightweight mods · System memory: ${totalGb} GB`;
-      } else if (ramMb <= 8192) {
-        return `For Wex Pack and Iris shaders · System memory: ${totalGb} GB`;
-      } else if (ramMb <= totalMemoryMb * 0.75) {
-        return `For large resource packs and longer render distances · System memory: ${totalGb} GB`;
-      } else {
-        return `Using more than 75% of system memory may slow down your computer · Total: ${totalGb} GB`;
-      }
-    }
     if (ramMb <= 4096) {
-      return `Рекомендуется для базовой игры и лёгких модов • Всего в системе: ${totalGb} ГБ`;
+      return t('settings.ram_hint_basic', { total: totalGb });
     } else if (ramMb <= 8192) {
-      return `Оптимально для сборки Wex, шейдеров Iris и стабильного FPS • Всего в системе: ${totalGb} ГБ`;
+      return t('settings.ram_hint_optimal', { total: totalGb });
     } else if (ramMb <= totalMemoryMb * 0.75) {
-      return `Для ресурс-паков высокого разрешения и дальней прорисовки • Всего в системе: ${totalGb} ГБ`;
+      return t('settings.ram_hint_heavy', { total: totalGb });
     } else {
-      return `Внимание: выделение более 75% ОЗУ может замедлить систему • Всего в системе: ${totalGb} ГБ`;
+      return t('settings.ram_hint_warning', { total: totalGb });
     }
   });
 
   let activeJavaDisplay = $derived.by(() => {
     if (javaMode === 'custom') {
-      return customJavaPath ? customJavaPath : (i18n.locale === 'en' ? 'Choose a Java installation.' : 'Путь к javaw.exe не указан');
+      return customJavaPath ? customJavaPath : t('settings.java_not_specified');
     }
     const detected = selectedVersion === '1.20.1' ? detectedJava17 : detectedJava21;
     if (detected) {
       return detected;
     }
-    const autoSuffix = i18n.locale === 'en' ? 'Automatic' : 'Автоматически';
+    const autoSuffix = t('settings.auto_suffix');
     return selectedVersion === '1.20.1'
       ? `Mojang JRE 17 • ${autoSuffix}`
       : `Mojang JRE 21 • ${autoSuffix}`;
@@ -416,7 +403,7 @@
         cacheSizeFormatted = res.formatted_size;
       }
     } catch {
-      cacheSizeFormatted = '0 Б';
+      cacheSizeFormatted = '0 B';
     }
   }
 
@@ -433,8 +420,8 @@
   async function handleVerifyFiles() {
     if (isGameActive || isCheckingIntegrity) return;
     isCheckingIntegrity = true;
-    integrityStatus = 'Проверка...';
-    integrityDetail = 'Проверка файлов по манифесту...';
+    integrityStatus = t('settings.status_checking');
+    integrityDetail = t('settings.status_verifying_files');
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -450,13 +437,13 @@
       }
 
       if (res) {
-        integrityStatus = res.status || 'Проверка завершена';
+        integrityStatus = res.status || t('settings.verify_success_toast');
         integrityDetail = res.message || res.status;
       }
     } catch (err: any) {
-      integrityStatus = 'Ошибка проверки';
-      const msg = typeof err === 'string' ? err : (err?.message || 'Не удалось проверить файлы игры');
-      integrityDetail = msg.startsWith('Ошибка проверки: ') ? msg : `Ошибка проверки: ${msg}`;
+      integrityStatus = t('settings.status_verify_error');
+      const msg = typeof err === 'string' ? err : (err?.message || t('settings.err_verify_failed'));
+      integrityDetail = msg.startsWith(t('settings.status_verify_error')) ? msg : `${t('settings.status_verify_error')}: ${msg}`;
     } finally {
       isCheckingIntegrity = false;
     }
@@ -465,7 +452,7 @@
   async function handleClearCache() {
     if (isGameActive || isCleaningCache) return;
     isCleaningCache = true;
-    cleanupStatus = 'Очистка кэша и логов...';
+    cleanupStatus = t('settings.status_cleaning_cache');
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -481,12 +468,12 @@
       }
 
       if (res) {
-        cleanupStatus = res.message || res.status_text || 'Кэш очищен';
+        cleanupStatus = res.message || res.status_text || t('settings.cache_cleaned_toast');
         await loadCacheInfo();
       }
     } catch (err: any) {
-      const msg = typeof err === 'string' ? err : (err?.message || 'Ошибка очистки');
-      cleanupStatus = msg.startsWith('Ошибка очистки: ') ? msg : `Ошибка очистки: ${msg}`;
+      const msg = typeof err === 'string' ? err : (err?.message || t('settings.err_cleanup'));
+      cleanupStatus = msg.startsWith(t('settings.err_cleanup')) ? msg : `${t('settings.err_cleanup')}: ${msg}`;
     } finally {
       isCleaningCache = false;
       setTimeout(() => {
@@ -521,7 +508,7 @@
             if (p.stage) {
               integrityStatus = p.stage;
             } else if (p.downloaded !== undefined && p.total !== undefined) {
-              integrityStatus = `Проверка ${p.downloaded}/${p.total} (${Math.round(p.percentage || 0)}%)`;
+              integrityStatus = `${t('settings.status_checking')} ${p.downloaded}/${p.total} (${Math.round(p.percentage || 0)}%)`;
             }
           }
         ).then((fn) => {
@@ -546,7 +533,7 @@
           <div class="offline-banner-text">
             <span class="offline-banner-title">{t('offline.title')}</span>
             <span class="offline-banner-desc">
-              {i18n.locale === 'en' ? 'Local launcher settings are active. Network sync will resume when online.' : 'Локальные параметры сохранены. Сетевая синхронизация возобновится при подключении.'}
+              {t('settings.offline_banner_desc')}
             </span>
           </div>
         </div>
@@ -554,7 +541,7 @@
           variant="secondary"
           size="small"
           onclick={() => network.check()}
-          title="Проверить подключение к сети"
+          title={t('wardrobe.offline_retry_title')}
         >
           <Icon name="refresh" size={12} color="var(--color-secondary-label)" />
           <span>{t('offline.retry')}</span>
@@ -597,12 +584,12 @@
       </Row>
 
       <Row
-        title="Быстрый запуск игры"
-        subtitle="Экспериментальный предварительный прогрев виртуальной машины Java (PrewarmGame)"
+        title={t('settings.fast_start_title')}
+        subtitle={t('settings.fast_start_desc')}
       >
         {#snippet trailing()}
           <Toggle
-            ariaLabel="Быстрый запуск игры"
+            ariaLabel={t('settings.fast_start_title')}
             checked={fastStartJvm}
             onchange={(checked) => {
               fastStartJvm = checked;
@@ -653,15 +640,13 @@
     <!-- Data Directory & Network -->
     <List header={t('settings.header_dirs')}>
       <Row
-        title="Подключение к сети"
-        subtitle={network.isOnline
-          ? (i18n.locale === 'en' ? 'Online • Connected to network services' : 'В сети • Подключение к сетевым сервисам активно')
-          : (i18n.locale === 'en' ? 'Offline • Working in offline mode' : 'Нет подключения • Работа в офлайн-режиме')}
+        title={t('toolbar.network_status')}
+        subtitle={network.isOnline ? t('profile.online') : t('offline.title')}
       >
         {#snippet trailing()}
           <div class="network-status-badge" class:online={network.isOnline} class:offline={!network.isOnline}>
             <span class="status-dot"></span>
-            <span>{network.isOnline ? (i18n.locale === 'en' ? 'Online' : 'В сети') : t('offline.title')}</span>
+            <span>{network.isOnline ? t('profile.online') : t('offline.title')}</span>
           </div>
         {/snippet}
       </Row>
@@ -687,15 +672,15 @@
     </List>
 
     <!-- Storage Section -->
-    <List header="Хранилище">
+    <List header={t('settings.storage_header')}>
       <Row
-        title="Проверить файлы игры"
-        subtitle={integrityDetail ? `${integrityStatus ? integrityStatus + ' — ' : ''}${integrityDetail}` : (integrityStatus || (isGameActive ? 'Недоступно во время работы игры' : 'Сверка хэшей установленной версии и игровых файлов с манифестом'))}
+        title={t('settings.verify_files_title')}
+        subtitle={integrityDetail ? `${integrityStatus ? integrityStatus + ' — ' : ''}${integrityDetail}` : (integrityStatus || (isGameActive ? t('crash.recommendation_label') : t('settings.verify_files_desc')))}
       >
         {#snippet trailing()}
           <div class="storage-action-wrap">
             {#if isCheckingIntegrity}
-              <span class="storage-status-badge checking">Проверка...</span>
+              <span class="storage-status-badge checking">{t('settings.status_checking')}</span>
             {:else if integrityStatus}
               <span class="storage-status-badge result">{integrityStatus}</span>
             {/if}
@@ -704,33 +689,33 @@
               size="small"
               disabled={isGameActive || isCheckingIntegrity}
               onclick={handleVerifyFiles}
-              title={isGameActive ? 'Недоступно во время работы игры' : 'Проверить целостность файлов игры'}
+              title={isGameActive ? t('crash.recommendation_label') : t('settings.verify_files_desc')}
             >
-              <span>{isCheckingIntegrity ? 'Проверка...' : 'Проверить'}</span>
+              <span>{isCheckingIntegrity ? t('settings.status_checking') : t('settings.verify_files_btn')}</span>
             </Button>
           </div>
         {/snippet}
       </Row>
 
       <Row
-        title="Очистить кэш"
-        subtitle={cleanupStatus ? cleanupStatus : `Размер кэша: ${cacheSizeFormatted}. Удаляются временные файлы загрузок, логи старше 7 дней и отчёты об ошибках.`}
+        title={t('settings.clear_cache_title')}
+        subtitle={cleanupStatus ? cleanupStatus : t('settings.clear_cache_desc')}
       >
         {#snippet trailing()}
           <div class="storage-action-wrap">
             {#if isCleaningCache}
-              <span class="storage-status-badge checking">Очистка...</span>
+              <span class="storage-status-badge checking">{t('settings.btn_cleaning')}</span>
             {:else if cleanupStatus}
-              <span class="storage-status-badge success">Готово</span>
+              <span class="storage-status-badge success">{t('common.done')}</span>
             {/if}
             <Button
               variant="secondary"
               size="small"
               disabled={isGameActive || isCleaningCache}
               onclick={handleClearCache}
-              title={isGameActive ? 'Недоступно во время работы игры' : 'Очистить кэш лаунчера'}
+              title={isGameActive ? t('crash.recommendation_label') : t('settings.clear_cache_title')}
             >
-              <span>{isCleaningCache ? 'Очистка...' : 'Очистить'}</span>
+              <span>{isCleaningCache ? t('settings.btn_cleaning') : t('settings.clear_cache_btn')}</span>
             </Button>
           </div>
         {/snippet}
@@ -738,14 +723,14 @@
     </List>
 
     <!-- Window and Tray behavior (SPEC wex-window) -->
-    <List header="Окно и трей">
+    <List header={t('settings.window_and_tray_header')}>
       <Row
-        title="Сворачивать в трей при запуске игры"
-        subtitle="Скрывать окно лаунчера во время игры и возвращать его на экран после закрытия"
+        title={t('settings.minimize_to_tray_title')}
+        subtitle={t('settings.minimize_to_tray_desc')}
       >
         {#snippet trailing()}
           <Toggle
-            ariaLabel="Сворачивать в трей при запуске игры"
+            ariaLabel={t('settings.minimize_to_tray_title')}
             checked={minimizeToTray}
             onchange={(checked) => {
               minimizeToTray = checked;
@@ -776,14 +761,14 @@
       </Row>
 
       <Row
-        title="Превью статуса Discord"
-        subtitle={discordRpc ? "Фактическое состояние активности профиля в Discord" : "Трансляция активности выключена в настройках"}
+        title={t('settings.discord_preview_title')}
+        subtitle={discordRpc ? t('settings.discord_preview_desc') : t('settings.discord_disabled_title')}
       >
         <div class="discord-preview-wrap">
           {#if discordRpc}
             <div class="discord-card">
               <div class="discord-card-header">
-                <span class="discord-card-tag">Активность в Discord</span>
+                <span class="discord-card-tag">{t('settings.discord_activity_header')}</span>
               </div>
               <div class="discord-card-body">
                 <div class="discord-avatar-wrap">
@@ -793,7 +778,7 @@
                   <span
                     class="discord-status-dot"
                     class:online={discordPreview.is_connected}
-                    title={discordPreview.is_connected ? "Подключено к Discord" : "Ожидание подключения"}
+                    title={discordPreview.is_connected ? t('profile.online') : t('settings.discord_not_running')}
                   ></span>
                 </div>
                 <div class="discord-content">
@@ -804,7 +789,7 @@
                     <div class="discord-meta-text">{discordPreview.small_text}</div>
                   {/if}
                   {#if !discordPreview.is_connected}
-                    <div class="discord-offline-hint">Discord не запущен или ожидается подключение</div>
+                    <div class="discord-offline-hint">{t('settings.discord_not_running')}</div>
                   {/if}
                 </div>
               </div>
@@ -815,9 +800,9 @@
                 <Icon name="close" size={14} color="var(--color-secondary-label)" />
               </div>
               <div class="discord-disabled-info">
-                <div class="disabled-title">Статус отключён</div>
+                <div class="disabled-title">{t('settings.discord_disabled_title')}</div>
                 <div class="disabled-desc">
-                  Лаунчер не передаёт статус в Discord и не использует сокет Rich Presence.
+                  {t('settings.discord_disabled_desc')}
                 </div>
               </div>
             </div>
@@ -826,12 +811,12 @@
       </Row>
 
       <Row
-        title={i18n.locale === 'en' ? 'Background Music' : 'Фоновая музыка'}
-        subtitle={i18n.locale === 'en' ? 'Play atmospheric soundtracks from Wex/music' : 'Воспроизведение саундтрека из папки Wex/music во время работы лаунчера'}
+        title={t('settings.bg_music_title')}
+        subtitle={t('settings.bg_music_desc')}
       >
         {#snippet trailing()}
           <Toggle
-            ariaLabel={i18n.locale === 'en' ? 'Background music' : 'Фоновая музыка'}
+            ariaLabel={t('settings.bg_music_title')}
             checked={backgroundMusic}
             onchange={(checked) => {
               backgroundMusic = checked;
@@ -842,12 +827,12 @@
       </Row>
 
       <Row
-        title={i18n.locale === 'en' ? 'Friend Notifications' : 'Уведомления о друзьях'}
-        subtitle={i18n.locale === 'en' ? 'Notify when friends join the game or invite you to a lobby' : 'Оповещать, когда друзья заходят в игру или приглашают в лобби'}
+        title={t('settings.notify_friends_title')}
+        subtitle={t('settings.notify_friends_desc')}
       >
         {#snippet trailing()}
           <Toggle
-            ariaLabel={i18n.locale === 'en' ? 'Friend notifications' : 'Уведомления о друзьях'}
+            ariaLabel={t('settings.notify_friends_title')}
             checked={friendNotifications}
             onchange={(checked) => {
               friendNotifications = checked;
@@ -867,7 +852,7 @@
             <SegmentedControl
               options={languageOptions}
               value={language}
-              ariaLabel="Язык интерфейса"
+              ariaLabel={t('settings.aria_language')}
               onchange={handleLanguageChange}
               size="small"
             />
@@ -884,7 +869,7 @@
             <SegmentedControl
               options={appearanceOptions}
               value={theme.appearance}
-              ariaLabel="Тема оформления"
+              ariaLabel={t('settings.aria_theme')}
               onchange={(v) => {
                 theme.setAppearance(v as 'dark' | 'light' | 'auto');
                 saveConfig();
@@ -896,7 +881,7 @@
 
       <Row title={t('settings.accent_title')} subtitle={t('settings.accent_subtitle')}>
         {#snippet trailing()}
-          <div class="accent-picker" role="radiogroup" aria-label="Цветовой акцент">
+          <div class="accent-picker" role="radiogroup" aria-label={t('settings.aria_accent')}>
             {#each accents as acc (acc.key)}
               <button
                 type="button"
@@ -925,8 +910,8 @@
     <!-- Accessibility / Универсальный доступ -->
     <List header={t('settings.header_a11y')}>
       <Row
-        title={i18n.locale === 'en' ? 'Interface Effects' : 'Эффекты интерфейса'}
-        subtitle={i18n.locale === 'en' ? 'Animation fidelity and spring motion' : 'Степень плавности и пружинных анимаций'}
+        title={t('settings.effects_title')}
+        subtitle={t('settings.effects_subtitle')}
       >
         {#snippet trailing()}
           <div style="width: 320px;">
@@ -948,7 +933,7 @@
       >
         {#snippet trailing()}
           <Toggle
-            ariaLabel="Уменьшение движения"
+            ariaLabel={t('settings.aria_reduce_motion')}
             checked={theme.reduceMotion}
             onchange={(checked) => {
               theme.setReduceMotion(checked);
@@ -964,7 +949,7 @@
       >
         {#snippet trailing()}
           <Toggle
-            ariaLabel="Уменьшение прозрачности"
+            ariaLabel={t('settings.aria_reduce_transparency')}
             checked={theme.reduceTransparency}
             onchange={(checked) => {
               theme.setReduceTransparency(checked);
@@ -990,10 +975,10 @@
     </List>
 
     <!-- First Launch Onboarding Section -->
-    <List header={i18n.locale === 'en' ? 'First Launch & Setup' : 'Первоначальная настройка'}>
+    <List header={t('settings.onboarding_replay_title')}>
       <Row
-        title={i18n.locale === 'en' ? 'Show welcome screen again' : 'Показать приветствие снова'}
-        subtitle={i18n.locale === 'en' ? 'Run initial setup wizard, choose version, nickname, and migrate data' : 'Пройти мастер первого запуска, настройку ника, выбор версии и перенос данных'}
+        title={t('settings.onboarding_replay_title')}
+        subtitle={t('settings.onboarding_replay_desc')}
       >
         {#snippet trailing()}
           <Button
@@ -1010,7 +995,7 @@
             }}
           >
             <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
-            <span>{i18n.locale === 'en' ? 'Start' : 'Показать'}</span>
+            <span>{t('settings.onboarding_replay_btn')}</span>
           </Button>
         {/snippet}
       </Row>

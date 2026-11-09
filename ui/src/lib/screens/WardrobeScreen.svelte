@@ -33,7 +33,7 @@
   let selectedCapeId = $state<string>('none');
 
   // Active Skin state
-  let skinName = $state('Стандартный скин');
+  let skinName = $state(t('wardrobe.default_skin_name'));
   let skinBase64 = $state<string | null>(null);
   let customCapeBase64 = $state<string | null>(null);
 
@@ -66,13 +66,13 @@
   } from '../design/skin3d';
 
   let displayModeOptions = $derived([
-    { value: '3d', label: i18n.locale === 'en' ? '3D Model' : '3D модель' },
-    { value: '2d', label: i18n.locale === 'en' ? '2D View' : '2D вид' },
+    { value: '3d', label: t('wardrobe.model_3d') },
+    { value: '2d', label: t('wardrobe.model_2d') },
   ]);
 
   let animationOptions = $derived([
-    { value: 'idle', label: i18n.locale === 'en' ? 'Idle' : 'Покой' },
-    { value: 'walking', label: i18n.locale === 'en' ? 'Walking' : 'Ходьба' },
+    { value: 'idle', label: t('wardrobe.anim_idle') },
+    { value: 'walking', label: t('wardrobe.anim_walking') },
   ]);
 
   let modelOptions = $derived([
@@ -198,9 +198,9 @@
       const state = await callTauri<WardrobeStateDto>(COMMANDS.WARDROBE_GET_STATE);
       if (state) {
         skinName =
-          state.skin_name && state.skin_name !== 'Steve (Классический)'
+          state.skin_name && !state.skin_name.startsWith('Steve')
             ? state.skin_name
-            : 'Стандартный скин';
+            : t('wardrobe.default_skin_name');
         skinBase64 = state.skin_base64 || null;
         selectedModel = state.model === 'Slim' ? 'slim' : 'default';
         selectedCapeId = state.cape_id || 'none';
@@ -208,7 +208,7 @@
       }
     } catch {
       // Offline fallback: Standard skin
-      skinName = 'Стандартный скин';
+      skinName = t('wardrobe.default_skin_name');
     }
   }
 
@@ -430,14 +430,14 @@
     errorMessage = null;
 
     if (!file.name.toLowerCase().endsWith('.png')) {
-      errorMessage = 'Файл не в формате PNG. Скин должен быть в формате .png';
-      ontoast?.('error', 'Ошибка формата', errorMessage);
+      errorMessage = t('wardrobe.err_png_format');
+      ontoast?.('error', t('wardrobe.err_format_title'), errorMessage);
       return;
     }
 
     if (file.size > 2 * 1024 * 1024) {
-      errorMessage = 'Размер файла скина превышает 2 МБ';
-      ontoast?.('error', 'Файл слишком велик', errorMessage);
+      errorMessage = t('wardrobe.err_file_size');
+      ontoast?.('error', t('wardrobe.err_file_size_title'), errorMessage);
       return;
     }
 
@@ -452,16 +452,16 @@
           // Client-side quick validation of image resolution
           const testImg = new Image();
           testImg.onerror = () => {
-            errorMessage = 'Файл повреждён или не является изображением PNG';
-            ontoast?.('error', 'Ошибка файла', errorMessage);
+            errorMessage = t('wardrobe.format_error_desc');
+            ontoast?.('error', t('wardrobe.format_error_title'), errorMessage);
             isValidating = false;
           };
           testImg.onload = async () => {
             const w = testImg.naturalWidth;
             const h = testImg.naturalHeight;
             if (!((w === 64 && h === 64) || (w === 64 && h === 32))) {
-              errorMessage = `Размер скина ${w}×${h} не поддерживается. Разрешение должно быть ровно 64×64 или 64×32 пикселя`;
-              ontoast?.('error', 'Неверный размер', errorMessage);
+              errorMessage = t('wardrobe.skin_dimensions_hint');
+              ontoast?.('error', t('wardrobe.err_invalid_skin_title'), errorMessage);
               isValidating = false;
               return;
             }
@@ -473,8 +473,8 @@
               });
 
               if (!valRes.is_valid) {
-                errorMessage = valRes.error || 'Некорректное изображение скина';
-                ontoast?.('error', 'Недопустимый скин', errorMessage);
+                errorMessage = valRes.error || t('wardrobe.err_invalid_skin');
+                ontoast?.('error', t('wardrobe.err_invalid_skin_title'), errorMessage);
                 isValidating = false;
                 return;
               }
@@ -489,7 +489,7 @@
                     { request: { skin_bytes_base64: base64Data } }
                   );
                   finalBase64 = conv.converted_bytes_base64;
-                  ontoast?.('info', 'Формат обновлён', 'Старый скин 64×32 сконвертирован в 64×64');
+                  ontoast?.('info', t('wardrobe.format_converted_title'), t('wardrobe.format_converted_desc'));
                 } catch {
                   // Keep original if conversion fails
                 }
@@ -501,27 +501,27 @@
               // Detect slim model (Alex) by checking transparent pixels
               detectModelFromBase64(finalBase64);
 
-              ontoast?.('success', 'Скин загружен', file.name);
+              ontoast?.('success', t('wardrobe.skin_loaded_title'), file.name);
             } catch (err: any) {
               // Fallback for offline / headless testing: allow validated 64x64/64x32
               skinBase64 = base64Data;
               skinName = file.name.replace(/\.[^/.]+$/, '');
               detectModelFromBase64(base64Data);
-              ontoast?.('success', 'Скин загружен', file.name);
+              ontoast?.('success', t('wardrobe.skin_loaded_title'), file.name);
             } finally {
               isValidating = false;
             }
           };
           testImg.src = dataUrl;
         } catch (err: any) {
-          errorMessage = err?.message || 'Ошибка обработки файла';
-          ontoast?.('error', 'Ошибка загрузки', errorMessage ?? undefined);
+          errorMessage = err?.message || t('wardrobe.file_process_error');
+          ontoast?.('error', t('wardrobe.load_error_title'), errorMessage ?? undefined);
           isValidating = false;
         }
       };
       reader.readAsDataURL(file);
     } catch (err: any) {
-      errorMessage = err?.message || 'Не удалось прочитать файл';
+      errorMessage = err?.message || t('wardrobe.read_error');
       isValidating = false;
     }
   }
@@ -562,19 +562,19 @@
       const dataUrl = reader.result as string;
       customCapeBase64 = dataUrl.split(',')[1] || dataUrl;
       selectedCapeId = 'custom';
-      ontoast?.('success', 'Плащ загружен', file.name);
+      ontoast?.('success', t('wardrobe.cape_loaded_title'), file.name);
     };
     reader.readAsDataURL(file);
   }
 
   function handleResetDefault() {
     skinBase64 = null;
-    skinName = 'Стандартный скин';
+    skinName = t('wardrobe.default_skin_name');
     selectedModel = 'default';
     selectedCapeId = 'none';
     customCapeBase64 = null;
     errorMessage = null;
-    ontoast?.('info', 'Сброс выполнен', 'Восстановлен стандартный скин');
+    ontoast?.('info', t('wardrobe.reset_ok_title'), t('wardrobe.reset_ok_desc'));
   }
 
   async function selectHistorySkin(item: WardrobeItemDto) {
@@ -591,10 +591,10 @@
       if (res?.skin_bytes_base64) {
         skinBase64 = res.skin_bytes_base64;
       }
-      ontoast?.('info', 'Скин выбран', item.name);
+      ontoast?.('info', t('wardrobe.history_selected_title'), item.name);
     } catch {
       // Offline fallback: keep metadata
-      ontoast?.('info', 'Выбран скин', item.name);
+      ontoast?.('info', t('wardrobe.history_selected_title'), item.name);
     }
   }
 
@@ -605,9 +605,9 @@
         request: { history_dir: '', item_id: item.id },
       });
       historyItems = historyItems.filter((i) => i.id !== item.id);
-      ontoast?.('info', 'Удалено', `Скин «${item.name}» удалён из истории`);
+      ontoast?.('info', t('wardrobe.deleted_title'), t('wardrobe.deleted_desc', { name: item.name }));
     } catch (err: any) {
-      ontoast?.('error', 'Ошибка удаления', err.message);
+      ontoast?.('error', t('wardrobe.delete_error_title'), err.message);
     }
   }
 
@@ -625,27 +625,27 @@
           skin_base64: skinBase64,
           model: selectedModel === 'slim' ? 'Slim' : 'Classic',
           cape_id: selectedCapeId,
-          cape_name: activeCape?.name || 'Без плаща',
+          cape_name: activeCape?.name || t('wardrobe.cape_none'),
           cape_base64: selectedCapeId === 'custom' ? customCapeBase64 : null,
         },
       });
 
       if (res?.success) {
-        ontoast?.('success', 'Гардероб применён', 'Скин и плащ успешно обновлены в клиенте игры');
+        ontoast?.('success', t('wardrobe.applied_title'), t('wardrobe.applied_desc'));
         loadHistory();
       } else {
-        ontoast?.('warning', 'Применение', res?.message || 'Готово');
+        ontoast?.('warning', t('wardrobe.apply_title'), res?.message || t('common.done'));
       }
     } catch (err: any) {
-      errorMessage = err?.message || 'Ошибка применения настроек';
-      ontoast?.('error', 'Ошибка применения', errorMessage ?? undefined);
+      errorMessage = err?.message || t('wardrobe.apply_error_desc');
+      ontoast?.('error', t('wardrobe.apply_error_title'), errorMessage ?? undefined);
     } finally {
       isApplying = false;
     }
   }
 </script>
 
-<div class="wardrobe-screen" aria-label="Экран «Гардероб»">
+<div class="wardrobe-screen" aria-label={t('wardrobe.screen_aria')}>
   <!-- Honest Offline State Banner -->
   {#if !network.isOnline}
     <div class="wardrobe-offline-banner" role="status" aria-live="polite">
@@ -654,7 +654,7 @@
         <div class="offline-banner-text">
           <span class="offline-banner-title">{t('offline.title')}</span>
           <span class="offline-banner-desc">
-            {i18n.locale === 'en' ? 'Local skins and 3D preview are available. Changes will sync when online.' : 'Локальные скины и 3D-просмотр работают офлайн. Синхронизация произойдёт при подключении.'}
+            {t('wardrobe.offline_banner_desc')}
           </span>
         </div>
       </div>
@@ -662,7 +662,7 @@
         variant="secondary"
         size="small"
         onclick={() => network.check()}
-        title="Проверить подключение к сети"
+        title={t('wardrobe.offline_retry_title')}
       >
         <Icon name="refresh" size={12} color="var(--color-secondary-label)" />
         <span>{t('offline.retry')}</span>
@@ -713,10 +713,10 @@
               <button
                 class="reset-angle-btn"
                 onclick={() => renderer3d?.resetOrientation()}
-                title="Сбросить угол обзора"
+                title={t('wardrobe.reset_angle_title')}
                 type="button"
               >
-                Сброс
+                {t('wardrobe.reset_angle')}
               </button>
             </div>
           {:else}
@@ -737,7 +737,7 @@
             height="320"
             class="character-canvas character-canvas-3d"
             class:hidden={!hasWebGL || displayMode !== '3d'}
-            aria-label="3D интерактивная модель персонажа"
+            aria-label={t('wardrobe.model_3d_aria')}
           ></canvas>
           <canvas
             bind:this={canvas2dRef}
@@ -745,11 +745,11 @@
             height="320"
             class="character-canvas character-canvas-2d"
             class:hidden={hasWebGL && displayMode === '3d'}
-            aria-label="2D предпросмотр персонажа"
+            aria-label={t('wardrobe.model_2d_aria')}
           ></canvas>
 
           {#if hasWebGL && displayMode === '3d'}
-            <span class="rotation-hint">Потяните мышью для вращения</span>
+            <span class="rotation-hint">{t('wardrobe.drag_to_rotate')}</span>
           {/if}
         </div>
 
@@ -760,12 +760,12 @@
               type="text"
               class="skin-name-input"
               bind:value={skinName}
-              placeholder="Имя скина"
-              aria-label="Имя скина"
+              placeholder={t('wardrobe.title')}
+              aria-label={t('wardrobe.title')}
             />
           </div>
           <div class="status-subtitle">
-            {selectedModel === 'slim' ? 'Тонкая модель (Alex)' : 'Классическая модель (Steve)'}
+            {selectedModel === 'slim' ? t('wardrobe.model_slim_desc') : t('wardrobe.model_classic_desc')}
             {#if selectedCapeId !== 'none'}
               • {capeOptions.find((c) => c.id === selectedCapeId)?.name}
             {/if}
@@ -804,7 +804,7 @@
       {/if}
 
       <!-- Model Type Segmented Control -->
-      <List header={i18n.locale === 'en' ? 'Character Model' : 'Тип модели персонажа'}>
+      <List header={t('wardrobe.character_model_header')}>
         <div class="list-control-wrap">
           <SegmentedControl
             options={modelOptions}
@@ -815,7 +815,7 @@
       </List>
 
       <!-- Capes Selection Section -->
-      <List header={i18n.locale === 'en' ? 'Player Cape' : 'Плащ игрока'}>
+      <List header={t('wardrobe.player_cape_header')}>
         {#each capeOptions as cape (cape.id)}
           {@const isSelected = selectedCapeId === cape.id}
           {#if cape.id === 'custom'}
@@ -833,8 +833,8 @@
                     }}
                   >
                     {customCapeBase64
-                      ? (i18n.locale === 'en' ? 'Change…' : 'Сменить...')
-                      : (i18n.locale === 'en' ? 'Browse…' : 'Обзор...')}
+                      ? t('wardrobe.cape_change')
+                      : t('wardrobe.cape_browse')}
                   </Button>
 
                   <Button
@@ -842,7 +842,7 @@
                     size="small"
                     role="radio"
                     ariaChecked={isSelected}
-                    ariaLabel={`${i18n.locale === 'en' ? 'Select' : 'Выбрать'} ${cape.name}`}
+                    ariaLabel={t('wardrobe.cape_select_aria', { name: cape.name })}
                     onclick={() => {
                       selectedCapeId = cape.id;
                       if (!customCapeBase64) {
@@ -850,7 +850,7 @@
                       }
                     }}
                   >
-                    {isSelected ? (i18n.locale === 'en' ? 'Selected' : 'Выбрано') : (i18n.locale === 'en' ? 'Select' : 'Выбрать')}
+                    {isSelected ? t('wardrobe.cape_selected') : t('wardrobe.cape_select')}
                   </Button>
                 </div>
               {/snippet}
@@ -869,7 +869,7 @@
               {#snippet trailing()}
                 <div class="cape-row-accessory">
                   {#if isSelected}
-                    <span class="check-mark" aria-label={i18n.locale === 'en' ? 'Selected' : 'Выбрано'}>
+                    <span class="check-mark" aria-label={t('wardrobe.cape_selected')}>
                       <Icon name="check" size={16} color="var(--color-system-blue)" />
                     </span>
                   {/if}
@@ -881,7 +881,7 @@
       </List>
 
       <!-- Library of Skins Section -->
-      <List header={i18n.locale === 'en' ? 'Skins Library' : 'Библиотека скинов'} footer={i18n.locale === 'en' ? 'Previously applied skins are stored locally in the Wex directory.' : 'Ранее загруженные скины сохраняются локально в папке Wex.'}>
+      <List header={t('wardrobe.history_header')} footer={t('wardrobe.history_footer')}>
         {#if historyItems.length === 0}
           <div class="empty-history">
             <span class="empty-text">{t('wardrobe.history_empty')}</span>
@@ -891,12 +891,12 @@
             {@const isSelected = skinName === item.name}
             <Row
               title={item.name}
-              subtitle={`${item.model === 'slim' ? (i18n.locale === 'en' ? 'Slim' : 'Тонкая') : (i18n.locale === 'en' ? 'Classic' : 'Классическая')}${item.created_utc ? ` • ${item.created_utc.slice(0, 10)}` : ''}`}
+              subtitle={`${item.model === 'slim' ? t('wardrobe.model_slim_short') : t('wardrobe.model_classic_short')}${item.created_utc ? ` • ${item.created_utc.slice(0, 10)}` : ''}`}
             >
               {#snippet trailing()}
                 <div class="history-actions">
                   {#if isSelected}
-                    <span class="library-check-mark" aria-label="Выбран">
+                    <span class="library-check-mark" aria-label={t('wardrobe.cape_selected')}>
                       <Icon name="check" size={14} color="var(--color-system-blue)" />
                     </span>
                   {/if}
@@ -905,13 +905,13 @@
                     size="small"
                     onclick={() => selectHistorySkin(item)}
                   >
-                    {isSelected ? (i18n.locale === 'en' ? 'Selected' : 'Выбран') : (i18n.locale === 'en' ? 'Select' : 'Выбрать')}
+                    {isSelected ? t('wardrobe.cape_selected') : t('wardrobe.cape_select')}
                   </Button>
                   <Button
                     variant="ghost"
                     size="small"
-                    title={i18n.locale === 'en' ? 'Remove from Library' : 'Удалить скин'}
-                    ariaLabel={i18n.locale === 'en' ? 'Remove from Library' : 'Удалить из истории'}
+                    title={t('wardrobe.history_delete_title')}
+                    ariaLabel={t('wardrobe.history_delete_title')}
                     onclick={(e) => deleteHistorySkin(item, e)}
                   >
                     <Icon name="close" size={14} color="var(--color-secondary-label)" />

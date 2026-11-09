@@ -11,6 +11,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import Button from './Button.svelte';
+  import { t } from '../i18n';
 
   interface Props {
     open?: boolean;
@@ -28,8 +29,8 @@
   let {
     open = $bindable(false),
     title,
-    cancelLabel = 'Отмена',
-    doneLabel = 'Готово',
+    cancelLabel = t('common.cancel'),
+    doneLabel = t('common.done'),
     showCancel = true,
     showDone = true,
     maxWidth = '540px',
@@ -44,8 +45,14 @@
   function close() {
     open = false;
     onclose?.();
-    if (previouslyFocusedEl && typeof previouslyFocusedEl.focus === 'function') {
-      previouslyFocusedEl.focus();
+    const elToFocus = previouslyFocusedEl;
+    if (elToFocus && typeof elToFocus.focus === 'function') {
+      elToFocus.focus();
+      setTimeout(() => {
+        if (elToFocus && (document.activeElement === document.body || !document.activeElement)) {
+          elToFocus.focus();
+        }
+      }, 10);
     }
   }
 
