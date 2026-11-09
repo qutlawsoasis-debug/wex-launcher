@@ -1391,6 +1391,30 @@
     -webkit-backdrop-filter: blur(28px) saturate(180%);
     border: 1px solid var(--glass-border);
     box-shadow: var(--glass-shadow);
+    animation: softEmptyEnter var(--motion-duration-normal, 280ms) var(--motion-curve-spring-gentle, cubic-bezier(0.16, 1, 0.3, 1)) both;
+  }
+
+  @keyframes softEmptyEnter {
+    from {
+      opacity: 0;
+      transform: scale(0.975) translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .empty-state-card {
+      animation: none !important;
+      transform: none !important;
+    }
+  }
+
+  :global([data-reduce-motion='true']) .empty-state-card {
+    animation: none !important;
+    transform: none !important;
   }
 
   .empty-icon-wrap {

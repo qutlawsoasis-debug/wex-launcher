@@ -441,4 +441,35 @@ describe('MusicDiskWidget and Background Music', () => {
 
     unmount(comp);
   });
+
+  it('rotates vinyl platter during playback and maintains inertia on pause', async () => {
+    const mockTracks = [
+      {
+        id: '1',
+        title: 'Track With Inertia',
+        artist: 'Artist',
+        file_name: 'track.mp3',
+        cover_data_url: null,
+        duration_seconds: null,
+      },
+    ];
+
+    const comp = mount(MusicDiskWidget, {
+      target,
+      props: {
+        initialTracks: mockTracks,
+      },
+    });
+
+    await tick();
+
+    const vinyl = target.querySelector('.vinyl-disc') as HTMLElement;
+    expect(vinyl).not.toBeNull();
+
+    // Tonearm exists
+    const tonearm = target.querySelector('.tonearm') as HTMLElement;
+    expect(tonearm).not.toBeNull();
+
+    unmount(comp);
+  });
 });

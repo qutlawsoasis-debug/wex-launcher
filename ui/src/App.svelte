@@ -28,6 +28,7 @@
   import ShowcaseScreen from './lib/screens/ShowcaseScreen.svelte';
   import CrashSheet from './lib/components/CrashSheet.svelte';
   import MusicDiskWidget from './lib/components/MusicDiskWidget.svelte';
+  import DeepLinkConfirmationModal, { type DeepLinkAction } from './lib/components/DeepLinkConfirmationModal.svelte';
   import type { CrashDiagnosisDto } from './lib/ipc/generated/models';
   import { initIdleManager, setGameRunning, createIdleInterval } from './lib/design/idleManager';
 
@@ -40,6 +41,83 @@
   // Crash report modal state
   let crashSheetOpen = $state(false);
   let currentCrashDiagnosis = $state<CrashDiagnosisDto | null>(null);
+
+  // Deep link modal state (Apple HIG Alert / SPEC 2.11)
+  let deepLinkModalOpen = $state(false);
+  let pendingDeepLink = $state<DeepLinkAction | null>(null);
+
+  function parseClientDeepLink(uri: string): DeepLinkAction {
+    try {
+      const url = new URL(uri.replace(/^wex:\/\//, 'https://wex/'));
+      const path = url.pathname.replace(/^\//, '');
+      const code = url.searchParams.get('code') || '';
+      const address = url.searchParams.get('address') || '';
+
+      if (path.includes('join') || path.includes('lobby') || code) {
+        return {
+          kind: 'join',
+          title: `Вход в лобби ${code ? '#' + code : ''}`,
+          subtitle: 'Игрок приглашает вас присоединиться к общему миру Minecraft.',
+          target: code ? `#${code}` : 'Комната',
+          raw_uri: uri,
+          confirm_text: 'Присоединиться',
+        };
+      } else if (path.includes('server') || address) {
+        return {
+          kind: 'server',
+          title: 'Подключение к серверу',
+          subtitle: 'Добавить сервер в список избранных и запустить игру.',
+          target: address || 'Сервер',
+          raw_uri: uri,
+          confirm_text: 'Подключиться',
+        };
+      }
+    } catch {}
+    return {
+      kind: 'custom',
+      title: 'Ссылка wex://',
+      subtitle: 'Лаунчер получил запрос на выполнение внешнего действия.',
+      target: uri,
+      raw_uri: uri,
+      confirm_text: 'Продолжить',
+    };
+  }
+
+  async function handleRawDeepLink(uri: string) {
+    try {
+      if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const parsed = await invoke<any>('parse_deep_link_uri', { uri });
+        if (parsed) {
+          pendingDeepLink = parsed;
+          deepLinkModalOpen = true;
+          return;
+        }
+      }
+    } catch {}
+    pendingDeepLink = parseClientDeepLink(uri);
+    deepLinkModalOpen = true;
+  }
+
+  async function handleConfirmDeepLink(action: DeepLinkAction) {
+    deepLinkModalOpen = false;
+    if (action.kind === 'join') {
+      activeTab = 'lobby';
+      addToast('info', 'Подключение к лобби', `Код: ${action.target}`);
+    } else if (action.kind === 'server') {
+      activeTab = 'play';
+      addToast('info', 'Подключение к серверу', action.target);
+    } else if (action.kind === 'friend') {
+      activeTab = 'friends';
+      friendsSubtab = 'requests';
+      addToast('info', 'Запрос в друзья', `Отправка запроса: ${action.target}`);
+    }
+  }
+
+  function handleCancelDeepLink() {
+    deepLinkModalOpen = false;
+    pendingDeepLink = null;
+  }
 
   $effect(() => {
     if (typeof window !== 'undefined') {
@@ -416,6 +494,12 @@
         };
         crashSheetOpen = true;
       }
+
+      // Hash deeplink triggers for tests, protocol launches, and previews
+      const deeplinkParam = params.get('deeplink') || params.get('uri');
+      if (deeplinkParam) {
+        handleRawDeepLink(deeplinkParam);
+      }
     }
 
     applyHashRoute();
@@ -683,6 +767,14 @@
       activeTab = tab;
     }}
     ontoast={addToast}
+  />
+
+  <!-- Deep Link Confirmation Modal (wex://) -->
+  <DeepLinkConfirmationModal
+    bind:open={deepLinkModalOpen}
+    action={pendingDeepLink}
+    onconfirm={handleConfirmDeepLink}
+    oncancel={handleCancelDeepLink}
   />
 </div>
 
