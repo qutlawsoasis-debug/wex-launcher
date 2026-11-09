@@ -130,8 +130,11 @@
     finishStartup();
   }
 
-  async function runUpdateDownload(downloadUrl: string, latestVer?: string) {
+  export async function runUpdateDownload(downloadUrl: string, latestVer?: string) {
     isDownloading = true;
+    downloadProgress = 0;
+    downloadSpeed = '';
+    downloadDetail = 'Подготавливаем…';
     statusText = latestVer
       ? `Загрузка обновления ${latestVer}…`
       : 'Загрузка обновления лаунчера…';
@@ -146,42 +149,36 @@
           speed_bytes_per_sec: number;
           stage: string;
         }>('startup-update-progress', (event) => {
-          downloadProgress = event.payload.percentage;
-          downloadDetail = event.payload.stage;
-          if (event.payload.speed_bytes_per_sec > 0) {
-            downloadSpeed = `${(event.payload.speed_bytes_per_sec / (1024 * 1024)).toFixed(1)} МБ/с`;
+          if (event?.payload) {
+            downloadProgress = Math.max(0, Math.min(100, event.payload.percentage ?? 0));
+            downloadDetail = event.payload.stage || (downloadProgress > 0 ? 'Загрузка…' : 'Подготавливаем…');
+            if (event.payload.speed_bytes_per_sec > 0) {
+              downloadSpeed = `${(event.payload.speed_bytes_per_sec / (1024 * 1024)).toFixed(1)} МБ/с`;
+            } else {
+              downloadSpeed = '';
+            }
           }
         });
 
-        await invoke('startup_download_update', { downloadUrl });
-        unlisten();
-      } catch {
-        // Fallback progress simulation
-        await simulateDownloadFallback();
+        try {
+          await invoke('startup_download_update', { downloadUrl });
+        } finally {
+          unlisten();
+        }
+      } catch (err: unknown) {
+        handleNetworkFailure(err instanceof Error ? err.message : String(err));
+        return;
       }
     } else {
-      await simulateDownloadFallback();
+      // In-browser or test fallback without backend events:
+      // Honest 'Подготавливаем…' without fake percentage or fake simulation
+      downloadProgress = 0;
+      downloadDetail = 'Подготавливаем…';
     }
 
     statusText = 'Обновление загружено';
     await waitDelay(250);
     finishStartup();
-  }
-
-  async function simulateDownloadFallback() {
-    const steps = [
-      { pct: 20, speed: '12.4 МБ/с', detail: 'Загрузка манифеста…' },
-      { pct: 55, speed: '14.8 МБ/с', detail: 'Загрузка архива обновления…' },
-      { pct: 85, speed: '15.1 МБ/с', detail: 'Проверка контрольной суммы…' },
-      { pct: 100, speed: '', detail: 'Готово к установке' },
-    ];
-
-    for (const step of steps) {
-      downloadProgress = step.pct;
-      downloadSpeed = step.speed;
-      downloadDetail = step.detail;
-      await waitDelay(120);
-    }
   }
 
   function handleNetworkFailure(msg: string) {
@@ -254,8 +251,11 @@
         <div class="download-container">
           <ProgressBar
             percentage={downloadProgress}
+            indeterminate={downloadProgress === 0}
             label={statusText}
-            detail={downloadSpeed ? `${downloadDetail} • ${downloadSpeed}` : downloadDetail}
+            detail={downloadProgress > 0
+              ? (downloadSpeed ? `${Math.round(downloadProgress)}% • ${downloadSpeed}` : `${Math.round(downloadProgress)}%`)
+              : (downloadDetail || 'Подготавливаем…')}
             height={6}
           />
         </div>

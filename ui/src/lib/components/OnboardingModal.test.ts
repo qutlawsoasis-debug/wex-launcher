@@ -216,4 +216,33 @@ describe('OnboardingModal Component (Apple HIG Onboarding)', () => {
     expect(completedData.launchImmediately).toBe(true);
     expect(localStorage.getItem('wex_onboarding_completed')).toBe('true');
   });
+
+  it('does not simulate fake random progress or timer-based readiness without genuine events (wex-review-fake-progress item 15)', async () => {
+    vi.useFakeTimers();
+
+    comp = mount(OnboardingModal, {
+      target,
+      props: {
+        open: true,
+        initialStep: 'welcome',
+      },
+    });
+
+    await tick();
+
+    // Must NOT start with fake 12% progress!
+    const pctEl = target.querySelector('.prewarm-pct');
+    expect(pctEl?.textContent || '').not.toContain('12%');
+
+    // Advancing fake time must NOT randomly increment progress or claim readiness
+    vi.advanceTimersByTime(5000);
+    await tick();
+
+    expect(target.textContent).not.toContain('готов к запуску');
+    // In absence of events, should honestly show "Подготавливаем…" without percentages
+    expect(target.textContent).toContain('Подготавливаем…');
+    expect(target.querySelector('.prewarm-pct')).toBeNull();
+
+    vi.useRealTimers();
+  });
 });

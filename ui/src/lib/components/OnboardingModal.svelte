@@ -15,7 +15,7 @@
   6. Ready: Review choices + launch or return to launcher
 -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import Button from './Button.svelte';
   import Slider from './Slider.svelte';
   import Icon from './icons/Icon.svelte';
@@ -69,10 +69,17 @@
   let selectedVersion = $state<'1.21.1' | '1.20.1'>('1.21.1');
   let nicknameTouched = $state(false);
 
-  // Background game download progress simulation / tracking
-  let prewarmProgress = $state(12);
-  let prewarmStage = $state('Проверка манифеста и целостности клиента в фоне');
+  // Background game download progress tracking (genuine IPC events only)
+  let prewarmProgress = $state<number | null>(null);
+  let prewarmStage = $state('Подготавливаем…');
   let isPrewarming = $state(false);
+  let unlistenInstallProgress: (() => void) | undefined;
+  let unlistenPrewarmStatus: (() => void) | undefined;
+
+  onDestroy(() => {
+    if (unlistenInstallProgress) unlistenInstallProgress();
+    if (unlistenPrewarmStatus) unlistenPrewarmStatus();
+  });
 
   // Nickname validation: 3-16 chars, alphanumeric and underscore
   let isNicknameValid = $derived.by(() => {
@@ -108,35 +115,58 @@
   async function startBackgroundPrewarm(ver: string) {
     if (isPrewarming) return;
     isPrewarming = true;
+    prewarmProgress = null;
+    prewarmStage = 'Подготавливаем…';
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
+      const { listen } = await import('@tauri-apps/api/event');
+
+      if (!unlistenInstallProgress) {
+        unlistenInstallProgress = await listen<{
+          percentage?: number;
+          stage?: string;
+          detail?: string;
+        }>('install-progress', (event) => {
+          if (event?.payload) {
+            if (typeof event.payload.percentage === 'number' && event.payload.percentage > 0) {
+              prewarmProgress = Math.max(0, Math.min(100, Math.round(event.payload.percentage)));
+            }
+            if (event.payload.detail || event.payload.stage) {
+              prewarmStage = event.payload.detail || event.payload.stage || 'Подготавливаем…';
+            }
+          }
+        });
+      }
+
+      if (!unlistenPrewarmStatus) {
+        unlistenPrewarmStatus = await listen<{
+          state?: string;
+          progress?: number;
+          message?: string;
+        }>('prewarm-status', (event) => {
+          if (event?.payload) {
+            if (typeof event.payload.progress === 'number' && event.payload.progress > 0) {
+              prewarmProgress = Math.max(0, Math.min(100, Math.round(event.payload.progress)));
+            }
+            if (event.payload.message) {
+              prewarmStage = event.payload.message;
+            }
+            if (event.payload.state === 'ready') {
+              prewarmProgress = 100;
+              prewarmStage = `Клиент ${selectedVersion} готов к запуску`;
+            }
+          }
+        });
+      }
+
       await invoke('onboarding_prewarm_game', { version: ver });
     } catch {
-      // In-browser or test fallback simulation
+      // In-browser or test fallback without backend events:
+      // Honest 'Подготавливаем…' without fake percentage.
+      prewarmProgress = null;
+      prewarmStage = 'Подготавливаем…';
     }
-
-    // Gentle progressive tick
-    const interval = setInterval(() => {
-      if (!open) {
-        clearInterval(interval);
-        return;
-      }
-      if (prewarmProgress < 95) {
-        prewarmProgress += Math.floor(Math.random() * 8) + 4;
-        if (prewarmProgress > 30 && prewarmProgress < 60) {
-          prewarmStage = `Синхронизация библиотек Fabric и Java для ${selectedVersion}`;
-        } else if (prewarmProgress >= 60 && prewarmProgress < 90) {
-          prewarmStage = `Загрузка и проверка ассетов Minecraft ${selectedVersion}`;
-        } else if (prewarmProgress >= 90) {
-          prewarmStage = `Клиент ${selectedVersion} подготовлен к первому запуску`;
-        }
-      } else {
-        prewarmProgress = 100;
-        prewarmStage = `Клиент ${selectedVersion} готов к запуску`;
-        clearInterval(interval);
-      }
-    }, 900);
   }
 
   // Scan for old Aura-Launcher directory and data
@@ -483,10 +513,16 @@
               <div class="prewarm-info">
                 <Icon name="refresh" size={14} color="var(--color-system-blue)" />
                 <span class="prewarm-text">{prewarmStage}</span>
-                <span class="prewarm-pct">{prewarmProgress}%</span>
+                {#if prewarmProgress !== null && prewarmProgress > 0}
+                  <span class="prewarm-pct">{prewarmProgress}%</span>
+                {/if}
               </div>
               <div class="prewarm-track">
-                <div class="prewarm-fill" style="width: {prewarmProgress}%;"></div>
+                <div
+                  class="prewarm-fill"
+                  class:indeterminate={prewarmProgress === null || prewarmProgress === 0}
+                  style={prewarmProgress !== null && prewarmProgress > 0 ? `width: ${prewarmProgress}%;` : ''}
+                ></div>
               </div>
             </div>
           </div>
@@ -1126,6 +1162,17 @@
     height: 100%;
     background: var(--color-system-blue, #0a84ff);
     transition: width 300ms ease;
+  }
+
+  .prewarm-fill.indeterminate {
+    width: 32% !important;
+    animation: prewarmSlide 1.8s ease-in-out infinite;
+  }
+
+  @keyframes prewarmSlide {
+    0% { transform: translateX(-100%); }
+    50% { transform: translateX(250%); }
+    100% { transform: translateX(-100%); }
   }
 
   /* Discovered Aura Data */

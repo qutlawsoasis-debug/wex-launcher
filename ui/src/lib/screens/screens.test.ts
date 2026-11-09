@@ -1323,6 +1323,30 @@ describe('Wex Launcher Screens', () => {
     theme.setReduceMotion(false);
     unmount(comp);
   });
+
+  it('SplashScreen does not simulate fake progress steps or fake percentages without genuine update events (wex-review-fake-progress item 14)', async () => {
+    const comp = mount(SplashScreen, {
+      target,
+      props: {
+        initialVersion: 'v0.1.0',
+        autoStart: false,
+      },
+    });
+
+    await tick();
+
+    // Trigger update download without Tauri events (e.g. in browser / headless test)
+    const p = (comp as any).runUpdateDownload('https://example.com/update.zip', 'v1.0.0');
+    await tick();
+
+    // In absence of genuine events, must show honest 'Подготавливаем…' and NEVER fake '12.4 МБ/с' or '20%'
+    expect(target.textContent).not.toContain('12.4 МБ/с');
+    expect(target.textContent).not.toContain('20%');
+    expect(target.textContent).toContain('Подготавливаем…');
+
+    if (p) await p;
+    unmount(comp);
+  });
   it('renders ImportWizardSheet with found old launcher data, non-destructive notice, and transfer toggles', () => {
     const comp = mount(ImportWizardSheet, {
       target,

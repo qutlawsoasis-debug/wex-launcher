@@ -104,14 +104,19 @@ pub async fn startup_check_update(
         .map_err(|e| format!("Ошибка проверки обновления: {e}"))
 }
 
-/// Downloads and applies launcher update, reporting progress through IPC events
+/// Downloads and applies launcher update, reporting genuine progress through IPC events
 #[tauri::command]
-pub async fn startup_download_update(app: AppHandle, download_url: String) -> Result<(), String> {
-    simulate_or_download_update(Some(&app), &download_url).await
+pub async fn startup_download_update(
+    app: AppHandle,
+    download_url: String,
+    state: State<'_, StartupState>,
+) -> Result<(), String> {
+    download_update_stream(&state.client, Some(&app), &download_url).await
 }
 
-/// Internal helper for updating with optional emitter (for testing)
-pub async fn simulate_or_download_update(
+/// Downloads update package streamed from URL and emits genuine progress events (no fake steps)
+pub async fn download_update_stream(
+    client: &reqwest::Client,
     emitter: Option<&AppHandle>,
     download_url: &str,
 ) -> Result<(), String> {
@@ -119,29 +124,78 @@ pub async fn simulate_or_download_update(
         return Err("Не указан URL для загрузки обновления".to_string());
     }
 
-    let total_bytes: u64 = 48 * 1024 * 1024; // ~48 MB update package
-    let steps = [
-        (10.0, "Проверка манифеста обновления...", 4_800_000),
-        (35.0, "Загрузка пакета обновления...", 16_800_000),
-        (70.0, "Распаковка и верификация подписи...", 33_600_000),
-        (95.0, "Подготовка к перезапуску...", 45_600_000),
-        (100.0, "Обновление готово к установке", total_bytes),
-    ];
+    // Honest initial event: preparing, 0%
+    if let Some(em) = emitter {
+        let _ = em.emit(
+            "startup-update-progress",
+            UpdateProgressPayload {
+                percentage: 0.0,
+                downloaded_bytes: 0,
+                total_bytes: 0,
+                speed_bytes_per_sec: 0,
+                stage: "Подготавливаем…".to_string(),
+            },
+        );
+    }
 
-    for (pct, stage, downloaded) in steps {
+    let mut res = client
+        .get(download_url)
+        .send()
+        .await
+        .map_err(|e| format!("Сетевая ошибка при загрузке обновления: {e}"))?;
+
+    if !res.status().is_success() {
+        return Err(format!("Сервер вернул ошибку HTTP {}", res.status()));
+    }
+
+    let total_bytes = res.content_length().unwrap_or(0);
+    let mut downloaded_bytes: u64 = 0;
+    let start_time = std::time::Instant::now();
+
+    while let Some(chunk) = res
+        .chunk()
+        .await
+        .map_err(|e| format!("Ошибка передачи данных: {e}"))?
+    {
+        downloaded_bytes += chunk.len() as u64;
+
         if let Some(em) = emitter {
+            let elapsed_sec = start_time.elapsed().as_secs_f64();
+            let speed = if elapsed_sec > 0.05 {
+                (downloaded_bytes as f64 / elapsed_sec) as u64
+            } else {
+                0
+            };
+
+            let percentage = if total_bytes > 0 {
+                ((downloaded_bytes as f64 / total_bytes as f64) * 100.0).clamp(0.0, 100.0) as f32
+            } else {
+                0.0
+            };
+
+            let stage = if percentage >= 100.0 {
+                "Обновление загружено".to_string()
+            } else if total_bytes > 0 {
+                format!(
+                    "Загрузка: {:.1} / {:.1} МБ",
+                    downloaded_bytes as f64 / (1024.0 * 1024.0),
+                    total_bytes as f64 / (1024.0 * 1024.0)
+                )
+            } else {
+                "Подготавливаем…".to_string()
+            };
+
             let _ = em.emit(
                 "startup-update-progress",
                 UpdateProgressPayload {
-                    percentage: pct,
-                    downloaded_bytes: downloaded,
+                    percentage,
+                    downloaded_bytes,
                     total_bytes,
-                    speed_bytes_per_sec: 14 * 1024 * 1024,
-                    stage: stage.to_string(),
+                    speed_bytes_per_sec: speed,
+                    stage,
                 },
             );
         }
-        tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
     }
 
     Ok(())
@@ -222,12 +276,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_startup_download_update_simulation() {
-        let res =
-            simulate_or_download_update(None, "https://example.com/download/v1.2.0.zip").await;
+    async fn test_startup_download_update_stream_real() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        let test_payload = b"TEST_UPDATE_PAYLOAD_BYTES";
+
+        Mock::given(method("GET"))
+            .and(path("/wex-update.zip"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(test_payload.to_vec()))
+            .mount(&server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let download_url = format!("{}/wex-update.zip", server.uri());
+
+        let res = download_update_stream(&client, None, &download_url).await;
         assert!(res.is_ok());
 
-        let err_res = simulate_or_download_update(None, "  ").await;
+        let err_res = download_update_stream(&client, None, "  ").await;
         assert!(err_res.is_err());
     }
 
