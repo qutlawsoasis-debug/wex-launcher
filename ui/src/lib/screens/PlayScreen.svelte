@@ -1181,16 +1181,6 @@
     font-weight: var(--font-weight-regular);
   }
 
-  .running-indicator-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background-color: var(--color-system-green);
-    margin-right: 6px;
-    box-shadow: 0 0 6px rgba(48, 209, 88, 0.6);
-  }
-
   .dock-primary-action {
     margin-left: auto;
     flex-shrink: 0;

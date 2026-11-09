@@ -102,19 +102,8 @@ export type ReleaseNoteVersionDto = { version: string, internal_version: string,
 
 export type UpdateCheckResultDto = { update_available: boolean, current_version: string, latest_version: string | null, notes: string | null, download_url: string | null, signature: string | null, pub_date: string | null, };;
 
-export type OnboardingSpecsDto = {
-  total_memory_mb: number;
-  recommended_memory_mb: number;
-  memory_explanation: string;
-  detected_aura_dir: string | null;
-  default_version: string;
-  default_nickname: string;
-};
+export type OnboardingSpecsDto = { total_memory_mb: number, recommended_memory_mb: number, memory_explanation: string, detected_aura_dir: string | null, default_version: string, default_nickname: string, };;
 
-export type OnboardingCompleteRequest = {
-  nickname: string;
-  version: string;
-  ram_mb: number;
-};
+export type OnboardingCompleteRequest = { nickname: string, version: string, ram_mb: number, };;
 
 
