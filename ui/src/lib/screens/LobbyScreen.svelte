@@ -102,11 +102,6 @@
   let invitedFriendIds = $state<Set<string>>(new Set());
   let isLoadingFriends = $state(false);
 
-  // Local worlds available for hosting
-  const localWorlds = $derived(lanWorlds.map(world => ({
-    id: world.address, name: world.clean_motd || world.motd, port: world.port,
-    address: world.address,
-  })));
   let selectedWorldId = $state('');
 
 
@@ -144,6 +139,11 @@
   }
 
   let lanWorlds = $state<LanWorld[]>([]);
+  // Only discovered worlds can be published; the IPC DTO supplies motd.
+  const localWorlds = $derived(lanWorlds.map(world => ({
+    id: world.address, name: world.motd, port: world.port,
+    address: world.address,
+  })));
   let isLoadingLan = $state(false);
   let isConnectingLan = $state(false);
   let isPublishingLan = $state(false);

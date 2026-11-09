@@ -78,7 +78,10 @@ describe('LobbyScreen - Friends Lobby & P2P Multiplayer (wex-lobby-polish)', () 
       },
     });
 
-    await new Promise((r) => setTimeout(r, 20));
+    await vi.waitFor(() => {
+      const selected = target.querySelector('[data-testid="world-select"] [aria-checked="true"]');
+      expect(selected?.textContent).toContain('Выживание в тайге');
+    });
 
     // Verify 1-click button «Создать комнату» is present
     const createBtn = Array.from(target.querySelectorAll('button')).find((b) =>
@@ -88,7 +91,7 @@ describe('LobbyScreen - Friends Lobby & P2P Multiplayer (wex-lobby-polish)', () 
 
     // Click «Создать комнату»
     createBtn?.click();
-    await new Promise((r) => setTimeout(r, 50));
+    await vi.waitFor(() => expect(target.querySelector('[data-testid="active-room-card"]')).not.toBeNull());
 
     // Verify active room rendered
     const activeRoomCard = target.querySelector('[data-testid="active-room-card"]');
