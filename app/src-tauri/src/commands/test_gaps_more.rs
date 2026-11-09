@@ -63,9 +63,12 @@ async fn extras_save_skin_success_is_visible_in_history_command() {
     })
     .await
     .unwrap();
-    let history = wardrobe::extras_list_skin_history(ExtrasListSkinHistoryRequest {
-        history_dir: f.paths.root.to_string_lossy().into(),
-    })
+    let history = wardrobe::extras_list_skin_history(
+        ExtrasListSkinHistoryRequest {
+            history_dir: f.paths.root.to_string_lossy().into(),
+        },
+        f.play(),
+    )
     .await
     .unwrap();
     assert_eq!(history.items.len(), 1);
@@ -89,9 +92,12 @@ async fn extras_save_skin_error_invalid_base64_leaves_history_unchanged() {
 async fn extras_list_skin_history_success_absent_history_is_empty() {
     let f = Fixture::new().await;
     assert!(
-        wardrobe::extras_list_skin_history(ExtrasListSkinHistoryRequest {
-            history_dir: f.paths.root.to_string_lossy().into()
-        })
+        wardrobe::extras_list_skin_history(
+            ExtrasListSkinHistoryRequest {
+                history_dir: f.paths.root.to_string_lossy().into()
+            },
+            f.play(),
+        )
         .await
         .unwrap()
         .items
@@ -103,9 +109,12 @@ async fn extras_list_skin_history_error_corrupt_history_is_reported() {
     let f = Fixture::new().await;
     fs::write(f.paths.root.join("wardrobe_history.json"), b"corrupt").unwrap();
     assert!(
-        wardrobe::extras_list_skin_history(ExtrasListSkinHistoryRequest {
-            history_dir: f.paths.root.to_string_lossy().into()
-        })
+        wardrobe::extras_list_skin_history(
+            ExtrasListSkinHistoryRequest {
+                history_dir: f.paths.root.to_string_lossy().into()
+            },
+            f.play(),
+        )
         .await
         .is_err()
     );
@@ -121,17 +130,23 @@ async fn wardrobe_delete_history_success_removes_selected_entry() {
     })
     .await
     .unwrap();
-    let response = wardrobe::wardrobe_delete_history(WardrobeDeleteHistoryRequest {
-        history_dir: f.paths.root.to_string_lossy().into(),
-        item_id: saved.id,
-    })
+    let response = wardrobe::wardrobe_delete_history(
+        WardrobeDeleteHistoryRequest {
+            history_dir: f.paths.root.to_string_lossy().into(),
+            item_id: saved.id,
+        },
+        f.play(),
+    )
     .await
     .unwrap();
     assert!(response.success);
     assert!(
-        wardrobe::extras_list_skin_history(ExtrasListSkinHistoryRequest {
-            history_dir: f.paths.root.to_string_lossy().into()
-        })
+        wardrobe::extras_list_skin_history(
+            ExtrasListSkinHistoryRequest {
+                history_dir: f.paths.root.to_string_lossy().into()
+            },
+            f.play(),
+        )
         .await
         .unwrap()
         .items
@@ -143,10 +158,13 @@ async fn wardrobe_delete_history_error_corrupt_history() {
     let f = Fixture::new().await;
     fs::write(f.paths.root.join("wardrobe_history.json"), b"corrupt").unwrap();
     assert!(
-        wardrobe::wardrobe_delete_history(WardrobeDeleteHistoryRequest {
-            history_dir: f.paths.root.to_string_lossy().into(),
-            item_id: "missing".into()
-        })
+        wardrobe::wardrobe_delete_history(
+            WardrobeDeleteHistoryRequest {
+                history_dir: f.paths.root.to_string_lossy().into(),
+                item_id: "missing".into()
+            },
+            f.play(),
+        )
         .await
         .is_err()
     );
