@@ -59,6 +59,12 @@ pub struct LauncherSettingsDto {
     pub accent: String,     // "blue" | "purple" | "pink" | "orange" | "green" | "mint" | "graphite"
     pub reduce_motion: bool,
     pub reduce_transparency: bool,
+    #[serde(default = "default_true")]
+    pub friend_notifications: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for LauncherSettingsDto {
@@ -80,6 +86,7 @@ impl Default for LauncherSettingsDto {
             accent: "blue".to_string(),
             reduce_motion: false,
             reduce_transparency: false,
+            friend_notifications: true,
         }
     }
 }
@@ -170,6 +177,7 @@ pub fn get_launcher_settings_impl(paths: &WexPaths) -> LauncherSettingsDto {
         accent: cfg.accent,
         reduce_motion: cfg.reduce_motion,
         reduce_transparency: cfg.reduce_transparency,
+        friend_notifications: cfg.friend_notifications,
     }
 }
 
@@ -207,6 +215,7 @@ pub async fn save_launcher_settings_impl(
     cfg.accent = new_settings.accent;
     cfg.reduce_motion = new_settings.reduce_motion;
     cfg.reduce_transparency = new_settings.reduce_transparency;
+    cfg.friend_notifications = new_settings.friend_notifications;
 
     cfg.save(&paths.config_file)
         .map_err(|e| format!("Не удалось сохранить конфигурацию: {}", e))?;

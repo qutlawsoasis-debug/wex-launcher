@@ -173,6 +173,7 @@ fn remove_server(address: String, state: State<'_, AppState>) -> Result<(), Stri
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();

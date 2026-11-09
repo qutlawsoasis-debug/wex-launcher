@@ -392,6 +392,15 @@
           }
         } catch {}
       })(),
+      (async () => {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const cfg = await invoke<{ friend_notifications?: boolean }>('get_launcher_settings');
+          if (cfg && cfg.friend_notifications !== undefined) {
+            friendsLive.setNotificationsEnabled(cfg.friend_notifications);
+          }
+        } catch {}
+      })(),
     ]);
 
     if (typeof window !== 'undefined') {

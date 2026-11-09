@@ -160,6 +160,13 @@ pub struct LauncherConfig {
 
     #[serde(default = "default_accent")]
     pub accent: String,
+
+    #[serde(
+        default = "default_true",
+        alias = "friendNotifications",
+        alias = "friend_notifications"
+    )]
+    pub friend_notifications: bool,
 }
 
 fn deserialize_ram<'de, D>(deserializer: D) -> std::result::Result<u32, D::Error>
@@ -210,6 +217,10 @@ fn default_java_mode() -> String {
     "auto".to_string()
 }
 
+fn default_true() -> bool {
+    true
+}
+
 impl Default for LauncherConfig {
     fn default() -> Self {
         Self {
@@ -227,6 +238,7 @@ impl Default for LauncherConfig {
             quick_play_multiplayer: None,
             appearance: default_appearance(),
             accent: default_accent(),
+            friend_notifications: true,
         }
     }
 }
@@ -252,6 +264,7 @@ impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
             quick_play_multiplayer: None,
             appearance: ipc.appearance,
             accent: ipc.accent,
+            friend_notifications: default_true(),
         }
     }
 }
