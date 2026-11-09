@@ -210,6 +210,11 @@
     outline: none;
   }
 
+  .sheet-card:focus,
+  .sheet-card:focus-visible {
+    outline: none !important;
+  }
+
   .grabber-area {
     display: flex;
     justify-content: center;

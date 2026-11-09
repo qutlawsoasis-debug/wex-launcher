@@ -888,6 +888,11 @@
     animation: cardPopIn 260ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
+  .onboarding-card:focus,
+  .onboarding-card:focus-visible {
+    outline: none !important;
+  }
+
   :global([data-theme='light']) .onboarding-card {
     background: rgba(255, 255, 255, 0.95);
     box-shadow:

@@ -11,6 +11,18 @@
   outline-offset: 2px !important;
 }
 
+/* Containers, dialogs and programmatic focus targets must never have an outer focus ring */
+[tabindex="-1"]:focus,
+[tabindex="-1"]:focus-visible,
+[role="dialog"]:focus,
+[role="dialog"]:focus-visible,
+.onboarding-card:focus,
+.onboarding-card:focus-visible,
+.sheet-card:focus,
+.sheet-card:focus-visible {
+  outline: none !important;
+}
+
 html,
 body {
   margin: 0;

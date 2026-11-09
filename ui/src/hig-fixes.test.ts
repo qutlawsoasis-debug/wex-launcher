@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, unmount } from 'svelte';
 import Sheet from './lib/components/Sheet.svelte';
 import Sidebar from './lib/components/Sidebar.svelte';
+import OnboardingModal from './lib/components/OnboardingModal.svelte';
 import WorkshopScreen from './lib/screens/WorkshopScreen.svelte';
 import ServersScreen from './lib/screens/ServersScreen.svelte';
 import { theme } from './lib/design/theme.svelte';
@@ -146,5 +147,21 @@ describe('Apple HIG Fixes Verification', () => {
     expect(root.getAttribute('data-reduce-motion')).toBe('true');
 
     theme.setReduceMotion(false);
+  });
+
+  it('6. Modal cards and sheets do not display window-level focus outline when focused', async () => {
+    const comp = mount(OnboardingModal, {
+      target,
+      props: {
+        open: true,
+      },
+    });
+
+    const card = target.querySelector<HTMLElement>('.onboarding-card');
+    expect(card).not.toBeNull();
+    card?.focus();
+    expect(document.activeElement).toBe(card);
+
+    unmount(comp);
   });
 });
