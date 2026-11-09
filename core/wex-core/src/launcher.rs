@@ -1175,8 +1175,10 @@ mod tests {
         for version in &["1.20.1", "1.21.1"] {
             // Test 2048M (Weak PC), 3072M (3GB), 4096M (4GB), 6144M (6GB), 8192M (8GB)
             for ram_mb in &[2048, 3072, 4096, 6144, 8192] {
-                let mut config = LauncherConfig::default();
-                config.max_memory_mb = *ram_mb;
+                let config = LauncherConfig {
+                    max_memory_mb: *ram_mb,
+                    ..Default::default()
+                };
 
                 let launch_opts = LaunchOptions {
                     paths: &paths,

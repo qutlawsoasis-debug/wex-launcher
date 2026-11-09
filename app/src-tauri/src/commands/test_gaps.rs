@@ -1012,7 +1012,7 @@ async fn get_lobby_status_success_returns_remote_room() {
 #[tokio::test]
 async fn get_lobby_status_remote_error_returns_none() {
     let f = Fixture::new().await;
-    f.respond("/api/lobby/status", 404, json!({})).await;
+    f.respond("/api/lobby/status", 500, json!({})).await;
     assert!(lobby::get_lobby_status("ABC123".into(), None, f.room())
         .await
         .unwrap()

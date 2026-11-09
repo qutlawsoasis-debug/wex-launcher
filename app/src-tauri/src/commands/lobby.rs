@@ -751,7 +751,7 @@ pub async fn get_lobby_status(
         .await
     {
         Ok(s) => s,
-        Err(LobbyError::Api { status, .. }) if status == 404 => {
+        Err(LobbyError::Api { status: 404, .. }) => {
             let mut lock = state.active_session.lock().await;
             *lock = None;
             return Err("Комната закрыта организатором".to_string());
