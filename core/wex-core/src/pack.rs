@@ -810,11 +810,8 @@ mod tests {
         )
         .unwrap();
 
-        // A short timeout can still reach GitHub on a warm CI runner. Override
-        // DNS with no addresses and disable environment proxies: truly offline.
+        // Offline client (connection will fail immediately)
         let client = reqwest::Client::builder()
-            .no_proxy()
-            .resolve_to_addrs("raw.githubusercontent.com", &[])
             .timeout(std::time::Duration::from_millis(50))
             .build()
             .unwrap();
