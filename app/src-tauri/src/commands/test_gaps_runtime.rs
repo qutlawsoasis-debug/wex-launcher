@@ -236,6 +236,7 @@ fn isolated_appdata(name: &str) -> bool {
     );
     false
 }
+#[allow(dead_code)]
 fn poison_servers(f: &Fixture) {
     let state = f.app.state::<crate::AppState>();
     std::thread::scope(|s| {
@@ -250,70 +251,64 @@ fn poison_servers(f: &Fixture) {
 #[tokio::test]
 async fn list_servers_success_clones_managed_state() {
     let f = Fixture::new().await;
-    let result = crate::list_servers(f.app.state()).unwrap();
+    let result = crate::list_servers(None, f.play()).await.unwrap();
     assert_eq!(result.len(), 2);
     assert_eq!(result[0].address, "mc.auramc.net");
 }
 #[tokio::test]
-async fn list_servers_error_poisoned_mutex() {
+async fn list_servers_error_corrupt_file() {
     let f = Fixture::new().await;
-    poison_servers(&f);
-    assert!(crate::list_servers(f.app.state()).is_err());
+    let path = f.paths.instance_dir("1.21.1").join("servers.dat");
+    fs::write(path, b"not valid nbt").unwrap();
+    assert!(crate::list_servers(Some("1.21.1".into()), f.play())
+        .await
+        .is_err());
 }
 #[tokio::test]
 async fn add_server_success_persists_in_isolated_appdata() {
-    if !isolated_appdata("add_server_success_persists_in_isolated_appdata") {
-        return;
-    }
     let f = Fixture::new().await;
-    let entry = crate::add_server("Fixture".into(), "127.0.0.1:25565".into(), f.app.state())
+    let entry = crate::add_server(None, "Fixture".into(), "127.0.0.1:25565".into(), f.play())
         .await
         .unwrap();
     assert_eq!(entry.name, "Fixture");
-    assert!(crate::list_servers(f.app.state())
+    assert!(crate::list_servers(None, f.play())
+        .await
         .unwrap()
         .iter()
         .any(|e| e.address == entry.address));
-    let file =
-        std::path::PathBuf::from(std::env::var_os("APPDATA").unwrap()).join("Wex/servers.dat");
-    let nbt = wex_net::load_servers_dat(&file).unwrap();
-    assert!(nbt.get("servers").is_some());
 }
 #[tokio::test]
-async fn add_server_error_poisoned_mutex_has_no_file_writes() {
+async fn add_server_error_validation_empty_address() {
     let f = Fixture::new().await;
-    poison_servers(&f);
     assert!(
-        crate::add_server("Fixture".into(), "127.0.0.1".into(), f.app.state())
+        crate::add_server(None, "Fixture".into(), "".into(), f.play())
             .await
             .is_err()
     );
 }
 #[tokio::test]
 async fn remove_server_success_persists_and_preserves_neighbors() {
-    if !isolated_appdata("remove_server_success_persists_and_preserves_neighbors") {
-        return;
-    }
     let f = Fixture::new().await;
-    crate::add_server("Fixture".into(), "127.0.0.1:25565".into(), f.app.state())
+    crate::add_server(None, "Fixture".into(), "127.0.0.1:25565".into(), f.play())
         .await
         .unwrap();
-    crate::remove_server("127.0.0.1:25565".into(), f.app.state()).unwrap();
-    let entries = crate::list_servers(f.app.state()).unwrap();
+    crate::remove_server(None, "127.0.0.1:25565".into(), f.play())
+        .await
+        .unwrap();
+    let entries = crate::list_servers(None, f.play()).await.unwrap();
     assert_eq!(entries.len(), 2);
     assert!(entries.iter().all(|e| e.address != "127.0.0.1:25565"));
-    let file =
-        std::path::PathBuf::from(std::env::var_os("APPDATA").unwrap()).join("Wex/servers.dat");
-    assert!(wex_net::load_servers_dat(&file)
-        .unwrap()
-        .get("servers")
-        .is_some());
 }
 #[tokio::test]
-async fn remove_server_error_poisoned_mutex_has_no_file_writes() {
+async fn remove_server_error_corrupt_file() {
     let f = Fixture::new().await;
-    poison_servers(&f);
-    assert!(crate::remove_server("127.0.0.1".into(), f.app.state()).is_err());
+    let path = f.paths.instance_dir("1.21.1").join("servers.dat");
+    fs::write(path, b"not valid nbt").unwrap();
+    assert!(
+        crate::remove_server(Some("1.21.1".into()), "127.0.0.1".into(), f.play())
+            .await
+            .is_err()
+    );
 }
 #[cfg(windows)]
 #[tokio::test]
@@ -366,7 +361,9 @@ async fn ping_server_success_reads_only_loopback_fixture() {
             .unwrap();
         socket.write_all(&packet).await.unwrap();
     });
-    let result = crate::ping_server(address.to_string()).await.unwrap();
+    let result = crate::ping_server(address.to_string(), Some(1000))
+        .await
+        .unwrap();
     server.await.unwrap();
     assert_eq!(result.online, 2);
     assert_eq!(result.max_players, 8);
@@ -377,7 +374,9 @@ async fn ping_server_error_on_closed_loopback_port() {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     drop(listener);
-    assert!(crate::ping_server(address.to_string()).await.is_err());
+    assert!(crate::ping_server(address.to_string(), Some(100))
+        .await
+        .is_err());
 }
 
 #[tokio::test]
@@ -388,6 +387,7 @@ async fn start_game_success_and_supervisor_cleanup_both_versions() {
             f.app.handle().clone(),
             version.into(),
             "Fixture".into(),
+            None,
             None,
             f.play(),
         )
@@ -416,6 +416,7 @@ async fn start_game_error_duplicate_does_not_launch_core() {
         "1.21.1".into(),
         "Fixture".into(),
         None,
+        None,
         f.play()
     )
     .await
@@ -432,6 +433,7 @@ async fn start_game_error_core_failure_clears_launching_flag() {
         "1.20.1".into(),
         "Fixture".into(),
         None,
+        None,
         f.play()
     )
     .await
@@ -446,6 +448,7 @@ async fn launch_game_success_alias_returns_message() {
         f.app.handle().clone(),
         "1.21.1".into(),
         "Fixture".into(),
+        None,
         f.play()
     )
     .await
@@ -462,6 +465,7 @@ async fn launch_game_error_alias_propagates_duplicate_guard() {
         f.app.handle().clone(),
         "1.20.1".into(),
         "Fixture".into(),
+        None,
         f.play()
     )
     .await

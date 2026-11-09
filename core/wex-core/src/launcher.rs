@@ -913,7 +913,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[tokio::test]
     async fn test_install_full_environment_offline_success() {
         let tmp = tempdir().unwrap();
         let paths = WexPaths::new(Some(tmp.path().join("Wex")));
@@ -1019,6 +1018,5 @@ mod tests {
         );
         cfg.fast_start_jvm = true;
         assert!(cfg.fast_start_jvm);
-    }
     }
 }

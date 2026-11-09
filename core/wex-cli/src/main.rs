@@ -110,7 +110,7 @@ async fn main() -> Result<()> {
             );
 
             let mut process =
-                prepare_and_launch(&paths, &config, &version, &client, events, 8, &jvm_args, None)
+                prepare_and_launch(&paths, &config, &version, &client, events, 8, &jvm_args)
                     .await?;
 
             println!(
@@ -132,7 +132,10 @@ async fn main() -> Result<()> {
         Commands::Import { dir } => {
             println!("Importing data from old launcher directory: {:?}", dir);
             let old_data = wex_extras::import::import_from_dir(&dir)?;
-            println!("Found old profile for nickname: '{}', RAM: {} MB, version: '{}'", old_data.nickname, old_data.ram_mb, old_data.selected_version);
+            println!(
+                "Found old profile for nickname: '{}', RAM: {} MB, version: '{}'",
+                old_data.nickname, old_data.ram_mb, old_data.selected_version
+            );
 
             config.nickname = old_data.nickname.clone();
             config.max_memory_mb = old_data.ram_mb;
@@ -181,7 +184,11 @@ async fn main() -> Result<()> {
 
                 wex_net::merge_pack_servers(&mut root, &pack_entries);
                 if wex_net::save_servers_dat(&servers_dat_path, &root).is_ok() {
-                    println!("Imported {} server(s) into {:?}", pack_entries.len(), servers_dat_path);
+                    println!(
+                        "Imported {} server(s) into {:?}",
+                        pack_entries.len(),
+                        servers_dat_path
+                    );
                 }
             }
 

@@ -210,7 +210,6 @@
   // Screenshots state (from workshop_list_screenshots)
   let fetchedScreenshots = $state<Array<{ file_name: string; file_path: string; preview_data_url?: string; created_at?: string }>>([]);
   let screenshotsList = $derived(initialScreenshots !== undefined ? initialScreenshots : fetchedScreenshots);
-  let latestScreenshot = $derived(screenshotsList && screenshotsList.length > 0 ? screenshotsList[0] : null);
 
   // Achievements state (from social_list_achievements)
   let fetchedAchievements = $state<{ achievements: any[]; progress: any[] } | null>(null);
@@ -277,8 +276,8 @@
         type: 'screenshot',
         fileName: latestScreenshot.file_name,
         filePath: latestScreenshot.file_path,
-        previewUrl: latestScreenshot.preview_data_url || (latestScreenshot.file_path ? `file://${latestScreenshot.file_path}` : undefined),
-        createdAt: latestScreenshot.created_at,
+        previewUrl: (latestScreenshot as any).preview_data_url || (latestScreenshot.file_path ? getSafeAssetUrl(latestScreenshot.file_path) || undefined : undefined),
+        createdAt: latestScreenshot.created_at ?? undefined,
       });
     }
 
@@ -351,8 +350,6 @@
   $effect(() => {
     if (!isRunning) {
       loadPlaytime();
-    }
-  });
     }
   });
 

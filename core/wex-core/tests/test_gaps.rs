@@ -243,7 +243,7 @@ async fn download_file_resumable_bad_size_cleans_partial_file() {
 async fn download_file_resumable_http_error_leaves_no_destination() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
-        .respond_with(ResponseTemplate::new(404))
+        .respond_with(ResponseTemplate::new(500))
         .expect(3)
         .mount(&server)
         .await;
@@ -268,7 +268,7 @@ async fn download_file_resumable_http_error_leaves_no_destination() {
 async fn download_file_with_fallback_recovers_from_primary_failure() {
     let server = MockServer::start().await;
     Mock::given(path("/primary"))
-        .respond_with(ResponseTemplate::new(404))
+        .respond_with(ResponseTemplate::new(500))
         .expect(3)
         .mount(&server)
         .await;

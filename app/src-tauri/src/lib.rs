@@ -1,6 +1,8 @@
 pub mod commands;
 pub mod ipc;
 
+pub use commands::servers::*;
+
 use std::sync::Mutex;
 use tauri::Manager;
 

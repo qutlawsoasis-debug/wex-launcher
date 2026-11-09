@@ -582,11 +582,11 @@
           onopensettings={() => {
             activeTab = 'settings';
           }}
-          onnavigatescreen={(screen) => {
+          onnavigatescreen={(screen: string) => {
             activeTab = screen as any;
           }}
-          ontoast={(t) => addToast(t.type, t.title, t.message)}
-          onopenworkshop={(subtab) => {
+          ontoast={(t: { type: 'info' | 'success' | 'warning' | 'error'; title: string; message: string }) => addToast(t.type, t.title, t.message)}
+          onopenworkshop={(subtab?: string) => {
             activeTab = 'workshop';
             if (subtab && ['worlds', 'resourcepacks', 'shaders', 'screenshots'].includes(subtab)) {
               workshopSubtab = subtab as any;
