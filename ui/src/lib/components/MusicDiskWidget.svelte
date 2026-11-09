@@ -819,7 +819,7 @@
 <style>
   .music-disk-widget {
     position: relative;
-    padding: 10px 14px;
+    padding: 8px 8px;
     background-color: var(--color-bg-secondary);
     border: 1px solid var(--color-separator);
     border-radius: var(--radius-lg);
@@ -847,7 +847,8 @@
   .empty-widget {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
+    width: 100%;
   }
 
   .turntable-mini {
@@ -857,6 +858,7 @@
   .widget-details {
     display: flex;
     flex-direction: column;
+    flex: 1;
     min-width: 0;
   }
 
@@ -909,8 +911,8 @@
   }
 
   .vinyl-disc.static {
-    width: 48px;
-    height: 48px;
+    width: 36px;
+    height: 36px;
     background: radial-gradient(circle, #2a2a2e 0%, #161618 100%);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
   }
@@ -952,8 +954,8 @@
   }
 
   .vinyl-center.empty {
-    width: 22px;
-    height: 22px;
+    width: 18px;
+    height: 18px;
     background-color: var(--color-tertiary-label);
   }
 
