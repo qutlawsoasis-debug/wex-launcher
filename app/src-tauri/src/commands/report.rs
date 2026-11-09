@@ -83,23 +83,15 @@ fn mask_user_directories(text: &str) -> String {
                     3
                 } else {
                     // Look for path separator (\ or /) before quotes, newlines, or delimiters
-                    let next_sep = after_marker.find(|c: char| c == '\\' || c == '/');
-                    let next_delim = after_marker.find(|c: char| {
-                        c == '"'
-                            || c == '\''
-                            || c == '\n'
-                            || c == '\r'
-                            || c == '\t'
-                            || c == ';'
-                            || c == ':'
-                    });
+                    let next_sep = after_marker.find(['\\', '/']);
+                    let next_delim = after_marker.find(['"', '\'', '\n', '\r', '\t', ';', ':']);
 
                     match (next_sep, next_delim) {
                         (Some(sep), Some(delim)) if sep < delim && sep <= 64 => sep,
                         (Some(sep), None) if sep <= 64 => sep,
                         (_, Some(delim)) => delim,
                         _ => after_marker
-                            .find(|c: char| c == ' ' || c == '\n' || c == '\r' || c == '\t')
+                            .find([' ', '\n', '\r', '\t'])
                             .unwrap_or(after_marker.len()),
                     }
                 };
@@ -1211,10 +1203,12 @@ mod tests {
         let paths = WexPaths::new(Some(temp.path().to_path_buf()));
 
         // Save a custom config with 6144 MB RAM and custom Java path
-        let mut cfg = CoreConfig::default();
-        cfg.max_memory_mb = 6144;
-        cfg.java_mode = "custom".to_string();
-        cfg.custom_java_path = Some(PathBuf::from(r"C:\Users\John Doe\jdk-21\bin\javaw.exe"));
+        let cfg = CoreConfig {
+            max_memory_mb: 6144,
+            java_mode: "custom".to_string(),
+            custom_java_path: Some(PathBuf::from(r"C:\Users\John Doe\jdk-21\bin\javaw.exe")),
+            ..Default::default()
+        };
         cfg.save(&paths.config_file).unwrap();
 
         let preview = prepare_report_preview_impl(
