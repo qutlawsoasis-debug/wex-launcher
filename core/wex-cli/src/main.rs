@@ -47,6 +47,10 @@ enum Commands {
         #[arg(long)]
         xmx: Option<u32>,
 
+        /// Server address to auto-connect (e.g. 127.0.0.1:25565)
+        #[arg(long)]
+        server: Option<String>,
+
         /// Extra JVM arguments
         #[arg(long = "jvm-arg")]
         jvm_args: Vec<String>,
@@ -93,6 +97,7 @@ async fn main() -> Result<()> {
             version,
             nick,
             xmx,
+            server,
             jvm_args,
         } => {
             if let Some(n) = nick {
@@ -100,6 +105,9 @@ async fn main() -> Result<()> {
             }
             if let Some(m) = xmx {
                 config.max_memory_mb = m;
+            }
+            if let Some(s) = server {
+                config.quick_play_multiplayer = Some(s);
             }
             config.selected_version = version.clone();
             let _ = config.save(&config_path);
