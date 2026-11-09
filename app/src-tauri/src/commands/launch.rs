@@ -198,6 +198,7 @@ pub struct PlayState {
     pub prewarmed: Arc<Mutex<Option<PrewarmedInstance>>>,
     pub is_prewarming: Arc<AtomicBool>,
     pub active_process: Arc<Mutex<Option<wex_core::GameProcess>>>,
+    pub app_handle: Option<AppHandle>,
 }
 
 impl PlayState {
@@ -206,7 +207,7 @@ impl PlayState {
         app: AppHandle,
         network: super::network::NetworkState,
     ) -> Self {
-        let event_handler = Arc::new(TauriEventHandler { app });
+        let event_handler = Arc::new(TauriEventHandler { app: app.clone() });
         let core = Arc::new(WexLauncherCore::with_event_handler(
             paths.clone(),
             event_handler,
@@ -238,6 +239,7 @@ impl PlayState {
             prewarmed: Arc::new(Mutex::new(None)),
             is_prewarming: Arc::new(AtomicBool::new(false)),
             active_process: Arc::new(Mutex::new(None)),
+            app_handle: Some(app),
         };
 
         // Trigger background verification & prewarm if enabled and enough RAM is present
@@ -284,6 +286,7 @@ impl PlayState {
             prewarmed: Arc::new(Mutex::new(None)),
             is_prewarming: Arc::new(AtomicBool::new(false)),
             active_process: Arc::new(Mutex::new(None)),
+            app_handle: None,
         }
     }
 
@@ -304,6 +307,7 @@ impl PlayState {
             prewarmed: Arc::new(Mutex::new(None)),
             is_prewarming: Arc::new(AtomicBool::new(false)),
             active_process: Arc::new(Mutex::new(None)),
+            app_handle: None,
         }
     }
 
@@ -314,6 +318,16 @@ impl PlayState {
                 let _ = proc.kill();
             }
             let _ = std::fs::remove_file(&pw.signal_file);
+        }
+        if let Some(app) = &self.app_handle {
+            let _ = app.emit(
+                "prewarm-status",
+                serde_json::json!({
+                    "state": "idle",
+                    "progress": 0.0,
+                    "message": ""
+                }),
+            );
         }
     }
 
@@ -389,14 +403,36 @@ impl PlayState {
 
         if self.has_valid_prewarm(&version, &nickname, ram_mb).await {
             self.is_prewarming.store(false, Ordering::SeqCst);
+            if let Some(app) = &self.app_handle {
+                let _ = app.emit(
+                    "prewarm-status",
+                    serde_json::json!({
+                        "state": "ready",
+                        "progress": 100.0,
+                        "message": "Готово к запуску"
+                    }),
+                );
+            }
             return;
         }
 
         self.cleanup_prewarm().await;
 
+        if let Some(app) = &self.app_handle {
+            let _ = app.emit(
+                "prewarm-status",
+                serde_json::json!({
+                    "state": "prewarming",
+                    "progress": 48.0,
+                    "message": "Игра догружается…"
+                }),
+            );
+        }
+
         let paths_clone = self.paths.clone();
         let prewarmed_clone = self.prewarmed.clone();
         let is_prewarming_clone = self.is_prewarming.clone();
+        let app_clone = self.app_handle.clone();
 
         tauri::async_runtime::spawn(async move {
             let signal_file = paths_clone.instance_dir(&version).join("prewarm.signal");
@@ -433,9 +469,29 @@ impl PlayState {
                         process: Some(proc),
                         started_at: std::time::Instant::now(),
                     });
+                    if let Some(app) = &app_clone {
+                        let _ = app.emit(
+                            "prewarm-status",
+                            serde_json::json!({
+                                "state": "ready",
+                                "progress": 100.0,
+                                "message": "Готово к запуску"
+                            }),
+                        );
+                    }
                 }
                 Err(e) => {
                     tracing::warn!("[PREWARM] Failed to prewarm Minecraft: {}", e);
+                    if let Some(app) = &app_clone {
+                        let _ = app.emit(
+                            "prewarm-status",
+                            serde_json::json!({
+                                "state": "idle",
+                                "progress": 0.0,
+                                "message": ""
+                            }),
+                        );
+                    }
                 }
             }
 
@@ -1117,6 +1173,47 @@ pub async fn playtime_get_summary(
     get_playtime_summary(version, state).await
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PrewarmStatusDto {
+    pub is_prewarming: bool,
+    pub is_ready: bool,
+    pub progress: f32,
+    pub stage: String,
+}
+
+/// Retrieve fast-launch prewarm lifecycle status for the Play button.
+#[tauri::command]
+pub async fn get_prewarm_status(
+    version: Option<String>,
+    state: State<'_, PlayState>,
+) -> Result<PrewarmStatusDto, String> {
+    let cfg = wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file);
+    let ver = version.unwrap_or_else(|| cfg.selected_version.clone());
+    let is_prewarming = state.is_prewarming.load(Ordering::SeqCst);
+    let is_ready = state
+        .has_valid_prewarm(&ver, &cfg.nickname, cfg.max_memory_mb)
+        .await;
+
+    Ok(PrewarmStatusDto {
+        is_prewarming,
+        is_ready,
+        progress: if is_ready {
+            100.0
+        } else if is_prewarming {
+            48.0
+        } else {
+            0.0
+        },
+        stage: if is_ready {
+            "Готово к запуску".to_string()
+        } else if is_prewarming {
+            "Игра догружается…".to_string()
+        } else {
+            "Ожидание".to_string()
+        },
+    })
+}
+
 // ============================================================================
 // Unit Tests (Mock Core, no network)
 // ============================================================================
@@ -1473,5 +1570,18 @@ mod tests {
         play_state.cleanup_prewarm().await;
         assert!(!signal_file.exists());
         assert!(!play_state.has_valid_prewarm("1.21.1", "Player", 4096).await);
+    }
+
+    #[tokio::test]
+    async fn test_get_prewarm_status_dto() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let mock_core = Arc::new(MockLauncherCore::new());
+        let play_state = PlayState::new_with_core(paths.clone(), mock_core.clone());
+
+        let is_prewarming = play_state.is_prewarming.load(Ordering::SeqCst);
+        let is_ready = play_state.has_valid_prewarm("1.21.1", "Player", 4096).await;
+        assert!(!is_prewarming);
+        assert!(!is_ready);
     }
 }
