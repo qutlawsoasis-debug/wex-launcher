@@ -33,6 +33,23 @@
 
   let { onopenonboarding }: Props = $props();
 
+  interface Props {
+    isGameRunning?: boolean;
+    version?: string;
+  }
+  let { isGameRunning = false, version: propVersion = '1.21.1' }: Props = $props();
+
+  let ipcGameRunning = $state(false);
+  let isGameActive = $derived(isGameRunning || ipcGameRunning);
+
+  // Storage section state (SPEC items 40–41: wex-verify-files)
+  let cacheSizeFormatted = $state('0 Б');
+  let isCheckingIntegrity = $state(false);
+  let isCleaningCache = $state(false);
+  let integrityStatus = $state<string | null>(null);
+  let integrityDetail = $state<string | null>(null);
+  let cleanupStatus = $state<string | null>(null);
+
   // System & configuration state
   let selectedVersion = $state('1.21.1');
   let playerName = $state('Player');
@@ -379,68 +396,125 @@
     saveConfig();
   }
 
-  // Maintenance: Verify instance files & Cleanup cache
-  let isVerifyingFiles = $state(false);
-  let verifyStatus = $state<string | null>(null);
-  let isCleaningCache = $state(false);
-  let cleanCacheStatus = $state<string | null>(null);
+  // Aliases for compatibility
+  let isVerifyingFiles = $derived(isCheckingIntegrity);
+  let verifyStatus = $derived(
+    integrityDetail
+      ? integrityStatus
+        ? `${integrityStatus} — ${integrityDetail}`
+        : integrityDetail
+      : integrityStatus
+  );
+  let cleanCacheStatus = $derived(cleanupStatus);
+
+  async function loadCacheInfo() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<{ total_bytes: number; formatted_size: string }>('get_storage_cache_info');
+      if (res && res.formatted_size) {
+        cacheSizeFormatted = res.formatted_size;
+      }
+    } catch {
+      cacheSizeFormatted = '0 Б';
+    }
+  }
+
+  async function checkGameRunningState() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const running = await invoke<boolean>('is_game_running');
+      ipcGameRunning = Boolean(running);
+    } catch {
+      // In-browser mock
+    }
+  }
 
   async function handleVerifyFiles() {
-    if (isVerifyingFiles) return;
-    isVerifyingFiles = true;
-    verifyStatus = 'Проверка файлов по манифесту...';
+    if (isGameActive || isCheckingIntegrity) return;
+    isCheckingIntegrity = true;
+    integrityStatus = 'Проверка файлов сборки...';
+    integrityDetail = null;
+
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const res = await invoke<{
-        success: boolean;
         total_files: number;
-        verified_files: number;
-        repaired_files: number;
+        checked_files: number;
         corrupted_files: number;
-        errors: string[];
+        repaired_files: number;
+        status: string;
         message: string;
-      }>('verify_instance_files', { version: selectedVersion });
+      }>('verify_game_files', { version: selectedVersion || propVersion });
 
       if (res) {
-        verifyStatus = res.message;
-      } else {
-        verifyStatus = 'Проверка завершена';
+        integrityStatus = res.status;
+        integrityDetail = res.message;
       }
-    } catch (e: any) {
-      verifyStatus = `Ошибка проверки: ${e?.message || e || 'неизвестная ошибка'}`;
+    } catch (err: any) {
+      integrityStatus = 'Ошибка проверки';
+      integrityDetail = typeof err === 'string' ? err : 'Не удалось проверить файлы игры';
     } finally {
-      isVerifyingFiles = false;
+      isCheckingIntegrity = false;
     }
   }
 
-  async function handleCleanCache() {
-    if (isCleaningCache) return;
+  async function handleClearCache() {
+    if (isGameActive || isCleaningCache) return;
     isCleaningCache = true;
-    cleanCacheStatus = 'Очистка кэша и логов...';
+    cleanupStatus = 'Очистка...';
+
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const res = await invoke<{
-        success: boolean;
-        freed_bytes: number;
-        freed_formatted: string;
-        deleted_files_count: number;
-        message: string;
-      }>('cleanup_cache', { version: selectedVersion });
+        bytes_freed: number;
+        formatted_freed: string;
+        files_deleted: number;
+        status_text: string;
+      }>('clear_storage_cache');
 
       if (res) {
-        cleanCacheStatus = res.message;
-      } else {
-        cleanCacheStatus = 'Очистка завершена';
+        cleanupStatus = res.status_text;
+        await loadCacheInfo();
       }
-    } catch (e: any) {
-      cleanCacheStatus = `Ошибка очистки: ${e?.message || e || 'неизвестная ошибка'}`;
+    } catch (err: any) {
+      cleanupStatus = typeof err === 'string' ? err : 'Ошибка очистки';
     } finally {
       isCleaningCache = false;
+      setTimeout(() => {
+        cleanupStatus = null;
+      }, 5000);
     }
   }
+
+  const handleCleanCache = handleClearCache;
 
   onMount(() => {
     loadConfig();
+    loadCacheInfo();
+    checkGameRunningState();
+
+    let unlistenVerify: (() => void) | undefined;
+    if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+      import('@tauri-apps/api/event').then(({ listen }) => {
+        listen<{ stage?: string; downloaded?: number; total?: number; percentage?: number; message?: string }>(
+          'storage-verify-progress',
+          (event) => {
+            const p = event.payload;
+            if (p.stage) {
+              integrityStatus = p.stage;
+            } else if (p.downloaded !== undefined && p.total !== undefined) {
+              integrityStatus = `Проверка ${p.downloaded}/${p.total} (${Math.round(p.percentage || 0)}%)`;
+            }
+          }
+        ).then((fn) => {
+          unlistenVerify = fn;
+        });
+      }).catch(() => {});
+    }
+
+    return () => {
+      unlistenVerify?.();
+    };
   });
 </script>
 
@@ -554,50 +628,55 @@
           </div>
         {/snippet}
       </Row>
+    </List>
 
+    <!-- Storage Section -->
+    <List header="Хранилище">
       <Row
         title="Проверить файлы игры"
-        subtitle={verifyStatus || `Проверка SHA-256 файлов клиента версии ${selectedVersion} по манифесту пака и восстановление`}
+        subtitle={integrityDetail ? `${integrityStatus ? integrityStatus + ' — ' : ''}${integrityDetail}` : (integrityStatus || (isGameActive ? 'Недоступно во время работы игры' : 'Сверка хэшей установленной версии и игровых файлов с манифестом'))}
       >
         {#snippet trailing()}
-          <Button
-            variant="secondary"
-            size="small"
-            disabled={isVerifyingFiles}
-            onclick={handleVerifyFiles}
-            title="Проверить SHA-256 файлов инстанса"
-          >
-            {#if isVerifyingFiles}
-              <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
-              <span>Проверка...</span>
-            {:else}
-              <Icon name="check" size={13} color="var(--color-secondary-label)" />
-              <span>Проверить</span>
+          <div class="storage-action-wrap">
+            {#if isCheckingIntegrity}
+              <span class="storage-status-badge checking">Проверка...</span>
+            {:else if integrityStatus}
+              <span class="storage-status-badge result">{integrityStatus}</span>
             {/if}
-          </Button>
+            <Button
+              variant="secondary"
+              size="small"
+              disabled={isGameActive || isCheckingIntegrity}
+              onclick={handleVerifyFiles}
+              title={isGameActive ? 'Недоступно во время работы игры' : 'Проверить целостность файлов игры'}
+            >
+              <span>{isCheckingIntegrity ? 'Проверка...' : 'Проверить'}</span>
+            </Button>
+          </div>
         {/snippet}
       </Row>
 
       <Row
         title="Очистить кэш"
-        subtitle={cleanCacheStatus || 'Удаление логов сессий, crash-reports и временных файлов загрузок'}
+        subtitle={cleanupStatus ? cleanupStatus : `Размер кэша: ${cacheSizeFormatted}. Удаляются временные файлы загрузок, логи старше 7 дней и отчёты об ошибках.`}
       >
         {#snippet trailing()}
-          <Button
-            variant="secondary"
-            size="small"
-            disabled={isCleaningCache}
-            onclick={handleCleanCache}
-            title="Очистить кэш и освободить дисковое пространство"
-          >
+          <div class="storage-action-wrap">
             {#if isCleaningCache}
-              <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
-              <span>Очистка...</span>
-            {:else}
-              <Icon name="trash" size={13} color="var(--color-secondary-label)" />
-              <span>Очистить</span>
+              <span class="storage-status-badge checking">Очистка...</span>
+            {:else if cleanupStatus}
+              <span class="storage-status-badge success">Готово</span>
             {/if}
-          </Button>
+            <Button
+              variant="secondary"
+              size="small"
+              disabled={isGameActive || isCleaningCache}
+              onclick={handleClearCache}
+              title={isGameActive ? 'Недоступно во время работы игры' : 'Очистить кэш лаунчера'}
+            >
+              <span>{isCleaningCache ? 'Очистка...' : 'Очистить'}</span>
+            </Button>
+          </div>
         {/snippet}
       </Row>
     </List>
@@ -947,6 +1026,33 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+
+  .storage-action-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .storage-status-badge {
+    font-size: var(--text-footnote);
+    color: var(--color-secondary-label);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    background-color: var(--color-tertiary-system-fill);
+    white-space: nowrap;
+  }
+
+  .storage-status-badge.checking {
+    color: var(--color-system-blue);
+  }
+
+  .storage-status-badge.success {
+    color: var(--color-system-green);
+  }
+
+  .storage-status-badge.result {
+    color: var(--color-secondary-label);
   }
 
   .accent-picker {

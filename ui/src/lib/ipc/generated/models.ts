@@ -106,3 +106,9 @@ export type OnboardingSpecsDto = { total_memory_mb: number, recommended_memory_m
 
 export type OnboardingCompleteRequest = { nickname: string, version: string, ram_mb: number, };;
 
+export type IntegrityCheckResultDto = { total_files: number, checked_files: number, corrupted_files: number, repaired_files: number, status: string, message: string, };;
+
+export type StorageCacheInfoDto = { total_bytes: bigint, formatted_size: string, logs_bytes: bigint, crash_reports_bytes: bigint, temp_bytes: bigint, file_count: number, };;
+
+export type ClearStorageCacheResultDto = { bytes_freed: bigint, formatted_freed: string, files_deleted: number, status_text: string, };;
+

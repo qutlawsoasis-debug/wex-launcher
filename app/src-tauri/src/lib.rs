@@ -98,6 +98,10 @@ pub fn run() {
             commands::settings::cleanup_cache,
             commands::settings::settings_cleanup_cache,
             commands::settings::get_discord_rpc_preview,
+            // Storage commands (commands/storage.rs)
+            commands::storage::get_storage_cache_info,
+            commands::storage::clear_storage_cache,
+            commands::storage::verify_game_files,
             // Mods commands (commands/mods.rs)
             commands::mods::list_mods,
             commands::mods::toggle_mod,

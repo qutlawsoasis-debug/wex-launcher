@@ -3,11 +3,13 @@
 import type {
     AchievementDefinitionDto,
     AchievementProgressDto,
+    ClearStorageCacheResultDto,
     CrashDiagnosisDto,
     DiscordActivityDto,
     FriendItemDto,
     FriendProfileDto,
     GraphicsPresetDto,
+    IntegrityCheckResultDto,
     LobbyCreateResponseDto,
     LobbyJoinResponseDto,
     LobbyStatusResponseDto,
@@ -23,6 +25,7 @@ import type {
     ScreenshotItemDto,
     ServerPingResponseDto,
     SkinModelDto,
+    StorageCacheInfoDto,
     SkinValidationResultDto,
     SyncResponseDto,
     TunnelConfigResponseDto,
@@ -200,6 +203,20 @@ export type SocialGetNewsResponse = { versions: Array<ReleaseNoteVersionDto>, };
 
 export type SocialCheckLauncherUpdateRequest = { manifest_url: string, current_version: string, target_platform: string | null, };;
 
+export type SocialCheckLauncherUpdateResponse = { update: UpdateCheckResultDto, };;
+
+export type StorageVerifyFilesRequest = { version: string, };;
+
+export type StorageVerifyFilesResponse = { result: IntegrityCheckResultDto, };;
+
+export type StorageGetCacheInfoRequest = Record<string, never>;;
+
+export type StorageGetCacheInfoResponse = { info: StorageCacheInfoDto, };;
+
+export type StorageClearCacheRequest = Record<string, never>;;
+
+export type StorageClearCacheResponse = { result: ClearStorageCacheResultDto, };;
+
 export type MusicTrackDto = { id: string, title: string, artist: string, file_name: string, cover_data_url: string | null, duration_seconds: bigint | null, };;
 
 export type MusicPlaylistResponse = { tracks: Array<MusicTrackDto>, music_dir: string, };;
@@ -283,6 +300,9 @@ export const COMMANDS = {
     SOCIAL_LIST_SCREENSHOTS: "social_list_screenshots",
     SOCIAL_GET_NEWS: "social_get_news",
     SOCIAL_CHECK_LAUNCHER_UPDATE: "social_check_launcher_update",
+    STORAGE_VERIFY_FILES: "storage_verify_files",
+    STORAGE_GET_CACHE_INFO: "storage_get_cache_info",
+    STORAGE_CLEAR_CACHE: "storage_clear_cache",
     MUSIC_GET_PLAYLIST: "music_get_playlist",
     MUSIC_GET_TRACK_DATA: "music_get_track_data",
     MUSIC_OPEN_FOLDER: "music_open_folder",
