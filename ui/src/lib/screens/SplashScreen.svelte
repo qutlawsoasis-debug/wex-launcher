@@ -14,7 +14,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Logo from '../components/Logo.svelte';
-  import ProgressBar from '../components/ProgressBar.svelte';
   import Button from '../components/Button.svelte';
   import { theme } from '../design/theme.svelte';
   import { isSystemReduceMotion } from '../design/motion';
@@ -39,12 +38,6 @@
   let hasNetworkError = $state(false);
   let errorMessage = $state('');
   let isRetrying = $state(false);
-
-  // Update download progress state
-  let isDownloading = $state(false);
-  let downloadProgress = $state(0);
-  let downloadSpeed = $state('');
-  let downloadDetail = $state('');
 
   // Fade out state
   let isExiting = $state(false);
@@ -99,89 +92,13 @@
       return;
     }
 
-    if (isTauri()) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const update = await invoke<{
-          update_available: boolean;
-          latest_version?: string;
-          download_url?: string;
-        }>('startup_check_update', {
-          simulateNetworkError: false,
-        });
-
-        if (update && update.update_available && update.download_url) {
-          await runUpdateDownload(update.download_url, update.latest_version);
-          return;
-        }
-      } catch (err: unknown) {
-        handleNetworkFailure(
-          err instanceof Error
-            ? err.message
-            : 'Сетевая ошибка: не удалось проверить обновления'
-        );
-        return;
-      }
-    }
+    // Launcher updates are checked by the real updater (`updater_check`) and
+    // offered as a banner on the Play screen; the splash never blocks on them.
 
     // In-browser or up-to-date transition
     statusText = 'Готово к запуску';
     await waitDelay(200);
     finishStartup();
-  }
-
-  async function runUpdateDownload(downloadUrl: string, latestVer?: string) {
-    isDownloading = true;
-    statusText = latestVer
-      ? `Загрузка обновления ${latestVer}…`
-      : 'Загрузка обновления лаунчера…';
-
-    if (isTauri()) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const { listen } = await import('@tauri-apps/api/event');
-
-        const unlisten = await listen<{
-          percentage: number;
-          speed_bytes_per_sec: number;
-          stage: string;
-        }>('startup-update-progress', (event) => {
-          downloadProgress = event.payload.percentage;
-          downloadDetail = event.payload.stage;
-          if (event.payload.speed_bytes_per_sec > 0) {
-            downloadSpeed = `${(event.payload.speed_bytes_per_sec / (1024 * 1024)).toFixed(1)} МБ/с`;
-          }
-        });
-
-        await invoke('startup_download_update', { downloadUrl });
-        unlisten();
-      } catch {
-        // Fallback progress simulation
-        await simulateDownloadFallback();
-      }
-    } else {
-      await simulateDownloadFallback();
-    }
-
-    statusText = 'Обновление загружено';
-    await waitDelay(250);
-    finishStartup();
-  }
-
-  async function simulateDownloadFallback() {
-    const steps = [
-      { pct: 20, speed: '12.4 МБ/с', detail: 'Загрузка манифеста…' },
-      { pct: 55, speed: '14.8 МБ/с', detail: 'Загрузка архива обновления…' },
-      { pct: 85, speed: '15.1 МБ/с', detail: 'Проверка контрольной суммы…' },
-      { pct: 100, speed: '', detail: 'Готово к установке' },
-    ];
-
-    for (const step of steps) {
-      downloadProgress = step.pct;
-      downloadSpeed = step.speed;
-      downloadDetail = step.detail;
-      await waitDelay(120);
-    }
   }
 
   function handleNetworkFailure(msg: string) {
@@ -250,20 +167,9 @@
 
     <!-- Dynamic Status or Progress -->
     <div class="status-section">
-      {#if isDownloading}
-        <div class="download-container">
-          <ProgressBar
-            percentage={downloadProgress}
-            label={statusText}
-            detail={downloadSpeed ? `${downloadDetail} • ${downloadSpeed}` : downloadDetail}
-            height={6}
-          />
-        </div>
-      {:else}
-        <p class="status-message" class:error={hasNetworkError}>
-          {statusText}
-        </p>
-      {/if}
+      <p class="status-message" class:error={hasNetworkError}>
+        {statusText}
+      </p>
     </div>
 
     <!-- Network Error Fallback Actions: Повторить & Пропустить -->
@@ -375,10 +281,6 @@
   .status-message.error {
     color: var(--color-system-red);
     font-weight: 500;
-  }
-
-  .download-container {
-    width: 100%;
   }
 
   /* Network Error Box & Action Buttons */

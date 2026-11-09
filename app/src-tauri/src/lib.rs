@@ -106,8 +106,6 @@ pub fn run() {
             // Startup commands (SPEC 1.1)
             commands::startup::startup_get_info,
             commands::startup::startup_verify_directories,
-            commands::startup::startup_check_update,
-            commands::startup::startup_download_update,
             // Tray & Window behavior commands
             commands::tray::tray_apply_launch_behavior,
             commands::tray::tray_restore_window,

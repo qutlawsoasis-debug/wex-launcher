@@ -3,15 +3,14 @@
 //! Implements SPEC 1.1 "Экран начальной загрузки"
 //! - Configuration loading from wex-core (%APPDATA%\Wex\config.json)
 //! - Launcher directory verification and initialization
-//! - Launcher update check via wex-social::launcher_update
-//! - Update download simulation and event streaming
-//! - Network error fallback support (offline transition)
+//!
+//! Launcher updates are handled by `commands::updater` (real download,
+//! signature check) and surfaced on the Play screen, not here.
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State};
+use tauri::State;
 use wex_core::config::{LauncherConfig, WexPaths};
-use wex_ipc::models::{LauncherConfig as IpcLauncherConfig, UpdateCheckResultDto};
-use wex_social::launcher_update::{check_update_from_url, DEFAULT_TARGET_PLATFORM};
+use wex_ipc::models::LauncherConfig as IpcLauncherConfig;
 
 /// Managed state for startup commands
 pub struct StartupState {
@@ -46,16 +45,6 @@ pub struct StartupInfoDto {
     pub instances_dir: String,
 }
 
-/// Real-time progress payload for launcher update download
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct UpdateProgressPayload {
-    pub percentage: f32,
-    pub downloaded_bytes: u64,
-    pub total_bytes: u64,
-    pub speed_bytes_per_sec: u64,
-    pub stage: String,
-}
-
 /// Reads launcher configuration from %APPDATA%\Wex and verifies instance folders
 #[tauri::command]
 pub async fn startup_get_info(state: State<'_, StartupState>) -> Result<StartupInfoDto, String> {
@@ -82,71 +71,6 @@ pub async fn startup_verify_directories(state: State<'_, StartupState>) -> Resul
         .map_err(|e| format!("Не удалось инициализировать каталоги Wex: {e}"))
 }
 
-/// Checks for launcher updates via wex-social launcher_update module
-#[tauri::command]
-pub async fn startup_check_update(
-    manifest_url: Option<String>,
-    simulate_network_error: Option<bool>,
-    state: State<'_, StartupState>,
-) -> Result<UpdateCheckResultDto, String> {
-    if simulate_network_error.unwrap_or(false) {
-        return Err("Сетевая ошибка: невозможно связаться с сервером обновлений".to_string());
-    }
-
-    let url = manifest_url.unwrap_or_else(|| {
-        "https://raw.githubusercontent.com/wex-launcher/manifest/main/latest.json".to_string()
-    });
-    let cur_ver = env!("CARGO_PKG_VERSION");
-
-    check_update_from_url(&state.client, cur_ver, DEFAULT_TARGET_PLATFORM, &url)
-        .await
-        .map(UpdateCheckResultDto::from)
-        .map_err(|e| format!("Ошибка проверки обновления: {e}"))
-}
-
-/// Downloads and applies launcher update, reporting progress through IPC events
-#[tauri::command]
-pub async fn startup_download_update(app: AppHandle, download_url: String) -> Result<(), String> {
-    simulate_or_download_update(Some(&app), &download_url).await
-}
-
-/// Internal helper for updating with optional emitter (for testing)
-pub async fn simulate_or_download_update(
-    emitter: Option<&AppHandle>,
-    download_url: &str,
-) -> Result<(), String> {
-    if download_url.trim().is_empty() {
-        return Err("Не указан URL для загрузки обновления".to_string());
-    }
-
-    let total_bytes: u64 = 48 * 1024 * 1024; // ~48 MB update package
-    let steps = [
-        (10.0, "Проверка манифеста обновления...", 4_800_000),
-        (35.0, "Загрузка пакета обновления...", 16_800_000),
-        (70.0, "Распаковка и верификация подписи...", 33_600_000),
-        (95.0, "Подготовка к перезапуску...", 45_600_000),
-        (100.0, "Обновление готово к установке", total_bytes),
-    ];
-
-    for (pct, stage, downloaded) in steps {
-        if let Some(em) = emitter {
-            let _ = em.emit(
-                "startup-update-progress",
-                UpdateProgressPayload {
-                    percentage: pct,
-                    downloaded_bytes: downloaded,
-                    total_bytes,
-                    speed_bytes_per_sec: 14 * 1024 * 1024,
-                    stage: stage.to_string(),
-                },
-            );
-        }
-        tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
-    }
-
-    Ok(())
-}
-
 // ---------------------------------------------------------------------------
 // Unit Tests
 // ---------------------------------------------------------------------------
@@ -155,7 +79,6 @@ pub async fn simulate_or_download_update(
 mod tests {
     use super::*;
     use tempfile::tempdir;
-    use wex_social::launcher_update::check_update_from_manifest;
 
     #[tokio::test]
     async fn test_startup_get_info_defaults() {
@@ -180,55 +103,6 @@ mod tests {
         assert_eq!(info.app_version, env!("CARGO_PKG_VERSION"));
         assert!(info.directories_ok);
         assert_eq!(info.config.selected_version, "1.20.1");
-    }
-
-    #[test]
-    fn test_startup_check_update_from_manifest_newer() {
-        let manifest_json = r#"{
-            "version": "v1.2.0",
-            "notes": "Оптимизация запуска и новый экран",
-            "platforms": {
-                "windows-x86_64": {
-                    "signature": "untrusted comment: signature\nRWValidSig123456789012345678901234567890==",
-                    "url": "https://example.com/wex-update-v1.2.0.zip"
-                }
-            }
-        }"#;
-
-        let res = check_update_from_manifest("0.1.0", "windows-x86_64", manifest_json).unwrap();
-        assert!(res.update_available);
-        assert_eq!(res.latest_version.as_deref(), Some("v1.2.0"));
-        assert_eq!(
-            res.download_url.as_deref(),
-            Some("https://example.com/wex-update-v1.2.0.zip")
-        );
-    }
-
-    #[test]
-    fn test_startup_check_update_from_manifest_same_version() {
-        let manifest_json = r#"{
-            "version": "v0.1.0",
-            "notes": "Текущая актуальная версия",
-            "platforms": {
-                "windows-x86_64": {
-                    "signature": "RWValidSig123456789012345678901234567890==",
-                    "url": "https://example.com/wex.zip"
-                }
-            }
-        }"#;
-
-        let res = check_update_from_manifest("0.1.0", "windows-x86_64", manifest_json).unwrap();
-        assert!(!res.update_available);
-    }
-
-    #[tokio::test]
-    async fn test_startup_download_update_simulation() {
-        let res =
-            simulate_or_download_update(None, "https://example.com/download/v1.2.0.zip").await;
-        assert!(res.is_ok());
-
-        let err_res = simulate_or_download_update(None, "  ").await;
-        assert!(err_res.is_err());
     }
 
     #[tokio::test]
