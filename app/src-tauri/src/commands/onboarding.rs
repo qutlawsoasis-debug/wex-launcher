@@ -3,9 +3,9 @@
 //! Provides initial welcome flow, hardware memory auto-tuning,
 //! migration discovery, configuration persistence, and background pre-warming.
 
-use std::sync::atomic::Ordering;
-use tauri::{AppHandle, Runtime, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 use wex_core::config::LauncherConfig;
+use wex_ipc::events::{InstallProgressPayload, EVT_INSTALL_PROGRESS};
 use wex_ipc::models::{OnboardingCompleteRequest, OnboardingSpecsDto};
 
 use super::launch::PlayState;
@@ -125,15 +125,14 @@ pub async fn onboarding_prewarm_game<R: Runtime>(
     let _ = paths.ensure_instance_dirs(&target_version);
 
     let _ = app.emit(
-        wex_ipc::commands::EVT_INSTALL_PROGRESS,
-        wex_ipc::commands::InstallProgressPayload {
+        EVT_INSTALL_PROGRESS,
+        InstallProgressPayload {
             stage: "Фоновая подготовка клиента".to_string(),
-            percentage: 15,
+            percentage: 15.0,
             detail: format!("Проверка структуры каталогов для {}", target_version),
             speed_bytes_per_sec: 0,
-            total_bytes: None,
+            total_bytes: 0,
             downloaded_bytes: 0,
-            state: "installing".to_string(),
         },
     );
 
