@@ -50,7 +50,7 @@
       }
     },
     "updater": {
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYxNzgyNjdCODg0N0I5NTEKUldSUnVVZUlleVo0OGZnQnNOV1A4c2M0eU8vRWREeXhYdDdVZE5HMU1UMUlaTDBkVFpVOGplTUMK",
       "endpoints": [
         "https://github.com/qutlawsoasis-debug/wex-launcher/releases/latest/download/latest.json"
       ]

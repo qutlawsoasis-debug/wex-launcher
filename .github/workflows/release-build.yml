@@ -80,6 +80,15 @@ jobs:
         run: |
           powershell -ExecutionPolicy Bypass -File scripts\generate-latest-json.ps1 -Notes "${{ github.event.inputs.notes || 'Wex Launcher update' }}"
 
+      - name: Verify updater signature matches embedded pubkey
+        if: ${{ steps.signing-check.outputs.signed == 'true' }}
+        shell: pwsh
+        run: |
+          python -m pip install --quiet pynacl
+          $exe = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          python scripts/verify-updater-signature.py app/src-tauri/tauri.conf.json $exe.FullName "$($exe.FullName).sig"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
       - name: Upload NSIS Installer Artifact
         uses: actions/upload-artifact@v4
         with:
