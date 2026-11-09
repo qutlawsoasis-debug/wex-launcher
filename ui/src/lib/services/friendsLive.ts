@@ -583,8 +583,9 @@ export class FriendsLiveService {
     // 1. Deliver through tauri-plugin-notification
     if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
       try {
+        const pluginPkg = '@tauri-apps/plugin-notification';
         const { isPermissionGranted, requestPermission, sendNotification } = await import(
-          '@tauri-apps/plugin-notification'
+          /* @vite-ignore */ pluginPkg
         );
         let hasPerm = await isPermissionGranted();
         if (!hasPerm) {
@@ -654,7 +655,8 @@ export class FriendsLiveService {
 
   private setupTauriNotificationActionListener(): void {
     if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
-      import('@tauri-apps/plugin-notification')
+      const pluginPkg = '@tauri-apps/plugin-notification';
+      import(/* @vite-ignore */ pluginPkg)
         .then(({ onAction }) => {
           onAction((action: any) => {
             const lobbyCode = action.notification?.extra?.lobbyCode;

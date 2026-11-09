@@ -25,7 +25,7 @@ pub use lobby::{LobbyApiClient, LobbyError};
 pub use modsync::{
     compare_manifests, compute_manifest_hash, ModManifestEntry, ModMismatchItem, ModMismatchType,
 };
-pub use ping::{resolve_minecraft_address, ServerPingResponse, ServerPinger};
+pub use ping::{resolve_minecraft_address, PingError, ServerPingResponse, ServerPinger};
 pub use servers::{
     load_servers_dat, merge_pack_servers, save_servers_dat, NbtTag, PackServerEntry,
 };

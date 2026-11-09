@@ -14,19 +14,7 @@
   - System Apple colors only (systemBlue, systemGreen, systemOrange, systemRed)
   - Zero fabricated data: authentic empty state when no servers exist
 -->
-<script lang="ts">
-  import { onMount } from 'svelte';
-  import List from '../components/List.svelte';
-  import Row from '../components/Row.svelte';
-  import Button from '../components/Button.svelte';
-  import SearchField from '../components/SearchField.svelte';
-  import Sheet from '../components/Sheet.svelte';
-  import SegmentedControl from '../components/SegmentedControl.svelte';
-  import Icon from '../components/icons/Icon.svelte';
-  import OfflineState from '../components/OfflineState.svelte';
-  import { network } from '../design/network.svelte';
-  import { t, i18n } from '../i18n';
-
+<script module lang="ts">
   export interface ServerEntry {
     id: string;
     name: string;
@@ -39,17 +27,111 @@
     version?: string | null;
     isPinging?: boolean;
     pingError?: boolean;
+    errorMessage?: string | null;
+    errorReason?: 'offline' | 'invalid_address' | 'no_internet' | null;
+    isFriendServer?: boolean;
+    friendNick?: string;
+    worldName?: string;
+    lobbyCode?: string;
   }
+
+  export interface FriendItem {
+    id: string;
+    nick: string;
+    status: 'online' | 'playing' | 'in_lobby' | 'offline';
+    last_seen?: number | null;
+    game_version?: string | null;
+    world_name?: string | null;
+    lobby_code?: string | null;
+  }
+
+  /**
+   * Categorizes server ping error into clear reasons required by specification:
+   * - offline: «Сервер выключен или недоступен»
+   * - invalid_address: «Неверный адрес сервера»
+   * - no_internet: «Отсутствует подключение к интернету»
+   */
+  export function diagnosePingError(
+    error: any,
+    isOnline = true
+  ): {
+    reason: 'offline' | 'invalid_address' | 'no_internet';
+    message: string;
+  } {
+    if (!isOnline) {
+      return {
+        reason: 'no_internet',
+        message: 'Отсутствует подключение к интернету',
+      };
+    }
+
+    const errStr = (typeof error === 'string' ? error : error?.message || '').toLowerCase();
+
+    // 1. Network / Internet unreachable
+    if (
+      errStr.includes('no_internet') ||
+      errStr.includes('network unreachable') ||
+      errStr.includes('enetunreach') ||
+      errStr.includes('enetdown') ||
+      errStr.includes('нет интернета')
+    ) {
+      return {
+        reason: 'no_internet',
+        message: 'Отсутствует подключение к интернету',
+      };
+    }
+
+    // 2. Invalid address / DNS resolution failure
+    if (
+      errStr.includes('invalid_address') ||
+      errStr.includes('no such host') ||
+      errStr.includes('failed to lookup') ||
+      errStr.includes('dns') ||
+      errStr.includes('not found') ||
+      errStr.includes('addrnotavailable') ||
+      errStr.includes('cannot assign') ||
+      errStr.includes('неверный адрес')
+    ) {
+      return {
+        reason: 'invalid_address',
+        message: 'Неверный адрес сервера',
+      };
+    }
+
+    // 3. Server turned off or connection timed out
+    return {
+      reason: 'offline',
+      message: 'Сервер выключен или недоступен',
+    };
+  }
+</script>
+
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import List from '../components/List.svelte';
+  import Row from '../components/Row.svelte';
+  import Button from '../components/Button.svelte';
+  import SearchField from '../components/SearchField.svelte';
+  import Sheet from '../components/Sheet.svelte';
+  import SegmentedControl from '../components/SegmentedControl.svelte';
+  import Icon from '../components/icons/Icon.svelte';
+  import OfflineState from '../components/OfflineState.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
+  import { network } from '../design/network.svelte';
+  import { t, i18n } from '../i18n';
 
   interface Props {
     selectedVersion?: string;
     playerName?: string;
+    mockFriendServers?: ServerEntry[];
     onlaunch?: (server: ServerEntry) => void;
   }
 
   let {
     selectedVersion = '1.21.1',
     playerName = 'Player',
+    mockFriendServers,
     onlaunch,
   }: Props = $props();
 
@@ -63,8 +145,15 @@
   $effect(() => {
     if (playerName) effectivePlayerName = playerName;
   });
+
+  $effect(() => {
+    if (mockFriendServers) {
+      friendServers = mockFriendServers;
+    }
+  });
   let searchQuery = $state('');
   let isRefreshingAll = $state(false);
+  let isImporting = $state(false);
   let launchingServerId = $state<string | null>(null);
   let launchFeedback = $state<string | null>(null);
 
@@ -82,20 +171,99 @@
   let editError = $state<string | null>(null);
 
   let servers = $state<ServerEntry[]>([]);
+  let friendServers = $state<ServerEntry[]>([]);
 
   const versionOptions = [
     { value: '1.21.1', label: '1.21.1' },
     { value: '1.20.1', label: '1.20.1' },
   ];
 
-  let filteredServers = $derived(
-    servers.filter(
+  // Friend servers are pinned at the very top of the list
+  let filteredServers = $derived.by(() => {
+    const q = searchQuery.toLowerCase();
+    const matchedFriends = friendServers.filter(
       (s) =>
-        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.motd && s.motd.toLowerCase().includes(searchQuery.toLowerCase()))
-    )
-  );
+        s.name.toLowerCase().includes(q) ||
+        s.address.toLowerCase().includes(q) ||
+        (s.motd && s.motd.toLowerCase().includes(q)) ||
+        (s.friendNick && s.friendNick.toLowerCase().includes(q))
+    );
+    const matchedNormal = servers.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.address.toLowerCase().includes(q) ||
+        (s.motd && s.motd.toLowerCase().includes(q))
+    );
+    return [...matchedFriends, ...matchedNormal];
+  });
+
+  async function loadFriendServers() {
+    if (mockFriendServers) {
+      friendServers = mockFriendServers;
+      return;
+    }
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const backendFriends = await invoke<
+        Array<{
+          id: string;
+          friend_nick: string;
+          world_name: string;
+          address: string;
+          lobby_code?: string;
+          game_version?: string;
+        }>
+      >('get_friend_hosted_servers');
+
+      if (backendFriends && backendFriends.length > 0) {
+        friendServers = backendFriends.map((f) => ({
+          id: f.id,
+          name: `Мир: ${f.friend_nick}`,
+          address: f.address,
+          motd: `Хост: ${f.friend_nick} • ${f.world_name}`,
+          version: f.game_version || activeVersion,
+          isFriendServer: true,
+          friendNick: f.friend_nick,
+          lobbyCode: f.lobby_code,
+          worldName: f.world_name,
+        }));
+        return;
+      }
+
+      // Fallback: query social_sync
+      const syncResult = await invoke<{
+        friends?: FriendItem[];
+      }>('social_sync', {});
+
+      if (syncResult && syncResult.friends) {
+        const fromSync: ServerEntry[] = [];
+        for (const f of syncResult.friends) {
+          if ((f.status === 'playing' || f.status === 'in_lobby') && (f.world_name || f.lobby_code)) {
+            const addr = f.lobby_code
+              ? `#${f.lobby_code}`
+              : f.world_name?.includes(':')
+                ? f.world_name
+                : '127.0.0.1:25565';
+            fromSync.push({
+              id: `friend-srv-${f.id}`,
+              name: `Мир: ${f.nick}`,
+              address: addr,
+              motd: `Хост: ${f.nick} • ${f.world_name || 'Кооператив'}`,
+              version: f.game_version || activeVersion,
+              isFriendServer: true,
+              friendNick: f.nick,
+              lobbyCode: f.lobby_code || undefined,
+              worldName: f.world_name || undefined,
+            });
+          }
+        }
+        friendServers = fromSync;
+      }
+    } catch {
+      // In-browser mock fallback
+    }
+  }
 
   async function loadServers(ver: string) {
     try {
@@ -134,9 +302,17 @@
       if (result.favicon) {
         server.icon = result.favicon;
       }
-    } catch {
+      server.errorReason = null;
+      server.errorMessage = null;
+    } catch (e: any) {
+      // No fabricated numbers on error: online and max_players stay null
       server.ping_ms = null;
+      server.online = null;
+      server.max_players = null;
       server.pingError = true;
+      const diag = diagnosePingError(e, network.isOnline);
+      server.errorReason = diag.reason;
+      server.errorMessage = diag.message;
     } finally {
       server.isPinging = false;
     }
@@ -147,6 +323,22 @@
     isRefreshingAll = true;
     await Promise.allSettled(servers.map((s) => pingSingleServer(s)));
     isRefreshingAll = false;
+  }
+
+  async function handleImportBothVersions() {
+    isImporting = true;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const imported = await invoke<ServerEntry[]>('import_servers_both_versions');
+      if (imported && imported.length > 0) {
+        servers = imported;
+        refreshAllServers();
+      }
+    } catch {
+      // Browser preview / mock fallback
+    } finally {
+      isImporting = false;
+    }
   }
 
   async function handleAddServer() {
@@ -240,6 +432,27 @@
       return;
     }
 
+    if (server.lobbyCode) {
+      launchingServerId = server.id;
+      launchFeedback = `Подключение к лобби #${server.lobbyCode}...`;
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('join_lobby_room', {
+          code: server.lobbyCode,
+          playerName: effectivePlayerName,
+        });
+        launchFeedback = `Присоединились к лобби #${server.lobbyCode}`;
+      } catch (e: any) {
+        launchFeedback = typeof e === 'string' ? e : e?.message || 'Ошибка входа в лобби';
+      } finally {
+        setTimeout(() => {
+          launchingServerId = null;
+          launchFeedback = null;
+        }, 4000);
+      }
+      return;
+    }
+
     launchingServerId = server.id;
     launchFeedback = `Запуск Minecraft ${activeVersion} с подключением к ${server.name}...`;
 
@@ -267,10 +480,10 @@
   }
 
   onMount(() => {
-    // Attempt reading configuration to match current active nickname and version
+    // 1. Attempt reading configuration to match current active nickname and version
     import('@tauri-apps/api/core')
       .then(({ invoke }) => {
-        invoke<{ selected_version?: string; player_name?: string }>('get_config')
+        invoke<{ selected_version?: string; player_name?: string }>('get_launcher_settings')
           .then((cfg) => {
             if (cfg?.selected_version) activeVersion = cfg.selected_version;
             if (cfg?.player_name) effectivePlayerName = cfg.player_name;
@@ -283,6 +496,9 @@
       .catch(() => {
         loadServers(activeVersion);
       });
+
+    // 2. Load friend hosted servers
+    loadFriendServers();
   });
 </script>
 
@@ -315,6 +531,17 @@
       </Button>
 
       <Button
+        variant="secondary"
+        size="small"
+        onclick={handleImportBothVersions}
+        loading={isImporting}
+        title="Импортировать серверы из servers.dat 1.20.1 и 1.21.1 без дублей"
+      >
+        <Icon name="folder" size={13} color="var(--color-secondary-label)" />
+        <span>{i18n.locale === 'en' ? 'Import' : 'Импорт'}</span>
+      </Button>
+
+      <Button
         variant="primary"
         size="small"
         onclick={() => {
@@ -342,23 +569,41 @@
   <div class="servers-content">
     {#if !network.isOnline}
       <OfflineState onretry={() => loadServers(activeVersion)} />
+    {:else if isRefreshingAll && filteredServers.length === 0}
+      <List header="Серверы Minecraft • {activeVersion}">
+        <Skeleton variant="row" count={4} />
+      </List>
     {:else if filteredServers.length > 0}
       <List header="Серверы Minecraft • {activeVersion}">
-        {#each filteredServers as s (s.id)}
+        {#each filteredServers as s, idx (s.id)}
           <Row
+            index={idx}
             title={s.name}
-            subtitle="{s.address}{s.version ? ' • ' + s.version : ''}{s.motd ? ' — ' + s.motd : ''}"
+            subtitle={s.pingError && s.errorMessage
+              ? `${s.address} • ${s.errorMessage}`
+              : `${s.address}${s.version ? ' • ' + s.version : ''}${s.motd ? ' — ' + s.motd : ''}`}
             clickable={false}
           >
             {#snippet leading()}
-              <div class="server-avatar">
-                {#if s.icon}
+              <div class="server-avatar" class:friend-avatar={s.isFriendServer}>
+                {#if s.isFriendServer}
+                  <Icon name="friends" size={18} color="var(--color-system-green)" />
+                {:else if s.icon}
                   <img src={s.icon} class="server-icon-img" alt={s.name} />
                 {:else}
                   <Icon name="server" size={18} color="var(--color-system-blue)" />
                 {/if}
               </div>
             {/snippet}
+
+            {#if s.isFriendServer}
+              <div class="pinned-row-tag">
+                <span class="pinned-badge" title="Сервер друга закреплён вверху">
+                  <Icon name="friends" size={11} color="var(--color-system-orange)" />
+                  <span>{i18n.locale === 'en' ? 'Friend Server' : 'Сервер друга'}</span>
+                </span>
+              </div>
+            {/if}
 
             {#snippet trailing()}
               <div class="server-metrics">
@@ -367,6 +612,36 @@
                     <span class="spinner-dot"></span>
                     {i18n.locale === 'en' ? 'Checking…' : 'Пинг...'}
                   </span>
+                {:else if s.pingError}
+                  {#if s.errorReason === 'offline'}
+                    <span class="ping-pill offline" title={s.errorMessage || 'Сервер выключен или недоступен'}>
+                      {i18n.locale === 'en' ? 'Offline' : 'Выключен'}
+                    </span>
+                  {:else if s.errorReason === 'invalid_address'}
+                    <span class="ping-pill error" title={s.errorMessage || 'Неверный адрес сервера'}>
+                      {i18n.locale === 'en' ? 'Bad address' : 'Неверный адрес'}
+                    </span>
+                  {:else if s.errorReason === 'no_internet'}
+                    <span class="ping-pill warning" title={s.errorMessage || 'Отсутствует подключение к интернету'}>
+                      {i18n.locale === 'en' ? 'No internet' : 'Нет сети'}
+                    </span>
+                  {:else}
+                    <span class="ping-pill offline" title="Сервер недоступен">
+                      {i18n.locale === 'en' ? 'Offline' : 'Офлайн'}
+                    </span>
+                  {/if}
+
+                  <!-- Retry Button for Failed Ping -->
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    onclick={() => pingSingleServer(s)}
+                    loading={s.isPinging}
+                    title={i18n.locale === 'en' ? 'Retry pinging server' : 'Повторить проверку сервера'}
+                  >
+                    <Icon name="restore" size={11} color="var(--color-system-blue)" />
+                    <span>{i18n.locale === 'en' ? 'Retry' : 'Повторить'}</span>
+                  </Button>
                 {:else if s.ping_ms !== null && s.ping_ms !== undefined}
                   <span
                     class="ping-pill"
@@ -385,7 +660,7 @@
                     </span>
                   {/if}
                 {:else}
-                  <span class="ping-pill offline" title={i18n.locale === 'en' ? 'Server unavailable' : 'Сервер недоступен'}>
+                  <span class="ping-pill offline" title="Сервер недоступен">
                     {i18n.locale === 'en' ? 'Offline' : 'Офлайн'}
                   </span>
                 {/if}
@@ -402,42 +677,43 @@
                   <span>{i18n.locale === 'en' ? 'Play' : 'Играть'}</span>
                 </Button>
 
-                <!-- Edit Server -->
-                <Button
-                  variant="ghost"
-                  size="small"
-                  onclick={() => openEditSheet(s)}
-                  title="Изменить название или адрес сервера"
-                >
-                  <span>Изменить</span>
-                </Button>
+                {#if !s.isFriendServer}
+                  <!-- Edit Server -->
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    onclick={() => openEditSheet(s)}
+                    title="Изменить название или адрес сервера"
+                  >
+                    <span>Изменить</span>
+                  </Button>
 
-                <!-- Remove Server -->
-                <button
-                  type="button"
-                  class="remove-btn"
-                  onclick={() => handleRemoveServer(s)}
-                  title={t('servers.delete_server')}
-                  aria-label="{t('servers.delete_server')} {s.name}"
-                >
-                  <Icon name="close" size={12} color="var(--color-secondary-label)" />
-                </button>
+                  <!-- Remove Server -->
+                  <button
+                    type="button"
+                    class="remove-btn"
+                    onclick={() => handleRemoveServer(s)}
+                    title={t('servers.delete_server')}
+                    aria-label="{t('servers.delete_server')} {s.name}"
+                  >
+                    <Icon name="close" size={12} color="var(--color-secondary-label)" />
+                  </button>
+                {/if}
               </div>
             {/snippet}
           </Row>
         {/each}
       </List>
     {:else}
-      <!-- Authentic empty state without fabricated mock data -->
-      <div class="empty-state-card">
-        <Icon name="server" size={44} color="var(--color-tertiary-label)" />
-        <h2 class="empty-title">{t('servers.empty_title')}</h2>
-        <p class="empty-desc">
-          {searchQuery
-            ? t('servers.empty_search', { query: searchQuery })
-            : t('servers.empty_default')}
-        </p>
-      </div>
+      <EmptyState
+        icon="server"
+        title={t('servers.empty_title')}
+        description={searchQuery
+          ? t('servers.empty_search', { query: searchQuery })
+          : t('servers.empty_default')}
+        actionText={searchQuery ? undefined : t('servers.add_server')}
+        onaction={searchQuery ? undefined : () => (addSheetOpen = true)}
+      />
     {/if}
   </div>
 </div>
@@ -584,6 +860,26 @@
     flex-shrink: 0;
   }
 
+  .server-avatar.friend-avatar {
+    background-color: rgba(48, 209, 88, 0.18);
+  }
+
+  .pinned-row-tag {
+    margin-top: 4px;
+  }
+
+  .pinned-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    background-color: rgba(255, 159, 10, 0.15);
+    color: var(--color-system-orange);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-caption2);
+    font-weight: 600;
+  }
+
   .server-icon-img {
     width: 100%;
     height: 100%;
@@ -631,7 +927,21 @@
     background-color: rgba(255, 69, 58, 0.12);
   }
 
-  .ping-pill.offline,
+  .ping-pill.offline {
+    color: var(--color-system-red);
+    background-color: rgba(255, 69, 58, 0.12);
+  }
+
+  .ping-pill.error {
+    color: var(--color-system-red);
+    background-color: rgba(255, 69, 58, 0.16);
+  }
+
+  .ping-pill.warning {
+    color: var(--color-system-orange);
+    background-color: rgba(255, 159, 10, 0.16);
+  }
+
   .ping-pill.loading {
     color: var(--color-tertiary-label);
   }
@@ -680,34 +990,6 @@
 
   .remove-btn:hover :global(svg) {
     stroke: var(--color-system-red);
-  }
-
-  .empty-state-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 64px 24px;
-    gap: 12px;
-    text-align: center;
-    background-color: var(--card-bg);
-    border: 1px dashed var(--glass-border);
-    border-radius: var(--radius-lg);
-  }
-
-  .empty-title {
-    font-size: var(--text-headline);
-    font-weight: 600;
-    color: var(--color-label);
-    margin: 0;
-  }
-
-  .empty-desc {
-    font-size: var(--text-subheadline);
-    color: var(--color-secondary-label);
-    max-width: 380px;
-    line-height: 1.4;
-    margin: 0;
   }
 
   .sheet-form {

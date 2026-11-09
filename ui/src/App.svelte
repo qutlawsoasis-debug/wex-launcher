@@ -26,21 +26,105 @@
   import WorkshopScreen from './lib/screens/WorkshopScreen.svelte';
   import SettingsScreen from './lib/screens/SettingsScreen.svelte';
   import ShowcaseScreen from './lib/screens/ShowcaseScreen.svelte';
+  import SplashScreen from './lib/screens/SplashScreen.svelte';
   import CrashSheet from './lib/components/CrashSheet.svelte';
   import MusicDiskWidget from './lib/components/MusicDiskWidget.svelte';
+  import OnboardingModal from './lib/components/OnboardingModal.svelte';
+  import DeepLinkConfirmationModal, { type DeepLinkAction } from './lib/components/DeepLinkConfirmationModal.svelte';
   import type { CrashDiagnosisDto } from './lib/ipc/generated/models';
   import { initIdleManager, setGameRunning, createIdleInterval } from './lib/design/idleManager';
   import { friendsLive, parseWexJoinUri } from './lib/services/friendsLive';
+
+  // Startup splash state
+  let isStartingUp = $state(true);
 
   // Navigation state
   let activeTab = $state('play');
   let friendsSubtab = $state<'friends' | 'requests' | 'achievements'>('friends');
   let workshopSubtab = $state<'worlds' | 'resourcepacks' | 'shaders' | 'screenshots'>('worlds');
   let isMaximized = $state(false);
+  let initialLobbyRoom = $state<any>(null);
 
   // Crash report modal state
   let crashSheetOpen = $state(false);
   let currentCrashDiagnosis = $state<CrashDiagnosisDto | null>(null);
+
+  // Deep link modal state (Apple HIG Alert / SPEC 2.11)
+  let deepLinkModalOpen = $state(false);
+  let pendingDeepLink = $state<DeepLinkAction | null>(null);
+
+  function parseClientDeepLink(uri: string): DeepLinkAction {
+    try {
+      const url = new URL(uri.replace(/^wex:\/\//, 'https://wex/'));
+      const path = url.pathname.replace(/^\//, '');
+      const code = url.searchParams.get('code') || '';
+      const address = url.searchParams.get('address') || '';
+
+      if (path.includes('join') || path.includes('lobby') || code) {
+        return {
+          kind: 'join',
+          title: `Вход в лобби ${code ? '#' + code : ''}`,
+          subtitle: 'Игрок приглашает вас присоединиться к общему миру Minecraft.',
+          target: code ? `#${code}` : 'Комната',
+          raw_uri: uri,
+          confirm_text: 'Присоединиться',
+        };
+      } else if (path.includes('server') || address) {
+        return {
+          kind: 'server',
+          title: 'Подключение к серверу',
+          subtitle: 'Добавить сервер в список избранных и запустить игру.',
+          target: address || 'Сервер',
+          raw_uri: uri,
+          confirm_text: 'Подключиться',
+        };
+      }
+    } catch {}
+    return {
+      kind: 'custom',
+      title: 'Ссылка wex://',
+      subtitle: 'Лаунчер получил запрос на выполнение внешнего действия.',
+      target: uri,
+      raw_uri: uri,
+      confirm_text: 'Продолжить',
+    };
+  }
+
+  async function handleRawDeepLink(uri: string) {
+    try {
+      if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const parsed = await invoke<any>('parse_deep_link_uri', { uri });
+        if (parsed) {
+          pendingDeepLink = parsed;
+          deepLinkModalOpen = true;
+          return;
+        }
+      }
+    } catch {}
+    pendingDeepLink = parseClientDeepLink(uri);
+    deepLinkModalOpen = true;
+  }
+
+  async function handleConfirmDeepLink(action: DeepLinkAction) {
+    deepLinkModalOpen = false;
+    if (action.kind === 'join') {
+      activeTab = 'lobby';
+      addToast('info', 'Подключение к лобби', `Код: ${action.target}`);
+    } else if (action.kind === 'server') {
+      activeTab = 'play';
+      addToast('info', 'Подключение к серверу', action.target);
+    } else if (action.kind === 'friend') {
+      activeTab = 'friends';
+      friendsSubtab = 'requests';
+      addToast('info', 'Запрос в друзья', `Отправка запроса: ${action.target}`);
+    }
+  }
+
+  function handleCancelDeepLink() {
+    deepLinkModalOpen = false;
+    pendingDeepLink = null;
+  }
 
   $effect(() => {
     if (typeof window !== 'undefined') {
@@ -81,6 +165,7 @@
   let progressSpeed = $state('');
   let launchError = $state<unknown>(null);
   let showImportWizard = $state(false);
+  let showOnboarding = $state(false);
 
   $effect(() => {
     motionState.setGameRunning(isGameRunning);
@@ -344,14 +429,20 @@
       const screen = params.get('screen') || params.get('tab');
       const t = params.get('theme');
 
-      if (screen && ['play', 'servers', 'lobby', 'friends', 'workshop', 'mods', 'settings', 'showcase'].includes(screen)) {
+      if (screen === 'splash') {
+        isStartingUp = true;
+      } else if (screen && ['play', 'servers', 'lobby', 'friends', 'workshop', 'mods', 'settings', 'showcase'].includes(screen)) {
         activeTab = screen;
+        isStartingUp = false;
       }
       if (screen === 'import' || params.get('import') === 'true') {
         activeTab = 'play';
         showImportWizard = true;
       } else {
         showImportWizard = false;
+      }
+      if (screen === 'onboarding' || params.get('onboarding') === 'true') {
+        showOnboarding = true;
       }
       if (t === 'light' || t === 'dark') {
         theme.setAppearance(t);
@@ -422,12 +513,30 @@
         };
         crashSheetOpen = true;
       }
+      // Hash deeplink triggers for tests, protocol launches, and previews
+      const deeplinkParam = params.get('deeplink') || params.get('uri');
+      if (deeplinkParam) {
+        handleRawDeepLink(deeplinkParam);
+      }
+
       // Support wex://join and #join=ROOM123 deep links
       const joinCode = parseWexJoinUri(window.location.hash) || parseWexJoinUri(window.location.search);
       if (joinCode) {
         activeTab = 'lobby';
         void friendsLive.handleJoin(joinCode);
       }
+    }
+
+    // Check first-launch onboarding state
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('wex_onboarding_completed') !== 'true') {
+      showOnboarding = true;
+    }
+
+    function handleShowOnboardingEvent() {
+      showOnboarding = true;
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('wex-show-onboarding', handleShowOnboardingEvent);
     }
 
     applyHashRoute();
@@ -577,6 +686,7 @@
       window.removeEventListener('hashchange', applyHashRoute);
       if (typeof window !== 'undefined') {
         window.removeEventListener('online', checkNetwork);
+        window.removeEventListener('wex-show-onboarding', handleShowOnboardingEvent);
       }
       cleanupNet();
       unlistenLiveNotifs();
@@ -597,7 +707,7 @@
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
-<div class="wex-shell" data-theme={theme.isDark ? 'dark' : 'light'}>
+<div class="wex-shell" class:game-active={isGameRunning} data-theme={theme.isDark ? 'dark' : 'light'}>
   <!-- Real Game Scenery Backdrop under entire app shell -->
   <div class="scenery-canvas" style="background-image: url('{bgImage}');">
     <div class="scenery-vignette"></div>
@@ -681,19 +791,28 @@
               }}
             />
           {:else if activeTab === 'servers'}
-            <ServersScreen />
+            <ServersScreen {selectedVersion} {playerName} />
           {:else if activeTab === 'lobby'}
-            <LobbyScreen />
+            <LobbyScreen {playerName} initialRoom={initialLobbyRoom} />
           {:else if activeTab === 'friends'}
             <FriendsScreen tab={friendsSubtab} />
           {:else if activeTab === 'wardrobe'}
             <WardrobeScreen {playerName} ontoast={addToast} />
           {:else if activeTab === 'workshop'}
-            <WorkshopScreen {selectedVersion} initialTab={workshopSubtab} ontoast={addToast} />
+            <WorkshopScreen
+              {selectedVersion}
+              initialTab={workshopSubtab}
+              ontoast={addToast}
+              {playerName}
+              onopenlobby={(room) => {
+                initialLobbyRoom = room;
+                activeTab = 'lobby';
+              }}
+            />
           {:else if activeTab === 'mods'}
             <ModsScreen />
           {:else if activeTab === 'settings'}
-            <SettingsScreen />
+            <SettingsScreen onopenonboarding={() => { showOnboarding = true; }} />
           {:else if activeTab === 'showcase'}
             <ShowcaseScreen />
           {/if}
@@ -711,6 +830,15 @@
     </div>
   {/if}
 
+  <!-- Startup Splash Screen per SPEC 1.1 -->
+  {#if isStartingUp}
+    <SplashScreen
+      oncomplete={() => {
+        isStartingUp = false;
+      }}
+    />
+  {/if}
+
   <!-- Game Crash Diagnosis Sheet (SPEC 2.10) -->
   <CrashSheet
     bind:open={crashSheetOpen}
@@ -720,6 +848,28 @@
       activeTab = tab;
     }}
     ontoast={addToast}
+  />
+
+  <!-- First Launch Onboarding Modal (SPEC 1.1 / Apple HIG) -->
+  <OnboardingModal
+    bind:open={showOnboarding}
+    oncomplete={(data) => {
+      playerName = data.nickname;
+      selectedVersion = data.version;
+      loadProfile();
+      addToast('success', 'Настройка завершена', `Добро пожаловать в Wex, ${data.nickname}!`);
+      if (data.launchImmediately) {
+        handleLaunch();
+      }
+    }}
+  />
+
+  <!-- Deep Link Confirmation Modal (wex://) -->
+  <DeepLinkConfirmationModal
+    bind:open={deepLinkModalOpen}
+    action={pendingDeepLink}
+    onconfirm={handleConfirmDeepLink}
+    oncancel={handleCancelDeepLink}
   />
 </div>
 
@@ -808,5 +958,18 @@
     gap: 10px;
     z-index: 2000;
     pointer-events: auto;
+  }
+
+  /* Weak PC / Active Game Optimization: pause animations and disable backdrop filters to reduce CPU/GPU load to 0% */
+  :global(.wex-shell.game-active *),
+  :global(.wex-shell.game-active) {
+    animation-play-state: paused !important;
+  }
+
+  :global(.wex-shell.game-active) [class*="glass"],
+  :global(.wex-shell.game-active) .scenery-canvas,
+  :global(.wex-shell.game-active) {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
 </style>

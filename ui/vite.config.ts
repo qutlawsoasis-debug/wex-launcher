@@ -13,8 +13,14 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
   },
+  build: {
+    rollupOptions: {
+      external: ['@tauri-apps/plugin-notification'],
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,
+    include: ['src/**/*.{test,spec}.{js,ts}'],
   },
 })

@@ -114,12 +114,17 @@
     border: 1px solid var(--glass-border);
     user-select: none;
     width: 100%;
-    max-width: 480px;
+    max-width: 640px;
   }
 
   .apple-segmented-control.small {
     height: 28px;
     border-radius: var(--radius-xs);
+  }
+
+  .apple-segmented-control.small .segment-button {
+    font-size: var(--text-caption1);
+    padding: 0 6px;
   }
 
   .apple-segmented-control.regular {

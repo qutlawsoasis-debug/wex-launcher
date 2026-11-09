@@ -16,6 +16,8 @@
   import { onMount, onDestroy } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import Button from './Button.svelte';
+  import Skeleton from './Skeleton.svelte';
+  import { theme } from '../design/theme.svelte';
   import { COMMANDS } from '../ipc/generated/commands';
   import type {
     MusicTrackDto,
@@ -50,6 +52,67 @@
   let fadeInterval: ReturnType<typeof setInterval> | null = null;
   let commandPollInterval: ReturnType<typeof setInterval> | null = null;
   let prevIsGameRunning = false;
+
+  // Turntable Vinyl Record Inertia Physics
+  let vinylAngle = $state(0);
+  let angularVelocity = 0; // deg/ms
+  const NOMINAL_VELOCITY = 360 / 3000; // 0.12 deg/ms (33.3 RPM)
+  const ACCELERATION_RATE = 0.003;
+  const FRICTION_DECAY = 0.965;
+  let animFrameId: number | null = null;
+  let lastTimestamp = 0;
+  let isCoasting = $state(false);
+
+  function updateVinylPhysics(timestamp: number) {
+    if (!lastTimestamp) lastTimestamp = timestamp;
+    const dt = Math.min(timestamp - lastTimestamp, 64);
+    lastTimestamp = timestamp;
+
+    if (theme.reduceMotion) {
+      angularVelocity = 0;
+      isCoasting = false;
+      animFrameId = null;
+      return;
+    }
+
+    if (isPlaying) {
+      angularVelocity += (NOMINAL_VELOCITY - angularVelocity) * (1 - Math.pow(1 - ACCELERATION_RATE, dt));
+      vinylAngle = (vinylAngle + angularVelocity * dt) % 360;
+      isCoasting = false;
+      animFrameId = requestAnimationFrame(updateVinylPhysics);
+    } else {
+      if (angularVelocity > 0.0008) {
+        isCoasting = true;
+        const frameFactor = Math.pow(FRICTION_DECAY, dt / 16.6);
+        angularVelocity *= frameFactor;
+        vinylAngle = (vinylAngle + angularVelocity * dt) % 360;
+        animFrameId = requestAnimationFrame(updateVinylPhysics);
+      } else {
+        angularVelocity = 0;
+        isCoasting = false;
+        animFrameId = null;
+      }
+    }
+  }
+
+  $effect(() => {
+    if (isPlaying) {
+      lastTimestamp = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      if (!animFrameId && typeof requestAnimationFrame !== 'undefined') {
+        animFrameId = requestAnimationFrame(updateVinylPhysics);
+      }
+    } else if (angularVelocity > 0.0008 && !animFrameId && typeof requestAnimationFrame !== 'undefined') {
+      lastTimestamp = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      animFrameId = requestAnimationFrame(updateVinylPhysics);
+    }
+  });
+
+  onDestroy(() => {
+    if (animFrameId && typeof cancelAnimationFrame !== 'undefined') {
+      cancelAnimationFrame(animFrameId);
+      animFrameId = null;
+    }
+  });
 
   $effect(() => {
     if (initialTracks !== undefined) {
@@ -597,7 +660,12 @@
     <div class="active-widget">
       <!-- Turntable Vinyl Graphic -->
       <div class="turntable-container">
-        <div class="vinyl-platter" class:spinning={isPlaying} aria-hidden="true">
+        <div
+          class="vinyl-platter"
+          class:spinning={isPlaying || isCoasting}
+          style={theme.reduceMotion ? '' : `transform: rotate(${vinylAngle.toFixed(2)}deg);`}
+          aria-hidden="true"
+        >
           <div class="vinyl-disc">
             <div class="vinyl-groove groove-1"></div>
             <div class="vinyl-groove groove-2"></div>
@@ -621,7 +689,7 @@
         </div>
 
         <!-- Animated Tonearm -->
-        <div class="tonearm" class:on-record={isPlaying} aria-hidden="true">
+        <div class="tonearm" class:on-record={isPlaying || isCoasting} aria-hidden="true">
           <div class="tonearm-pivot"></div>
           <div class="tonearm-stick"></div>
           <div class="tonearm-head"></div>
@@ -632,12 +700,19 @@
       <div class="player-content">
         <div class="meta-row">
           <div class="meta-text">
-            <span class="track-title" title={currentTrack?.title || ''}>
-              {currentTrack?.title || '—'}
-            </span>
-            <span class="track-artist" title={currentTrack?.artist || ''}>
-              {currentTrack?.artist || '—'}
-            </span>
+            {#if isLoadingTrack && !currentTrack}
+              <div class="skeleton-track-meta">
+                <Skeleton variant="text" width="100px" height="12px" />
+                <Skeleton variant="text" width="60px" height="9px" />
+              </div>
+            {:else}
+              <span class="track-title" title={currentTrack?.title || ''}>
+                {currentTrack?.title || '—'}
+              </span>
+              <span class="track-artist" title={currentTrack?.artist || ''}>
+                {currentTrack?.artist || '—'}
+              </span>
+            {/if}
           </div>
           <button
             type="button"
@@ -810,21 +885,14 @@
     align-items: center;
     justify-content: center;
     position: relative;
+    will-change: transform;
   }
 
-  @media (prefers-reduced-motion: no-preference) {
-    .vinyl-platter.spinning {
-      animation: spin-vinyl 4s linear infinite;
-    }
-  }
-
-  @keyframes spin-vinyl {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
+  .skeleton-track-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 2px 0;
   }
 
   .vinyl-disc {

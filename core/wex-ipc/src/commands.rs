@@ -624,6 +624,14 @@ pub struct MusicSettingsDto {
     pub auto_pause_on_launch: bool,
 }
 
+// ============================================================================
+// Onboarding Commands
+// ============================================================================
+
+pub const CMD_ONBOARDING_GET_SPECS: &str = "onboarding_get_specs";
+pub const CMD_ONBOARDING_COMPLETE: &str = "onboarding_complete";
+pub const CMD_ONBOARDING_PREWARM_GAME: &str = "onboarding_prewarm_game";
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct MusicSmtcStateDto {
     pub is_playing: bool,

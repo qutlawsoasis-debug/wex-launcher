@@ -238,6 +238,22 @@ pub fn build_launch_args(opts: &LaunchOptions) -> Vec<String> {
         args.push(arg.clone());
     }
 
+    // SPEC 2.8: Tuned GC profile defaults if none explicitly specified
+    let has_explicit_gc = opts
+        .config
+        .jvm_args
+        .iter()
+        .chain(opts.extra_jvm_args.iter())
+        .any(|a| a.starts_with("-XX:+Use") && (a.contains("GC") || a.contains("ZGC")));
+
+    if !has_explicit_gc {
+        for flag in crate::jvm_args::GcProfile::G1Tuned.to_jvm_flags(21) {
+            if !args.contains(&flag) {
+                args.push(flag);
+            }
+        }
+    }
+
     if let Some(signal) = opts.prewarm_signal {
         args.push(format!("-Dwex.prewarm.signal={}", signal.display()));
         if let Some(parent_pid) = opts.prewarm_parent_pid {
@@ -373,6 +389,19 @@ pub async fn launch_game_process(
     events.on_event(&Event::GameLaunched { pid });
 
     #[cfg(windows)]
+    if let Some(raw_handle) = child.raw_handle() {
+        let _ = crate::jvm_args::apply_process_handle_priority(
+            raw_handle,
+            crate::jvm_args::ProcessPriority::AboveNormal,
+        );
+    } else {
+        let _ = crate::jvm_args::apply_process_priority(
+            pid,
+            crate::jvm_args::ProcessPriority::AboveNormal,
+        );
+    }
+
+    #[cfg(windows)]
     let job_object = match WindowsJobObject::new() {
         Ok(job) => {
             if let Some(raw_handle) = child.raw_handle() {
@@ -387,6 +416,46 @@ pub async fn launch_game_process(
             None
         }
     };
+
+    #[cfg(windows)]
+    if let Some(raw_handle) = child.raw_handle() {
+        unsafe {
+            use windows_sys::Win32::System::Threading::{
+                SetPriorityClass, SetProcessAffinityMask, ABOVE_NORMAL_PRIORITY_CLASS,
+            };
+
+            let affinity_mask: Option<usize> = if let Ok(val) = std::env::var("WEX_CPU_AFFINITY") {
+                if let Ok(cores) = val.parse::<u32>() {
+                    if cores > 0 && cores <= 64 {
+                        Some((1usize << cores) - 1)
+                    } else {
+                        None
+                    }
+                } else if val.starts_with("0x") || val.starts_with("0X") {
+                    usize::from_str_radix(val.trim_start_matches("0x").trim_start_matches("0X"), 16)
+                        .ok()
+                } else {
+                    None
+                }
+            } else if crate::config::is_weak_hardware() {
+                Some(0x3) // 2 CPU cores (mask 0x3)
+            } else {
+                None
+            };
+
+            if let Some(mask) = affinity_mask {
+                let ok = SetProcessAffinityMask(raw_handle as _, mask);
+                if ok != 0 {
+                    events.on_event(&Event::Log {
+                        level: LogLevel::Info,
+                        message: format!("Game process affinity pinned to mask 0x{:X}", mask),
+                    });
+                }
+            }
+
+            let _ = SetPriorityClass(raw_handle as _, ABOVE_NORMAL_PRIORITY_CLASS);
+        }
+    }
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -916,6 +985,45 @@ pub async fn prepare_and_launch_with_options(
     launch_game_process(launch_opts, events).await
 }
 
+#[cfg(windows)]
+pub fn set_current_process_priority_low() {
+    unsafe {
+        use windows_sys::Win32::System::Threading::{
+            GetCurrentProcess, SetPriorityClass, BELOW_NORMAL_PRIORITY_CLASS,
+        };
+        SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
+    }
+}
+
+#[cfg(not(windows))]
+pub fn set_current_process_priority_low() {}
+
+#[cfg(windows)]
+pub fn set_current_process_priority_normal() {
+    unsafe {
+        use windows_sys::Win32::System::Threading::{
+            GetCurrentProcess, SetPriorityClass, NORMAL_PRIORITY_CLASS,
+        };
+        SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS);
+    }
+}
+
+#[cfg(not(windows))]
+pub fn set_current_process_priority_normal() {}
+
+#[cfg(windows)]
+pub fn apply_current_process_affinity(mask: usize) -> bool {
+    unsafe {
+        use windows_sys::Win32::System::Threading::{GetCurrentProcess, SetProcessAffinityMask};
+        SetProcessAffinityMask(GetCurrentProcess(), mask) != 0
+    }
+}
+
+#[cfg(not(windows))]
+pub fn apply_current_process_affinity(_mask: usize) -> bool {
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1291,6 +1399,43 @@ mod tests {
     }
 
     #[test]
+    fn test_tuned_gc_arguments_default_injection() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let config = LauncherConfig::default();
+
+        let java_bin = PathBuf::from("java.exe");
+        let client_jar = PathBuf::from("client.jar");
+        let vanilla_libs = Vec::new();
+        let fabric_libs = Vec::new();
+
+        let launch_opts = LaunchOptions {
+            paths: &paths,
+            config: &config,
+            version: "1.20.1",
+            java_binary: &java_bin,
+            client_jar: &client_jar,
+            vanilla_libraries: &vanilla_libs,
+            fabric_libraries: &fabric_libs,
+            asset_index_id: "5",
+            extra_jvm_args: &[],
+            quick_play_multiplayer: None,
+            prewarm_signal: None,
+            prewarm_parent_pid: None,
+        };
+
+        let args = build_launch_args(&launch_opts);
+        assert!(
+            args.iter().any(|a| a == "-XX:+UseG1GC"),
+            "Default launch args must contain G1 GC"
+        );
+        assert!(
+            args.iter().any(|a| a == "-XX:MaxGCPauseMillis=20"),
+            "Default launch args must contain tuned MaxGCPauseMillis=20"
+        );
+    }
+
+    #[test]
     fn test_fast_path_state_lifecycle() {
         let tmp = tempdir().unwrap();
         let paths = WexPaths::new(Some(tmp.path().join("Wex")));
@@ -1347,5 +1492,209 @@ mod tests {
         assert_eq!(asset_idx, "17");
         assert!(v_libs.is_empty());
         assert!(f_libs.is_empty());
+    }
+
+    #[test]
+    fn test_launch_args_memory_scaling_both_versions() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let java_bin = PathBuf::from("java.exe");
+        let client_jar = PathBuf::from("client.jar");
+        let vanilla_libs = Vec::new();
+        let fabric_libs = Vec::new();
+
+        for version in &["1.20.1", "1.21.1"] {
+            // Test 2048M (Weak PC), 3072M (3GB), 4096M (4GB), 6144M (6GB), 8192M (8GB)
+            for ram_mb in &[2048, 3072, 4096, 6144, 8192] {
+                let config = LauncherConfig {
+                    max_memory_mb: *ram_mb,
+                    ..Default::default()
+                };
+
+                let launch_opts = LaunchOptions {
+                    paths: &paths,
+                    config: &config,
+                    version,
+                    java_binary: &java_bin,
+                    client_jar: &client_jar,
+                    vanilla_libraries: &vanilla_libs,
+                    fabric_libraries: &fabric_libs,
+                    asset_index_id: "5",
+                    extra_jvm_args: &[],
+                    quick_play_multiplayer: None,
+                    prewarm_signal: None,
+                    prewarm_parent_pid: None,
+                };
+
+                let args = build_launch_args(&launch_opts);
+                let expected_xmx = format!("-Xmx{}M", ram_mb);
+                assert!(
+                    args.contains(&expected_xmx),
+                    "Version {} must contain {} for memory {}",
+                    version,
+                    expected_xmx,
+                    ram_mb
+                );
+            }
+        }
+
+        // SPEC 2.8: Optimal RAM heuristic for weak PC (<= 4096 MB physical RAM)
+        let weak_pc_ram = crate::jvm_args::calculate_optimal_ram_mb(4096, false);
+        assert_eq!(
+            weak_pc_ram, 2048,
+            "Weak PC with 4GB RAM must be allocated 2048MB"
+        );
+    }
+
+    #[test]
+    fn test_launch_args_quickplay_only_when_server_specified_both_versions() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let config = LauncherConfig::default();
+        let java_bin = PathBuf::from("java.exe");
+        let client_jar = PathBuf::from("client.jar");
+        let vanilla_libs = Vec::new();
+        let fabric_libs = Vec::new();
+
+        for version in &["1.20.1", "1.21.1"] {
+            // Case 1: Singleplayer launch (quick_play_multiplayer is None)
+            let singleplayer_opts = LaunchOptions {
+                paths: &paths,
+                config: &config,
+                version,
+                java_binary: &java_bin,
+                client_jar: &client_jar,
+                vanilla_libraries: &vanilla_libs,
+                fabric_libraries: &fabric_libs,
+                asset_index_id: "5",
+                extra_jvm_args: &[],
+                quick_play_multiplayer: None,
+                prewarm_signal: None,
+                prewarm_parent_pid: None,
+            };
+            let sp_args = build_launch_args(&singleplayer_opts);
+            assert!(
+                !sp_args.iter().any(|a| a == "--quickPlayMultiplayer"),
+                "Singleplayer on {} must NOT include --quickPlayMultiplayer",
+                version
+            );
+
+            // Case 2: Server join (quick_play_multiplayer is Some)
+            let server_addr = "mc.aura.local:25565";
+            let mp_opts = LaunchOptions {
+                paths: &paths,
+                config: &config,
+                version,
+                java_binary: &java_bin,
+                client_jar: &client_jar,
+                vanilla_libraries: &vanilla_libs,
+                fabric_libraries: &fabric_libs,
+                asset_index_id: "5",
+                extra_jvm_args: &[],
+                quick_play_multiplayer: Some(server_addr),
+                prewarm_signal: None,
+                prewarm_parent_pid: None,
+            };
+            let mp_args = build_launch_args(&mp_opts);
+            let qp_idx = mp_args.iter().position(|a| a == "--quickPlayMultiplayer");
+            assert!(
+                qp_idx.is_some(),
+                "Server launch on {} must include --quickPlayMultiplayer",
+                version
+            );
+            assert_eq!(
+                mp_args[qp_idx.unwrap() + 1],
+                server_addr,
+                "Argument after --quickPlayMultiplayer must be server address"
+            );
+        }
+    }
+
+    #[test]
+    fn test_launch_args_qa_background_only_in_test_mode() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let config = LauncherConfig::default();
+        let java_bin = PathBuf::from("java.exe");
+        let client_jar = PathBuf::from("client.jar");
+        let vanilla_libs = Vec::new();
+        let fabric_libs = Vec::new();
+
+        // 1. Normal user mode (no env var, no extra args)
+        std::env::remove_var("WEX_QA_BACKGROUND");
+        let normal_opts = LaunchOptions {
+            paths: &paths,
+            config: &config,
+            version: "1.20.1",
+            java_binary: &java_bin,
+            client_jar: &client_jar,
+            vanilla_libraries: &vanilla_libs,
+            fabric_libraries: &fabric_libs,
+            asset_index_id: "5",
+            extra_jvm_args: &[],
+            quick_play_multiplayer: None,
+            prewarm_signal: None,
+            prewarm_parent_pid: None,
+        };
+        let normal_args = build_launch_args(&normal_opts);
+        assert!(
+            !normal_args.iter().any(|a| a.contains("wex.qa.background")),
+            "Normal user launch must NOT contain -Dwex.qa.background"
+        );
+        assert!(
+            !normal_args
+                .iter()
+                .any(|a| a.contains("aura.client.hiddenWindow")),
+            "Normal user launch must NOT contain -Daura.client.hiddenWindow"
+        );
+
+        // 2. Test mode via environment variable
+        std::env::set_var("WEX_QA_BACKGROUND", "1");
+        let qa_args = build_launch_args(&normal_opts);
+        std::env::remove_var("WEX_QA_BACKGROUND");
+        assert!(
+            qa_args.iter().any(|a| a == "-Dwex.qa.background=true"),
+            "Test mode must include -Dwex.qa.background=true"
+        );
+        assert!(
+            qa_args
+                .iter()
+                .any(|a| a == "-Daura.client.hiddenWindow=true"),
+            "Test mode must include -Daura.client.hiddenWindow=true"
+        );
+    }
+
+    #[test]
+    fn test_launch_args_prewarm_toggle_behavior() {
+        let mut cfg = LauncherConfig::default();
+        assert!(
+            !cfg.fast_start_jvm,
+            "fast_start_jvm must default to false for standard users"
+        );
+        cfg.fast_start_jvm = true;
+        assert!(cfg.fast_start_jvm, "fast_start_jvm toggle must be enabled");
+    }
+
+    #[test]
+    fn test_process_priority_elevation_windows_only() {
+        let priority = crate::jvm_args::ProcessPriority::AboveNormal;
+        assert_eq!(
+            priority,
+            crate::jvm_args::ProcessPriority::parse_from_str("above_normal")
+        );
+
+        #[cfg(windows)]
+        {
+            use windows_sys::Win32::System::Threading::ABOVE_NORMAL_PRIORITY_CLASS;
+            assert_eq!(
+                priority.to_windows_class(),
+                ABOVE_NORMAL_PRIORITY_CLASS,
+                "Priority AboveNormal must map to Win32 ABOVE_NORMAL_PRIORITY_CLASS"
+            );
+        }
+
+        // Invalid PID 0 must safely return false without crashing or raising errors
+        let res = crate::jvm_args::apply_process_priority(0, priority);
+        assert!(!res, "PID 0 must safely return false");
     }
 }

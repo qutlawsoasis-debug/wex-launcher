@@ -164,10 +164,10 @@ export const ru = {
 
   // Screen: Mods
   'mods.search_placeholder': 'Поиск по названию или ID мода...',
-  'mods.tab_all': 'Все моды',
-  'mods.tab_enabled': 'Включённые',
+  'mods.tab_all': 'Все',
+  'mods.tab_enabled': 'Вкл.',
   'mods.tab_pack': 'Пак Wex',
-  'mods.tab_custom': 'Пользовательские',
+  'mods.tab_custom': 'Свои',
   'mods.open_folder': 'Папка с модами',
   'mods.add_mod': 'Добавить мод...',
   'mods.pack_badge': 'Пак Wex',

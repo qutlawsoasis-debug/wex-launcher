@@ -9,6 +9,7 @@ import List from './List.svelte';
 import SearchField from './SearchField.svelte';
 import ProgressBar from './ProgressBar.svelte';
 import Toast from './Toast.svelte';
+import Logo from './Logo.svelte';
 import ProfileBadge from './ProfileBadge.svelte';
 import Sheet from './Sheet.svelte';
 import Popover from './Popover.svelte';
@@ -250,6 +251,22 @@ describe('Apple HIG Svelte 5 Components', () => {
     expect(dismissBtn).not.toBeNull();
     dismissBtn.click();
     expect(dismissedId).toBe('test-toast');
+    unmount(comp);
+  });
+
+  it('renders Logo wordmark with sizes and subtitle', () => {
+    const comp = mount(Logo, {
+      target,
+      props: {
+        size: 'large',
+        showSubtitle: true,
+        subtitle: 'Minecraft Launcher',
+      },
+    });
+
+    expect(target.textContent).toContain('Wex');
+    expect(target.textContent).toContain('Minecraft Launcher');
+    expect(target.querySelector('.wex-brand.large')).not.toBeNull();
     unmount(comp);
   });
 
@@ -506,5 +523,33 @@ describe('Apple HIG Svelte 5 Components', () => {
     btn.click();
     expect(rowClicked).toBe(true);
     unmount(comp);
+  });
+
+  it('applies staggered cascade-in animation delay capped at 8 items', () => {
+    const comp = mount(Row, {
+      target,
+      props: {
+        title: 'Cascade Row 3',
+        index: 3,
+      },
+    });
+
+    const row = target.querySelector('.apple-row') as HTMLElement;
+    expect(row.classList.contains('cascade-in')).toBe(true);
+    // 3 * 25ms = 75ms
+    expect(row.style.getPropertyValue('--cascade-delay')).toBe('75ms');
+    unmount(comp);
+
+    // Capped at index 7 (item index 12 capped at 7 * 25ms = 175ms)
+    const compCapped = mount(Row, {
+      target,
+      props: {
+        title: 'Cascade Row 12',
+        index: 12,
+      },
+    });
+    const rowCapped = target.querySelector('.apple-row') as HTMLElement;
+    expect(rowCapped.style.getPropertyValue('--cascade-delay')).toBe('175ms');
+    unmount(compCapped);
   });
 });

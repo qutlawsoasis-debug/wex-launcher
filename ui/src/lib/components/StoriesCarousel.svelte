@@ -86,11 +86,20 @@
   let isPaused = $state(false);
   let copyFeedback = $state(false);
 
-  // Swipe / Drag gesture state
-  let isDragging = false;
+  // Swipe / Drag gesture state with velocity & momentum
+  let isDragging = $state(false);
+  let isSpringing = $state(false);
   let startX = 0;
   let startY = 0;
+  let lastX = 0;
+  let lastTime = 0;
+  let pointerVelocity = 0; // px/ms
   let dragOffset = $state(0);
+
+  // Dynamic indicator progress reflecting drag gesture
+  const dragFraction = $derived(
+    isDragging ? Math.max(-0.5, Math.min(0.5, -dragOffset / 240)) : 0
+  );
 
   // Timer reference
   let timerInterval: any = null;
@@ -146,24 +155,32 @@
     }
   }
 
-  // Gesture handling
+  // Gesture handling with Apple inertia & momentum physics
   function handlePointerDown(e: PointerEvent) {
-    // Only drag with primary mouse button or touch
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     isDragging = true;
+    isSpringing = false;
     startX = e.clientX;
     startY = e.clientY;
+    lastX = e.clientX;
+    lastTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    pointerVelocity = 0;
     dragOffset = 0;
     isPaused = true;
   }
 
   function handlePointerMove(e: PointerEvent) {
     if (!isDragging) return;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const dt = Math.max(1, now - lastTime);
     const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
+    const instantVelocity = (e.clientX - lastX) / dt;
+    pointerVelocity = pointerVelocity * 0.4 + instantVelocity * 0.6;
+    lastX = e.clientX;
+    lastTime = now;
 
     // Favor horizontal gestures
-    if (Math.abs(dx) > Math.abs(dy)) {
+    if (Math.abs(dx) > Math.abs(e.clientY - startY)) {
       dragOffset = dx;
     }
   }
@@ -173,19 +190,41 @@
     isDragging = false;
     isPaused = false;
 
+    if (theme.reduceMotion) {
+      if (dragOffset < -40 || pointerVelocity < -0.3) {
+        nextSlide();
+      } else if (dragOffset > 40 || pointerVelocity > 0.3) {
+        prevSlide();
+      }
+      dragOffset = 0;
+      return;
+    }
+
+    // Momentum projection with realistic throw distance
+    const projectedOffset = dragOffset + pointerVelocity * 150;
     const threshold = 40;
-    if (dragOffset < -threshold) {
+
+    isSpringing = true;
+    if (projectedOffset < -threshold || pointerVelocity < -0.35) {
       nextSlide();
-    } else if (dragOffset > threshold) {
+    } else if (projectedOffset > threshold || pointerVelocity > 0.35) {
       prevSlide();
     }
     dragOffset = 0;
+
+    setTimeout(() => {
+      isSpringing = false;
+    }, 280);
   }
 
   function handlePointerCancel() {
     isDragging = false;
     isPaused = false;
+    isSpringing = true;
     dragOffset = 0;
+    setTimeout(() => {
+      isSpringing = false;
+    }, 280);
   }
 
   // Key navigation
@@ -257,11 +296,13 @@
     {#if slides.length > 1}
       <div class="story-indicators" role="tablist">
         {#each slides as slide, idx}
+          {@const isActive = idx === activeIndex}
+          {@const effectiveProgress = isActive ? Math.max(0, Math.min(1, progress + dragFraction)) : (idx < activeIndex ? 1 : 0)}
           <button
             type="button"
             class="indicator-segment-btn"
             role="tab"
-            aria-selected={idx === activeIndex}
+            aria-selected={isActive}
             aria-label={`История ${idx + 1}`}
             onclick={(e) => {
               e.stopPropagation();
@@ -271,7 +312,7 @@
             <div class="indicator-track">
               <div
                 class="indicator-fill"
-                style="width: {idx < activeIndex ? '100%' : idx === activeIndex ? (theme.reduceMotion ? '100%' : `${progress * 100}%`) : '0%'}; transition: {theme.reduceMotion || isPaused ? 'none' : 'width 0.05s linear'};"
+                style="width: {theme.reduceMotion ? (isActive || idx < activeIndex ? '100%' : '0%') : `${effectiveProgress * 100}%`}; transition: {theme.reduceMotion || isPaused || isDragging ? 'none' : 'width 0.05s linear'};"
               ></div>
             </div>
           </button>
@@ -282,6 +323,8 @@
     <!-- 2. Active Slide Content -->
     <div
       class="slide-viewport"
+      class:springing={isSpringing}
+      class:dragging={isDragging}
       style="transform: {theme.reduceMotion ? 'none' : `translateX(${dragOffset}px)`};"
     >
       <!-- SLIDE: NEWS / CHANGELOG -->
@@ -555,7 +598,11 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    transition: transform 0.15s ease-out;
+    will-change: transform;
+  }
+
+  .slide-viewport.springing {
+    transition: transform var(--motion-duration-normal, 280ms) var(--motion-curve-spring-gentle, cubic-bezier(0.16, 1, 0.3, 1));
   }
 
   .story-content {

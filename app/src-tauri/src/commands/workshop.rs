@@ -284,6 +284,20 @@ pub async fn workshop_open_path(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Reveal screenshots folder in system file manager.
+#[tauri::command]
+pub async fn workshop_open_screenshots_folder(
+    version: Option<String>,
+    state: State<'_, PlayState>,
+) -> Result<(), String> {
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let screenshots_dir = game_dir.join("screenshots");
+    if !screenshots_dir.exists() {
+        let _ = std::fs::create_dir_all(&screenshots_dir);
+    }
+    workshop_open_path(screenshots_dir.to_string_lossy().to_string()).await
+}
+
 /// Copies the image at the given path directly into the system clipboard as bitmap data.
 pub fn copy_screenshot_image_internal<F>(path: &str, set_clipboard: F) -> Result<(), String>
 where

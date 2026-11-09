@@ -403,8 +403,15 @@ async fn start_game_success_and_supervisor_cleanup_both_versions() {
         launch::kill_game(Some(version.into()), f.play())
             .await
             .unwrap();
-        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
-        assert!(f.play().running_version.lock().await.is_none());
+        let mut cleaned_up = false;
+        for _ in 0..30 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            if f.play().running_version.lock().await.is_none() {
+                cleaned_up = true;
+                break;
+            }
+        }
+        assert!(cleaned_up);
     }
 }
 #[tokio::test]

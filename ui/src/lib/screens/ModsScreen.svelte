@@ -20,6 +20,8 @@
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Icon from '../components/icons/Icon.svelte';
   import ErrorState from '../components/ErrorState.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
   import { t, i18n } from '../i18n';
 
   export interface ModEntryModel {
@@ -91,6 +93,9 @@
     loading = true;
     loadError = null;
     try {
+      if (typeof window !== 'undefined' && (window as any).__MOCK_DELAY__) {
+        await new Promise((r) => setTimeout(r, (window as any).__MOCK_DELAY__));
+      }
       const { invoke } = await import('@tauri-apps/api/core');
       const res = await invoke<ModEntryModel[]>('list_mods', { version });
       if (Array.isArray(res)) {
@@ -328,10 +333,7 @@
   <div class="mods-content">
     <List header={i18n.locale === 'en' ? `Installed Mods — Minecraft ${selectedVersion} · ${filteredMods.length} of ${mods.length}` : `Установленные моды (версия ${selectedVersion}) • ${filteredMods.length} из ${mods.length}`}>
       {#if loading}
-        <div class="empty-state">
-          <Icon name="refresh" size={28} color="var(--color-tertiary-label)" />
-          <span class="empty-title">{t('common.loading')}</span>
-        </div>
+        <Skeleton variant="row" count={5} />
       {:else if loadError && mods.length === 0}
         <div class="error-state-wrap">
           <ErrorState
@@ -341,9 +343,10 @@
             onsecondaryaction={handleOpenModsDir}
           />
         </div>
-      {:else}
-        {#each filteredMods as m (m.file_name)}
+      {:else if filteredMods.length > 0}
+        {#each filteredMods as m, idx (m.file_name)}
           <Row
+            index={idx}
             title="{m.name} {m.version}"
             subtitle={m.description || m.file_name}
           >
@@ -381,17 +384,13 @@
               </div>
             {/snippet}
           </Row>
-        {:else}
-          <div class="empty-state">
-            <Icon name="mods" size={32} color="var(--color-tertiary-label)" />
-            <span class="empty-title">
-              {searchQuery ? t('mods.empty_search', { query: searchQuery }) : t('mods.empty_title')}
-            </span>
-            <span class="empty-subtitle">
-              {searchQuery ? (i18n.locale === 'en' ? 'Try a different search or filter.' : 'Попробуйте изменить поисковый запрос или категорию') : t('mods.empty_default')}
-            </span>
-          </div>
         {/each}
+      {:else}
+        <EmptyState
+          icon="mods"
+          title={searchQuery ? t('mods.empty_search', { query: searchQuery }) : t('mods.empty_title')}
+          description={searchQuery ? (i18n.locale === 'en' ? 'Try a different search or filter.' : 'Попробуйте изменить поисковый запрос или категорию') : t('mods.empty_default')}
+        />
       {/if}
     </List>
   </div>
@@ -453,6 +452,7 @@
 
   .tabs-wrap {
     flex-shrink: 0;
+    min-width: 320px;
   }
 
   .mods-content {
@@ -514,27 +514,5 @@
 
   .hidden-file-input {
     display: none;
-  }
-
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 48px 24px;
-    gap: 8px;
-    text-align: center;
-  }
-
-  .empty-title {
-    font-size: var(--text-headline);
-    font-weight: 600;
-    color: var(--color-label);
-  }
-
-  .empty-subtitle {
-    font-size: var(--text-subheadline);
-    color: var(--color-secondary-label);
-    font-weight: 500;
   }
 </style>

@@ -792,7 +792,7 @@
             {@const isSelected = skinName === item.name}
             <Row
               title={item.name}
-              subtitle={`${item.model === 'slim' ? (i18n.locale === 'en' ? 'Slim' : 'Тонкая') : (i18n.locale === 'en' ? 'Classic' : 'Классическая')} • ${item.created_utc.slice(0, 10)}`}
+              subtitle={`${item.model === 'slim' ? (i18n.locale === 'en' ? 'Slim' : 'Тонкая') : (i18n.locale === 'en' ? 'Classic' : 'Классическая')}${item.created_utc ? ` • ${item.created_utc.slice(0, 10)}` : ''}`}
             >
               {#snippet trailing()}
                 <div class="history-actions">
@@ -880,8 +880,8 @@
   .preview-header {
     width: 100%;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    align-items: stretch;
     gap: 8px;
     margin-bottom: 12px;
   }

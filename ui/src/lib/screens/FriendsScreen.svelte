@@ -24,6 +24,8 @@
   import Icon from '../components/icons/Icon.svelte';
   import OfflineState from '../components/OfflineState.svelte';
   import ErrorState from '../components/ErrorState.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
   import { formatError } from '../design/errors';
   import { network } from '../design/network.svelte';
   import { t, i18n } from '../i18n';
@@ -105,7 +107,7 @@
 
   // Filtered friends by search query
   let filteredFriends = $derived(
-    friends.filter((f) => f.nick.toLowerCase().includes(searchQuery.toLowerCase()))
+    friends.filter((f) => ((f.nick || (f as any).nickname || '')).toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   // Tab options for segmented control with dynamic counter
@@ -407,8 +409,9 @@
 
         {#if filteredFriends.length > 0}
           <List header="{i18n.locale === 'en' ? 'Friends' : 'Список друзей'} ({filteredFriends.length})">
-            {#each filteredFriends as friend (friend.id)}
+            {#each filteredFriends as friend, idx (friend.id)}
               <Row
+                index={idx}
                 title={friend.nick}
                 subtitle={
                   friend.status === 'playing'
@@ -448,17 +451,13 @@
             {/each}
           </List>
         {:else}
-          <div class="empty-state-card">
-            <div class="empty-icon-wrap">
-              <Icon name="friends" size={40} color="var(--color-tertiary-label)" />
-            </div>
-            <h2 class="empty-title">{t('friends.empty_friends_title')}</h2>
-            <p class="empty-desc">
-              {searchQuery
-                ? (i18n.locale === 'en' ? `No friends match “${searchQuery}”.` : `По запросу «${searchQuery}» ни одного игрока не найдено.`)
-                : (i18n.locale === 'en' ? 'Enter a friend code above to send a friend request.' : 'У вас пока нет добавленных друзей. Введите код друга в поле выше, чтобы отправить первое приглашение.')}
-            </p>
-          </div>
+          <EmptyState
+            icon="friends"
+            title={t('friends.empty_friends_title')}
+            description={searchQuery
+              ? (i18n.locale === 'en' ? `No friends match “${searchQuery}”.` : `По запросу «${searchQuery}» ни одного игрока не найдено.`)
+              : (i18n.locale === 'en' ? 'Enter a friend code above to send a friend request.' : 'У вас пока нет добавленных друзей. Введите код друга в поле выше, чтобы отправить первое приглашение.')}
+          />
         {/if}
       </div>
     {/if}
@@ -471,8 +470,9 @@
       <div class="tab-pane">
         {#if requests.length > 0}
           <List header="{i18n.locale === 'en' ? 'Incoming Friend Requests' : 'Входящие заявки в друзья'} ({requests.length})">
-            {#each requests as req (req.id)}
+            {#each requests as req, idx (req.id)}
               <Row
+                index={idx}
                 title={req.from_nick}
                 subtitle={i18n.locale === 'en' ? 'Wants to add you as a friend' : 'Хочет добавить вас в список друзей'}
               >
@@ -504,15 +504,11 @@
             {/each}
           </List>
         {:else}
-          <div class="empty-state-card">
-            <div class="empty-icon-wrap">
-              <Icon name="friends" size={40} color="var(--color-tertiary-label)" />
-            </div>
-            <h2 class="empty-title">{t('friends.empty_requests_title')}</h2>
-            <p class="empty-desc">
-              {i18n.locale === 'en' ? 'Friend requests will appear here.' : 'Когда другие игроки отправят вам заявку по вашему коду дружбы, она появится в этом разделе.'}
-            </p>
-          </div>
+          <EmptyState
+            icon="friends"
+            title={t('friends.empty_requests_title')}
+            description={i18n.locale === 'en' ? 'Friend requests will appear here.' : 'Когда другие игроки отправят вам заявку по вашему коду дружбы, она появится в этом разделе.'}
+          />
         {/if}
       </div>
     {/if}

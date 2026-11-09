@@ -555,4 +555,123 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(150)).await;
         handle.stop();
     }
+
+    #[tokio::test]
+    async fn test_room_wex_test_mp_lifecycle() {
+        let mock_server = MockServer::start().await;
+
+        // 1. Create room wex-test-mp
+        Mock::given(method("POST"))
+            .and(path("/api/lobby"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "code": "wex-test-mp",
+                "hostToken": "host_token_12345",
+                "status": "waiting",
+                "createdAt": 1731100000
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // 2. Join room wex-test-mp
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/join"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "success": true,
+                "code": "wex-test-mp",
+                "status": "waiting",
+                "tunnelAddress": null,
+                "playerCount": 2
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // 3. Open room / publish tunnel address
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/open"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        // 4. Status query
+        Mock::given(method("GET"))
+            .and(path("/api/lobby/status"))
+            .and(query_param("code", "wex-test-mp"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "code": "wex-test-mp",
+                "status": "open",
+                "tunnelAddress": "127.0.0.1:25565",
+                "playerCount": 2,
+                "lastHeartbeat": 1731100050,
+                "players": ["WexA", "WexB"],
+                "hostName": "WexA",
+                "kicked": false
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // 5. Heartbeat
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/heartbeat"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        // 6. Close room
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/close"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        let client = LobbyApiClient::new(&mock_server.uri(), None).unwrap();
+
+        // Step 1: WexA creates room
+        let create_res = client.create_lobby("WexA", None).await.unwrap();
+        assert_eq!(create_res.code, "wex-test-mp");
+        assert_eq!(create_res.host_token, "host_token_12345");
+
+        // Step 2: WexB joins room
+        let join_res = client
+            .join_lobby("wex-test-mp", "WexB", None)
+            .await
+            .unwrap();
+        assert!(join_res.success);
+        assert_eq!(join_res.player_count, 2);
+
+        // Step 3: WexA publishes tunnel address on 127.0.0.1
+        let open_ok = client
+            .open_lobby(
+                "wex-test-mp",
+                &create_res.host_token,
+                "127.0.0.1:25565",
+                25565,
+            )
+            .await
+            .unwrap();
+        assert!(open_ok);
+
+        // Step 4: WexB verifies status & tunnel
+        let status = client
+            .get_status("wex-test-mp", Some("WexB"))
+            .await
+            .unwrap();
+        assert_eq!(status.code, "wex-test-mp");
+        assert_eq!(status.status, "open");
+        assert_eq!(status.tunnel_address.as_deref(), Some("127.0.0.1:25565"));
+        assert_eq!(status.player_count, 2);
+
+        // Step 5: Heartbeat
+        let hb_ok = client
+            .heartbeat("wex-test-mp", &create_res.host_token)
+            .await
+            .unwrap();
+        assert!(hb_ok);
+
+        // Step 6: Close room (cleanup)
+        let close_ok = client
+            .close_lobby("wex-test-mp", &create_res.host_token)
+            .await
+            .unwrap();
+        assert!(close_ok);
+    }
 }

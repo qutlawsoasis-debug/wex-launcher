@@ -47,8 +47,10 @@ pub fn run() {
             network_state.start_supervisor(app.handle().clone());
             let play_state =
                 PlayState::new_real(paths.clone(), app.handle().clone(), network_state.clone());
+            let startup_state = commands::startup::StartupState::new(paths.clone());
             app.manage(play_state);
             app.manage(network_state);
+            app.manage(startup_state);
             app.manage(commands::friends::FriendsState::new(paths.clone()));
             app.manage(AppState::default());
             let lobby_state = commands::lobby::LobbyState::new(
@@ -61,6 +63,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Startup commands (SPEC 1.1)
+            commands::startup::startup_get_info,
+            commands::startup::startup_verify_directories,
+            commands::startup::startup_check_update,
+            commands::startup::startup_download_update,
             // Network & Connectivity commands
             commands::network::get_network_status,
             // Standard wex-ipc commands
@@ -110,9 +117,12 @@ pub fn run() {
             // Servers commands (commands/servers.rs)
             commands::servers::list_servers,
             commands::servers::ping_server,
+            commands::servers::ping_server_details,
             commands::servers::add_server,
             commands::servers::edit_server,
             commands::servers::remove_server,
+            commands::servers::import_servers_both_versions,
+            commands::servers::get_friend_hosted_servers,
             commands::servers::net_load_servers,
             commands::servers::net_save_servers,
             commands::servers::net_merge_servers,
@@ -148,6 +158,8 @@ pub fn run() {
             commands::lobby::net_lan_stop_discovery,
             commands::lobby::net_lan_is_discovering,
             commands::lobby::publish_lan_world,
+            commands::lobby::retry_lobby_tunnel,
+            commands::lobby::net_compare_manifests,
             // Wardrobe commands
             commands::wardrobe::extras_validate_skin,
             commands::wardrobe::extras_convert_skin,
@@ -193,6 +205,7 @@ pub fn run() {
             commands::workshop::workshop_list_screenshots,
             commands::workshop::social_list_screenshots,
             commands::workshop::workshop_open_path,
+            commands::workshop::workshop_open_screenshots_folder,
             commands::workshop::workshop_copy_screenshot_image,
             // Workshop packs and shaders commands (SPEC 1.7)
             commands::workshop_packs::workshop_list_resource_packs,
@@ -229,6 +242,10 @@ pub fn run() {
             commands::window::window_on_game_launch,
             commands::window::window_on_game_exit,
             commands::window::window_raise_and_focus,
+            // Onboarding commands (SPEC 1.1 / Apple HIG Onboarding)
+            commands::onboarding::onboarding_get_specs,
+            commands::onboarding::onboarding_complete,
+            commands::onboarding::onboarding_prewarm_game,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

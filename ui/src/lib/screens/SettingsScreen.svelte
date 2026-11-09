@@ -27,6 +27,12 @@
   import { i18n, t, type SupportedLocale } from '../i18n';
   import { friendsLive } from '../services/friendsLive';
 
+  interface Props {
+    onopenonboarding?: () => void;
+  }
+
+  let { onopenonboarding }: Props = $props();
+
   // System & configuration state
   let selectedVersion = $state('1.21.1');
   let playerName = $state('Player');
@@ -520,7 +526,7 @@
         subtitle={t('settings.java_choice_subtitle')}
       >
         {#snippet trailing()}
-          <div style="width: 260px;">
+          <div style="width: 280px;">
             <SegmentedControl
               options={javaModeOptions}
               value={javaMode}
@@ -810,14 +816,16 @@
         subtitle={i18n.locale === 'en' ? 'Animation fidelity and spring motion' : 'Степень плавности и пружинных анимаций'}
       >
         {#snippet trailing()}
-          <SegmentedControl
-            options={effectsOptions}
-            value={theme.effectsMode}
-            onchange={(val) => {
-              theme.setEffectsMode(val as any);
-              saveConfig();
-            }}
-          />
+          <div style="width: 320px;">
+            <SegmentedControl
+              options={effectsOptions}
+              value={theme.effectsMode}
+              onchange={(val) => {
+                theme.setEffectsMode(val as any);
+                saveConfig();
+              }}
+            />
+          </div>
         {/snippet}
       </Row>
 
@@ -866,6 +874,33 @@
         subtitle={t('settings.about_stack_subtitle')}
         trailingText="v1.0.0"
       />
+    </List>
+
+    <!-- First Launch Onboarding Section -->
+    <List header={i18n.locale === 'en' ? 'First Launch & Setup' : 'Первоначальная настройка'}>
+      <Row
+        title={i18n.locale === 'en' ? 'Show welcome screen again' : 'Показать приветствие снова'}
+        subtitle={i18n.locale === 'en' ? 'Run initial setup wizard, choose version, nickname, and migrate data' : 'Пройти мастер первого запуска, настройку ника, выбор версии и перенос данных'}
+      >
+        {#snippet trailing()}
+          <Button
+            variant="secondary"
+            size="small"
+            onclick={() => {
+              if (typeof localStorage !== 'undefined') {
+                localStorage.removeItem('wex_onboarding_completed');
+              }
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('wex-show-onboarding'));
+              }
+              onopenonboarding?.();
+            }}
+          >
+            <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
+            <span>{i18n.locale === 'en' ? 'Start' : 'Показать'}</span>
+          </Button>
+        {/snippet}
+      </Row>
     </List>
 
     <!-- Reset to defaults -->
