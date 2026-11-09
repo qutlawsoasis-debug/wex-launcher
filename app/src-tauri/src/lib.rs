@@ -47,8 +47,10 @@ pub fn run() {
             network_state.start_supervisor(app.handle().clone());
             let play_state =
                 PlayState::new_real(paths.clone(), app.handle().clone(), network_state.clone());
+            let startup_state = commands::startup::StartupState::new(paths.clone());
             app.manage(play_state);
             app.manage(network_state);
+            app.manage(startup_state);
             app.manage(commands::friends::FriendsState::new(paths.clone()));
             app.manage(AppState::default());
             let lobby_state = commands::lobby::LobbyState::new(
@@ -61,6 +63,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Startup commands (SPEC 1.1)
+            commands::startup::startup_get_info,
+            commands::startup::startup_verify_directories,
+            commands::startup::startup_check_update,
+            commands::startup::startup_download_update,
             // Network & Connectivity commands
             commands::network::get_network_status,
             // Standard wex-ipc commands

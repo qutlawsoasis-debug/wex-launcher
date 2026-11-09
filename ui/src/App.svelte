@@ -26,12 +26,16 @@
   import WorkshopScreen from './lib/screens/WorkshopScreen.svelte';
   import SettingsScreen from './lib/screens/SettingsScreen.svelte';
   import ShowcaseScreen from './lib/screens/ShowcaseScreen.svelte';
+  import SplashScreen from './lib/screens/SplashScreen.svelte';
   import CrashSheet from './lib/components/CrashSheet.svelte';
   import MusicDiskWidget from './lib/components/MusicDiskWidget.svelte';
   import OnboardingModal from './lib/components/OnboardingModal.svelte';
   import type { CrashDiagnosisDto } from './lib/ipc/generated/models';
   import { initIdleManager, setGameRunning, createIdleInterval } from './lib/design/idleManager';
   import { friendsLive, parseWexJoinUri } from './lib/services/friendsLive';
+
+  // Startup splash state
+  let isStartingUp = $state(true);
 
   // Navigation state
   let activeTab = $state('play');
@@ -346,8 +350,11 @@
       const screen = params.get('screen') || params.get('tab');
       const t = params.get('theme');
 
-      if (screen && ['play', 'servers', 'lobby', 'friends', 'workshop', 'mods', 'settings', 'showcase'].includes(screen)) {
+      if (screen === 'splash') {
+        isStartingUp = true;
+      } else if (screen && ['play', 'servers', 'lobby', 'friends', 'workshop', 'mods', 'settings', 'showcase'].includes(screen)) {
         activeTab = screen;
+        isStartingUp = false;
       }
       if (screen === 'import' || params.get('import') === 'true') {
         activeTab = 'play';
@@ -727,6 +734,15 @@
         <Toast toast={t} ondismiss={dismissToast} />
       {/each}
     </div>
+  {/if}
+
+  <!-- Startup Splash Screen per SPEC 1.1 -->
+  {#if isStartingUp}
+    <SplashScreen
+      oncomplete={() => {
+        isStartingUp = false;
+      }}
+    />
   {/if}
 
   <!-- Game Crash Diagnosis Sheet (SPEC 2.10) -->

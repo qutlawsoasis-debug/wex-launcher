@@ -9,6 +9,7 @@ import List from './List.svelte';
 import SearchField from './SearchField.svelte';
 import ProgressBar from './ProgressBar.svelte';
 import Toast from './Toast.svelte';
+import Logo from './Logo.svelte';
 import ProfileBadge from './ProfileBadge.svelte';
 import Sheet from './Sheet.svelte';
 import Popover from './Popover.svelte';
@@ -250,6 +251,22 @@ describe('Apple HIG Svelte 5 Components', () => {
     expect(dismissBtn).not.toBeNull();
     dismissBtn.click();
     expect(dismissedId).toBe('test-toast');
+    unmount(comp);
+  });
+
+  it('renders Logo wordmark with sizes and subtitle', () => {
+    const comp = mount(Logo, {
+      target,
+      props: {
+        size: 'large',
+        showSubtitle: true,
+        subtitle: 'Minecraft Launcher',
+      },
+    });
+
+    expect(target.textContent).toContain('Wex');
+    expect(target.textContent).toContain('Minecraft Launcher');
+    expect(target.querySelector('.wex-brand.large')).not.toBeNull();
     unmount(comp);
   });
 

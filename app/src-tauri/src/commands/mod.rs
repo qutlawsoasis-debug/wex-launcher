@@ -11,6 +11,7 @@ pub mod report;
 pub mod servers;
 pub mod settings;
 pub mod shell;
+pub mod startup;
 pub mod wardrobe;
 pub mod window;
 pub mod workshop;

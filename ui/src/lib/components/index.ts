@@ -11,6 +11,7 @@ export { default as Sheet } from './Sheet.svelte';
 export { default as Popover } from './Popover.svelte';
 export { default as ProgressBar } from './ProgressBar.svelte';
 export { default as Toast } from './Toast.svelte';
+export { default as Logo } from './Logo.svelte';
 export { default as OfflineState } from './OfflineState.svelte';
 export { default as ErrorState } from './ErrorState.svelte';
 export { default as ReportSheet } from './ReportSheet.svelte';
