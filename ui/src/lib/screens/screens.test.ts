@@ -534,11 +534,12 @@ describe('Wex Launcher Screens', () => {
   });
 
   it.each(['1.20.1', '1.21.1'])('security regression: rejected update URL never falls back to window.open (%s)', async (version) => {
-    const ipc = await import('@tauri-apps/api/core');
-    const invokeSpy = vi.spyOn(ipc, 'invoke').mockImplementation(((cmd: string, args?: Record<string, unknown>) => {
-      if (cmd === 'updater_open_download_url') return Promise.reject(new Error('URL rejected by backend'));
-      return defaultInvoke(cmd, args);
-    }) as typeof ipc.invoke);
+    const invokeSpy = defaultInvoke;
+    const originalImplementation = invokeSpy.getMockImplementation()!;
+    invokeSpy.mockImplementation(async (cmd, args, options) => {
+      if (cmd === 'updater_open_download_url') throw new Error('URL rejected by backend');
+      return originalImplementation(cmd, args, options);
+    });
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
     const url = 'javascript:alert(1)';
     const comp = mount(PlayScreen, { target, props: {
@@ -557,7 +558,7 @@ describe('Wex Launcher Screens', () => {
     } finally {
       await unmount(comp);
       openSpy.mockRestore();
-      invokeSpy.mockRestore();
+      invokeSpy.mockImplementation(originalImplementation);
     }
   });
 
