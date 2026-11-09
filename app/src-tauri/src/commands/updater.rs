@@ -3,7 +3,7 @@ use minisign_verify::{PublicKey, Signature};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, State};
 
@@ -45,12 +45,9 @@ pub struct UpdateProgressPayload {
     pub total_bytes: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StagedUpdate {
-    pub installer_path: PathBuf,
-    pub version: String,
-    pub temp_dir: PathBuf,
-}
+#[path = "updater_stage.rs"]
+mod staging;
+pub use staging::StagedUpdate;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallerExecutionPlan {
@@ -61,6 +58,34 @@ pub struct InstallerExecutionPlan {
 }
 
 static STAGED_UPDATE: Mutex<Option<StagedUpdate>> = Mutex::new(None);
+static UPDATE_BUSY: AtomicBool = AtomicBool::new(false);
+
+struct UpdateOperation;
+
+impl UpdateOperation {
+    fn begin() -> Result<Self, String> {
+        UPDATE_BUSY
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| "Обновление уже выполняется".to_string())?;
+        Ok(Self)
+    }
+}
+
+impl Drop for UpdateOperation {
+    fn drop(&mut self) {
+        UPDATE_BUSY.store(false, Ordering::Release);
+    }
+}
+
+pub fn validate_update_version(version: &str) -> Result<(), String> {
+    let target = semver::Version::parse(version)
+        .map_err(|_| "Некорректная версия обновления".to_string())?;
+    let current = semver::Version::parse(env!("CARGO_PKG_VERSION")).map_err(|e| e.to_string())?;
+    if !target.cmp_precedence(&current).is_gt() {
+        return Err("Версия обновления должна быть новее установленной".into());
+    }
+    Ok(())
+}
 
 pub fn set_staged_update(update: StagedUpdate) {
     if let Ok(mut lock) = STAGED_UPDATE.lock() {
@@ -257,6 +282,7 @@ pub fn build_installer_plan(
     installer_path: &Path,
     target_version: &str,
 ) -> Result<InstallerExecutionPlan, String> {
+    validate_update_version(target_version)?;
     if !installer_path.exists() {
         return Err(format!(
             "Файл установщика не существует: {:?}",
@@ -304,18 +330,26 @@ where
 pub fn apply_staged_update_and_restart(
     app: Option<&AppHandle>,
 ) -> Result<InstallerExecutionPlan, String> {
-    let staged = get_staged_update()
+    let _operation = UpdateOperation::begin()?;
+    // Take once: two restart requests cannot execute the same staged package.
+    let staged = STAGED_UPDATE
+        .lock()
+        .map_err(|e| e.to_string())?
+        .take()
         .ok_or_else(|| "Нет подготовленного проверенного обновления для установки".to_string())?;
-
-    let plan = build_installer_plan(&staged.installer_path, &staged.version)?;
-
+    let plan = staged.execute(|executable, args| {
+        #[cfg(target_os = "windows")]
+        std::process::Command::new(executable)
+            .args(args)
+            .spawn()
+            .map_err(|e| format!("Не удалось запустить установщик обновления: {}", e))?;
+        #[cfg(not(target_os = "windows"))]
+        let _ = (executable, args);
+        Ok(())
+    })?;
+    staged.preserve_for_installer();
     #[cfg(target_os = "windows")]
     {
-        let mut cmd = std::process::Command::new(&plan.executable);
-        cmd.args(&plan.args);
-        cmd.spawn()
-            .map_err(|e| format!("Не удалось запустить установщик обновления: {}", e))?;
-
         if let Some(h) = app {
             h.exit(0);
         } else {
@@ -423,6 +457,7 @@ pub async fn download_and_install_internal(
     if is_game_running {
         return Err("Игра сейчас запущена. Закройте игру перед обновлением лаунчера.".to_string());
     }
+    validate_update_version(version)?;
 
     // 2. Guard against missing trusted public key (Architect requirement: без ключа только ссылка)
     let pubkey_str = match trusted_pubkey {
@@ -440,22 +475,16 @@ pub async fn download_and_install_internal(
         }
     };
 
-    // 4. Prepare temporary isolated directory for the downloaded update
-    let temp_dir = std::env::temp_dir()
-        .join("AuraDev")
-        .join(format!("wex-update-{}", version));
-    if let Err(e) = std::fs::create_dir_all(&temp_dir) {
-        return Err(format!(
-            "Не удалось создать временный каталог для обновления: {}",
-            e
-        ));
+    // Use only a supported extension from a parsed URL; never a raw basename.
+    let url = reqwest::Url::parse(download_url).map_err(|e| e.to_string())?;
+    let extension = Path::new(url.path())
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !matches!(extension.as_str(), "exe" | "msi" | "zip") {
+        return Err("Неподдерживаемый формат установщика".into());
     }
-
-    let file_name = download_url
-        .split('/')
-        .next_back()
-        .unwrap_or("wex-update-setup.exe");
-    let target_file = temp_dir.join(file_name);
 
     // 5. Download file with progress reporting
     let emit_progress = |pct: u32, text: &str, downloaded: u64, total: Option<u64>| {
@@ -474,13 +503,13 @@ pub async fn download_and_install_internal(
 
     emit_progress(0, "Подключение к серверу обновлений…", 0, None);
 
-    let mut response = client.get(download_url).send().await.map_err(|e| {
-        let _ = std::fs::remove_dir_all(&temp_dir);
-        format!("Ошибка сети при загрузке обновления: {}", e)
-    })?;
+    let mut response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("Ошибка сети при загрузке обновления: {}", e))?;
 
     if !response.status().is_success() {
-        let _ = std::fs::remove_dir_all(&temp_dir);
         return Err(format!(
             "Сервер вернул ошибку при загрузке обновления: HTTP {}",
             response.status()
@@ -495,13 +524,15 @@ pub async fn download_and_install_internal(
         let chunk_opt = match response.chunk().await {
             Ok(c) => c,
             Err(e) => {
-                let _ = std::fs::remove_dir_all(&temp_dir);
                 return Err(format!("Ошибка загрузки фрагмента обновления: {}", e));
             }
         };
 
         match chunk_opt {
             Some(chunk) => {
+                if downloaded_bytes.len().saturating_add(chunk.len()) > 512 * 1024 * 1024 {
+                    return Err("Файл обновления слишком большой".into());
+                }
                 downloaded_bytes.extend_from_slice(&chunk);
                 downloaded += chunk.len() as u64;
                 let pct = if let Some(tot) = total_size {
@@ -533,38 +564,21 @@ pub async fn download_and_install_internal(
 
     // 6. CRYPTOGRAPHIC SIGNATURE VERIFICATION WITH TRUSTED PUBLIC KEY
     if let Err(err_msg) = verify_artifact_signature(&downloaded_bytes, sig_str, pubkey_str) {
-        // Full rollback on verification failure: delete temp directory and preserve running binary
-        let _ = std::fs::remove_dir_all(&temp_dir);
+        // No temporary filesystem state exists yet; network/signature failures delete nothing.
         return Err(format!(
             "Ошибка проверки цифровой подписи (подмена или повреждение файлов): {}. Прежняя версия сохранена.",
             err_msg
         ));
     }
 
-    // 7. Write verified bytes to disk and extract if zipped
-    if let Err(e) = std::fs::write(&target_file, &downloaded_bytes) {
-        let _ = std::fs::remove_dir_all(&temp_dir);
-        return Err(format!(
-            "Не удалось сохранить проверенный файл обновления: {}",
-            e
-        ));
-    }
-
-    let extract_dir = temp_dir.join("installer");
-    let resolved_installer = match extract_installer_archive_if_needed(&target_file, &extract_dir) {
-        Ok(path) => path,
-        Err(e) => {
-            let _ = std::fs::remove_dir_all(&temp_dir);
-            return Err(e);
-        }
-    };
-
-    // 8. Stage update for execution upon restart
-    set_staged_update(StagedUpdate {
-        installer_path: resolved_installer,
-        version: version.to_string(),
-        temp_dir: temp_dir.clone(),
-    });
+    // Own a random TempDir and retain signed-package verification metadata until restart.
+    set_staged_update(StagedUpdate::new(
+        &downloaded_bytes,
+        sig_str,
+        pubkey_str,
+        version,
+        &extension,
+    )?);
 
     emit_progress(
         100,
@@ -618,6 +632,8 @@ pub async fn updater_install(
     signature: Option<String>,
     version: String,
 ) -> Result<UpdateInstallStatusDto, String> {
+    let _operation = UpdateOperation::begin()?;
+    clear_staged_update();
     let is_running = state.is_running.load(Ordering::SeqCst);
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(60))
@@ -682,6 +698,81 @@ mod tests {
     const TEST_PUBKEY: &str = "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3";
     const TEST_DATA: &[u8] = b"test";
     const TEST_VALID_SIG: &str = "untrusted comment: signature from minisign secret key\nRWQf6LRCGA9i59SLOFxz6NxvASXDJeRtuZykwQepbDEGt87ig1BNpWaVWuNrm73YiIiJbq71Wi+dP9eKL8OC351vwIasSSbXxwA=\ntrusted comment: timestamp:1555779966\tfile:test\nQtKMXWyYcwdpZAlPF7tE2ENJkRd1ujvKjlj1m9RtHTBnZPa5WKU5uWRs5GoP5M/VqE81QFuMKI5k/SfNQUaOAA==";
+
+    #[test]
+    fn security_rejects_invalid_update_versions() {
+        let dir = tempfile::tempdir().unwrap();
+        let installer = dir.path().join("setup.exe");
+        std::fs::write(&installer, TEST_DATA).unwrap();
+        for version in [
+            "../outside",
+            "1.0.0\\..\\outside",
+            "C:\\outside",
+            "not-semver",
+            "1.0",
+            "0.0.0",
+        ] {
+            assert!(
+                build_installer_plan(&installer, version).is_err(),
+                "accepted {version}"
+            );
+        }
+    }
+
+    #[test]
+    fn security_rejects_replay_even_with_build_metadata() {
+        let current = env!("CARGO_PKG_VERSION");
+        assert!(validate_update_version(current).is_err());
+        assert!(validate_update_version(&format!("{current}+replay")).is_err());
+    }
+
+    #[test]
+    fn security_serializes_install_and_restart_operations() {
+        let operation = UpdateOperation::begin().unwrap();
+        assert!(UpdateOperation::begin().is_err());
+        drop(operation);
+        assert!(UpdateOperation::begin().is_ok());
+    }
+
+    #[tokio::test]
+    async fn security_malformed_version_cannot_delete_external_sentinel() {
+        let external = tempfile::Builder::new()
+            .prefix("c3-update-sentinel-")
+            .tempdir()
+            .unwrap();
+        let sentinel = external.path().join("sentinel");
+        std::fs::write(&sentinel, b"keep this unrelated directory").unwrap();
+        let name = external.path().file_name().unwrap().to_str().unwrap();
+        let probe = format!("c3-probe-{name}");
+        let version = format!("{probe}/../../{name}");
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/setup.exe"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"tampered".to_vec()))
+            .mount(&server)
+            .await;
+        let result = download_and_install_internal(
+            None,
+            &Client::new(),
+            &format!("{}/setup.exe", server.uri()),
+            Some(TEST_VALID_SIG),
+            &version,
+            Some(TEST_PUBKEY),
+            false,
+        )
+        .await;
+        // The old code creates this empty probe directory while traversing up to
+        // the *owned test TempDir*. Never address or delete a user's directory.
+        let legacy_probe = std::env::temp_dir()
+            .join("AuraDev")
+            .join(format!("wex-update-{probe}"));
+        let _ = std::fs::remove_dir(legacy_probe);
+        assert!(result.is_err());
+        assert_eq!(
+            std::fs::read(&sentinel).ok().as_deref(),
+            Some(b"keep this unrelated directory".as_slice())
+        );
+    }
 
     #[test]
     fn test_verify_signature_valid() {

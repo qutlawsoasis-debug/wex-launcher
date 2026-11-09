@@ -92,6 +92,17 @@
   let modsDownloadedCount = $state(0);
   let joinProgress = $state(0);
 
+  function getDownloadingModsLabel(count: number, current: number): string {
+    if (count <= 0) return t('lobby.step_download_mods_many', { count: 0 });
+    const key = count % 10 === 1 && count % 100 !== 11
+      ? 'lobby.step_download_mods_one'
+      : (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20)
+          ? 'lobby.step_download_mods_few'
+          : 'lobby.step_download_mods_many');
+    const base = t(key, { count });
+    return current > 0 ? `${base}${t('lobby.step_download_mods_progress', { current, total: count })}` : base;
+  }
+
   // Tunnel retry state
   let isRetryingTunnel = $state(false);
 
@@ -103,9 +114,9 @@
 
   // Local worlds available for hosting
   const localWorlds = [
-    { id: 'world-1', name: 'Выживание в тайге', version: '1.21.1', size: '142 МБ', lastPlayed: 'Сегодня' },
-    { id: 'world-2', name: 'Творческий полигон', version: '1.21.1', size: '86 МБ', lastPlayed: 'Вчера' },
-    { id: 'world-3', name: 'Redstone Experiments', version: '1.20.1', size: '45 МБ', lastPlayed: '3 дня назад' },
+    { id: 'world-1', name: t('lobby.world_taiga'), version: '1.21.1', size: '142 MB', lastPlayed: t('common.today') },
+    { id: 'world-2', name: t('lobby.world_creative'), version: '1.21.1', size: '86 MB', lastPlayed: t('common.yesterday') },
+    { id: 'world-3', name: t('lobby.world_redstone'), version: '1.20.1', size: '45 MB', lastPlayed: t('common.days_ago', { count: 3 }) },
   ];
 
   let selectedWorldId = $state('world-1');
@@ -126,17 +137,17 @@
         modsToDownloadCount = 3;
         modsDownloadedCount = 1;
         joinProgress = 50;
-        joinStepMessage = `Загрузка мода (${modsDownloadedCount}/${modsToDownloadCount}): sodium-extra-0.5.4.jar (1.2 МБ / 2.4 МБ)`;
+        joinStepMessage = t('lobby.step_msg_downloading_mod', { current: modsDownloadedCount, total: modsToDownloadCount, mod: 'sodium-extra-0.5.4.jar', downloaded: '1.2', size: '2.4' });
       } else if (step === 'checking' || step === 'checking_mods') {
         isConnecting = true;
         joinStep = 'checking_mods';
         joinProgress = 20;
-        joinStepMessage = 'Сверка манифеста установленных модов...';
+        joinStepMessage = t('lobby.step_msg_checking_manifest');
       } else if (step === 'connecting') {
         isConnecting = true;
         joinStep = 'connecting';
         joinProgress = 90;
-        joinStepMessage = 'Подключение к серверу Playit-туннеля...';
+        joinStepMessage = t('lobby.step_msg_connecting_tunnel');
       } else if (step === 'reset' || step === 'idle') {
         isConnecting = false;
         joinStep = 'idle';
@@ -158,7 +169,7 @@
         joinProgress = progress;
         modsToDownloadCount = count;
         modsDownloadedCount = downloaded;
-        joinStepMessage = msg || `Загрузка мода (${downloaded}/${count}): sodium-extra-0.5.4.jar (1.2 МБ / 2.4 МБ)`;
+        joinStepMessage = msg || t('lobby.step_msg_downloading_mod', { current: downloaded, total: count, mod: 'sodium-extra-0.5.4.jar', downloaded: '1.2', size: '2.4' });
       };
     }
     return () => {
@@ -184,7 +195,7 @@
     } catch (e: any) {
       cloudRooms = [];
       const msg = typeof e === 'string' ? e : e?.message || '';
-      cloudError = msg || 'Сервис недоступен';
+      cloudError = msg || t('lobby.service_unavailable');
     } finally {
       isLoadingCloudRooms = false;
     }
@@ -259,7 +270,7 @@
       });
       activeRoom = room;
     } catch (e: any) {
-      errorMessage = typeof e === 'string' ? e : e?.message || 'Не удалось опубликовать LAN-мир';
+      errorMessage = typeof e === 'string' ? e : e?.message || t('lobby.lan_connect_failed');
     } finally {
       isPublishingLan = false;
       publishingPort = null;
@@ -286,9 +297,9 @@
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const msg = await invoke<string>('connect_lan_world', { address });
-      lanConnectMessage = msg || 'Подключение запущено...';
+      lanConnectMessage = msg || t('lobby.lan_connecting');
     } catch (e: any) {
-      errorMessage = typeof e === 'string' ? e : e?.message || 'Не удалось подключиться к LAN-миру';
+      errorMessage = typeof e === 'string' ? e : e?.message || t('lobby.lan_connect_failed');
     } finally {
       isConnectingLan = false;
     }
@@ -390,7 +401,7 @@
         });
         if (!updated) {
           activeRoom = null;
-          roomClosedMessage = 'Комната закрыта организатором';
+          roomClosedMessage = t('lobby.room_closed_by_host');
           return;
         }
         activeRoom = updated;
@@ -398,11 +409,11 @@
         const msg = typeof e === 'string' ? e : e?.message || '';
         activeRoom = null;
         if (msg.includes('закрыта') || msg.includes('404')) {
-          roomClosedMessage = 'Комната закрыта организатором';
+          roomClosedMessage = t('lobby.room_closed_by_host');
         } else if (msg.includes('исключены')) {
-          roomClosedMessage = 'Вы были исключены из комнаты организатором';
+          roomClosedMessage = t('lobby.kicked_by_host');
         } else {
-          roomClosedMessage = msg || 'Комната закрыта организатором';
+          roomClosedMessage = msg || t('lobby.room_closed_by_host');
         }
       }
     }, 2500);
@@ -414,7 +425,7 @@
     errorMessage = '';
     roomClosedMessage = '';
     const world = localWorlds.find((w) => w.id === selectedWorldId);
-    const worldName = world?.name || `Мир ${effectivePlayerName}`;
+    const worldName = world?.name || t('lobby.room_default_name', { name: effectivePlayerName });
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -427,7 +438,7 @@
         fetchOnlineFriends();
       }
     } catch (e: any) {
-      const msg = typeof e === 'string' ? e : e?.message || 'Не удалось создать комнату';
+      const msg = typeof e === 'string' ? e : e?.message || t('lobby.create_room_failed');
       errorMessage = msg;
       activeRoom = null;
     } finally {
@@ -438,14 +449,14 @@
   export async function handleJoinRoom() {
     const codeToJoin = guestCode.trim();
     if (!codeToJoin) {
-      errorMessage = 'Введите 4-значный код комнаты';
+      errorMessage = t('lobby.enter_4digit_code');
       return;
     }
     isConnecting = true;
     errorMessage = '';
     roomClosedMessage = '';
     joinStep = 'checking_mods';
-    joinStepMessage = 'Сверяем моды с организатором...';
+    joinStepMessage = t('lobby.step_check_mods');
     joinProgress = 25;
 
     try {
@@ -465,14 +476,14 @@
       joinProgress = 50;
 
       if (mismatchCount > 0) {
-        joinStepMessage = `Докачиваем ${mismatchCount} ${mismatchCount === 1 ? 'мод' : mismatchCount < 5 ? 'мода' : 'модов'}...`;
+        joinStepMessage = t('lobby.step_download_mods', { count: mismatchCount });
         for (let i = 1; i <= mismatchCount; i++) {
           await new Promise((r) => setTimeout(r, 60));
           modsDownloadedCount = i;
           joinProgress = 50 + Math.round((i / mismatchCount) * 35);
         }
       } else {
-        joinStepMessage = 'Все моды совпадают';
+        joinStepMessage = t('lobby.mods_identical_desc');
         joinProgress = 85;
         await new Promise((r) => setTimeout(r, 50));
       }
@@ -481,8 +492,8 @@
       joinStep = 'connecting';
       joinProgress = 95;
       joinStepMessage = room.tunnel_address
-        ? `Подключение к игровому серверу хоста (${room.tunnel_address})...`
-        : 'Подключение к игровому миру хоста...';
+        ? t('lobby.tunnel_active', { address: room.tunnel_address })
+        : t('lobby.step_connecting');
       await new Promise((r) => setTimeout(r, 50));
 
       if (!room.tunnel_active && room.tunnel_error) {
@@ -496,7 +507,7 @@
       joinStep = 'idle';
       activeRoom = room;
     } catch (e: any) {
-      const msg = typeof e === 'string' ? e : e?.message || 'Не удалось присоединиться к комнате';
+      const msg = typeof e === 'string' ? e : e?.message || t('lobby.join_room_failed');
       errorMessage = msg;
       joinStep = 'error';
       activeRoom = null;
@@ -519,7 +530,7 @@
       const msg =
         typeof e === 'string'
           ? e
-          : e?.message || 'Не удалось поднять Playit-туннель: служба туннелей временно недоступна';
+          : e?.message || t('lobby.err_tunnel_failed');
       if (activeRoom) {
         activeRoom.tunnel_active = false;
         activeRoom.tunnel_error = msg;
@@ -552,7 +563,7 @@
       });
       activeRoom.players = activeRoom.players.filter((p) => p.name !== name);
     } catch (e: any) {
-      errorMessage = typeof e === 'string' ? e : e?.message || 'Не удалось исключить игрока';
+      errorMessage = typeof e === 'string' ? e : e?.message || t('lobby.kick_player_failed');
     }
   }
 
@@ -589,7 +600,7 @@
         type="button"
         class="room-closed-close"
         onclick={() => (roomClosedMessage = '')}
-        aria-label="Закрыть уведомление"
+        aria-label={t('common.close')}
       >
         <Icon name="close" size={12} />
       </button>
@@ -620,19 +631,17 @@
           <EmptyState
             icon="server"
             title={t('lobby.no_open_rooms')}
-            description={i18n.locale === 'en'
-              ? 'No public lobbies are available. Share a single-player world from LAN & Tunnels.'
-              : 'В данный момент нет доступных публичных комнат. Вы можете открыть свой мир во вкладке «LAN и Туннели».'}
+            description={t('lobby.no_cloud_rooms_desc')}
             actionText={t('lobby.refresh')}
             onaction={fetchCloudRooms}
           />
         </div>
       {:else}
-        <List header="Открытые комнаты ({cloudRooms.length})">
+        <List header={t('lobby.open_rooms_header', { count: cloudRooms.length })}>
           {#each cloudRooms as room (room.id)}
             <Row
               title={room.name}
-              subtitle="Организатор: {room.host_name} • Версия {room.game_version}"
+              subtitle={t('lobby.room_subtitle', { host: room.host_name, version: room.game_version })}
             >
               {#snippet leading()}
                 <div class="room-item-icon">
@@ -652,7 +661,7 @@
                       handleJoinRoom();
                     }}
                   >
-                    Войти
+                    {t('lobby.enter_btn')}
                   </Button>
                 </div>
               {/snippet}
@@ -669,7 +678,7 @@
           <!-- Prominent Large Room Code & Actions -->
           <div class="room-code-hero">
             <div class="code-box">
-              <span class="code-label">Код комнаты</span>
+              <span class="code-label">{t('lobby.code_label')}</span>
               <span class="code-value-large" data-testid="room-code-display">{activeRoom.code}</span>
             </div>
             <div class="code-actions">
@@ -678,10 +687,10 @@
                   variant="secondary"
                   size="small"
                   onclick={() => handleCopyCode(activeRoom?.code || '')}
-                  title="Скопировать код комнаты"
+                  title={t('lobby.copy_code_title')}
                 >
                   <Icon name="copy" size={13} />
-                  <span>{copiedCode ? 'Скопировано!' : 'Скопировать'}</span>
+                  <span>{copiedCode ? t('lobby.copied') : t('lobby.copy_code')}</span>
                 </Button>
               </span>
 
@@ -691,10 +700,10 @@
                     variant="secondary"
                     size="small"
                     onclick={toggleInvitePopover}
-                    title="Пригласить друга онлайн"
+                    title={t('friends.invite_to_lobby')}
                   >
                     <Icon name="friends" size={13} />
-                    <span>Пригласить друга</span>
+                    <span>{t('lobby.invite_friend_header')}</span>
                   </Button>
                 </span>
               {/if}
@@ -705,12 +714,12 @@
             <!-- Online Friends Invite Popover -->
             <div class="invite-popover" data-testid="invite-friends-popover">
               <div class="invite-popover-header">
-                <span class="invite-title">Друзья онлайн</span>
+                <span class="invite-title">{t('lobby.invite_friend_header')}</span>
                 <button
                   type="button"
                   class="invite-close-btn"
                   onclick={() => (showInvitePopover = false)}
-                  aria-label="Закрыть окно приглашения"
+                  aria-label={t('common.close')}
                 >
                   <Icon name="close" size={12} />
                 </button>
@@ -719,11 +728,11 @@
               {#if isLoadingFriends}
                 <div class="invite-loading">
                   <div class="step-spinner"></div>
-                  <span>Загрузка списка друзей...</span>
+                  <span>{t('common.loading')}</span>
                 </div>
               {:else if onlineFriends.length === 0}
                 <div class="invite-empty" data-testid="no-friends-online">
-                  <span>Нет друзей онлайн</span>
+                  <span>{t('friends.empty_friends_desc')}</span>
                 </div>
               {:else}
                 <div class="invite-friends-list" data-testid="invite-friends-list">
@@ -736,13 +745,13 @@
                         <div class="friend-details">
                           <span class="friend-nick">{friend.nick}</span>
                           <span class="friend-sub">
-                            {friend.status === 'playing' ? 'В игре' : 'В сети'}
+                            {friend.status === 'playing' ? t('friends.status_playing') : t('friends.status_online')}
                           </span>
                         </div>
                       </div>
 
                       {#if invitedFriendIds.has(friend.id)}
-                        <span class="invited-badge" data-testid="invited-badge-{friend.id}">Приглашён</span>
+                        <span class="invited-badge" data-testid="invited-badge-{friend.id}">{t('lobby.invited_badge')}</span>
                       {:else}
                         <span data-testid="send-invite-btn-{friend.id}">
                           <Button
@@ -750,7 +759,7 @@
                             size="small"
                             onclick={() => handleInviteFriend(friend)}
                           >
-                            <span>Пригласить</span>
+                            <span>{t('friends.action_invite')}</span>
                           </Button>
                         </span>
                       {/if}
@@ -764,20 +773,20 @@
           <div class="room-meta">
             <h2 class="room-world-title">{activeRoom.world_name}</h2>
             <div class="room-meta-sub">
-              <span>Организатор: <strong>{activeRoom.host_name}</strong></span>
+              <span>{t('lobby.host_label', { host: activeRoom.host_name })}</span>
 
               {#if activeRoom.tunnel_active && activeRoom.tunnel_address}
                 <span class="tunnel-pill active" data-testid="tunnel-active-pill">
                   <span class="dot"></span>
-                  <span>Туннель активен: {activeRoom.tunnel_address}</span>
+                  <span>{t('lobby.tunnel_active', { address: activeRoom.tunnel_address })}</span>
                 </span>
                 <button
                   type="button"
                   class="copy-pill-btn"
                   onclick={() => handleCopyTunnelAddress(activeRoom?.tunnel_address || '')}
-                  title="Скопировать адрес Playit-туннеля"
+                  title={t('lobby.copy_tunnel_title')}
                 >
-                  <span>{copiedTunnel ? 'Скопировано!' : 'Копировать адрес'}</span>
+                  <span>{copiedTunnel ? t('lobby.copied') : t('lobby.copy_tunnel')}</span>
                 </button>
               {:else}
                 <!-- Honest Diagnostic: Tunnel Down with Plain Error and Retry Button -->
@@ -785,10 +794,10 @@
                   <div class="tunnel-error-info">
                     <span class="tunnel-pill offline">
                       <span class="dot error"></span>
-                      <span>Туннель не поднят</span>
+                      <span>{t('lobby.status_offline_title')}</span>
                     </span>
                     <span class="tunnel-error-text" data-testid="tunnel-error-reason">
-                      {activeRoom.tunnel_error || 'Не удалось поднять Playit-туннель: служба туннелей временно недоступна'}
+                      {activeRoom.tunnel_error || t('lobby.err_tunnel_failed')}
                     </span>
                   </div>
                   <span data-testid="retry-tunnel-btn">
@@ -799,7 +808,7 @@
                       loading={isRetryingTunnel}
                     >
                       <Icon name="restore" size={12} />
-                      <span>Повторить</span>
+                      <span>{t('lobby.retry_button')}</span>
                     </Button>
                   </span>
                 </div>
@@ -810,7 +819,7 @@
 
         <div class="room-header-actions" data-testid="leave-room-btn">
           <Button variant="destructive" size="small" onclick={handleLeaveRoom}>
-            {activeRoom.is_host ? 'Закрыть комнату' : 'Покинуть'}
+            {activeRoom.is_host ? t('lobby.close_room') : t('lobby.leave_room')}
           </Button>
         </div>
       </div>
@@ -830,31 +839,31 @@
           <div class="modsync-text">
             <span class="modsync-title">
               {activeRoom.mod_mismatch_count === 0
-                ? `Моды совпадают (${activeRoom.total_mods}/${activeRoom.total_mods})`
-                : `Обнаружено расхождений модов: ${activeRoom.mod_mismatch_count}`}
+                ? t('lobby.mods_match', { matched: activeRoom.total_mods, total: activeRoom.total_mods })
+                : t('lobby.mods_mismatch', { count: activeRoom.mod_mismatch_count })}
             </span>
             <span class="modsync-desc">
               {activeRoom.mod_mismatch_count === 0
-                ? 'Все клиенты используют идентичный манифест сборки Wex.'
-                : 'Конфигурация некоторых модов отличается от хоста.'}
+                ? t('lobby.mods_identical_desc')
+                : t('lobby.mods_different_desc')}
             </span>
           </div>
         </div>
 
         {#if activeRoom.mod_mismatch_count > 0}
           <Button variant="primary" size="small" onclick={handleAutoFixMods}>
-            Исправить и войти
+            {t('lobby.fix_and_join')}
           </Button>
         {/if}
       </div>
 
       <!-- Players in Room List -->
       <div class="players-list-wrap">
-        <List header="Игроки в комнате ({activeRoom.players.length})">
+        <List header={t('lobby.players_in_room', { count: activeRoom.players.length })}>
           {#each activeRoom.players as p (p.name)}
             <Row
               title={p.name}
-              subtitle={p.is_host ? 'Организатор комнаты (Хост)' : 'Гость'}
+              subtitle={p.is_host ? t('lobby.player_role_host') : t('lobby.player_role_guest')}
             >
               {#snippet leading()}
                 <div class="player-avatar" class:host={p.is_host}>
@@ -865,9 +874,9 @@
               {#snippet trailing()}
                 <div class="player-badges">
                   {#if p.mods_synced}
-                    <span class="sync-badge green">Синхронизирован</span>
+                    <span class="sync-badge green">{t('lobby.sync_badge_synced')}</span>
                   {:else}
-                    <span class="sync-badge orange">Не совпадает</span>
+                    <span class="sync-badge orange">{t('lobby.sync_badge_mismatch')}</span>
                   {/if}
 
                   {#if p.ping_ms > 0}
@@ -876,7 +885,7 @@
 
                   {#if activeRoom?.is_host && !p.is_host}
                     <Button variant="destructive" size="small" onclick={() => handleKickPlayer(p.name)}>
-                      Исключить
+                      {t('lobby.kick_player')}
                     </Button>
                   {/if}
                 </div>
@@ -898,7 +907,7 @@
           <div class="card-headings">
             <h2 class="card-heading">{t('lobby.title_connect')}</h2>
             <p class="card-caption">
-              {i18n.locale === 'en' ? 'Enter the lobby code your friend shared.' : 'Введите код комнаты, полученный от друга'}
+              {t('lobby.room_code_friend_hint')}
             </p>
           </div>
         </div>
@@ -907,7 +916,7 @@
         {#if isConnecting || (joinStep !== 'idle' && joinStep !== 'error')}
           <div class="join-steps-card" data-testid="join-steps-card">
             <div class="join-steps-header">
-              <span class="join-steps-title">Подключение к комнате</span>
+              <span class="join-steps-title">{t('lobby.connecting')}</span>
               <span class="join-steps-pct">{joinProgress}%</span>
             </div>
 
@@ -933,7 +942,7 @@
                   {/if}
                 </div>
                 <div class="step-text-wrap">
-                  <span class="step-label">Сверяем моды</span>
+                  <span class="step-label">{t('lobby.step_check_mods')}</span>
                 </div>
               </div>
 
@@ -955,11 +964,7 @@
                 </div>
                 <div class="step-text-wrap">
                   <span class="step-label" data-testid="download-mods-label">
-                    {#if modsToDownloadCount > 0}
-                      Докачиваем {modsToDownloadCount} {modsToDownloadCount === 1 ? 'мод' : modsToDownloadCount < 5 ? 'мода' : 'модов'}{modsDownloadedCount > 0 ? ` (${modsDownloadedCount}/${modsToDownloadCount})` : ''}
-                    {:else}
-                      Докачиваем 0 модов
-                    {/if}
+                    {getDownloadingModsLabel(modsToDownloadCount, modsDownloadedCount)}
                   </span>
                 </div>
               </div>
@@ -978,7 +983,7 @@
                   {/if}
                 </div>
                 <div class="step-text-wrap">
-                  <span class="step-label">Подключаемся</span>
+                  <span class="step-label">{t('lobby.step_connecting')}</span>
                 </div>
               </div>
             </div>
@@ -998,7 +1003,7 @@
               maxlength={6}
               class="code-input"
               onkeydown={(e) => e.key === 'Enter' && handleJoinRoom()}
-              aria-label={i18n.locale === 'en' ? 'Lobby code' : 'Код комнаты'}
+              aria-label={t('lobby.room_code_input_aria')}
               data-testid="guest-code-input"
             />
           </div>
@@ -1026,7 +1031,7 @@
               loading={isConnecting}
               disabled={!guestCode.trim()}
             >
-              <span>{i18n.locale === 'en' ? 'Join Lobby' : 'Войти в комнату'}</span>
+              <span>{t('lobby.btn_join_room')}</span>
             </Button>
           </span>
         </div>
@@ -1041,9 +1046,7 @@
           <div class="card-headings">
             <h2 class="card-heading">{t('lobby.host_title')}</h2>
             <p class="card-caption">
-              {i18n.locale === 'en'
-                ? 'Create a room with one click from your selected world.'
-                : 'Создайте комнату в один клик из выбранного мира'}
+              {t('lobby.create_room_hint')}
             </p>
           </div>
         </div>
@@ -1078,7 +1081,7 @@
             loading={isHosting}
           >
             <Icon name="server" size={16} color="#ffffff" />
-            <span>{i18n.locale === 'en' ? 'Create Room' : 'Создать комнату'}</span>
+            <span>{t('lobby.create_room_btn')}</span>
           </Button>
         </span>
       </div>
@@ -1088,8 +1091,8 @@
     <div class="lan-worlds-section">
       <div class="section-header-row">
         <div class="section-title-wrap">
-          <h3 class="section-title">Локальные миры в сети (LAN)</h3>
-          <p class="section-subtitle">Миры игроков в вашей локальной сети, открытые через «Открыть для сети»</p>
+          <h3 class="section-title">{t('lobby.lan_section_title')}</h3>
+          <p class="section-subtitle">{t('lobby.lan_section_subtitle')}</p>
         </div>
         <Button
           variant="secondary"
@@ -1097,7 +1100,7 @@
           onclick={fetchLanWorlds}
           loading={isLoadingLan}
         >
-          <span>Обновить</span>
+          <span>{t('lobby.refresh_btn')}</span>
         </Button>
       </div>
 
@@ -1108,11 +1111,11 @@
       {/if}
 
       {#if lanWorlds.length > 0}
-        <List header="Обнаруженные миры ({lanWorlds.length})">
+        <List header={t('lobby.lan_worlds_header', { count: lanWorlds.length })}>
           {#each lanWorlds as world}
             <Row
               title={world.motd}
-              subtitle="Локальный адрес: {world.address}"
+              subtitle={t('lobby.lan_world_address', { address: world.address })}
             >
               {#snippet leading()}
                 <div class="room-item-icon lan">
@@ -1129,7 +1132,7 @@
                     loading={publishingPort === world.port}
                     disabled={isPublishingLan || isConnectingLan}
                   >
-                    <span>Открыть друзьям</span>
+                    <span>{t('lobby.btn_open_world_friends')}</span>
                   </Button>
                   <Button
                     variant="primary"
@@ -1138,7 +1141,7 @@
                     loading={isConnectingLan}
                     disabled={isPublishingLan}
                   >
-                    <span>Подключиться</span>
+                    <span>{t('lobby.connect_btn')}</span>
                   </Button>
                 </div>
               {/snippet}
@@ -1149,9 +1152,9 @@
         <div class="lan-empty-wrap">
           <EmptyState
             icon="server"
-            title="Локальные миры не найдены"
-            description="Когда другой игрок в вашей локальной сети откроет одиночный мир для сети, он появится здесь автоматически."
-            actionText="Обновить"
+            title={t('lobby.no_lan_worlds_title')}
+            description={t('lobby.no_lan_worlds_desc')}
+            actionText={t('lobby.refresh_btn')}
             onaction={fetchLanWorlds}
           />
         </div>

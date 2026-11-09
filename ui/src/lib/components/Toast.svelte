@@ -9,6 +9,7 @@
 -->
 <script lang="ts">
   import Icon from './icons/Icon.svelte';
+  import { t } from '../i18n';
 
   export interface ToastMessage {
     id: string;
@@ -111,9 +112,9 @@
   <button
     type="button"
     class="dismiss-btn"
-    title="Закрыть"
+    title={t('common.close')}
     onclick={() => ondismiss?.(toast.id)}
-    aria-label="Закрыть уведомление"
+    aria-label={t('common.close_notification')}
   >
     <Icon name="close" size={12} color="var(--color-tertiary-label)" />
   </button>

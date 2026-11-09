@@ -6,6 +6,8 @@
   Just edit or replace this file.
 -->
 <script lang="ts">
+  import { t } from '../i18n';
+
   interface Props {
     size?: 'small' | 'medium' | 'large' | 'hero';
     showSubtitle?: boolean;
@@ -15,7 +17,7 @@
   let {
     size = 'medium',
     showSubtitle = false,
-    subtitle = 'Лаунчер',
+    subtitle = t('logo.subtitle'),
   }: Props = $props();
 </script>
 

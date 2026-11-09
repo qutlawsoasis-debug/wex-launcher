@@ -10,6 +10,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import Icon from './icons/Icon.svelte';
+  import { t } from '../i18n';
 
   export interface SidebarItem {
     id: string;
@@ -60,7 +61,7 @@
   }
 </script>
 
-<aside class="apple-sidebar" class:collapsed aria-label="Основная навигация">
+<aside class="apple-sidebar" class:collapsed aria-label={t('navigation.main_navigation')}>
   <div class="sidebar-header" data-tauri-drag-region>
     <div class="app-brand">
       <div class="brand-glyph">
