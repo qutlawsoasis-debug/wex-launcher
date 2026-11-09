@@ -234,7 +234,7 @@
     } catch {}
   }
 
-  $effect(() => {
+  onMount(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get('tab');
@@ -541,7 +541,7 @@
 
       if (screen === 'splash') {
         isStartingUp = true;
-      } else if (screen && ['play', 'servers', 'lobby', 'friends', 'workshop', 'mods', 'settings', 'showcase'].includes(screen)) {
+      } else if (screen && ['play', 'servers', 'lobby', 'friends', 'wardrobe', 'workshop', 'mods', 'settings', 'showcase'].includes(screen)) {
         activeTab = screen;
         isStartingUp = false;
       }

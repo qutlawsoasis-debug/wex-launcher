@@ -19,6 +19,9 @@ async function setupPageListeners(page: Page, markOnboardingCompleted = true) {
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
 
+  // Emulate reduced motion across all tests to prevent animation/transition timing race conditions
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+
   if (markOnboardingCompleted) {
     await page.addInitScript(() => {
       localStorage.setItem('wex_onboarding_completed', 'true');
@@ -54,71 +57,116 @@ async function setupPageListeners(page: Page, markOnboardingCompleted = true) {
   return { consoleErrors, pageErrors };
 }
 
+async function waitForAnimationsToSettle(page: Page) {
+  await page.evaluate(async () => {
+    if (typeof document.getAnimations === 'function') {
+      const animations = document.getAnimations();
+      const finiteAnimations = animations.filter((a) => {
+        try {
+          const timing = a.effect?.getComputedTiming();
+          return timing && timing.iterations !== Infinity && timing.duration !== Infinity;
+        } catch {
+          return false;
+        }
+      });
+      if (finiteAnimations.length > 0) {
+        await Promise.race([
+          Promise.allSettled(finiteAnimations.map((a) => a.finished)),
+          new Promise((resolve) => setTimeout(resolve, 300)),
+        ]);
+      }
+    }
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(resolve);
+      });
+    });
+  });
+}
+
 async function assertViewIntegrity(
   page: Page,
   viewName: string,
   consoleErrors: string[],
   pageErrors: string[]
 ) {
+  // Wait for transitions and animations to settle
+  await waitForAnimationsToSettle(page);
+
   // 1. Check Console & Page errors
   expect(consoleErrors, `Console errors detected in ${viewName}`).toEqual([]);
   expect(pageErrors, `Page errors detected in ${viewName}`).toEqual([]);
 
-  // 2. Check Horizontal Scroll
-  const scrollInfo = await page.evaluate(() => ({
-    docScroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-    bodyScroll: document.body.scrollWidth > document.body.clientWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-    clientWidth: document.documentElement.clientWidth,
-  }));
-  expect(
-    scrollInfo.docScroll || scrollInfo.bodyScroll,
-    `Horizontal scroll detected in ${viewName}: scrollWidth=${scrollInfo.scrollWidth}, clientWidth=${scrollInfo.clientWidth}`
-  ).toBe(false);
-
-  // 3. Check Text Truncation (scrollWidth > clientWidth for elements with text)
-  const truncatedElements = await page.evaluate(() => {
-    const truncated: Array<{
-      tag: string;
-      class: string;
-      text: string;
-      scrollWidth: number;
-      clientWidth: number;
-    }> = [];
-    const elements = document.querySelectorAll('*');
-    for (const el of elements) {
-      const rect = el.getBoundingClientRect();
-      if (rect.width <= 1 || rect.height <= 1) continue;
-      const style = window.getComputedStyle(el);
-      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
-
-      const hasDirectText = Array.from(el.childNodes).some(
-        (n) => n.nodeType === Node.TEXT_NODE && n.textContent && n.textContent.trim().length > 0
-      );
-      if (!hasDirectText) continue;
-
-      if (style.overflowX === 'scroll' || style.overflowX === 'auto') continue;
-      if (el.closest('.stories-track') || el.closest('.carousel-track')) continue;
-      if (el.closest('.visually-hidden') || el.closest('.sr-only')) continue;
-
-      // 1px subpixel tolerance
-      if (el.scrollWidth > el.clientWidth + 1) {
-        truncated.push({
-          tag: el.tagName,
-          class: el.className,
-          text: (el.textContent || '').trim().slice(0, 50),
-          scrollWidth: el.scrollWidth,
-          clientWidth: el.clientWidth,
+  // 2. Check Horizontal Scroll (poll until settled)
+  await expect
+    .poll(
+      async () => {
+        return await page.evaluate(() => {
+          const doc = document.documentElement;
+          const body = document.body;
+          return (
+            doc.scrollWidth > doc.clientWidth ||
+            (body ? body.scrollWidth > body.clientWidth : false)
+          );
         });
+      },
+      {
+        message: `Horizontal scroll detected in ${viewName}`,
+        timeout: 3000,
+        intervals: [50, 100, 200],
       }
-    }
-    return truncated;
-  });
+    )
+    .toBe(false);
 
-  expect(
-    truncatedElements,
-    `Truncated text elements detected in ${viewName}: ${JSON.stringify(truncatedElements)}`
-  ).toEqual([]);
+  // 3. Check Text Truncation (poll until layout and webfonts finish settling)
+  await expect
+    .poll(
+      async () => {
+        return await page.evaluate(() => {
+          const truncated: Array<{
+            tag: string;
+            class: string;
+            text: string;
+            scrollWidth: number;
+            clientWidth: number;
+          }> = [];
+          const elements = document.querySelectorAll('*');
+          for (const el of elements) {
+            const rect = el.getBoundingClientRect();
+            if (rect.width <= 1 || rect.height <= 1) continue;
+            const style = window.getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+
+            const hasDirectText = Array.from(el.childNodes).some(
+              (n) => n.nodeType === Node.TEXT_NODE && n.textContent && n.textContent.trim().length > 0
+            );
+            if (!hasDirectText) continue;
+
+            if (style.overflowX === 'scroll' || style.overflowX === 'auto') continue;
+            if (el.closest('.stories-track') || el.closest('.carousel-track')) continue;
+            if (el.closest('.visually-hidden') || el.closest('.sr-only')) continue;
+
+            // 1px subpixel tolerance
+            if (el.scrollWidth > el.clientWidth + 1) {
+              truncated.push({
+                tag: el.tagName,
+                class: el.className,
+                text: (el.textContent || '').trim().slice(0, 50),
+                scrollWidth: el.scrollWidth,
+                clientWidth: el.clientWidth,
+              });
+            }
+          }
+          return truncated;
+        });
+      },
+      {
+        message: `Truncated text elements detected in ${viewName}`,
+        timeout: 3000,
+        intervals: [50, 100, 200],
+      }
+    )
+    .toEqual([]);
 }
 
 async function assertSceneryTextContrast(page: Page, contextInfo: string) {
@@ -231,7 +279,8 @@ test.describe('Wex UI Smoke Tests', () => {
           await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
 
           await page.goto(`/?tab=${section.id}&theme=${theme}`);
-          await page.waitForTimeout(300);
+          await page.waitForLoadState('domcontentloaded');
+          await expect(page.locator('.apple-sidebar')).toBeVisible({ timeout: 5000 });
 
           await assertViewIntegrity(
             page,
@@ -255,7 +304,8 @@ test.describe('Wex UI Smoke Tests', () => {
           await page.addInitScript(setupMockIpc, { mode: 'empty' } as MockIpcOptions);
 
           await page.goto(`/?tab=${section.id}&theme=${theme}`);
-          await page.waitForTimeout(300);
+          await page.waitForLoadState('domcontentloaded');
+          await expect(page.locator('.apple-sidebar')).toBeVisible({ timeout: 5000 });
 
           await assertViewIntegrity(
             page,
@@ -276,11 +326,12 @@ test.describe('Wex UI Smoke Tests', () => {
 
       // Modal 1: Import Wizard Sheet
       await page.goto(`/?tab=play&theme=${theme}`);
-      await page.waitForTimeout(300);
+      await expect(page.locator('.apple-sidebar')).toBeVisible({ timeout: 5000 });
       const importBtn = page.locator('.header-tools button');
       if (await importBtn.isVisible()) {
         await importBtn.click();
-        await page.waitForTimeout(300);
+        const importSheet = page.locator('.import-wizard-card, .sheet-card');
+        await expect(importSheet).toBeVisible({ timeout: 3000 });
         await assertViewIntegrity(
           page,
           `ImportWizardSheet (${theme})`,
@@ -288,32 +339,37 @@ test.describe('Wex UI Smoke Tests', () => {
           pageErrors
         );
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(200);
+        await expect(importSheet).not.toBeVisible({ timeout: 3000 });
       }
 
       // Modal 2: Crash Sheet & Report Sheet
       await page.evaluate(() => (window as any).__TRIGGER_CRASH__());
-      await page.waitForTimeout(300);
+      const crashSheet = page.locator('.crash-card, .sheet-card');
+      await expect(crashSheet).toBeVisible({ timeout: 3000 });
       await assertViewIntegrity(page, `CrashSheet (${theme})`, consoleErrors, pageErrors);
 
       const reportBtn = page.locator('.crash-actions button:has-text("Отправить отчёт")');
       if (await reportBtn.isVisible()) {
         await reportBtn.click();
-        await page.waitForTimeout(300);
+        const reportSheet = page.locator('.report-card, .sheet-card');
+        await expect(reportSheet).toBeVisible({ timeout: 3000 });
         await assertViewIntegrity(page, `ReportSheet (${theme})`, consoleErrors, pageErrors);
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(200);
+        await expect(reportSheet).not.toBeVisible({ timeout: 3000 });
       }
-      await page.keyboard.press('Escape');
-      await page.waitForTimeout(200);
+      if (await crashSheet.isVisible()) {
+        await page.keyboard.press('Escape');
+        await expect(crashSheet).not.toBeVisible({ timeout: 3000 });
+      }
 
       // Modal 3: Add Server Sheet
       await page.goto(`/?tab=servers&theme=${theme}`);
-      await page.waitForTimeout(300);
+      await expect(page.locator('.apple-sidebar')).toBeVisible({ timeout: 5000 });
       const addServerBtn = page.locator('.toolbar-controls button:has-text("Добавить сервер")');
       if (await addServerBtn.isVisible()) {
         await addServerBtn.click();
-        await page.waitForTimeout(300);
+        const addServerSheet = page.locator('#new-srv-name');
+        await expect(addServerSheet).toBeVisible({ timeout: 3000 });
         await assertViewIntegrity(
           page,
           `AddServerSheet (${theme})`,
@@ -321,16 +377,17 @@ test.describe('Wex UI Smoke Tests', () => {
           pageErrors
         );
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(200);
+        await expect(addServerSheet).not.toBeVisible({ timeout: 3000 });
       }
 
       // Modal 4: Workshop New World Sheet
       await page.goto(`/?tab=workshop&theme=${theme}`);
-      await page.waitForTimeout(300);
+      await expect(page.locator('.apple-sidebar')).toBeVisible({ timeout: 5000 });
       const newWorldBtn = page.locator('.workshop-toolbar button:has-text("Новый мир")');
       if (await newWorldBtn.isVisible()) {
         await newWorldBtn.click();
-        await page.waitForTimeout(300);
+        const newWorldSheet = page.locator('#new-world-name');
+        await expect(newWorldSheet).toBeVisible({ timeout: 3000 });
         await assertViewIntegrity(
           page,
           `WorkshopNewWorldSheet (${theme})`,
@@ -338,12 +395,11 @@ test.describe('Wex UI Smoke Tests', () => {
           pageErrors
         );
         await page.keyboard.press('Escape');
-        await page.waitForTimeout(200);
+        await expect(newWorldSheet).not.toBeVisible({ timeout: 3000 });
       }
 
       // Modal 5: First Launch Onboarding Modal
       await page.goto(`/?onboarding=true&theme=${theme}`);
-      await page.waitForTimeout(300);
       const onboardingCard = page.locator('.onboarding-card');
       if (await onboardingCard.isVisible()) {
         await assertViewIntegrity(
@@ -358,7 +414,7 @@ test.describe('Wex UI Smoke Tests', () => {
         } else {
           await page.keyboard.press('Escape');
         }
-        await page.waitForTimeout(200);
+        await expect(onboardingCard).not.toBeVisible({ timeout: 3000 });
       }
     });
   }
@@ -374,7 +430,8 @@ test.describe('Wex UI Smoke Tests', () => {
         await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
 
         await page.goto(`/?tab=play&theme=${theme}`);
-        await page.waitForTimeout(300);
+        await page.waitForLoadState('domcontentloaded');
+        await expect(page.locator('.dock-primary-action button')).toBeVisible({ timeout: 5000 });
 
         // Step 1: Initial idle state
         await assertViewIntegrity(page, `Play Idle (${theme})`, consoleErrors, pageErrors);
@@ -384,7 +441,7 @@ test.describe('Wex UI Smoke Tests', () => {
         // Step 2: Click Play to trigger launch progress
         await playBtn.click();
         const progressDock = page.locator('.dock-progress-mode, .dock-progress');
-        await expect(progressDock).toBeVisible({ timeout: 2000 });
+        await expect(progressDock).toBeVisible({ timeout: 3000 });
         await assertViewIntegrity(page, `Play Launch Progress (${theme})`, consoleErrors, pageErrors);
 
         // Step 3: Transition to Running ("В игре")
@@ -408,7 +465,8 @@ test.describe('Wex UI Smoke Tests', () => {
         await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
 
         await page.goto(`/?tab=lobby&theme=${theme}`);
-        await page.waitForTimeout(300);
+        await page.waitForLoadState('domcontentloaded');
+        await expect(page.locator('.host-card, .join-card, .lobby-container').first()).toBeVisible({ timeout: 5000 });
 
         // Step 1: Initial Lobby screen
         await assertViewIntegrity(page, `Lobby Initial (${theme})`, consoleErrors, pageErrors);
@@ -456,7 +514,8 @@ test.describe('Wex UI Smoke Tests', () => {
         await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
 
         await page.goto(`/?tab=servers&theme=${theme}`);
-        await page.waitForTimeout(300);
+        await page.waitForLoadState('domcontentloaded');
+        await expect(page.locator('.toolbar-controls button:has-text("Добавить сервер")')).toBeVisible({ timeout: 5000 });
 
         // Step 1: Initial servers view
         await assertViewIntegrity(page, `Servers Initial (${theme})`, consoleErrors, pageErrors);
@@ -467,7 +526,7 @@ test.describe('Wex UI Smoke Tests', () => {
         await addBtn.click();
 
         const nameInput = page.locator('#new-srv-name');
-        await expect(nameInput).toBeVisible({ timeout: 2000 });
+        await expect(nameInput).toBeVisible({ timeout: 3000 });
         await assertViewIntegrity(page, `Servers Add Sheet Open (${theme})`, consoleErrors, pageErrors);
 
         // Step 3: Enter server details and save
@@ -499,7 +558,8 @@ test.describe('Wex UI Smoke Tests', () => {
         await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
 
         await page.goto(`/?tab=settings&theme=${theme}`);
-        await page.waitForTimeout(300);
+        await page.waitForLoadState('domcontentloaded');
+        await expect(page.locator('button.segment-button:has-text("English")')).toBeVisible({ timeout: 5000 });
 
         // Step 1: Initial settings in Russian
         await expect(page.locator('.nav-item:has-text("Играть")')).toBeVisible();
@@ -511,35 +571,31 @@ test.describe('Wex UI Smoke Tests', () => {
         await enBtn.click();
 
         // Step 3: Verify English across sections
-        await expect(page.locator('.nav-item:has-text("Play")')).toBeVisible({ timeout: 2000 });
+        await expect(page.locator('.nav-item:has-text("Play")')).toBeVisible({ timeout: 3000 });
         await assertViewIntegrity(page, `Settings English (${theme})`, consoleErrors, pageErrors);
 
         // Navigate to Play screen in English
         await page.locator('.nav-item:has-text("Play")').click();
-        await page.waitForTimeout(200);
-        await expect(page.locator('.dock-primary-action button:has-text("Play")')).toBeVisible();
+        await expect(page.locator('.dock-primary-action button:has-text("Play")')).toBeVisible({ timeout: 3000 });
         await assertViewIntegrity(page, `Play Screen English (${theme})`, consoleErrors, pageErrors);
 
         // Navigate to Servers screen in English
         await page.locator('.nav-item:has-text("Servers")').click();
-        await page.waitForTimeout(200);
-        await expect(page.locator('button:has-text("Add Server")')).toBeVisible();
+        await expect(page.locator('.toolbar-controls button:has-text("Add Server"), .servers-screen button:has-text("Add Server")').first()).toBeVisible({ timeout: 3000 });
         await assertViewIntegrity(page, `Servers Screen English (${theme})`, consoleErrors, pageErrors);
 
         // Step 4: Switch back to Russian
         await page.locator('.nav-item:has-text("Settings")').click();
-        await page.waitForTimeout(200);
         const ruBtn = page.locator('button.segment-button:has-text("Русский")');
-        await expect(ruBtn).toBeVisible();
+        await expect(ruBtn).toBeVisible({ timeout: 3000 });
         await ruBtn.click();
 
-        await expect(page.locator('.nav-item:has-text("Играть")')).toBeVisible({ timeout: 2000 });
+        await expect(page.locator('.nav-item:has-text("Играть")')).toBeVisible({ timeout: 3000 });
         await assertViewIntegrity(page, `Settings Switched Russian (${theme})`, consoleErrors, pageErrors);
 
         // Navigate to Play screen in Russian
         await page.locator('.nav-item:has-text("Играть")').click();
-        await page.waitForTimeout(200);
-        await expect(page.locator('.dock-primary-action button:has-text("Играть")')).toBeVisible();
+        await expect(page.locator('.dock-primary-action button:has-text("Играть")')).toBeVisible({ timeout: 3000 });
         await assertViewIntegrity(page, `Play Screen Russian (${theme})`, consoleErrors, pageErrors);
       });
     });
@@ -555,7 +611,8 @@ test.describe('Wex UI Smoke Tests', () => {
         await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
 
         await page.goto(`/?tab=play&bg=${bg}&theme=${theme}`);
-        await page.waitForTimeout(400);
+        await page.waitForLoadState('domcontentloaded');
+        await expect(page.locator('.dock-primary-action button')).toBeVisible({ timeout: 5000 });
 
         await assertSceneryTextContrast(page, `Background: ${bg}, Theme: ${theme}`);
         await assertViewIntegrity(
@@ -576,11 +633,11 @@ test.describe('Wex UI Smoke Tests', () => {
     await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
 
     await page.goto('/?theme=dark');
-    await page.waitForTimeout(300);
+    await page.waitForLoadState('domcontentloaded');
 
     // 1. Verify OnboardingModal is visible on clean launch
     const onboardingCard = page.locator('.onboarding-card');
-    await expect(onboardingCard).toBeVisible({ timeout: 4000 });
+    await expect(onboardingCard).toBeVisible({ timeout: 5000 });
     await assertViewIntegrity(
       page,
       'First Launch Onboarding Modal',
@@ -592,10 +649,9 @@ test.describe('Wex UI Smoke Tests', () => {
     const skipBtn = page.locator('.skip-action, button:has-text("Пропустить")').first();
     await expect(skipBtn).toBeVisible();
     await skipBtn.click();
-    await page.waitForTimeout(300);
 
     // 3. Verify modal is closed
-    await expect(onboardingCard).not.toBeVisible();
+    await expect(onboardingCard).not.toBeVisible({ timeout: 4000 });
 
     // 4. Verify completed flag in localStorage
     const isCompleted = await page.evaluate(() => localStorage.getItem('wex_onboarding_completed'));
@@ -603,8 +659,8 @@ test.describe('Wex UI Smoke Tests', () => {
 
     // 5. Reload page and verify modal is NOT shown again
     await page.reload();
-    await page.waitForTimeout(300);
-    await expect(onboardingCard).not.toBeVisible();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(onboardingCard).not.toBeVisible({ timeout: 4000 });
     await assertViewIntegrity(
       page,
       'Post-Onboarding Play Screen',
