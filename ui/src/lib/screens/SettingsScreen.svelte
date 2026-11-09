@@ -43,6 +43,7 @@
   let language = $state<string>(i18n.locale);
   let launcherVersion = $state('1.0.0');
   let osName = $state('windows');
+  let minimizeToTray = $state(true);
 
   let graphicsOptions = $derived([
     { value: 'Low', label: t('settings.graphics_low') },
@@ -149,6 +150,7 @@
         accent?: string;
         reduce_motion?: boolean;
         reduce_transparency?: boolean;
+        minimize_to_tray?: boolean;
       }>('get_launcher_settings');
 
       if (cfg) {
@@ -170,6 +172,7 @@
         }
         if (cfg.appearance) theme.setAppearance(cfg.appearance as 'dark' | 'light' | 'auto');
         if (cfg.accent) theme.setAccent(cfg.accent as AccentColor);
+        if (cfg.minimize_to_tray !== undefined) minimizeToTray = cfg.minimize_to_tray;
         theme.setReduceMotion(cfg.reduce_motion ?? false);
         theme.setReduceTransparency(cfg.reduce_transparency ?? false);
       }
@@ -227,6 +230,7 @@
           accent: theme.accent,
           reduce_motion: theme.reduceMotion,
           reduce_transparency: theme.reduceTransparency,
+          minimize_to_tray: minimizeToTray,
         },
       });
     } catch {
@@ -245,6 +249,7 @@
         discord_rpc?: boolean;
         fast_start_jvm?: boolean;
         language?: string;
+        minimize_to_tray?: boolean;
       }>('reset_settings');
 
       if (reset) {
@@ -261,6 +266,7 @@
           language = 'ru';
           i18n.setLocale('ru');
         }
+        if (reset.minimize_to_tray !== undefined) minimizeToTray = reset.minimize_to_tray;
       }
     } catch {
       // Browser reset fallback
@@ -271,6 +277,7 @@
       discordRpc = true;
       fastStartJvm = false;
       language = 'ru';
+      minimizeToTray = true;
       i18n.setLocale('ru');
     }
 
@@ -523,6 +530,25 @@
               <span>Очистить</span>
             {/if}
           </Button>
+        {/snippet}
+      </Row>
+    </List>
+
+    <!-- Window and Tray behavior (SPEC wex-window) -->
+    <List header="Окно и трей">
+      <Row
+        title="Сворачивать в трей при запуске игры"
+        subtitle="Скрывать окно лаунчера во время игры и возвращать его на экран после закрытия"
+      >
+        {#snippet trailing()}
+          <Toggle
+            ariaLabel="Сворачивать в трей при запуске игры"
+            checked={minimizeToTray}
+            onchange={(checked) => {
+              minimizeToTray = checked;
+              saveConfig();
+            }}
+          />
         {/snippet}
       </Row>
     </List>

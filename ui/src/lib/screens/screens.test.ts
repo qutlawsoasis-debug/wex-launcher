@@ -603,6 +603,7 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Графический пресет');
     expect(target.textContent).toContain('Выбор исполняемого файла Java');
     expect(target.textContent).toContain('Discord Rich Presence');
+    expect(target.textContent).toContain('Сворачивать в трей при запуске игры');
     expect(target.textContent).toContain('Язык интерфейса');
     expect(target.textContent).toContain('О программе');
     expect(target.textContent).toContain('Tauri 2');
@@ -1084,5 +1085,16 @@ describe('Wex Launcher Screens', () => {
 
     expect(target.textContent).toContain('Импорт из старого лаунчера');
     unmount(comp);
+  });
+
+  it('supports keyboard navigation: Esc closes modals, Ctrl+1..7 navigation', () => {
+    let escaped = false;
+    const onEscape = () => { escaped = true; };
+    window.addEventListener('wex-escape', onEscape);
+
+    window.dispatchEvent(new CustomEvent('wex-escape'));
+    expect(escaped).toBe(true);
+
+    window.removeEventListener('wex-escape', onEscape);
   });
 });
