@@ -235,6 +235,22 @@ pub fn build_launch_args(opts: &LaunchOptions) -> Vec<String> {
         args.push(arg.clone());
     }
 
+    // SPEC 2.8: Tuned GC profile defaults if none explicitly specified
+    let has_explicit_gc = opts
+        .config
+        .jvm_args
+        .iter()
+        .chain(opts.extra_jvm_args.iter())
+        .any(|a| a.starts_with("-XX:+Use") && (a.contains("GC") || a.contains("ZGC")));
+
+    if !has_explicit_gc {
+        for flag in crate::jvm_args::GcProfile::G1Tuned.to_jvm_flags(21) {
+            if !args.contains(&flag) {
+                args.push(flag);
+            }
+        }
+    }
+
     if std::env::var("WEX_QA_BACKGROUND")
         .map(|v| v == "1" || v == "true")
         .unwrap_or(false)
@@ -357,6 +373,19 @@ pub async fn launch_game_process(
 
     let pid = child.id().unwrap_or(0);
     events.on_event(&Event::GameLaunched { pid });
+
+    #[cfg(windows)]
+    if let Some(raw_handle) = child.raw_handle() {
+        let _ = crate::jvm_args::apply_process_handle_priority(
+            raw_handle,
+            crate::jvm_args::ProcessPriority::AboveNormal,
+        );
+    } else {
+        let _ = crate::jvm_args::apply_process_priority(
+            pid,
+            crate::jvm_args::ProcessPriority::AboveNormal,
+        );
+    }
 
     #[cfg(windows)]
     let job_object = match WindowsJobObject::new() {
@@ -1018,5 +1047,40 @@ mod tests {
         );
         cfg.fast_start_jvm = true;
         assert!(cfg.fast_start_jvm);
+    }
+
+    #[test]
+    fn test_tuned_gc_arguments_default_injection() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let config = LauncherConfig::default();
+
+        let java_bin = PathBuf::from("java.exe");
+        let client_jar = PathBuf::from("client.jar");
+        let vanilla_libs = Vec::new();
+        let fabric_libs = Vec::new();
+
+        let launch_opts = LaunchOptions {
+            paths: &paths,
+            config: &config,
+            version: "1.20.1",
+            java_binary: &java_bin,
+            client_jar: &client_jar,
+            vanilla_libraries: &vanilla_libs,
+            fabric_libraries: &fabric_libs,
+            asset_index_id: "5",
+            extra_jvm_args: &[],
+            quick_play_multiplayer: None,
+        };
+
+        let args = build_launch_args(&launch_opts);
+        assert!(
+            args.iter().any(|a| a == "-XX:+UseG1GC"),
+            "Default launch args must contain G1 GC"
+        );
+        assert!(
+            args.iter().any(|a| a == "-XX:MaxGCPauseMillis=20"),
+            "Default launch args must contain tuned MaxGCPauseMillis=20"
+        );
     }
 }
