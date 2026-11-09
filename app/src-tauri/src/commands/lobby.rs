@@ -71,7 +71,6 @@ impl LobbyState {
             });
 
         let lan_discovery = Arc::new(LanDiscoveryService::default());
-        std::mem::drop(lan_discovery.clone().spawn_listener());
 
         Self {
             client,
@@ -793,6 +792,26 @@ pub async fn record_lan_world(
     Ok(world.map(lan_world_to_dto))
 }
 
+/// Start LAN world discovery listener.
+#[tauri::command]
+pub async fn net_lan_start_discovery(state: State<'_, LobbyState>) -> Result<(), String> {
+    state.lan_discovery.start().await;
+    Ok(())
+}
+
+/// Stop LAN world discovery listener and release UDP socket.
+#[tauri::command]
+pub async fn net_lan_stop_discovery(state: State<'_, LobbyState>) -> Result<(), String> {
+    state.lan_discovery.stop().await;
+    Ok(())
+}
+
+/// Query if LAN world discovery listener is currently running.
+#[tauri::command]
+pub async fn net_lan_is_discovering(state: State<'_, LobbyState>) -> Result<bool, String> {
+    Ok(state.lan_discovery.is_running().await)
+}
+
 #[tauri::command]
 pub async fn connect_lan_world(
     address: String,
@@ -1096,5 +1115,22 @@ mod tests {
         assert_eq!(dto.motd, "Steve's Underground Base");
         assert_eq!(dto.address, "192.168.1.77:51234");
         assert_eq!(dto.port, 51234);
+    }
+
+    #[tokio::test]
+    async fn test_lan_discovery_lifecycle_in_lobby_state() {
+        let tmp = tempdir().unwrap();
+        let state = LobbyState::new(
+            tmp.path().to_path_buf(),
+            DEFAULT_LOBBY_API_URL,
+            DEFAULT_OLD_BACKEND_URL,
+        );
+
+        // Discovery should not be running upon LobbyState initialization
+        assert!(!state.lan_discovery.is_running().await);
+        state.lan_discovery.start().await;
+        assert!(state.lan_discovery.is_running().await);
+        state.lan_discovery.stop().await;
+        assert!(!state.lan_discovery.is_running().await);
     }
 }
