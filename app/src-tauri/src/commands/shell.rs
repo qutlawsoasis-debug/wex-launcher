@@ -196,23 +196,8 @@ pub async fn shell_stop_game(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
-    let ver = match version {
-        Some(v) => v,
-        None => {
-            let v = state.running_version.lock().await;
-            v.clone().unwrap_or_default()
-        }
-    };
-
-    if !ver.is_empty() {
-        let _ = state.core.kill_game(&ver).await;
-    }
-
-    state.is_running.store(false, Ordering::SeqCst);
-    state.is_launching.store(false, Ordering::SeqCst);
-
+    state.stop_active_game(version.as_deref()).await;
     set_discord_rpc(&state.discord, Activity::InLauncher).await;
-
     Ok(())
 }
 

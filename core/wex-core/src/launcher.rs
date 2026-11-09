@@ -743,12 +743,27 @@ pub fn mark_fast_path_verified(paths: &WexPaths, version: &str) -> Result<()> {
 
 pub fn is_fast_path_ready(paths: &WexPaths, version: &str) -> bool {
     let client_jar = paths.client_jar(version);
-    if !client_jar.exists() {
-        return false;
-    }
+    let jar_meta = match fs::metadata(&client_jar) {
+        Ok(m) if m.len() > 0 => m,
+        _ => return false,
+    };
 
     let state_file = fast_path_state_path(paths, version);
-    if !state_file.exists() {
+    let state_content = match fs::read_to_string(&state_file) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    let state: FastPathState = match serde_json::from_str(&state_content) {
+        Ok(s) => s,
+        Err(_) => {
+            let _ = fs::remove_file(&state_file);
+            return false;
+        }
+    };
+
+    if !state.verified || state.client_jar_size == 0 || jar_meta.len() != state.client_jar_size {
+        let _ = fs::remove_file(&state_file);
         return false;
     }
 
@@ -773,7 +788,7 @@ pub fn is_fast_path_ready(paths: &WexPaths, version: &str) -> bool {
         return false;
     }
 
-    // Check Mojang Java binary exists
+    // Check Mojang Java binary exists and is non-empty
     let java_dir = if version == "1.20.1" {
         "java-runtime-gamma"
     } else {
@@ -787,8 +802,28 @@ pub fn is_fast_path_ready(paths: &WexPaths, version: &str) -> bool {
         } else {
             "bin/java"
         });
-    if !mojang_java.exists() {
-        return false;
+    match fs::metadata(&mojang_java) {
+        Ok(m) if m.len() > 0 => {}
+        _ => return false,
+    }
+
+    // Verify resolved fast-path environment libraries are present on disk
+    match resolve_fast_path_environment(paths, version) {
+        Ok((_, _, vanilla_libs, fabric_libs, _)) => {
+            for lib in vanilla_libs.iter().chain(fabric_libs.iter()) {
+                match fs::metadata(lib) {
+                    Ok(m) if m.len() > 0 => {}
+                    _ => {
+                        let _ = fs::remove_file(&state_file);
+                        return false;
+                    }
+                }
+            }
+        }
+        Err(_) => {
+            let _ = fs::remove_file(&state_file);
+            return false;
+        }
     }
 
     true
@@ -1492,6 +1527,56 @@ mod tests {
         assert_eq!(asset_idx, "17");
         assert!(v_libs.is_empty());
         assert!(f_libs.is_empty());
+    }
+
+    #[test]
+    fn test_review_fast_path_rejects_corrupted_empty_client_jar() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        paths.ensure_dirs().unwrap();
+        let version = "1.21.1";
+        paths.ensure_instance_dirs(version).unwrap();
+
+        let client_jar = paths.client_jar(version);
+        fs::create_dir_all(client_jar.parent().unwrap()).unwrap();
+        fs::write(&client_jar, b"VALID_JAR_DATA").unwrap();
+
+        let ver_dir = paths.versions_dir.join(version);
+        fs::create_dir_all(&ver_dir).unwrap();
+        let pkg_json = r#"{"id":"1.21.1","mainClass":"net.minecraft.client.main.Main","downloads":{"client":{"sha1":"","size":0,"url":""}},"libraries":[],"assetIndex":{"id":"17","sha1":"","size":0,"url":"","totalSize":0}}"#;
+        fs::write(ver_dir.join(format!("{}.json", version)), pkg_json).unwrap();
+
+        let fabric_profile = r#"{"id":"fabric-loader-0.19.5-1.21.1","mainClass":"net.fabricmc.loader.impl.launch.knot.KnotClient","libraries":[]}"#;
+        fs::write(
+            ver_dir.join(format!("fabric-{}.json", version)),
+            fabric_profile,
+        )
+        .unwrap();
+
+        let pack_state = paths.instance_dir(version).join("pack.state.json");
+        fs::write(&pack_state, b"{}").unwrap();
+
+        let java_dir = paths.runtime_dir.join("java-runtime-delta").join("bin");
+        fs::create_dir_all(&java_dir).unwrap();
+        let java_bin = java_dir.join(if cfg!(target_os = "windows") {
+            "javaw.exe"
+        } else {
+            "java"
+        });
+        fs::write(&java_bin, b"stub").unwrap();
+
+        // Mark verified when jar was valid
+        mark_fast_path_verified(&paths, version).unwrap();
+        assert!(is_fast_path_ready(&paths, version));
+
+        // Corrupt client_jar to 0 bytes
+        fs::write(&client_jar, b"").unwrap();
+
+        // Fast path MUST reject corrupted installation
+        assert!(
+            !is_fast_path_ready(&paths, version),
+            "Fast path must reject 0-byte/corrupted client_jar"
+        );
     }
 
     #[test]

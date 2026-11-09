@@ -174,6 +174,7 @@ pub struct PrewarmedInstance {
     pub signal_file: std::path::PathBuf,
     pub process: Option<wex_core::GameProcess>,
     pub started_at: std::time::Instant,
+    pub activated: bool,
 }
 
 impl Drop for PrewarmedInstance {
@@ -181,7 +182,9 @@ impl Drop for PrewarmedInstance {
         if let Some(mut proc) = self.process.take() {
             let _ = proc.kill();
         }
-        let _ = std::fs::remove_file(&self.signal_file);
+        if !self.activated {
+            let _ = std::fs::remove_file(&self.signal_file);
+        }
     }
 }
 
@@ -197,6 +200,7 @@ pub struct PlayState {
     pub network: Option<super::network::NetworkState>,
     pub prewarmed: Arc<Mutex<Option<PrewarmedInstance>>>,
     pub is_prewarming: Arc<AtomicBool>,
+    pub prewarm_generation: Arc<std::sync::atomic::AtomicU64>,
     pub active_process: Arc<Mutex<Option<wex_core::GameProcess>>>,
     pub app_handle: Option<AppHandle>,
 }
@@ -238,15 +242,24 @@ impl PlayState {
             network: Some(network),
             prewarmed: Arc::new(Mutex::new(None)),
             is_prewarming: Arc::new(AtomicBool::new(false)),
+            prewarm_generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             active_process: Arc::new(Mutex::new(None)),
             app_handle: Some(app),
         };
 
-        // Trigger background verification & prewarm if enabled and enough RAM is present
+        // Trigger background verification & prewarm ONLY if fast_launch is enabled
         let state_clone = state.clone();
         tauri::async_runtime::spawn(async move {
             let cfg =
                 wex_core::config::LauncherConfig::load_or_default(&state_clone.paths.config_file);
+            if !cfg.fast_launch {
+                return;
+            }
+            if state_clone.is_launching.load(Ordering::SeqCst)
+                || state_clone.is_running.load(Ordering::SeqCst)
+            {
+                return;
+            }
             let version = cfg.selected_version.clone();
             let paths_clone = state_clone.paths.clone();
             let client = reqwest::Client::builder()
@@ -263,7 +276,9 @@ impl PlayState {
             )
             .await;
 
-            if cfg.fast_launch {
+            if !state_clone.is_launching.load(Ordering::SeqCst)
+                && !state_clone.is_running.load(Ordering::SeqCst)
+            {
                 state_clone
                     .trigger_prewarm(cfg.selected_version, cfg.nickname, cfg.max_memory_mb)
                     .await;
@@ -285,6 +300,7 @@ impl PlayState {
             network: None,
             prewarmed: Arc::new(Mutex::new(None)),
             is_prewarming: Arc::new(AtomicBool::new(false)),
+            prewarm_generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             active_process: Arc::new(Mutex::new(None)),
             app_handle: None,
         }
@@ -306,12 +322,38 @@ impl PlayState {
             network: Some(network),
             prewarmed: Arc::new(Mutex::new(None)),
             is_prewarming: Arc::new(AtomicBool::new(false)),
+            prewarm_generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             active_process: Arc::new(Mutex::new(None)),
             app_handle: None,
         }
     }
 
+    pub async fn stop_active_game(&self, version: Option<&str>) {
+        if let Some(mut proc) = self.active_process.lock().await.take() {
+            let _ = proc.kill();
+        }
+        self.cleanup_prewarm().await;
+
+        let ver = match version {
+            Some(v) => v.to_string(),
+            None => {
+                let v = self.running_version.lock().await;
+                v.clone().unwrap_or_default()
+            }
+        };
+
+        if !ver.is_empty() {
+            let _ = self.core.kill_game(&ver).await;
+        }
+
+        self.is_running.store(false, Ordering::SeqCst);
+        self.is_launching.store(false, Ordering::SeqCst);
+        let mut v = self.running_version.lock().await;
+        *v = None;
+    }
+
     pub async fn cleanup_prewarm(&self) {
+        self.prewarm_generation.fetch_add(1, Ordering::SeqCst);
         let mut pw_lock = self.prewarmed.lock().await;
         if let Some(mut pw) = pw_lock.take() {
             if let Some(mut proc) = pw.process.take() {
@@ -319,6 +361,7 @@ impl PlayState {
             }
             let _ = std::fs::remove_file(&pw.signal_file);
         }
+        self.is_prewarming.store(false, Ordering::SeqCst);
         if let Some(app) = &self.app_handle {
             let _ = app.emit(
                 "prewarm-status",
@@ -370,6 +413,7 @@ impl PlayState {
                             let _ = std::fs::write(&pw.signal_file, b"READY\n");
                             let elapsed_ms = start.elapsed().as_millis();
                             let pid = proc.pid;
+                            pw.activated = true;
                             return Some((pid, proc, elapsed_ms));
                         }
                         _ => {
@@ -417,6 +461,8 @@ impl PlayState {
         }
 
         self.cleanup_prewarm().await;
+        self.is_prewarming.store(true, Ordering::SeqCst);
+        let expected_gen = self.prewarm_generation.load(Ordering::SeqCst);
 
         if let Some(app) = &self.app_handle {
             let _ = app.emit(
@@ -432,6 +478,7 @@ impl PlayState {
         let paths_clone = self.paths.clone();
         let prewarmed_clone = self.prewarmed.clone();
         let is_prewarming_clone = self.is_prewarming.clone();
+        let prewarm_gen_clone = self.prewarm_generation.clone();
         let app_clone = self.app_handle.clone();
 
         tauri::async_runtime::spawn(async move {
@@ -460,6 +507,14 @@ impl PlayState {
 
             match prewarm_res {
                 Ok(proc) => {
+                    if prewarm_gen_clone.load(Ordering::SeqCst) != expected_gen
+                        || !is_prewarming_clone.load(Ordering::SeqCst)
+                    {
+                        let mut proc = proc;
+                        let _ = proc.kill();
+                        let _ = std::fs::remove_file(&signal_file);
+                        return;
+                    }
                     let mut lock = prewarmed_clone.lock().await;
                     *lock = Some(PrewarmedInstance {
                         version,
@@ -468,6 +523,7 @@ impl PlayState {
                         signal_file,
                         process: Some(proc),
                         started_at: std::time::Instant::now(),
+                        activated: false,
                     });
                     if let Some(app) = &app_clone {
                         let _ = app.emit(
@@ -655,8 +711,16 @@ pub async fn start_game<R: tauri::Runtime>(
         }
     }
 
-    // 3.5. Fast-launch: check prewarm status
-    if cfg.fast_launch {
+    // 3.5. Fast-launch: check prewarm status (cannot be used if custom server or jvm args were specified)
+    let has_custom_server = server.as_ref().map_or(false, |s| !s.trim().is_empty());
+    let has_custom_jvm_args = jvm_args.as_ref().map_or(false, |a| !a.is_empty());
+    let can_use_fast_launch = cfg.fast_launch && !has_custom_server && !has_custom_jvm_args;
+
+    if cfg.fast_launch && !can_use_fast_launch {
+        state.cleanup_prewarm().await;
+    }
+
+    if can_use_fast_launch {
         let activated_proc = if let Some(ready) = state
             .activate_prewarm(&version, &nickname, cfg.max_memory_mb)
             .await
@@ -1100,24 +1164,7 @@ pub async fn is_game_running(state: State<'_, PlayState>) -> Result<bool, String
 /// Force kill the game instance.
 #[tauri::command]
 pub async fn kill_game(version: Option<String>, state: State<'_, PlayState>) -> Result<(), String> {
-    let ver = match version {
-        Some(v) => v,
-        None => {
-            let v = state.running_version.lock().await;
-            v.clone().unwrap_or_default()
-        }
-    };
-
-    if let Some(mut proc) = state.active_process.lock().await.take() {
-        let _ = proc.kill();
-    }
-    state.cleanup_prewarm().await;
-
-    if !ver.is_empty() {
-        let _ = state.core.kill_game(&ver).await;
-    }
-    state.is_running.store(false, Ordering::SeqCst);
-    state.is_launching.store(false, Ordering::SeqCst);
+    state.stop_active_game(version.as_deref()).await;
 
     let cfg = wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file);
     if cfg.discord_rpc {
@@ -1563,6 +1610,7 @@ mod tests {
                 signal_file: signal_file.clone(),
                 process: Some(game_proc),
                 started_at: std::time::Instant::now(),
+                activated: false,
             });
         }
 
@@ -1583,5 +1631,145 @@ mod tests {
         let is_ready = play_state.has_valid_prewarm("1.21.1", "Player", 4096).await;
         assert!(!is_prewarming);
         assert!(!is_ready);
+    }
+
+    #[tokio::test]
+    async fn test_review_activate_prewarm_preserves_signal_file() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let mock_core = Arc::new(MockLauncherCore::new());
+        let play_state = PlayState::new_with_core(paths.clone(), mock_core.clone());
+
+        let signal_file = tmp.path().join("test_prewarm.signal");
+        std::fs::write(&signal_file, b"INIT\n").unwrap();
+
+        let child = tokio::process::Command::new(if cfg!(target_os = "windows") {
+            "cmd.exe"
+        } else {
+            "sh"
+        })
+        .args(if cfg!(target_os = "windows") {
+            &["/c", "ping 127.0.0.1 -n 10 > nul"][..]
+        } else {
+            &["-c", "sleep 10"][..]
+        })
+        .spawn()
+        .unwrap();
+
+        let game_proc = wex_core::GameProcess {
+            pid: child.id().unwrap_or(0),
+            child,
+            log_path: tmp.path().join("latest.log"),
+            #[cfg(windows)]
+            _job_object: None,
+        };
+
+        {
+            let mut pw = play_state.prewarmed.lock().await;
+            *pw = Some(PrewarmedInstance {
+                version: "1.21.1".to_string(),
+                nickname: "Player".to_string(),
+                ram_mb: 4096,
+                signal_file: signal_file.clone(),
+                process: Some(game_proc),
+                started_at: std::time::Instant::now(),
+                activated: false,
+            });
+        }
+
+        let res = play_state.activate_prewarm("1.21.1", "Player", 4096).await;
+        assert!(
+            res.is_some(),
+            "activate_prewarm must activate running prewarm"
+        );
+        let (_, mut proc, _) = res.unwrap();
+        let _ = proc.kill();
+
+        assert!(
+            signal_file.exists(),
+            "prewarm.signal must not be deleted when activating prewarm"
+        );
+        assert_eq!(std::fs::read_to_string(&signal_file).unwrap(), "READY\n");
+    }
+
+    #[tokio::test]
+    async fn test_review_tray_stop_terminates_active_prewarmed_game() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let mock_core = Arc::new(MockLauncherCore::new());
+        let play_state = PlayState::new_with_core(paths.clone(), mock_core.clone());
+
+        let child = tokio::process::Command::new(if cfg!(target_os = "windows") {
+            "cmd.exe"
+        } else {
+            "sh"
+        })
+        .args(if cfg!(target_os = "windows") {
+            &["/c", "ping 127.0.0.1 -n 10 > nul"][..]
+        } else {
+            &["-c", "sleep 10"][..]
+        })
+        .spawn()
+        .unwrap();
+
+        let pid = child.id().unwrap_or(0);
+        let game_proc = wex_core::GameProcess {
+            pid,
+            child,
+            log_path: tmp.path().join("latest.log"),
+            #[cfg(windows)]
+            _job_object: None,
+        };
+
+        {
+            let mut ap = play_state.active_process.lock().await;
+            *ap = Some(game_proc);
+            play_state.is_running.store(true, Ordering::SeqCst);
+            let mut v = play_state.running_version.lock().await;
+            *v = Some("1.21.1".to_string());
+        }
+
+        play_state.stop_active_game(Some("1.21.1")).await;
+
+        assert!(!play_state.is_running.load(Ordering::SeqCst));
+        assert!(play_state.active_process.lock().await.is_none());
+        assert!(play_state.running_version.lock().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_review_fast_launch_bypasses_prewarm_for_custom_server_or_jvm_args() {
+        let server_none: Option<String> = None;
+        let server_some = Some("hypixel.net".to_string());
+        let jvm_none: Option<Vec<String>> = None;
+        let jvm_custom = Some(vec!["-Xcustom".to_string()]);
+
+        let has_custom_server = server_some.as_ref().map_or(false, |s| !s.trim().is_empty());
+        let has_custom_jvm_args = jvm_custom.as_ref().map_or(false, |a| !a.is_empty());
+        let can_use_fast_launch = !has_custom_server && !has_custom_jvm_args;
+        assert!(
+            !can_use_fast_launch,
+            "Must not use prewarm for custom server or jvm args"
+        );
+
+        let can_use_defaults = !server_none.as_ref().map_or(false, |s| !s.trim().is_empty())
+            && !jvm_none.as_ref().map_or(false, |a| !a.is_empty());
+        assert!(
+            can_use_defaults,
+            "Can use prewarm when no server or jvm args"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_review_cleanup_prewarm_increments_generation() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let mock_core = Arc::new(MockLauncherCore::new());
+        let play_state = PlayState::new_with_core(paths.clone(), mock_core.clone());
+
+        let gen_before = play_state.prewarm_generation.load(Ordering::SeqCst);
+        play_state.cleanup_prewarm().await;
+        let gen_after = play_state.prewarm_generation.load(Ordering::SeqCst);
+        assert_eq!(gen_after, gen_before + 1);
+        assert!(!play_state.is_prewarming.load(Ordering::SeqCst));
     }
 }
