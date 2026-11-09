@@ -165,7 +165,6 @@ pub struct LauncherConfig {
     pub accent: String,
 
     #[serde(
-    #[serde(
         default,
         alias = "fastStartJvm",
         alias = "fast_start_jvm",

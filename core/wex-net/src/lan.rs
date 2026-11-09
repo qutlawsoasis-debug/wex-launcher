@@ -189,7 +189,9 @@ impl LanDiscoveryService {
         if std::env::var("WEX_NO_MULTICAST_BIND").is_ok()
             || std::env::var("WEX_TEST_NO_MULTICAST").is_ok()
         {
-            debug!("Skipping 0.0.0.0 LAN multicast listener due to WEX_NO_MULTICAST_BIND (Rule 23:10)");
+            debug!(
+                "Skipping 0.0.0.0 LAN multicast listener due to WEX_NO_MULTICAST_BIND (Rule 23:10)"
+            );
             return;
         }
 
