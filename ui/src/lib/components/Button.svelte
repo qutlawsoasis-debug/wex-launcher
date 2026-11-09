@@ -12,7 +12,7 @@
   import type { Snippet } from 'svelte';
 
   interface Props {
-    variant?: 'primary' | 'secondary' | 'destructive' | 'ghost';
+    variant?: 'primary' | 'secondary' | 'destructive' | 'ghost' | 'glass';
     size?: 'small' | 'regular' | 'large';
     title?: string;
     disabled?: boolean;
@@ -191,6 +191,32 @@
 
   .apple-button.ghost:active:not(:disabled) {
     transform: scale(var(--motion-press-scale));
+  }
+
+  .apple-button.glass {
+    background-color: rgba(118, 118, 128, 0.24);
+    color: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+
+  .apple-button.glass:hover:not(:disabled) {
+    background-color: rgba(118, 118, 128, 0.36);
+    border-color: rgba(255, 255, 255, 0.28);
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .apple-button.glass:active:not(:disabled) {
+    transform: scale(var(--motion-press-scale));
+    background-color: rgba(118, 118, 128, 0.44);
+  }
+
+  .apple-button.glass :global(svg) {
+    color: rgba(255, 255, 255, 0.90);
   }
 
   /* Disabled state */

@@ -85,17 +85,19 @@
     motionState.setGameRunning(isGameRunning);
   });
 
-  // Dynamic background based on theme and time of day
+  // Dynamic background based on time of day (SPEC 1.1 / Island parity)
+  let customBg = $state<string | null>(null);
   let currentHour = new Date().getHours();
   let bgImage = $derived.by(() => {
-    if (theme.isDark) {
-      return currentHour >= 22 || currentHour < 5
-        ? '/backgrounds/night.jpg'
-        : '/backgrounds/sunset.jpg';
+    if (customBg) return customBg;
+    if (currentHour >= 22 || currentHour < 6) {
+      return '/backgrounds/night.jpg';
+    } else if (currentHour >= 6 && currentHour < 12) {
+      return '/backgrounds/morning.jpg';
+    } else if (currentHour >= 12 && currentHour < 18) {
+      return '/backgrounds/day.jpg';
     } else {
-      return currentHour >= 6 && currentHour < 12
-        ? '/backgrounds/morning.jpg'
-        : '/backgrounds/day.jpg';
+      return '/backgrounds/sunset.jpg';
     }
   });
 
@@ -347,6 +349,12 @@
       }
       if (t === 'light' || t === 'dark') {
         theme.setAppearance(t);
+      }
+      const bg = params.get('bg');
+      if (bg === 'night' || bg === 'day' || bg === 'sunset' || bg === 'morning') {
+        customBg = `/backgrounds/${bg}.jpg`;
+      } else if (bg === 'reset') {
+        customBg = null;
       }
       const l = params.get('lang');
       if (l === 'ru' || l === 'en') {
@@ -706,20 +714,11 @@
     inset: 0;
     background: linear-gradient(
       to bottom,
-      rgba(0, 0, 0, 0.40) 0%,
-      rgba(0, 0, 0, 0.15) 35%,
-      rgba(0, 0, 0, 0.50) 75%,
-      rgba(0, 0, 0, 0.82) 100%
-    );
-  }
-
-  :global([data-theme='light']) .scenery-vignette {
-    background: linear-gradient(
-      to bottom,
-      rgba(255, 255, 255, 0.65) 0%,
-      rgba(255, 255, 255, 0.30) 35%,
-      rgba(255, 255, 255, 0.65) 75%,
-      rgba(255, 255, 255, 0.88) 100%
+      rgba(0, 0, 0, 0.65) 0%,
+      rgba(0, 0, 0, 0.50) 25%,
+      rgba(0, 0, 0, 0.30) 50%,
+      rgba(0, 0, 0, 0.65) 75%,
+      rgba(0, 0, 0, 0.88) 100%
     );
   }
 

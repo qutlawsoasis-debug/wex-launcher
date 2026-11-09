@@ -521,12 +521,12 @@
         </div>
         <div class="header-tools">
           <Button
-            variant="secondary"
+            variant="glass"
             size="small"
             onclick={() => (manualImportWizardOpen = true)}
             title="Мастер импорта данных из старого лаунчера"
           >
-            <Icon name="folder" size={14} color="var(--color-secondary-label)" />
+            <Icon name="folder" size={14} color="rgba(255, 255, 255, 0.90)" />
             <span>{t('import.action_import')}</span>
           </Button>
         </div>
@@ -843,27 +843,16 @@
     letter-spacing: -0.03em;
     line-height: 1.08;
     margin: 0 0 4px;
-    color: var(--color-label);
-    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+    color: rgba(255, 255, 255, 1.0);
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.75), 0 1px 3px rgba(0, 0, 0, 0.90);
   }
 
   .game-subheading {
     font-size: 16px;
-    color: var(--color-label);
-    opacity: 0.94;
+    color: rgba(255, 255, 255, 0.88);
     margin: 0;
     font-weight: 600;
-    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.4);
-  }
-
-  :global([data-theme="light"]) .game-heading {
-    text-shadow: 0 1px 8px rgba(255, 255, 255, 0.8);
-  }
-
-  :global([data-theme="light"]) .game-subheading {
-    color: #1c1c1e;
-    opacity: 1;
-    text-shadow: 0 1px 8px rgba(255, 255, 255, 0.8);
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.75), 0 1px 3px rgba(0, 0, 0, 0.90);
   }
 
   .header-tools {
