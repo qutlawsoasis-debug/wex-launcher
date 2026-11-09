@@ -23,6 +23,7 @@ pub const IPC_COMMANDS: &[&str] = &[
     "kill_game",
     "get_playtime_summary",
     "playtime_get_summary",
+    "get_prewarm_status",
     "launch_game",
     "set_config",
     "get_launcher_settings",
