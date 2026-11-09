@@ -118,17 +118,17 @@ describe('A11y Automated Axe-Core Audit Across All 8 Sections', () => {
         });
 
         const seriousOrCritical = results.violations.filter(
-          (v) => v.impact === 'serious' || v.impact === 'critical'
+          (v: any) => v.impact === 'serious' || v.impact === 'critical'
         );
 
         if (seriousOrCritical.length > 0) {
           console.log(
             `[AXE VIOLATIONS] ${name} (${appearance}):`,
-            seriousOrCritical.map((v) => ({
+            seriousOrCritical.map((v: any) => ({
               id: v.id,
               impact: v.impact,
               description: v.description,
-              nodes: v.nodes.map((n) => n.html),
+              nodes: v.nodes.map((n: any) => n.html),
             }))
           );
         }
