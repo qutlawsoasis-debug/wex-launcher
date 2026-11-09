@@ -60,7 +60,7 @@
     JSON.stringify(
       {
         launcher: 'Wex Launcher',
-        launcher_version: '0.1.0',
+        launcher_version: '0.9.0',
         game_version: version,
         os: 'Windows 64-bit',
         java: version.startsWith('1.20') ? 'Java 17 (Mojang Runtime)' : 'Java 21 (Mojang Runtime)',
@@ -123,7 +123,7 @@
       }
 
       if (!textToCopy) {
-        textToCopy = `### Отчёт об ошибке Wex Launcher\n- **Версия игры:** \`${version}\`\n- **Версия лаунчера:** \`0.1.0\`\n- **Диагноз:** ${diagnosisTitle || 'Сбой игры'}\n\n**Комментарий:**\n${anonymizedComment || 'Без комментария'}\n\n**Ошибка:**\n\`\`\`\n${anonymizedError || 'Нет технических подробностей'}\n\`\`\``;
+        textToCopy = `### Отчёт об ошибке Wex Launcher\n- **Версия игры:** \`${version}\`\n- **Версия лаунчера:** \`0.9.0\`\n- **Диагноз:** ${diagnosisTitle || 'Сбой игры'}\n\n**Комментарий:**\n${anonymizedComment || 'Без комментария'}\n\n**Ошибка:**\n\`\`\`\n${anonymizedError || 'Нет технических подробностей'}\n\`\`\``;
       }
 
       if (navigator.clipboard) {
@@ -153,7 +153,7 @@
     <div class="report-header-card">
       <div class="info-pill-row">
         <span class="info-pill version-pill" data-testid="pill-version">{version}</span>
-        <span class="info-pill">Wex 0.1.0</span>
+        <span class="info-pill">Wex 0.9.0</span>
         <span class="info-pill secure-pill">
           <Icon name="check" size={12} color="var(--color-system-green)" />
           <span>Обезличено</span>
