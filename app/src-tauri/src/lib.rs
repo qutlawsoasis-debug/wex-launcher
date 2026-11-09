@@ -110,9 +110,12 @@ pub fn run() {
             // Servers commands (commands/servers.rs)
             commands::servers::list_servers,
             commands::servers::ping_server,
+            commands::servers::ping_server_details,
             commands::servers::add_server,
             commands::servers::edit_server,
             commands::servers::remove_server,
+            commands::servers::import_servers_both_versions,
+            commands::servers::get_friend_hosted_servers,
             commands::servers::net_load_servers,
             commands::servers::net_save_servers,
             commands::servers::net_merge_servers,

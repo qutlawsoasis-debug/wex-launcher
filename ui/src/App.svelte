@@ -699,7 +699,7 @@
               }}
             />
           {:else if activeTab === 'servers'}
-            <ServersScreen />
+            <ServersScreen {selectedVersion} {playerName} />
           {:else if activeTab === 'lobby'}
             <LobbyScreen />
           {:else if activeTab === 'friends'}
