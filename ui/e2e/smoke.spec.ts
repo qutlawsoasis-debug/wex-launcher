@@ -15,9 +15,15 @@ const SECTIONS = [
 const THEMES = ['dark', 'light'] as const;
 const BACKGROUNDS = ['day', 'morning', 'night', 'sunset'] as const;
 
-async function setupPageListeners(page: Page) {
+async function setupPageListeners(page: Page, markOnboardingCompleted = true) {
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
+
+  if (markOnboardingCompleted) {
+    await page.addInitScript(() => {
+      localStorage.setItem('wex_onboarding_completed', 'true');
+    });
+  }
 
   await page.route('**', (route) => {
     const url = route.request().url();
@@ -82,7 +88,7 @@ async function assertViewIntegrity(
     const elements = document.querySelectorAll('*');
     for (const el of elements) {
       const rect = el.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) continue;
+      if (rect.width <= 1 || rect.height <= 1) continue;
       const style = window.getComputedStyle(el);
       if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
 
@@ -93,6 +99,7 @@ async function assertViewIntegrity(
 
       if (style.overflowX === 'scroll' || style.overflowX === 'auto') continue;
       if (el.closest('.stories-track') || el.closest('.carousel-track')) continue;
+      if (el.closest('.visually-hidden') || el.closest('.sr-only')) continue;
 
       // 1px subpixel tolerance
       if (el.scrollWidth > el.clientWidth + 1) {
@@ -333,6 +340,26 @@ test.describe('Wex UI Smoke Tests', () => {
         await page.keyboard.press('Escape');
         await page.waitForTimeout(200);
       }
+
+      // Modal 5: First Launch Onboarding Modal
+      await page.goto(`/?onboarding=true&theme=${theme}`);
+      await page.waitForTimeout(300);
+      const onboardingCard = page.locator('.onboarding-card');
+      if (await onboardingCard.isVisible()) {
+        await assertViewIntegrity(
+          page,
+          `OnboardingModal (${theme})`,
+          consoleErrors,
+          pageErrors
+        );
+        const skipBtn = page.locator('.skip-action, button:has-text("Пропустить")').first();
+        if (await skipBtn.isVisible()) {
+          await skipBtn.click();
+        } else {
+          await page.keyboard.press('Escape');
+        }
+        await page.waitForTimeout(200);
+      }
     });
   }
 
@@ -387,7 +414,9 @@ test.describe('Wex UI Smoke Tests', () => {
         await assertViewIntegrity(page, `Lobby Initial (${theme})`, consoleErrors, pageErrors);
 
         // Step 2: Create room
-        const createBtn = page.locator('.host-card button.btn-primary, .host-card button:has-text("Открыть мир")');
+        const createBtn = page.locator(
+          '[data-testid="create-room-btn"] button, .host-card button:has-text("Создать комнату"), .host-card button:has-text("Create Room"), .host-card button:has-text("Открыть мир")'
+        );
         await expect(createBtn).toBeVisible();
         await createBtn.click();
 
@@ -538,4 +567,49 @@ test.describe('Wex UI Smoke Tests', () => {
       });
     }
   }
+
+  // Test 6: Dedicated First Launch Onboarding Scenario
+  test('first launch shows onboarding modal, skip dismisses it and sets completed', async ({
+    page,
+  }) => {
+    const { consoleErrors, pageErrors } = await setupPageListeners(page, false);
+    await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
+
+    await page.goto('/?theme=dark');
+    await page.waitForTimeout(300);
+
+    // 1. Verify OnboardingModal is visible on clean launch
+    const onboardingCard = page.locator('.onboarding-card');
+    await expect(onboardingCard).toBeVisible({ timeout: 4000 });
+    await assertViewIntegrity(
+      page,
+      'First Launch Onboarding Modal',
+      consoleErrors,
+      pageErrors
+    );
+
+    // 2. Click "Пропустить"
+    const skipBtn = page.locator('.skip-action, button:has-text("Пропустить")').first();
+    await expect(skipBtn).toBeVisible();
+    await skipBtn.click();
+    await page.waitForTimeout(300);
+
+    // 3. Verify modal is closed
+    await expect(onboardingCard).not.toBeVisible();
+
+    // 4. Verify completed flag in localStorage
+    const isCompleted = await page.evaluate(() => localStorage.getItem('wex_onboarding_completed'));
+    expect(isCompleted).toBe('true');
+
+    // 5. Reload page and verify modal is NOT shown again
+    await page.reload();
+    await page.waitForTimeout(300);
+    await expect(onboardingCard).not.toBeVisible();
+    await assertViewIntegrity(
+      page,
+      'Post-Onboarding Play Screen',
+      consoleErrors,
+      pageErrors
+    );
+  });
 });

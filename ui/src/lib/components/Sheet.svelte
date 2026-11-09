@@ -44,8 +44,14 @@
   function close() {
     open = false;
     onclose?.();
-    if (previouslyFocusedEl && typeof previouslyFocusedEl.focus === 'function') {
-      previouslyFocusedEl.focus();
+    const elToFocus = previouslyFocusedEl;
+    if (elToFocus && typeof elToFocus.focus === 'function') {
+      elToFocus.focus();
+      setTimeout(() => {
+        if (elToFocus && (document.activeElement === document.body || !document.activeElement)) {
+          elToFocus.focus();
+        }
+      }, 10);
     }
   }
 
@@ -135,7 +141,7 @@
       onkeydown={handleCardKeyDown}
       role="dialog"
       aria-modal="true"
-      aria-label={title || 'Sheet'}
+      aria-label={title || 'Модальное окно'}
       tabindex="-1"
     >
       <div class="grabber-area">

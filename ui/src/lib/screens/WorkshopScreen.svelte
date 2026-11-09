@@ -1100,6 +1100,7 @@
                   }
                 }}
                 title="Нажмите для полноразмерного просмотра"
+                aria-label={`Просмотр скриншота ${shot.file_name}`}
               >
                 <div class="screenshot-thumb-wrap">
                   <img

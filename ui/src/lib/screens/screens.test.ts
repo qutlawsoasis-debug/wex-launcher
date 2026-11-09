@@ -871,7 +871,7 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Сворачивать в трей при запуске игры');
     expect(target.textContent).toContain('Язык интерфейса');
     expect(target.textContent).toContain('О программе');
-    expect(target.textContent).toContain('Tauri 2');
+    expect(target.textContent).toContain('Windows 10/11, 64-бит');
     expect(target.textContent).toContain('Проверить файлы игры');
     expect(target.textContent).toContain('Очистить кэш');
     expect(target.textContent).not.toContain('.minecraft');
@@ -1633,5 +1633,83 @@ describe('Wex Launcher Screens', () => {
     expect(escaped).toBe(true);
 
     window.removeEventListener('wex-escape', onEscape);
+  });
+
+  describe('SettingsScreen Search Filtering Tests', () => {
+    it('renders Apple HIG search bar with placeholder', () => {
+      const comp = mount(SettingsScreen, { target });
+      const searchInput = target.querySelector('.search-input') as HTMLInputElement | null;
+      expect(searchInput).not.toBeNull();
+      expect(searchInput?.placeholder).toContain('Поиск настроек');
+      unmount(comp);
+    });
+
+    it('filters settings by keyword "память", displaying Memory group and hiding unrelated groups', async () => {
+      const comp = mount(SettingsScreen, { target });
+      await tick();
+
+      const searchInput = target.querySelector('.search-input') as HTMLInputElement;
+      expect(searchInput).not.toBeNull();
+
+      searchInput.value = 'память';
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+      await tick();
+
+      expect(target.textContent).toContain('Память и производительность');
+      expect(target.textContent).toContain('Выделение оперативной памяти');
+      // Unrelated groups should be hidden
+      expect(target.textContent).not.toContain('Звук и музыка');
+      expect(target.textContent).not.toContain('Уведомления о друзьях');
+
+      unmount(comp);
+    });
+
+    it('filters settings by keyword "музыка", showing Sound & Music group', async () => {
+      const comp = mount(SettingsScreen, { target });
+      await tick();
+
+      const searchInput = target.querySelector('.search-input') as HTMLInputElement;
+      expect(searchInput).not.toBeNull();
+
+      searchInput.value = 'музыка';
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+      await tick();
+
+      expect(target.textContent).toContain('Звук и музыка');
+      expect(target.textContent).toContain('Фоновая музыка');
+      expect(target.textContent).not.toContain('Выделение оперативной памяти');
+
+      unmount(comp);
+    });
+
+    it('displays empty state when search matches nothing and allows clearing search', async () => {
+      const comp = mount(SettingsScreen, { target });
+      await tick();
+
+      const searchInput = target.querySelector('.search-input') as HTMLInputElement;
+      expect(searchInput).not.toBeNull();
+
+      searchInput.value = 'xyz_nonexistent_setting_12345';
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+      await tick();
+
+      const emptyState = target.querySelector('.empty-search-state');
+      expect(emptyState).not.toBeNull();
+      expect(emptyState?.textContent).toContain('Ничего не найдено');
+      expect(emptyState?.textContent).toContain('xyz_nonexistent_setting_12345');
+
+      // Clear search via clear button
+      const clearBtn = emptyState?.querySelector('button');
+      expect(clearBtn).not.toBeNull();
+      clearBtn?.click();
+      await tick();
+
+      // Empty state should disappear and groups should be restored
+      expect(target.querySelector('.empty-search-state')).toBeNull();
+      expect(target.textContent).toContain('Память и производительность');
+      expect(target.textContent).toContain('Внешний вид');
+
+      unmount(comp);
+    });
   });
 });

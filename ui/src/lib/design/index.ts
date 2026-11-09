@@ -5,4 +5,3 @@ export * from './motion';
 export * from './theme.svelte';
 export * from './network.svelte';
 export * from './errors';
-export * from './skin3d';
