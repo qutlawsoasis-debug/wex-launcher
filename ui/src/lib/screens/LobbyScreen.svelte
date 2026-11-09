@@ -126,7 +126,7 @@
         modsToDownloadCount = 3;
         modsDownloadedCount = 1;
         joinProgress = 50;
-        joinStepMessage = 'Загрузка мода (2/3): sodium-extra-0.5.4.jar (1.2 МБ / 2.4 МБ)';
+        joinStepMessage = `Загрузка мода (${modsDownloadedCount}/${modsToDownloadCount}): sodium-extra-0.5.4.jar (1.2 МБ / 2.4 МБ)`;
       } else if (step === 'checking' || step === 'checking_mods') {
         isConnecting = true;
         joinStep = 'checking_mods';
@@ -158,7 +158,7 @@
         joinProgress = progress;
         modsToDownloadCount = count;
         modsDownloadedCount = downloaded;
-        joinStepMessage = msg || 'Загрузка мода (2/3): sodium-extra-0.5.4.jar (1.2 МБ / 2.4 МБ)';
+        joinStepMessage = msg || `Загрузка мода (${downloaded}/${count}): sodium-extra-0.5.4.jar (1.2 МБ / 2.4 МБ)`;
       };
     }
     return () => {
