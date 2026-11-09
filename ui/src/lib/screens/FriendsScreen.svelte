@@ -26,6 +26,7 @@
   import ErrorState from '../components/ErrorState.svelte';
   import { formatError } from '../design/errors';
   import { network } from '../design/network.svelte';
+  import { friendsLive } from '../design/friends-live.svelte';
   import { t, i18n } from '../i18n';
 
   interface FriendItem {
@@ -66,9 +67,10 @@
 
   interface Props {
     tab?: 'friends' | 'requests' | 'achievements';
+    onJoinLobby?: (code: string) => void;
   }
 
-  let { tab = 'friends' }: Props = $props();
+  let { tab = 'friends', onJoinLobby }: Props = $props();
 
   // Navigation tabs
   let activeTab = $state<'friends' | 'requests' | 'achievements'>('friends');
@@ -82,9 +84,9 @@
   // Friends & Requests state
   let searchQuery = $state('');
   let friendCodeInput = $state('');
-  let friends = $state<FriendItem[]>([]);
-  let requests = $state<FriendRequestItem[]>([]);
-  let invites = $state<LobbyInviteItem[]>([]);
+  let friends = $derived(friendsLive.friends);
+  let requests = $derived(friendsLive.incomingRequests);
+  let invites = $derived(friendsLive.incomingInvites);
   let isSubmitting = $state(false);
   let socialError = $state<unknown>(null);
 
@@ -142,23 +144,7 @@
 
   // Backend IPC loading
   async function loadSocialData() {
-    if (!isTauri()) return;
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const syncResult = await invoke<{
-        friends: FriendItem[];
-        incoming_requests: FriendRequestItem[];
-        incoming_invites: LobbyInviteItem[];
-      }>('social_sync', {});
-
-      if (syncResult) {
-        friends = syncResult.friends || [];
-        requests = syncResult.incoming_requests || [];
-        invites = syncResult.incoming_invites || [];
-      }
-    } catch {
-      // In-browser mock fallback preserves empty state
-    }
+    await friendsLive.sync();
   }
 
   async function loadAchievements() {
@@ -216,15 +202,12 @@
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('social_accept_friend_request', { request_id: request.id });
-      requests = requests.filter((r) => r.id !== request.id);
-      friends = [
-        ...friends,
-        {
-          id: request.from_id,
-          nick: request.from_nick,
-          status: 'online',
-        },
-      ];
+      friendsLive.removeRequest(request.id);
+      friendsLive.addFriend({
+        id: request.from_id,
+        nick: request.from_nick,
+        status: 'online',
+      });
       addToast('success', 'Заявка принята', `${request.from_nick} теперь в списке ваших друзей`);
       socialError = null;
     } catch (e: any) {
@@ -239,7 +222,7 @@
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('social_decline_friend_request', { request_id: request.id });
-      requests = requests.filter((r) => r.id !== request.id);
+      friendsLive.removeRequest(request.id);
       addToast('info', 'Заявка отклонена', `Заявка от ${request.from_nick} отклонена`);
       socialError = null;
     } catch (e: any) {
@@ -420,9 +403,11 @@
                 title={friend.nick}
                 subtitle={
                   friend.status === 'playing'
-                    ? (i18n.locale === 'en' ? `Playing ${friend.game_version || 'Minecraft'}` : `В игре: ${friend.game_version || 'Minecraft'}`)
+                    ? (friend.world_name
+                        ? (i18n.locale === 'en' ? `Playing on server ${friend.world_name}` : `В игре на сервере ${friend.world_name}`)
+                        : (i18n.locale === 'en' ? `Playing ${friend.game_version || 'Minecraft'}` : `В игре: ${friend.game_version || 'Minecraft'}`))
                     : friend.status === 'in_lobby'
-                      ? (i18n.locale === 'en' ? `In lobby ${friend.lobby_code || ''}` : `В лобби ${friend.lobby_code || ''}`)
+                      ? (i18n.locale === 'en' ? `In lobby ${friend.lobby_code || ''}`.trim() : `В лобби ${friend.lobby_code || ''}`.trim())
                       : friend.status === 'online'
                         ? t('friends.status_online')
                         : t('friends.status_offline')
@@ -439,16 +424,28 @@
                 {/snippet}
 
                 {#snippet trailing()}
-                  {#if friend.status === 'online' || friend.status === 'playing'}
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      onclick={() => handleSendLobbyInvite(friend)}
-                    >
-                      <Icon name="lobby" size={13} color="var(--color-system-blue)" />
-                      <span>{i18n.locale === 'en' ? 'Invite to Lobby' : 'Пригласить в лобби'}</span>
-                    </Button>
-                  {/if}
+                  <div class="row-actions">
+                    {#if friend.lobby_code}
+                      <Button
+                        variant="primary"
+                        size="small"
+                        onclick={() => (onJoinLobby ? onJoinLobby(friend.lobby_code!) : friendsLive.handleJoin(friend.lobby_code!))}
+                      >
+                        <Icon name="play" size={13} color="#ffffff" />
+                        <span>{i18n.locale === 'en' ? 'Join' : 'Присоединиться'}</span>
+                      </Button>
+                    {/if}
+                    {#if friend.status === 'online' || friend.status === 'playing'}
+                      <Button
+                        variant="secondary"
+                        size="small"
+                        onclick={() => handleSendLobbyInvite(friend)}
+                      >
+                        <Icon name="lobby" size={13} color="var(--color-system-blue)" />
+                        <span>{i18n.locale === 'en' ? 'Invite to Lobby' : 'Пригласить в лобби'}</span>
+                      </Button>
+                    {/if}
+                  </div>
                 {/snippet}
               </Row>
             {/each}
@@ -475,6 +472,36 @@
       <OfflineState onretry={loadSocialData} />
     {:else}
       <div class="tab-pane">
+        {#if invites.length > 0}
+          <List header="{i18n.locale === 'en' ? 'Lobby Invitations' : 'Приглашения в лобби'} ({invites.length})">
+            {#each invites as inv (inv.id)}
+              <Row
+                title={inv.from_nick}
+                subtitle="{i18n.locale === 'en' ? 'Invited you to lobby' : 'Приглашает в лобби'} #{inv.lobby_code}{inv.host_name ? ` (${inv.host_name})` : ''}"
+              >
+                {#snippet leading()}
+                  <div class="avatar-capsule">
+                    <span class="avatar-letter">{inv.from_nick.charAt(0).toUpperCase()}</span>
+                  </div>
+                {/snippet}
+
+                {#snippet trailing()}
+                  <div class="request-actions">
+                    <Button
+                      variant="primary"
+                      size="small"
+                      onclick={() => (onJoinLobby ? onJoinLobby(inv.lobby_code) : friendsLive.handleJoin(inv.lobby_code))}
+                    >
+                      <Icon name="play" size={13} color="#ffffff" />
+                      <span>{i18n.locale === 'en' ? 'Join' : 'Присоединиться'}</span>
+                    </Button>
+                  </div>
+                {/snippet}
+              </Row>
+            {/each}
+          </List>
+        {/if}
+
         {#if requests.length > 0}
           <List header="{i18n.locale === 'en' ? 'Incoming Friend Requests' : 'Входящие заявки в друзья'} ({requests.length})">
             {#each requests as req (req.id)}
@@ -509,7 +536,9 @@
               </Row>
             {/each}
           </List>
-        {:else}
+        {/if}
+
+        {#if requests.length === 0 && invites.length === 0}
           <div class="empty-state-card">
             <div class="empty-icon-wrap">
               <Icon name="friends" size={40} color="var(--color-tertiary-label)" />
@@ -698,6 +727,7 @@
     background-color: var(--color-system-gray);
   }
 
+  .row-actions,
   .request-actions {
     display: flex;
     align-items: center;

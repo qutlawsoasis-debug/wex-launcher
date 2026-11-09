@@ -49,11 +49,24 @@
     status: string;
   }
 
+  interface Props {
+    initialJoinCode?: string;
+  }
+
+  let { initialJoinCode = '' }: Props = $props();
+
   let mode = $state('lan'); // 'lan' | 'cloud'
   let guestCode = $state('');
   let isConnecting = $state(false);
   let isHosting = $state(false);
   let errorMessage = $state('');
+
+  $effect(() => {
+    if (initialJoinCode && initialJoinCode.trim()) {
+      guestCode = initialJoinCode.trim().toUpperCase();
+      handleJoinRoom(initialJoinCode.trim());
+    }
+  });
 
   // Local worlds available for hosting
   const localWorlds = [
@@ -233,8 +246,9 @@
     }
   }
 
-  export async function handleJoinRoom() {
-    const codeToJoin = guestCode.trim();
+  export async function handleJoinRoom(customCode?: string | Event) {
+    const raw = (typeof customCode === 'string' ? customCode : guestCode).trim();
+    const codeToJoin = raw.replace(/^#/, '');
     if (!codeToJoin) {
       errorMessage = 'Введите 4-значный код комнаты';
       return;

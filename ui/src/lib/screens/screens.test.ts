@@ -484,6 +484,28 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  it('renders FriendsScreen live friend status with server and lobby without reload', async () => {
+    const { friendsLive } = await import('../design/friends-live.svelte');
+    friendsLive.processSyncResult({
+      friends: [
+        { id: 'f-1', nick: 'Alex', status: 'playing', world_name: 'Hypixel' },
+        { id: 'f-2', nick: 'Steve', status: 'in_lobby', lobby_code: '#ROOM12' },
+        { id: 'f-3', nick: 'Bob', status: 'online' },
+      ],
+      incoming_requests: [],
+      incoming_invites: [],
+    });
+
+    const comp = mount(FriendsScreen, { target });
+    expect(target.textContent).toContain('Alex');
+    expect(target.textContent).toContain('В игре на сервере Hypixel');
+    expect(target.textContent).toContain('Steve');
+    expect(target.textContent).toContain('В лобби #ROOM12');
+    expect(target.textContent).toContain('Bob');
+    expect(target.textContent).toContain('В сети');
+    unmount(comp);
+  });
+
   it('renders FriendsScreen achievements tab with standard launcher achievements', async () => {
     const comp = mount(FriendsScreen, {
       target,

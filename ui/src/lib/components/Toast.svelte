@@ -10,12 +10,18 @@
 <script lang="ts">
   import Icon from './icons/Icon.svelte';
 
+  export interface ToastAction {
+    label: string;
+    onclick: () => void;
+  }
+
   export interface ToastMessage {
     id: string;
     type: 'info' | 'success' | 'warning' | 'error';
     title: string;
     description?: string;
     duration?: number;
+    action?: ToastAction;
   }
 
   interface Props {
@@ -90,6 +96,19 @@
       <span class="toast-description">{toast.description}</span>
     {/if}
   </div>
+
+  {#if toast.action}
+    <button
+      type="button"
+      class="toast-action-btn"
+      onclick={() => {
+        toast.action?.onclick();
+        ondismiss?.(toast.id);
+      }}
+    >
+      {toast.action.label}
+    </button>
+  {/if}
 
   <button
     type="button"
@@ -173,6 +192,37 @@
   }
 
   .dismiss-btn:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 1px;
+  }
+
+  .toast-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 10px;
+    border-radius: var(--radius-sm, 6px);
+    background: var(--color-system-blue, #0a84ff);
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: inherit;
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 150ms ease, transform 100ms ease;
+    flex-shrink: 0;
+  }
+
+  .toast-action-btn:hover {
+    background: var(--color-system-blue-hover, #0071e3);
+  }
+
+  .toast-action-btn:active {
+    transform: scale(0.96);
+  }
+
+  .toast-action-btn:focus-visible {
     outline: 2px solid var(--color-system-blue);
     outline-offset: 1px;
   }

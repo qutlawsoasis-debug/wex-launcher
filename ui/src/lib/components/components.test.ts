@@ -253,6 +253,39 @@ describe('Apple HIG Svelte 5 Components', () => {
     unmount(comp);
   });
 
+  it('renders Toast with action button and handles action click', () => {
+    let actionTriggered = false;
+    let dismissedId = '';
+    const comp = mount(Toast, {
+      target,
+      props: {
+        toast: {
+          id: 'invite-toast',
+          type: 'info',
+          title: 'Вас пригласили',
+          description: 'Alice зовёт вас в игру',
+          action: {
+            label: 'Присоединиться',
+            onclick: () => {
+              actionTriggered = true;
+            },
+          },
+        },
+        ondismiss: (id) => {
+          dismissedId = id;
+        },
+      },
+    });
+
+    const actionBtn = target.querySelector('.toast-action-btn') as HTMLButtonElement;
+    expect(actionBtn).not.toBeNull();
+    expect(actionBtn.textContent).toBe('Присоединиться');
+    actionBtn.click();
+    expect(actionTriggered).toBe(true);
+    expect(dismissedId).toBe('invite-toast');
+    unmount(comp);
+  });
+
   it('renders ProfileBadge in offline mode with initial letter avatar and offline dot', () => {
     const comp = mount(ProfileBadge, {
       target,

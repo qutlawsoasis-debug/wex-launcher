@@ -27,11 +27,13 @@
   import ShowcaseScreen from './lib/screens/ShowcaseScreen.svelte';
   import CrashSheet from './lib/components/CrashSheet.svelte';
   import MusicDiskWidget from './lib/components/MusicDiskWidget.svelte';
+  import { friendsLive } from './lib/design/friends-live.svelte';
   import type { CrashDiagnosisDto } from './lib/ipc/generated/models';
 
   // Navigation state
   let activeTab = $state('play');
   let friendsSubtab = $state<'friends' | 'requests' | 'achievements'>('friends');
+  let lobbyJoinCode = $state('');
   let isMaximized = $state(false);
 
   // Crash report modal state
@@ -92,13 +94,50 @@
   // Toast stack
   let toasts = $state<ToastMessage[]>([]);
 
-  function addToast(type: 'info' | 'success' | 'warning' | 'error', title: string, description?: string) {
+  function addToast(
+    type: 'info' | 'success' | 'warning' | 'error',
+    title: string,
+    description?: string,
+    action?: { label: string; onclick: () => void }
+  ) {
     const id = `toast-${Date.now()}-${Math.random()}`;
-    toasts = [...toasts, { id, type, title, description, duration: 4000 }];
+    toasts = [
+      ...toasts,
+      {
+        id,
+        type,
+        title,
+        description,
+        duration: action ? 8000 : 4000,
+        action,
+      },
+    ];
   }
 
   function dismissToast(id: string) {
     toasts = toasts.filter((t) => t.id !== id);
+  }
+
+  async function handleJoinLobby(code: string) {
+    const cleanCode = code.replace(/^#/, '').trim().toUpperCase();
+    if (!cleanCode) return;
+    activeTab = 'lobby';
+    lobbyJoinCode = cleanCode;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('join_lobby_room', {
+        code: cleanCode,
+        playerName,
+      });
+      addToast(
+        'success',
+        i18n.locale === 'en' ? 'Joined Lobby' : 'Подключение к лобби',
+        i18n.locale === 'en' ? `Connected to room #${cleanCode}` : `Успешно подключились к комнате #${cleanCode}`
+      );
+    } catch (e: any) {
+      const msg = typeof e === 'string' ? e : e?.message || (i18n.locale === 'en' ? 'Failed to join room' : 'Не удалось присоединиться к комнате');
+      addToast('error', i18n.locale === 'en' ? 'Lobby Join Error' : 'Ошибка подключения к лобби', msg);
+    }
   }
 
   // Sidebar navigation destinations per SPEC.md 1.2
@@ -352,10 +391,23 @@
         };
         crashSheetOpen = true;
       }
+      const joinParam = params.get('join') || (screen === 'lobby' ? params.get('code') : null);
+      if (joinParam) {
+        handleJoinLobby(joinParam);
+      }
     }
 
     applyHashRoute();
     window.addEventListener('hashchange', applyHashRoute);
+
+    // Initialize friends live polling and notifications
+    friendsLive.onNotification = (notif) => {
+      addToast('info', notif.title, notif.description, notif.action);
+    };
+    friendsLive.onJoinLobby = (code) => {
+      handleJoinLobby(code);
+    };
+    friendsLive.startPolling();
 
     // Initial checks: parallelized network, profile, and active running game state
     Promise.allSettled([
@@ -482,6 +534,7 @@
         window.removeEventListener('online', checkNetwork);
       }
       clearInterval(netInterval);
+      friendsLive.stopPolling();
       unlistenProgress?.();
       unlistenStatus?.();
       unlistenAchievement?.();
@@ -568,9 +621,9 @@
       {:else if activeTab === 'servers'}
         <ServersScreen />
       {:else if activeTab === 'lobby'}
-        <LobbyScreen />
+        <LobbyScreen initialJoinCode={lobbyJoinCode} />
       {:else if activeTab === 'friends'}
-        <FriendsScreen tab={friendsSubtab} />
+        <FriendsScreen tab={friendsSubtab} onJoinLobby={handleJoinLobby} />
       {:else if activeTab === 'wardrobe'}
         <WardrobeScreen {playerName} ontoast={addToast} />
       {:else if activeTab === 'workshop'}
