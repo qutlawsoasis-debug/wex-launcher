@@ -1031,15 +1031,17 @@
             subtitle="Во время игры: действие с окном лаунчера при запуске Minecraft"
           >
             {#snippet trailing()}
-              <SegmentedControl
-                options={gameWindowBehaviorOptions}
-                value={gameWindowBehavior}
-                ariaLabel="Поведение окна"
-                onchange={(val) => {
-                  gameWindowBehavior = val;
-                  saveConfig();
-                }}
-              />
+              <div class="segmented-control-fixed" style="width: 350px;">
+                <SegmentedControl
+                  options={gameWindowBehaviorOptions}
+                  value={gameWindowBehavior}
+                  ariaLabel="Поведение окна"
+                  onchange={(val) => {
+                    gameWindowBehavior = val;
+                    saveConfig();
+                  }}
+                />
+              </div>
             {/snippet}
           </Row>
         {/if}
