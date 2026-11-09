@@ -1,4 +1,5 @@
 pub mod crash;
+pub mod deeplink;
 pub mod friends;
 pub mod launch;
 pub mod lobby;

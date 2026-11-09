@@ -17,4 +17,5 @@ export { default as LogsSheet } from './LogsSheet.svelte';
 export { default as ErrorState } from './ErrorState.svelte';
 export { default as ReportSheet } from './ReportSheet.svelte';
 export { default as StoriesCarousel } from './StoriesCarousel.svelte';
+export { default as DeepLinkConfirmationModal } from './DeepLinkConfirmationModal.svelte';
 export { default as Icon } from './icons/Icon.svelte';

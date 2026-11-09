@@ -153,6 +153,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         IntegrityCheckResultDto::decl(),
         StorageCacheInfoDto::decl(),
         ClearStorageCacheResultDto::decl(),
+        DeepLinkActionDto::decl(),
     ];
     for decl in models_decls {
         models_ts.push_str(&format!("export {};\n\n", decl));
@@ -166,6 +167,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
     cmd_ts.push_str("    AchievementProgressDto,\n");
     cmd_ts.push_str("    ClearStorageCacheResultDto,\n");
     cmd_ts.push_str("    CrashDiagnosisDto,\n");
+    cmd_ts.push_str("    DeepLinkActionDto,\n");
     cmd_ts.push_str("    DiscordActivityDto,\n");
     cmd_ts.push_str("    FriendItemDto,\n");
     cmd_ts.push_str("    FriendProfileDto,\n");
@@ -304,6 +306,8 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         MusicSessionStateDto::decl(),
         MusicUpdateSessionRequest::decl(),
         MusicCheckCommandResponse::decl(),
+        ParseDeepLinkRequest::decl(),
+        ParseDeepLinkResponse::decl(),
     ];
     for decl in cmd_decls {
         cmd_ts.push_str(&format!("export {};\n\n", decl));
@@ -411,6 +415,9 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ("MUSIC_GET_SMTC_STATE", CMD_MUSIC_GET_SMTC_STATE),
         ("MUSIC_UPDATE_SESSION", CMD_MUSIC_UPDATE_SESSION),
         ("MUSIC_CHECK_COMMAND", CMD_MUSIC_CHECK_COMMAND),
+        ("DEEP_LINK_PARSE", CMD_DEEP_LINK_PARSE),
+        ("DEEP_LINK_GET_PENDING", CMD_DEEP_LINK_GET_PENDING),
+        ("DEEP_LINK_CLEAR_PENDING", CMD_DEEP_LINK_CLEAR_PENDING),
     ];
     for (k, v) in command_names {
         cmd_ts.push_str(&format!("    {}: \"{}\",\n", k, v));

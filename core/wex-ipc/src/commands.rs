@@ -706,3 +706,21 @@ pub struct MusicUpdateSessionRequest {
 pub struct MusicCheckCommandResponse {
     pub command: Option<String>,
 }
+
+// ============================================================================
+// Deep Link Commands
+// ============================================================================
+
+pub const CMD_DEEP_LINK_PARSE: &str = "deep_link_parse";
+pub const CMD_DEEP_LINK_GET_PENDING: &str = "deep_link_get_pending";
+pub const CMD_DEEP_LINK_CLEAR_PENDING: &str = "deep_link_clear_pending";
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct ParseDeepLinkRequest {
+    pub uri: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct ParseDeepLinkResponse {
+    pub action: DeepLinkActionDto,
+}
