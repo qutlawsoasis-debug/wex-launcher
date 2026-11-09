@@ -133,11 +133,11 @@ test.describe('Keyboard-Only E2E Navigation & Accessibility (wex-keyboard-e2e)',
     await setupTestPage(page, 'settings');
 
     // Find the graphics preset SegmentedControl
-    const segmentedControl = page.locator('.apple-segmented-control[role="tablist"]').first();
+    const segmentedControl = page.locator('.apple-segmented-control[role="radiogroup"], .apple-segmented-control[role="tablist"]').first();
     await expect(segmentedControl).toBeVisible();
 
     // Focus the selected segment
-    const activeSegment = segmentedControl.locator('.segment-button[aria-selected="true"]');
+    const activeSegment = segmentedControl.locator('.segment-button[aria-checked="true"], .segment-button[aria-selected="true"]');
     await activeSegment.focus();
     await assertActiveElementHasVisibleFocus(page, 'Active segment in SegmentedControl');
 
@@ -147,7 +147,7 @@ test.describe('Keyboard-Only E2E Navigation & Accessibility (wex-keyboard-e2e)',
     await page.keyboard.press('ArrowRight');
     await page.waitForTimeout(100);
 
-    const nextSegment = segmentedControl.locator('.segment-button[aria-selected="true"]');
+    const nextSegment = segmentedControl.locator('.segment-button[aria-checked="true"], .segment-button[aria-selected="true"]');
     const nextText = await nextSegment.textContent();
     expect(nextText).not.toEqual(initialText);
     await assertActiveElementHasVisibleFocus(page, 'Next selected segment after ArrowRight');
@@ -156,7 +156,7 @@ test.describe('Keyboard-Only E2E Navigation & Accessibility (wex-keyboard-e2e)',
     await page.keyboard.press('ArrowLeft');
     await page.waitForTimeout(100);
 
-    const prevSegment = segmentedControl.locator('.segment-button[aria-selected="true"]');
+    const prevSegment = segmentedControl.locator('.segment-button[aria-checked="true"], .segment-button[aria-selected="true"]');
     const prevText = await prevSegment.textContent();
     expect(prevText).toEqual(initialText);
     await assertActiveElementHasVisibleFocus(page, 'Previous selected segment after ArrowLeft');
