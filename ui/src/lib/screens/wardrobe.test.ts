@@ -210,7 +210,7 @@ describe('WardrobeScreen Component Tests', () => {
 
     // Switch model to Slim (Alex)
     const slimBtn = Array.from(target.querySelectorAll<HTMLButtonElement>('button')).find((b) =>
-      b.textContent?.includes('Тонкая (3 px)')
+      b.textContent?.includes('Тонкая (3 пикселя)')
     );
     expect(slimBtn).toBeDefined();
     slimBtn?.click();

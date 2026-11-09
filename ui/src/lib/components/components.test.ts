@@ -585,7 +585,7 @@ describe('Apple HIG Svelte 5 Components', () => {
     expect(dialog).not.toBeNull();
     expect(target.textContent).toContain('Войти в лобби ABCD12?');
     expect(target.textContent).toContain('ABCD12');
-    expect(target.textContent).toContain('Лобби P2P');
+    expect(target.textContent).toContain('Лобби');
     expect(target.textContent).toContain('wex://join/ABCD12');
 
     // Test confirm button
