@@ -15,6 +15,7 @@
   - Zero fabricated data: authentic empty state when no servers exist
 -->
 <script module lang="ts">
+  import { t, i18n } from '../i18n';
   export interface ServerEntry {
     id: string;
     name: string;
@@ -61,7 +62,7 @@
     if (!isOnline) {
       return {
         reason: 'no_internet',
-        message: 'Отсутствует подключение к интернету',
+        message: t('servers.err_no_internet'),
       };
     }
 
@@ -77,7 +78,7 @@
     ) {
       return {
         reason: 'no_internet',
-        message: 'Отсутствует подключение к интернету',
+        message: t('servers.err_no_internet'),
       };
     }
 
@@ -94,14 +95,14 @@
     ) {
       return {
         reason: 'invalid_address',
-        message: 'Неверный адрес сервера',
+        message: t('servers.err_invalid_address'),
       };
     }
 
     // 3. Server turned off or connection timed out
     return {
       reason: 'offline',
-      message: 'Сервер выключен или недоступен',
+      message: t('servers.err_unreachable'),
     };
   }
 </script>
@@ -119,7 +120,6 @@
   import Skeleton from '../components/Skeleton.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import { network } from '../design/network.svelte';
-  import { t, i18n } from '../i18n';
 
   interface Props {
     selectedVersion?: string;
@@ -219,9 +219,9 @@
       if (backendFriends && backendFriends.length > 0) {
         friendServers = backendFriends.map((f) => ({
           id: f.id,
-          name: `Мир: ${f.friend_nick}`,
+          name: t('servers.friend_world_title', { friend: f.friend_nick }),
           address: f.address,
-          motd: `Хост: ${f.friend_nick} • ${f.world_name}`,
+          motd: t('servers.friend_world_motd', { friend: f.friend_nick, world: f.world_name }),
           version: f.game_version || activeVersion,
           isFriendServer: true,
           friendNick: f.friend_nick,
@@ -247,9 +247,9 @@
                 : '127.0.0.1:25565';
             fromSync.push({
               id: `friend-srv-${f.id}`,
-              name: `Мир: ${f.nick}`,
+              name: t('servers.friend_world_title', { friend: f.nick }),
               address: addr,
-              motd: `Хост: ${f.nick} • ${f.world_name || 'Кооператив'}`,
+              motd: t('servers.friend_world_motd', { friend: f.nick, world: f.world_name || t('servers.world_coop') }),
               version: f.game_version || activeVersion,
               isFriendServer: true,
               friendNick: f.nick,
@@ -347,7 +347,7 @@
     const address = newServerAddress.trim();
 
     if (!name || !address) {
-      addError = 'Укажите название и адрес сервера.';
+      addError = t('servers.err_fill_fields');
       return;
     }
 
@@ -365,7 +365,7 @@
       newServerName = '';
       newServerAddress = '';
     } catch (e: any) {
-      const msg = typeof e === 'string' ? e : e?.message || 'Не удалось сохранить сервер.';
+      const msg = typeof e === 'string' ? e : e?.message || t('servers.err_save_failed');
       addError = msg;
     }
   }
@@ -386,7 +386,7 @@
     const address = editServerAddress.trim();
 
     if (!name || !address) {
-      editError = 'Укажите название и адрес сервера.';
+      editError = t('servers.err_fill_fields');
       return;
     }
 
@@ -408,7 +408,7 @@
       editSheetOpen = false;
       editingServer = null;
     } catch (e: any) {
-      const msg = typeof e === 'string' ? e : e?.message || 'Не удалось обновить сервер.';
+      const msg = typeof e === 'string' ? e : e?.message || t('servers.err_update_failed');
       editError = msg;
     }
   }
@@ -434,16 +434,16 @@
 
     if (server.lobbyCode) {
       launchingServerId = server.id;
-      launchFeedback = `Подключение к лобби #${server.lobbyCode}...`;
+      launchFeedback = t('servers.feedback_lobby_connecting', { code: server.lobbyCode });
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('join_lobby_room', {
           code: server.lobbyCode,
           playerName: effectivePlayerName,
         });
-        launchFeedback = `Присоединились к лобби #${server.lobbyCode}`;
+        launchFeedback = t('servers.feedback_lobby_joined', { code: server.lobbyCode });
       } catch (e: any) {
-        launchFeedback = typeof e === 'string' ? e : e?.message || 'Ошибка входа в лобби';
+        launchFeedback = typeof e === 'string' ? e : e?.message || t('servers.feedback_lobby_error');
       } finally {
         setTimeout(() => {
           launchingServerId = null;
@@ -454,7 +454,7 @@
     }
 
     launchingServerId = server.id;
-    launchFeedback = `Запуск Minecraft ${activeVersion} с подключением к ${server.name}...`;
+    launchFeedback = t('servers.feedback_launching', { version: activeVersion, name: server.name });
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -463,9 +463,9 @@
         nickname: effectivePlayerName,
         server: server.address,
       });
-      launchFeedback = `Игра запущена. Подключение к ${server.address}`;
+      launchFeedback = t('servers.feedback_game_running', { address: server.address });
     } catch (e: any) {
-      launchFeedback = typeof e === 'string' ? e : e?.message || 'Ошибка запуска игры';
+      launchFeedback = typeof e === 'string' ? e : e?.message || t('servers.feedback_launch_error');
     } finally {
       setTimeout(() => {
         launchingServerId = null;
@@ -520,7 +520,7 @@
     </div>
 
     <div class="toolbar-controls">
-      <div class="version-picker" title="Выбор инстанса servers.dat">
+      <div class="version-picker" title={t('servers.instance_select_title')}>
         <SegmentedControl
           options={versionOptions}
           value={activeVersion}
@@ -545,10 +545,10 @@
         size="small"
         onclick={handleImportBothVersions}
         loading={isImporting}
-        title="Импортировать серверы из servers.dat 1.20.1 и 1.21.1 без дублей"
+        title={t('servers.import_tooltip')}
       >
         <Icon name="folder" size={13} color="var(--color-secondary-label)" />
-        <span>{i18n.locale === 'en' ? 'Import' : 'Импорт'}</span>
+        <span>{t('servers.action_import')}</span>
       </Button>
 
       <Button
@@ -608,9 +608,9 @@
 
             {#if s.isFriendServer}
               <div class="pinned-row-tag">
-                <span class="pinned-badge" title="Сервер друга закреплён вверху">
+                <span class="pinned-badge" title={t('servers.friend_pinned_tooltip')}>
                   <Icon name="friends" size={11} color="var(--color-system-orange)" />
-                  <span>{i18n.locale === 'en' ? 'Friend Server' : 'Сервер друга'}</span>
+                  <span>{t('servers.badge_friend_server')}</span>
                 </span>
               </div>
             {/if}
@@ -620,24 +620,24 @@
                 {#if s.isPinging}
                   <span class="ping-pill loading">
                     <span class="spinner-dot"></span>
-                    {i18n.locale === 'en' ? 'Checking…' : 'Пинг...'}
+                    {t('servers.pinging')}
                   </span>
                 {:else if s.pingError}
                   {#if s.errorReason === 'offline'}
-                    <span class="ping-pill offline" title={s.errorMessage || 'Сервер выключен или недоступен'}>
-                      {i18n.locale === 'en' ? 'Offline' : 'Выключен'}
+                    <span class="ping-pill offline" title={s.errorMessage || t('servers.err_unreachable')}>
+                      {t('servers.status_offline_reason')}
                     </span>
                   {:else if s.errorReason === 'invalid_address'}
-                    <span class="ping-pill error" title={s.errorMessage || 'Неверный адрес сервера'}>
-                      {i18n.locale === 'en' ? 'Bad address' : 'Неверный адрес'}
+                    <span class="ping-pill error" title={s.errorMessage || t('servers.err_invalid_address')}>
+                      {t('servers.status_bad_address')}
                     </span>
                   {:else if s.errorReason === 'no_internet'}
-                    <span class="ping-pill warning" title={s.errorMessage || 'Отсутствует подключение к интернету'}>
-                      {i18n.locale === 'en' ? 'No internet' : 'Нет сети'}
+                    <span class="ping-pill warning" title={s.errorMessage || t('servers.err_no_internet')}>
+                      {t('servers.status_no_network')}
                     </span>
                   {:else}
-                    <span class="ping-pill offline" title="Сервер недоступен">
-                      {i18n.locale === 'en' ? 'Offline' : 'Офлайн'}
+                    <span class="ping-pill offline" title={t('servers.unavailable_tooltip')}>
+                      {t('servers.offline')}
                     </span>
                   {/if}
 
@@ -647,10 +647,10 @@
                     size="small"
                     onclick={() => pingSingleServer(s)}
                     loading={s.isPinging}
-                    title={i18n.locale === 'en' ? 'Retry pinging server' : 'Повторить проверку сервера'}
+                    title={t('servers.retry_ping_tooltip')}
                   >
                     <Icon name="restore" size={11} color="var(--color-system-blue)" />
-                    <span>{i18n.locale === 'en' ? 'Retry' : 'Повторить'}</span>
+                    <span>{t('servers.btn_retry')}</span>
                   </Button>
                 {:else if s.ping_ms !== null && s.ping_ms !== undefined}
                   <span
@@ -658,20 +658,20 @@
                     class:fast={s.ping_ms < 60}
                     class:medium={s.ping_ms >= 60 && s.ping_ms < 150}
                     class:slow={s.ping_ms >= 150}
-                    title="Задержка RTT"
+                    title={t('servers.rtt_tooltip')}
                   >
                     <span class="dot"></span>
-                    {s.ping_ms} {i18n.locale === 'en' ? 'ms' : 'мс'}
+                    {t('servers.ping_ms', { ms: s.ping_ms })}
                   </span>
 
                   {#if s.online !== null && s.online !== undefined}
-                    <span class="online-counter" title="Игроков в сети">
+                    <span class="online-counter" title={t('servers.players_online_tooltip')}>
                       {s.online}/{s.max_players ?? '?'}
                     </span>
                   {/if}
                 {:else}
-                  <span class="ping-pill offline" title="Сервер недоступен">
-                    {i18n.locale === 'en' ? 'Offline' : 'Офлайн'}
+                  <span class="ping-pill offline" title={t('servers.unavailable_tooltip')}>
+                    {t('servers.offline')}
                   </span>
                 {/if}
 
@@ -681,10 +681,10 @@
                   size="small"
                   onclick={() => handlePlayServer(s)}
                   loading={launchingServerId === s.id}
-                  title={i18n.locale === 'en' ? 'Launch game and connect to server' : 'Запустить игру и подключиться к серверу'}
+                  title={t('servers.launch_connect_tooltip')}
                 >
                   <Icon name="play" size={12} color="#ffffff" />
-                  <span>{i18n.locale === 'en' ? 'Play' : 'Играть'}</span>
+                  <span>{t('servers.btn_quick_play')}</span>
                 </Button>
 
                 {#if !s.isFriendServer}
@@ -693,9 +693,9 @@
                     variant="ghost"
                     size="small"
                     onclick={() => openEditSheet(s)}
-                    title="Изменить название или адрес сервера"
+                    title={t('servers.edit_tooltip')}
                   >
-                    <span>Изменить</span>
+                    <span>{t('servers.btn_edit')}</span>
                   </Button>
 
                   <!-- Remove Server -->
@@ -771,8 +771,8 @@
 <!-- Edit Server HIG Sheet -->
 <Sheet
   bind:open={editSheetOpen}
-  title="Изменить сервер"
-  doneLabel="Сохранить"
+  title={t('servers.edit_sheet_title')}
+  doneLabel={t('servers.sheet_save')}
   ondone={handleEditServer}
 >
   <div class="sheet-form">
@@ -784,7 +784,7 @@
     {/if}
 
     <div class="form-row">
-      <label class="form-label" for="edit-srv-name">Название сервера</label>
+      <label class="form-label" for="edit-srv-name">{t('servers.lbl_server_name')}</label>
       <input
         id="edit-srv-name"
         type="text"
@@ -795,7 +795,7 @@
     </div>
 
     <div class="form-row">
-      <label class="form-label" for="edit-srv-addr">Адрес сервера (домен или IP:порт)</label>
+      <label class="form-label" for="edit-srv-addr">{t('servers.lbl_server_address')}</label>
       <input
         id="edit-srv-addr"
         type="text"

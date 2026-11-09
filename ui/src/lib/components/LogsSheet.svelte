@@ -19,6 +19,7 @@
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import Icon from './icons/Icon.svelte';
+  import { t } from '../i18n';
 
   export interface LogFileInfo {
     file_name: string;
@@ -129,7 +130,7 @@
       logData = res;
     } catch (e: any) {
       logData = null;
-      notify('error', 'Ошибка чтения журнала', e?.message || String(e));
+      notify('error', t('logs.toast_read_error'), e?.message || String(e));
     } finally {
       isLoading = false;
     }
@@ -161,7 +162,7 @@
 
   async function handleCopyLog() {
     if (!logData || logData.entries.length === 0) {
-      notify('info', 'Журнал пуст');
+      notify('info', t('logs.toast_empty'));
       return;
     }
 
@@ -179,13 +180,13 @@
         await navigator.clipboard.writeText(fullText);
       }
       copyFeedback = true;
-      notify('success', 'Журнал скопирован в буфер обмена', `${logData.entries.length} строк`);
+      notify('success', t('logs.toast_copied'), t('logs.toast_copied_desc', { count: logData.entries.length }));
       setTimeout(() => {
         copyFeedback = false;
         isCopying = false;
       }, 2000);
     } catch {
-      notify('info', 'Не удалось скопировать журнал автоматически');
+      notify('info', t('logs.toast_copy_failed'));
       isCopying = false;
     }
   }
@@ -197,9 +198,9 @@
         version: currentVersion,
         folderType: type,
       });
-      notify('info', 'Папка открыта в проводнике', opened);
+      notify('info', t('logs.toast_folder_opened'), opened);
     } catch {
-      notify('info', 'Открытие проводника', `Папка ${type}`);
+      notify('info', t('logs.toast_opening_explorer'), t('logs.folder_type_label', { type }));
     }
   }
 
@@ -211,7 +212,7 @@
 
 <Sheet
   bind:open
-  title="Журнал Minecraft"
+  title={t('logs.sheet_title')}
   maxWidth="920px"
   showCancel={false}
   showDone={false}
@@ -235,7 +236,7 @@
 
         <!-- File Picker Selector -->
         <div class="file-picker-wrap">
-          <label for="log-file-select" class="picker-label">Файл:</label>
+          <label for="log-file-select" class="picker-label">{t('logs.file_label')}</label>
           <select
             id="log-file-select"
             class="file-select-dropdown"
@@ -244,11 +245,11 @@
             data-testid="log-file-select"
           >
             {#if availableFiles.length === 0}
-              <option value="latest.log">latest.log (по умолчанию)</option>
+              <option value="latest.log">{t('logs.default_file_suffix')}</option>
             {:else}
               {#each availableFiles as file (file.file_name)}
                 <option value={file.file_name}>
-                  {file.file_name} {file.is_crash ? '⚠️ [Краш]' : ''}
+                  {file.file_name} {file.is_crash ? t('logs.crash_badge') : ''}
                 </option>
               {/each}
             {/if}
@@ -259,17 +260,17 @@
         <div class="metrics-row" data-testid="log-metrics">
           {#if logData}
             {#if logData.error_count > 0}
-              <span class="metric-pill error-pill" title="Ошибки в журнале">
-                {logData.error_count} {logData.error_count === 1 ? 'ошибка' : 'ошибок'}
+              <span class="metric-pill error-pill" title={t('logs.title_errors')}>
+                {logData.error_count === 1 ? t('logs.metric_error_one', { count: logData.error_count }) : t('logs.metric_error_other', { count: logData.error_count })}
               </span>
             {/if}
             {#if logData.warn_count > 0}
-              <span class="metric-pill warn-pill" title="Предупреждения в журнале">
-                {logData.warn_count} {logData.warn_count === 1 ? 'предупреждение' : 'предупреждений'}
+              <span class="metric-pill warn-pill" title={t('logs.title_warns')}>
+                {logData.warn_count === 1 ? t('logs.metric_warn_one', { count: logData.warn_count }) : t('logs.metric_warn_other', { count: logData.warn_count })}
               </span>
             {/if}
             <span class="metric-pill lines-pill">
-              {logData.total_lines} {logData.total_lines === 1 ? 'строка' : 'строк'}
+              {logData.total_lines === 1 ? t('logs.metric_lines_one', { count: logData.total_lines }) : t('logs.metric_lines_other', { count: logData.total_lines })}
             </span>
           {/if}
         </div>
@@ -280,7 +281,7 @@
         <div class="search-field-wrap">
           <SearchField
             bind:value={searchQuery}
-            placeholder="Поиск по тексту или потоку..."
+            placeholder={t('logs.search_placeholder')}
             oninput={handleSearchInput}
             onclear={() => {
               searchQuery = '';
@@ -293,10 +294,10 @@
         <div class="level-control-wrap">
           <SegmentedControl
             options={[
-              { value: 'ALL', label: 'Все' },
-              { value: 'ERROR', label: 'Ошибки' },
-              { value: 'WARN', label: 'Предупреждения' },
-              { value: 'INFO', label: 'Инфо' },
+              { value: 'ALL', label: t('logs.level_all') },
+              { value: 'ERROR', label: t('logs.level_error') },
+              { value: 'WARN', label: t('logs.level_warn') },
+              { value: 'INFO', label: t('logs.level_info') },
             ]}
             bind:value={levelFilter}
             onchange={handleLevelChange}
@@ -310,7 +311,7 @@
       {#if isLoading}
         <div class="loading-state">
           <div class="loading-indicator"></div>
-          <span class="loading-text">Загрузка журнала {selectedFileName}…</span>
+          <span class="loading-text">{t('logs.loading_file', { name: selectedFileName })}</span>
         </div>
       {:else if !logData || logData.entries.length === 0}
         <div class="empty-log-state" data-testid="log-empty-state">
@@ -319,13 +320,13 @@
           </div>
           <h4 class="empty-title">
             {searchQuery || levelFilter !== 'ALL'
-              ? 'Строки с заданным фильтром не найдены'
-              : 'Журнал событий пуст'}
+              ? t('logs.empty_filtered_title')
+              : t('logs.empty_title')}
           </h4>
           <p class="empty-sub">
             {searchQuery || levelFilter !== 'ALL'
-              ? 'Попробуйте изменить поисковый запрос или сбросить фильтр по уровню.'
-              : `Файл ${selectedFileName} не содержит записанных событий или ещё не создан.`}
+              ? t('logs.empty_filtered_sub')
+              : t('logs.empty_sub', { name: selectedFileName })}
           </p>
         </div>
       {:else}
@@ -368,7 +369,7 @@
           loading={isCopying}
         >
           <span data-testid="btn-copy-log">
-            {copyFeedback ? 'Скопировано!' : 'Скопировать лог'}
+            {copyFeedback ? t('logs.btn_copied') : t('logs.btn_copy')}
           </span>
         </Button>
 
@@ -379,7 +380,7 @@
           loading={isLoading}
         >
           <Icon name="refresh" size={14} color="var(--color-secondary-label)" />
-          <span data-testid="btn-reload-log">Обновить</span>
+          <span data-testid="btn-reload-log">{t('logs.btn_reload')}</span>
         </Button>
 
         <Button
@@ -388,7 +389,7 @@
           onclick={() => handleOpenFolder('logs')}
         >
           <Icon name="folder" size={14} color="var(--color-secondary-label)" />
-          <span data-testid="btn-open-logs-folder">Папка логов</span>
+          <span data-testid="btn-open-logs-folder">{t('logs.btn_logs_folder')}</span>
         </Button>
 
         <Button
@@ -397,7 +398,7 @@
           onclick={() => handleOpenFolder('crash_reports')}
         >
           <Icon name="warning" size={14} color="var(--color-secondary-label)" />
-          <span data-testid="btn-open-crashes-folder">Папка крашей</span>
+          <span data-testid="btn-open-crashes-folder">{t('logs.btn_crashes_folder')}</span>
         </Button>
       </div>
 
@@ -407,7 +408,7 @@
           size="regular"
           onclick={handleClose}
         >
-          <span data-testid="btn-close-logs">Закрыть</span>
+          <span data-testid="btn-close-logs">{t('logs.btn_close')}</span>
         </Button>
       </div>
     </div>

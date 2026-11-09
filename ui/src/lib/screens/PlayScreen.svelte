@@ -94,8 +94,8 @@
     isLaunching = false,
     isRunning = false,
     progressPercentage = 0,
-    progressStage = 'Готов к запуску',
-    progressDetail = 'Нажмите «Играть» для старта',
+    progressStage = t('play.status_ready'),
+    progressDetail = t('play.status_click_to_start'),
     progressSpeed = '',
     launchError = $bindable<unknown>(null),
     initialNews = undefined,
@@ -138,27 +138,27 @@
       if (cat === 'new' || raw.startsWith('[Новое]')) {
         return {
           categoryClass: 'new',
-          badgeText: 'Новое',
-          text: item.text.replace(/^\[Новое\]\s*/, ''),
+          badgeText: t('play.badge_new'),
+          text: item.text.replace(/^\[(?:Новое|New)\]\s*/i, ''),
         };
       }
       if (cat === 'improved' || raw.startsWith('[Улучшено]')) {
         return {
           categoryClass: 'improved',
-          badgeText: 'Улучшено',
-          text: item.text.replace(/^\[Улучшено\]\s*/, ''),
+          badgeText: t('play.badge_improved'),
+          text: item.text.replace(/^\[(?:Улучшено|Improved)\]\s*/i, ''),
         };
       }
       if (cat === 'fixed' || raw.startsWith('[Исправлено]')) {
         return {
           categoryClass: 'fixed',
-          badgeText: 'Исправлено',
-          text: item.text.replace(/^\[Исправлено\]\s*/, ''),
+          badgeText: t('play.badge_fixed'),
+          text: item.text.replace(/^\[(?:Исправлено|Fixed)\]\s*/i, ''),
         };
       }
       return {
         categoryClass: 'general',
-        badgeText: 'Инфо',
+        badgeText: t('play.badge_info'),
         text: item.text,
       };
     });
@@ -240,7 +240,7 @@
     if (!updateInfo) return;
     updateStage = 'downloading';
     updateProgressPct = 0;
-    updateProgressText = 'Подключение к серверу обновлений…';
+    updateProgressText = t('play.update_progress_connecting');
     updateErrorMessage = '';
 
     try {
@@ -254,14 +254,14 @@
         updateStage = 'ready_to_restart';
       } else {
         updateStage = 'error';
-        updateErrorMessage = res?.message || 'Не удалось завершить обновление';
+        updateErrorMessage = res?.message || t('play.update_err_complete');
       }
     } catch (err: any) {
       updateStage = 'error';
-      const msg = typeof err === 'string' ? err : err?.message || 'Ошибка загрузки обновления';
-      updateErrorMessage = msg.includes('Прежняя версия')
+      const msg = typeof err === 'string' ? err : err?.message || t('play.update_err_download');
+      updateErrorMessage = msg.includes(t('play.update_prev_version_keyword'))
         ? msg
-        : `${msg}. Прежняя версия сохранена.`;
+        : `${msg}. ${t('play.update_prev_version_preserved')}`;
     }
   }
 
@@ -379,7 +379,7 @@
       list.push({
         type: 'playtime',
         totalSeconds: playtimeData.total_seconds,
-        formattedPlayTime: playtimeData.formatted_play_time || `${Math.floor(playtimeData.total_seconds / 60)} мин.`,
+        formattedPlayTime: playtimeData.formatted_play_time || t('play.minutes_short', { minutes: Math.floor(playtimeData.total_seconds / 60) }),
         totalLaunches: playtimeData.total_launches,
         lastPlayed: playtimeData.last_played_utc ? new Date(playtimeData.last_played_utc).toLocaleDateString() : undefined,
       });
@@ -633,7 +633,7 @@ $effect(() => {
             {t('offline.title')}
           </span>
           <span class="offline-banner-subtext">
-            {t('play.offline_launch_note')} — {i18n.locale === 'en' ? 'Game launches from local files' : 'Доступен запуск уже скачанной версии'}
+            {t('play.offline_launch_note')}
           </span>
         </div>
         <div class="offline-banner-action">
@@ -641,7 +641,7 @@ $effect(() => {
             variant="glass"
             size="small"
             onclick={() => network.check()}
-            title="Проверить подключение к сети"
+            title={t('mods.check_connection_title')}
           >
             <Icon name="refresh" size={12} color="rgba(255, 255, 255, 0.9)" />
             <span>{t('offline.retry')}</span>
@@ -668,42 +668,42 @@ $effect(() => {
           {#if updateStage === 'available'}
             <div class="update-banner-headline-row">
               <span class="update-banner-headline">
-                Доступна новая версия Wex {updateInfo.latest_version || ''}
+                {t('play.update_available_title', { version: updateInfo.latest_version || '' })}
               </span>
               {#if !canAutoUpdate}
-                <span class="badge badge-general">Неподписанная сборка</span>
+                <span class="badge badge-general">{t('play.update_unsigned_badge')}</span>
               {/if}
             </div>
             {#if updateInfo.notes}
               <span class="update-banner-subtext">{updateInfo.notes}</span>
             {:else if !canAutoUpdate}
               <span class="update-banner-subtext">
-                Автоматическая установка недоступна без цифровой подписи. Доступна ручная загрузка.
+                {t('play.update_unsigned_desc')}
               </span>
             {/if}
           {:else if updateStage === 'downloading'}
             <span class="update-banner-headline">
-              Загрузка обновления Wex {updateInfo.latest_version || ''}
+              {t('play.update_downloading_title', { version: updateInfo.latest_version || '' })}
             </span>
             <span class="update-banner-subtext">
-              {updateProgressText || `Скачиваем обновление… ${updateProgressPct}%`}
+              {updateProgressText || t('play.update_downloading_desc', { pct: updateProgressPct })}
             </span>
             <div class="update-banner-progress">
               <ProgressBar percentage={updateProgressPct} height={4} />
             </div>
           {:else if updateStage === 'ready_to_restart'}
             <span class="update-banner-headline">
-              Обновление готово к установке
+              {t('play.update_ready_title')}
             </span>
             <span class="update-banner-subtext">
-              Перезапустите лаунчер, чтобы применить версию {updateInfo.latest_version || ''}
+              {t('play.update_ready_desc', { version: updateInfo.latest_version || '' })}
             </span>
           {:else if updateStage === 'error'}
             <span class="update-banner-headline update-banner-headline-error">
-              Не удалось обновить лаунчер
+              {t('play.update_error_title')}
             </span>
             <span class="update-banner-subtext">
-              {updateErrorMessage || 'Ошибка при загрузке. Прежняя версия сохранена и готова к работе.'}
+              {updateErrorMessage || t('play.update_error_desc')}
             </span>
           {/if}
         </div>
@@ -714,20 +714,20 @@ $effect(() => {
                 variant="primary"
                 size="small"
                 onclick={handleStartUpdate}
-                title="Скачать и установить обновление"
+                title={t('play.update_btn_update_title')}
               >
                 <Icon name="refresh" size={14} color="#ffffff" />
-                <span>Обновить</span>
+                <span>{t('play.update_btn_update')}</span>
               </Button>
             {:else}
               <Button
                 variant="secondary"
                 size="small"
                 onclick={handleOpenDownloadUrl}
-                title="Перейти к загрузке установщика"
+                title={t('play.update_btn_open_download_title')}
               >
                 <Icon name="folder" size={14} color="var(--color-secondary-label)" />
-                <span>Перейти к загрузке</span>
+                <span>{t('play.update_btn_download')}</span>
               </Button>
             {/if}
             <div class="update-banner-close">
@@ -735,7 +735,7 @@ $effect(() => {
                 variant="ghost"
                 size="small"
                 onclick={dismissUpdateBanner}
-                title="Закрыть уведомление"
+                title={t('play.update_btn_close')}
               >
                 <Icon name="close" size={14} color="var(--color-secondary-label)" />
               </Button>
@@ -745,19 +745,19 @@ $effect(() => {
               variant="primary"
               size="small"
               onclick={handleRestart}
-              title="Перезапустить лаунчер сейчас"
+              title={t('play.update_btn_restart_title')}
             >
               <Icon name="refresh" size={14} color="#ffffff" />
-              <span>Перезапуск</span>
+              <span>{t('play.update_btn_restart')}</span>
             </Button>
             <div class="update-banner-close">
               <Button
                 variant="ghost"
                 size="small"
                 onclick={dismissUpdateBanner}
-                title="Отложить перезапуск"
+                title={t('play.update_btn_later_title')}
               >
-                <span>Позже</span>
+                <span>{t('play.update_btn_later')}</span>
               </Button>
             </div>
           {:else if updateStage === 'error'}
@@ -765,17 +765,17 @@ $effect(() => {
               variant="secondary"
               size="small"
               onclick={handleStartUpdate}
-              title="Повторить попытку обновления"
+              title={t('play.update_btn_retry_title')}
             >
               <Icon name="refresh" size={14} color="var(--color-secondary-label)" />
-              <span>Повторить</span>
+              <span>{t('play.update_btn_retry')}</span>
             </Button>
             <div class="update-banner-close">
               <Button
                 variant="ghost"
                 size="small"
                 onclick={dismissUpdateBanner}
-                title="Закрыть уведомление"
+                title={t('play.update_btn_close')}
               >
                 <Icon name="close" size={14} color="var(--color-secondary-label)" />
               </Button>
@@ -793,7 +793,7 @@ $effect(() => {
           <p class="game-subheading">
             {t('play.client_title')} • {t('play.version_label')} {selectedVersion}
             {#if playtimeSummary && playtimeSummary.total_seconds > 0}
-              <span class="header-playtime-meta">• {playtimeSummary.version_seconds > 0 ? (i18n.locale === 'en' ? `${playtimeSummary.version_formatted} on this version` : `${playtimeSummary.version_formatted} на этой версии`) : (i18n.locale === 'en' ? `${playtimeSummary.total_formatted} total` : `${playtimeSummary.total_formatted} всего`)}</span>
+              <span class="header-playtime-meta">• {playtimeSummary.version_seconds > 0 ? t('play.on_this_version', { time: playtimeSummary.version_formatted }) : t('play.total_time', { time: playtimeSummary.total_formatted })}</span>
             {/if}
           </p>
         </div>
@@ -802,7 +802,7 @@ $effect(() => {
             variant="glass"
             size="small"
             onclick={() => (manualImportWizardOpen = true)}
-            title="Мастер импорта данных из старого лаунчера"
+            title={t('play.import_wizard_title')}
           >
             <Icon name="folder" size={14} color="rgba(255, 255, 255, 0.90)" />
             <span>{t('import.action_import')}</span>
@@ -828,7 +828,7 @@ $effect(() => {
             <Icon name="wifi-off" size={24} color="var(--color-secondary-label)" />
             <span class="offline-card-title">{t('offline.title')}</span>
             <span class="offline-card-desc">
-              {i18n.locale === 'en' ? 'News and updates are unavailable offline. Local game launch is ready.' : 'Новости и обновления недоступны без сети. Доступен запуск уже скачанной версии.'}
+              {t('play.offline_news_note')}
             </span>
           </div>
         </div>
@@ -838,7 +838,7 @@ $effect(() => {
       <div class="glass-card status-card">
         <div class="card-title-row">
           <Icon name="server" size={15} color="var(--color-secondary-label)" />
-          <span class="card-title">Последний сервер</span>
+          <span class="card-title">{t('play.card_last_server')}</span>
         </div>
 
         {#if recentServer}
@@ -852,14 +852,14 @@ $effect(() => {
             </div>
           </div>
         {:else}
-          <div class="empty-status-text">Вы ещё не играли на серверах</div>
+          <div class="empty-status-text">{t('play.no_servers_played')}</div>
         {/if}
 
         <div class="shelf-card-divider"></div>
 
         <div class="friends-glance-row">
           <Icon name="friends" size={15} color="var(--color-tertiary-label)" />
-          <span class="friends-status-label">Нет друзей в игре</span>
+          <span class="friends-status-label">{t('play.no_friends_in_game')}</span>
         </div>
       </div>
 
@@ -868,7 +868,7 @@ $effect(() => {
         <div class="glass-card screenshot-glance-card" data-testid="latest-screenshot-card">
           <div class="card-title-row">
             <Icon name="sun" size={15} color="var(--color-system-orange)" />
-            <span class="card-title">Свежий скриншот</span>
+            <span class="card-title">{t('stories.latest_screenshot')}</span>
             <span class="card-meta">
               {latestScreenshot.file_name}
             </span>
@@ -882,8 +882,8 @@ $effect(() => {
                 onopenworkshop('screenshots');
               }
             }}
-            title="Нажмите, чтобы открыть в Мастерской"
-            aria-label="Последний скриншот. Нажмите, чтобы открыть в Мастерской"
+            title={t('workshop.click_to_open_workshop')}
+            aria-label={t('workshop.latest_screenshot_aria')}
           >
             <div class="glance-img-container">
               <img
@@ -894,7 +894,7 @@ $effect(() => {
               />
               <div class="glance-hover-hint">
                 <Icon name="folder" size={15} color="#ffffff" />
-                <span>Открыть в Мастерской</span>
+                <span>{t('workshop.open_in_workshop')}</span>
               </div>
             </div>
           </button>
@@ -972,12 +972,12 @@ $effect(() => {
           <!-- Java Environment & Core Status -->
           <div class="dock-block tech-block">
             <span class="dock-caption">
-              {isRunning ? (i18n.locale === 'en' ? 'Session Status' : 'Статус сессии') : (i18n.locale === 'en' ? 'Java Runtime' : 'Среда выполнения')}
+              {isRunning ? t('play.session_status') : t('play.runtime_env')}
             </span>
             <div class="tech-runtime-box">
               <span class="tech-runtime-text">{javaRuntime}</span>
               {#if isRunning}
-                <span class="tech-status-badge running">({i18n.locale === 'en' ? 'Playing' : 'В игре'})</span>
+                <span class="tech-status-badge running">({t('play.status_in_game')})</span>
               {:else if !network.isOnline}
                 <span class="tech-status-badge offline">• {t('play.offline_launch_note')}</span>
               {:else if clientStatus}
@@ -985,10 +985,10 @@ $effect(() => {
               {/if}
             </div>
             {#if playtimeSummary && playtimeSummary.total_seconds > 0}
-              <div class="tech-playtime-line" title="Суммарно: {playtimeSummary.total_formatted} • Запусков: {playtimeSummary.total_launches}">
+              <div class="tech-playtime-line" title={t('play.playtime_tooltip', { total: playtimeSummary.total_formatted, launches: playtimeSummary.total_launches })}>
                 <Icon name="clock" size={11} color="var(--color-tertiary-label)" />
                 <span class="tech-playtime-label">
-                  {playtimeSummary.version_seconds > 0 ? `В игре: ${playtimeSummary.version_formatted}` : `В игре: ${playtimeSummary.total_formatted}`}
+                  {playtimeSummary.version_seconds > 0 ? t('play.in_game_label', { time: playtimeSummary.version_formatted }) : t('play.in_game_label', { time: playtimeSummary.total_formatted })}
                 </span>
               </div>
             {/if}
@@ -1001,9 +1001,9 @@ $effect(() => {
                 variant="secondary"
                 size="large"
                 onclick={onstop}
-                title={i18n.locale === 'en' ? 'Stop Minecraft' : 'Остановить процесс Minecraft'}
+                title={t('play.stop_minecraft_title')}
               >
-                <span>{i18n.locale === 'en' ? 'Stop Minecraft' : 'В игре • Остановить'}</span>
+                <span>{t('play.btn_playing_stop')}</span>
               </Button>
             {:else}
               <Button
