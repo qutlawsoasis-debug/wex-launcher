@@ -89,6 +89,7 @@ pub fn run() {
             commands::settings::settings_verify_files,
             commands::settings::cleanup_cache,
             commands::settings::settings_cleanup_cache,
+            commands::settings::get_discord_rpc_preview,
             // Mods commands (commands/mods.rs)
             commands::mods::list_mods,
             commands::mods::toggle_mod,
