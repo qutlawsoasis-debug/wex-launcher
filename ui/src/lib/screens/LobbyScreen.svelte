@@ -1074,7 +1074,8 @@
   }
 
   .mode-segmented {
-    width: 320px;
+    width: 440px;
+    max-width: 100%;
   }
 
   .room-closed-banner {
