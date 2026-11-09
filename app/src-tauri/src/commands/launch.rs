@@ -404,7 +404,7 @@ pub async fn start_game<R: tauri::Runtime>(
             version: version.clone(),
             nickname: nickname.clone(),
             jvm_args: Some(actual_jvm_args),
-            quick_play_multiplayer: server,
+            quick_play_multiplayer: server.clone(),
         })
         .await;
 
