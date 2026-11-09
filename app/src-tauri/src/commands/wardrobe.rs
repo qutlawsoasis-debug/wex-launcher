@@ -19,6 +19,61 @@ use wex_ipc::commands::{
 };
 use wex_ipc::models::{SkinModelDto, SkinValidationResultDto, WardrobeItemDto, WardrobeStateDto};
 
+pub fn validate_single_component(name: &str) -> Result<&str, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("Имя не может быть пустым".to_string());
+    }
+    if trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed.contains('\0')
+        || trimmed == "."
+        || trimmed == ".."
+    {
+        return Err("Имя должно быть одиночным компонентом пути".to_string());
+    }
+    let p = Path::new(trimmed);
+    let mut comps = p.components();
+    match (comps.next(), comps.next()) {
+        (Some(std::path::Component::Normal(_)), None) => Ok(trimmed),
+        _ => Err("Имя должно быть одиночным компонентом пути".to_string()),
+    }
+}
+
+pub fn is_inside_wex_path(path: &Path) -> bool {
+    if path
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+    {
+        return false;
+    }
+    let default_wex = wex_core::config::WexPaths::new(None).root;
+    if let (Ok(c_path), Ok(c_default)) = (path.canonicalize(), default_wex.canonicalize()) {
+        if c_path.starts_with(&c_default) {
+            return true;
+        }
+    }
+    if let Ok(c_path) = path.canonicalize() {
+        for comp in c_path.components() {
+            if let std::path::Component::Normal(os_str) = comp {
+                let s = os_str.to_string_lossy().to_lowercase();
+                if s == "wex" || s == ".wex" {
+                    return true;
+                }
+            }
+        }
+    }
+    for comp in path.components() {
+        if let std::path::Component::Normal(os_str) = comp {
+            let s = os_str.to_string_lossy().to_lowercase();
+            if s == "wex" || s == ".wex" {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 #[tauri::command]
 pub async fn extras_validate_skin(
     request: ExtrasValidateSkinRequest,
@@ -57,7 +112,27 @@ pub async fn extras_save_skin(request: ExtrasSaveSkinRequest) -> Result<Wardrobe
         .decode(&request.skin_bytes_base64)
         .map_err(|e| format!("Ошибка декодирования base64: {}", e))?;
 
-    let mgr = SkinHistoryManager::new(&request.history_dir);
+    let val = validate_skin_bytes(&bytes);
+    if !val.is_valid {
+        return Err(val
+            .error
+            .unwrap_or_else(|| "Файл не является корректным PNG скином".to_string()));
+    }
+
+    validate_single_component(&request.skin_name)
+        .map_err(|e| format!("Недопустимое имя скина: {}", e))?;
+
+    let history_dir = if request.history_dir.trim().is_empty() {
+        wex_core::config::WexPaths::new(None).root
+    } else {
+        let p = PathBuf::from(&request.history_dir);
+        if !is_inside_wex_path(&p) {
+            return Err("Путь каталога скинов должен находиться внутри папки Wex".to_string());
+        }
+        p
+    };
+
+    let mgr = SkinHistoryManager::new(&history_dir);
     let item = mgr
         .add_skin(&request.skin_name, &bytes, Some(request.model.into()))
         .map_err(|e| e.to_string())?;
@@ -89,10 +164,14 @@ pub async fn extras_list_skin_history(
     request: ExtrasListSkinHistoryRequest,
     state: State<'_, PlayState>,
 ) -> Result<ExtrasListSkinHistoryResponse, String> {
-    let dir = if request.history_dir.is_empty() {
+    let dir = if request.history_dir.trim().is_empty() {
         state.paths.root.clone()
     } else {
-        PathBuf::from(request.history_dir)
+        let p = PathBuf::from(&request.history_dir);
+        if !is_inside_wex_path(&p) {
+            return Err("Путь каталога скинов должен находиться внутри папки Wex".to_string());
+        }
+        p
     };
     let items = list_skin_history_impl(&dir)?;
     Ok(ExtrasListSkinHistoryResponse { items })
@@ -103,11 +182,17 @@ pub async fn wardrobe_delete_history(
     request: WardrobeDeleteHistoryRequest,
     state: State<'_, PlayState>,
 ) -> Result<WardrobeDeleteHistoryResponse, String> {
-    let dir = if request.history_dir.is_empty() {
+    let dir = if request.history_dir.trim().is_empty() {
         state.paths.root.clone()
     } else {
-        PathBuf::from(request.history_dir)
+        let p = PathBuf::from(&request.history_dir);
+        if !is_inside_wex_path(&p) {
+            return Err("Путь каталога скинов должен находиться внутри папки Wex".to_string());
+        }
+        p
     };
+    validate_single_component(&request.item_id)
+        .map_err(|e| format!("Недопустимый ID скина: {}", e))?;
     let success = delete_history_skin_impl(&dir, &request.item_id)?;
     Ok(WardrobeDeleteHistoryResponse { success })
 }
@@ -117,11 +202,17 @@ pub async fn wardrobe_get_skin(
     request: WardrobeGetSkinRequest,
     state: State<'_, PlayState>,
 ) -> Result<WardrobeGetSkinResponse, String> {
-    let dir = if request.history_dir.is_empty() {
+    let dir = if request.history_dir.trim().is_empty() {
         state.paths.root.clone()
     } else {
-        PathBuf::from(request.history_dir)
+        let p = PathBuf::from(&request.history_dir);
+        if !is_inside_wex_path(&p) {
+            return Err("Путь каталога скинов должен находиться внутри папки Wex".to_string());
+        }
+        p
     };
+    validate_single_component(&request.item_id)
+        .map_err(|e| format!("Недопустимый ID скина: {}", e))?;
     let (item, skin_bytes_base64) = get_skin_impl(&dir, &request.item_id)?;
     Ok(WardrobeGetSkinResponse {
         item,
@@ -134,6 +225,15 @@ pub async fn extras_generate_csl_config(
     request: ExtrasGenerateCslConfigRequest,
 ) -> Result<(), String> {
     let target_path = PathBuf::from(&request.output_path);
+    if target_path
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+    {
+        return Err("Относительные переходы пути запрещены".to_string());
+    }
+    if !is_inside_wex_path(&target_path) {
+        return Err("Путь конфигурации CSL должен находиться внутри папки Wex".to_string());
+    }
     if let Some(parent) = target_path.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -199,6 +299,11 @@ pub async fn wardrobe_apply(
     request: WardrobeApplyRequest,
     state: State<'_, PlayState>,
 ) -> Result<WardrobeApplyResponse, String> {
+    validate_single_component(&request.nickname)
+        .map_err(|e| format!("Недопустимый никнейм: {}", e))?;
+    validate_single_component(&request.skin_name)
+        .map_err(|e| format!("Недопустимое имя скина: {}", e))?;
+
     // 1. Resolve skin bytes
     let skin_bytes = if let Some(ref b64) = request.skin_base64 {
         Some(
@@ -320,7 +425,8 @@ mod tests {
     #[tokio::test]
     async fn test_save_and_list_skin_history() {
         let dir = tempdir().unwrap();
-        let history_dir = dir.path().to_path_buf();
+        let history_dir = dir.path().join("wex");
+        fs::create_dir_all(&history_dir).unwrap();
 
         let (_bytes, b64) = make_test_skin_png(64, 64);
         let saved = extras_save_skin(ExtrasSaveSkinRequest {
@@ -358,5 +464,46 @@ mod tests {
         let decoded = BASE64.decode(&b64).unwrap();
         let val = image::load_from_memory(&decoded).unwrap();
         assert_eq!(val.dimensions(), (64, 32));
+    }
+
+    #[tokio::test]
+    async fn test_sec_extras_save_skin_rejects_outside_history_dir() {
+        let dir = tempdir().unwrap();
+        let outside_dir = dir.path().join("arbitrary_external_folder");
+
+        let (_bytes, b64) = make_test_skin_png(64, 64);
+        let res = extras_save_skin(ExtrasSaveSkinRequest {
+            history_dir: outside_dir.to_string_lossy().to_string(),
+            skin_name: "TestHero".to_string(),
+            skin_bytes_base64: b64,
+            model: SkinModelDto::Slim,
+        })
+        .await;
+
+        assert!(
+            res.is_err(),
+            "extras_save_skin must reject arbitrary outside history_dir"
+        );
+        assert!(
+            !outside_dir.join("skins").exists(),
+            "Must not write skins to arbitrary external folder"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_sec_extras_save_skin_rejects_traversal_history_dir() {
+        let (_bytes, b64) = make_test_skin_png(64, 64);
+        let res = extras_save_skin(ExtrasSaveSkinRequest {
+            history_dir: "../../escaped_dir".to_string(),
+            skin_name: "TestHero".to_string(),
+            skin_bytes_base64: b64,
+            model: SkinModelDto::Slim,
+        })
+        .await;
+
+        assert!(
+            res.is_err(),
+            "extras_save_skin must reject relative traversal in history_dir"
+        );
     }
 }

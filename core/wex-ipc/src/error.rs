@@ -356,6 +356,7 @@ impl From<wex_social::workshop::WorkshopError> for IpcError {
 impl From<wex_social::launcher_update::UpdateError> for IpcError {
     fn from(err: wex_social::launcher_update::UpdateError) -> Self {
         use wex_social::launcher_update::UpdateError;
+        #[allow(unreachable_patterns)]
         let (code, msg) = match &err {
             UpdateError::Http(_) => (
                 "UPDATE_NETWORK_ERROR",
@@ -372,6 +373,10 @@ impl From<wex_social::launcher_update::UpdateError> for IpcError {
             UpdateError::InvalidSignature(_) => (
                 "UPDATE_SIGNATURE_FAILED",
                 "Цифровая подпись обновления не подтверждена. Загрузка отменена в целях безопасности.",
+            ),
+            _ => (
+                "UPDATE_UNKNOWN",
+                "Неизвестная ошибка обновления.",
             ),
         };
         Self::new(code, msg, Some(err.to_string()))
