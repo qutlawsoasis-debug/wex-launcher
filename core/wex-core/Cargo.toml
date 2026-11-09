@@ -5,6 +5,9 @@ edition = "2021"
 authors = ["AuraDev"]
 description = "Core launcher library for Wex (Aura Minecraft Launcher)"
 
+[lib]
+doctest = false
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"

@@ -6,6 +6,7 @@ pub mod event;
 pub mod fabric;
 pub mod ipc_adapter;
 pub mod java;
+pub mod jvm_args;
 pub mod launcher;
 pub mod minecraft;
 pub mod pack;
@@ -20,6 +21,12 @@ pub use event::{
     SharedEventHandler,
 };
 pub use ipc_adapter::WexLauncherCore;
+#[cfg(windows)]
+pub use jvm_args::apply_process_handle_priority;
+pub use jvm_args::{
+    apply_process_priority, build_optimized_jvm_args, calculate_optimal_ram_mb,
+    detect_system_ram_mb, GcProfile, ProcessPriority,
+};
 pub use launcher::{
     apply_current_process_affinity, build_classpath, build_launch_command,
     install_full_environment, launch_game_process, prepare_and_launch, prewarm_jvm,
