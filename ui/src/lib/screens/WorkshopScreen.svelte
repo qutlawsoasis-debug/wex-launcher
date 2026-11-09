@@ -1433,7 +1433,10 @@
     border-radius: var(--radius-md);
     background-color: var(--glass-surface-translucent);
     border: 1px solid var(--glass-border);
-    transition: background-color 0.15s ease, border-color 0.15s ease;
+    transition:
+      background-color var(--motion-duration-hover) ease,
+      border-color var(--motion-duration-hover) ease,
+      transform var(--motion-duration-normal) var(--motion-curve-spring-bouncy);
     content-visibility: auto;
     contain-intrinsic-size: 72px;
   }
@@ -1443,6 +1446,13 @@
   .shader-card:hover {
     background-color: var(--color-system-fill);
     border-color: rgba(255, 255, 255, 0.18);
+    transform: translateY(var(--motion-card-hover-y, -2px));
+  }
+
+  .world-card:active,
+  .pack-card:active,
+  .shader-card:active {
+    transform: scale(var(--motion-press-scale, 0.97));
   }
 
   .pack-card.enabled,
@@ -1642,17 +1652,20 @@
     text-align: left;
     cursor: pointer;
     font-family: inherit;
-    transition: transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+    transition:
+      transform var(--motion-duration-normal) var(--motion-curve-spring-bouncy),
+      background-color var(--motion-duration-hover) ease,
+      border-color var(--motion-duration-hover) ease;
   }
 
   .screenshot-card:hover {
-    transform: translateY(-2px);
+    transform: translateY(var(--motion-card-hover-y, -2px));
     background-color: var(--color-system-fill);
     border-color: rgba(255, 255, 255, 0.22);
   }
 
   .screenshot-card:active {
-    transform: scale(0.98);
+    transform: scale(var(--motion-press-scale, 0.97));
   }
 
   .screenshot-card:focus-visible {
@@ -1697,7 +1710,7 @@
     justify-content: center;
     gap: 6px;
     opacity: 0;
-    transition: opacity 0.15s ease;
+    transition: opacity var(--motion-duration-short) ease;
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
   }
@@ -1857,7 +1870,7 @@
     color: var(--color-label);
     font-size: var(--text-subheadline);
     outline: none;
-    transition: border-color 0.15s ease;
+    transition: border-color var(--motion-duration-short) ease;
   }
 
   .apple-text-field:focus {

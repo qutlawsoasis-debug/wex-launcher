@@ -6,6 +6,7 @@
   import { onMount } from 'svelte';
   import './lib/design/tokens.css';
   import { theme } from './lib/design/theme.svelte';
+  import { motionState, screenTransition } from './lib/motion';
   import { network } from './lib/design/network.svelte';
   import { formatError } from './lib/design/errors';
   import { i18n, t } from './lib/i18n';
@@ -79,6 +80,10 @@
   let progressSpeed = $state('');
   let launchError = $state<unknown>(null);
   let showImportWizard = $state(false);
+
+  $effect(() => {
+    motionState.setGameRunning(isGameRunning);
+  });
 
   // Dynamic background based on theme and time of day
   let currentHour = new Date().getHours();
@@ -598,53 +603,57 @@
 
     <!-- Active Screen -->
     <div class="screen-viewport">
-      {#if activeTab === 'play'}
-        <PlayScreen
-          bind:selectedVersion
-          bind:playerName
-          {clientStatus}
-          {isLaunching}
-          isRunning={isGameRunning}
-          {progressPercentage}
-          {progressStage}
-          {progressDetail}
-          {progressSpeed}
-          bind:launchError
-          initialShowImportWizard={showImportWizard}
-          onlaunch={handleLaunch}
-          oncancel={handleCancelLaunch}
-          onstop={handleStopGame}
-          onopensettings={() => {
-            activeTab = 'settings';
-          }}
-          onnavigatescreen={(screen: string) => {
-            activeTab = screen as any;
-          }}
-          ontoast={(t: { type: 'info' | 'success' | 'warning' | 'error'; title: string; message: string }) => addToast(t.type, t.title, t.message)}
-          onopenworkshop={(subtab?: string) => {
-            activeTab = 'workshop';
-            if (subtab && ['worlds', 'resourcepacks', 'shaders', 'screenshots'].includes(subtab)) {
-              workshopSubtab = subtab as any;
-            }
-          }}
-        />
-      {:else if activeTab === 'servers'}
-        <ServersScreen />
-      {:else if activeTab === 'lobby'}
-        <LobbyScreen />
-      {:else if activeTab === 'friends'}
-        <FriendsScreen tab={friendsSubtab} />
-      {:else if activeTab === 'wardrobe'}
-        <WardrobeScreen {playerName} ontoast={addToast} />
-      {:else if activeTab === 'workshop'}
-        <WorkshopScreen {selectedVersion} initialTab={workshopSubtab} ontoast={addToast} />
-      {:else if activeTab === 'mods'}
-        <ModsScreen />
-      {:else if activeTab === 'settings'}
-        <SettingsScreen />
-      {:else if activeTab === 'showcase'}
-        <ShowcaseScreen />
-      {/if}
+      {#key activeTab}
+        <div class="screen-slide-wrapper" in:screenTransition>
+          {#if activeTab === 'play'}
+            <PlayScreen
+              bind:selectedVersion
+              bind:playerName
+              {clientStatus}
+              {isLaunching}
+              isRunning={isGameRunning}
+              {progressPercentage}
+              {progressStage}
+              {progressDetail}
+              {progressSpeed}
+              bind:launchError
+              initialShowImportWizard={showImportWizard}
+              onlaunch={handleLaunch}
+              oncancel={handleCancelLaunch}
+              onstop={handleStopGame}
+              onopensettings={() => {
+                activeTab = 'settings';
+              }}
+              onnavigatescreen={(screen: string) => {
+                activeTab = screen as any;
+              }}
+              ontoast={(t: { type: 'info' | 'success' | 'warning' | 'error'; title: string; message: string }) => addToast(t.type, t.title, t.message)}
+              onopenworkshop={(subtab?: string) => {
+                activeTab = 'workshop';
+                if (subtab && ['worlds', 'resourcepacks', 'shaders', 'screenshots'].includes(subtab)) {
+                  workshopSubtab = subtab as any;
+                }
+              }}
+            />
+          {:else if activeTab === 'servers'}
+            <ServersScreen />
+          {:else if activeTab === 'lobby'}
+            <LobbyScreen />
+          {:else if activeTab === 'friends'}
+            <FriendsScreen tab={friendsSubtab} />
+          {:else if activeTab === 'wardrobe'}
+            <WardrobeScreen {playerName} ontoast={addToast} />
+          {:else if activeTab === 'workshop'}
+            <WorkshopScreen {selectedVersion} initialTab={workshopSubtab} ontoast={addToast} />
+          {:else if activeTab === 'mods'}
+            <ModsScreen />
+          {:else if activeTab === 'settings'}
+            <SettingsScreen />
+          {:else if activeTab === 'showcase'}
+            <ShowcaseScreen />
+          {/if}
+        </div>
+      {/key}
     </div>
   </main>
 
@@ -733,6 +742,14 @@
     overflow: hidden;
     box-sizing: border-box;
     z-index: 1;
+  }
+
+  .screen-slide-wrapper {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
 
   .sidebar-footer-controls {

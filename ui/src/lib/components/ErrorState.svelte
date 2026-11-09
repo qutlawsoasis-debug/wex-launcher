@@ -233,7 +233,7 @@
     text-align: left;
     width: 100%;
     box-sizing: border-box;
-    animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: fadeIn var(--motion-duration-modal-enter) var(--motion-curve-spring-system);
   }
 
   .error-state-card.compact {
@@ -258,7 +258,7 @@
     align-items: center;
     justify-content: center;
     color: var(--color-secondary-label);
-    transition: background-color 0.15s ease;
+    transition: background-color var(--motion-duration-short) ease;
   }
 
   .dismiss-btn:hover {
@@ -345,7 +345,7 @@
     font-size: 12px;
     color: var(--color-secondary-label);
     font-family: inherit;
-    transition: color 0.15s ease;
+    transition: color var(--motion-duration-short) ease;
   }
 
   .disclosure-toggle-btn:hover {
@@ -356,7 +356,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform var(--motion-duration-modal-enter) var(--motion-curve-spring-system);
   }
 
   .disclosure-chevron.open {
@@ -400,7 +400,7 @@
     color: var(--color-secondary-label);
     font-size: 11px;
     font-family: inherit;
-    transition: background-color 0.15s ease, color 0.15s ease;
+    transition: background-color var(--motion-duration-short) ease, color var(--motion-duration-short) ease;
   }
 
   .copy-btn:hover {
