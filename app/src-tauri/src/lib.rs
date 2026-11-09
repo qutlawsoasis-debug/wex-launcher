@@ -197,6 +197,10 @@ pub fn run() {
             commands::report::report_get_preview,
             commands::report::report_save_zip,
             commands::report::report_copy_text,
+            // Onboarding commands (SPEC 1.1 / Apple HIG Onboarding)
+            commands::onboarding::onboarding_get_specs,
+            commands::onboarding::onboarding_complete,
+            commands::onboarding::onboarding_prewarm_game,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

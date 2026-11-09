@@ -1232,3 +1232,20 @@ impl From<wex_social::UpdateCheckResult> for UpdateCheckResultDto {
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct OnboardingSpecsDto {
+    pub total_memory_mb: u32,
+    pub recommended_memory_mb: u32,
+    pub memory_explanation: String,
+    pub detected_aura_dir: Option<String>,
+    pub default_version: String,
+    pub default_nickname: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct OnboardingCompleteRequest {
+    pub nickname: String,
+    pub version: String,
+    pub ram_mb: u32,
+}

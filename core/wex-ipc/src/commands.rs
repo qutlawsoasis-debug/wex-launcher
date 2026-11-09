@@ -617,3 +617,11 @@ pub struct MusicSettingsDto {
     pub volume: u8,
     pub auto_pause_on_launch: bool,
 }
+
+// ============================================================================
+// Onboarding Commands
+// ============================================================================
+
+pub const CMD_ONBOARDING_GET_SPECS: &str = "onboarding_get_specs";
+pub const CMD_ONBOARDING_COMPLETE: &str = "onboarding_complete";
+pub const CMD_ONBOARDING_PREWARM_GAME: &str = "onboarding_prewarm_game";
