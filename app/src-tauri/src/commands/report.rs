@@ -62,7 +62,7 @@ fn mask_user_directories(text: &str) -> String {
         let mut earliest: Option<(usize, &str)> = None;
         for &marker in &markers {
             if let Some(pos) = remainder.find(marker) {
-                if earliest.map_or(true, |(min_pos, _)| pos < min_pos) {
+                if earliest.is_none_or(|(min_pos, _)| pos < min_pos) {
                     earliest = Some((pos, marker));
                 }
             }

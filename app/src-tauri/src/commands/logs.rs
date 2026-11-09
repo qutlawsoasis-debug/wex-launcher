@@ -95,8 +95,7 @@ pub fn validate_and_resolve_log_path(inst_dir: &Path, file_name: &str) -> Result
     // Determine target relative path based on allowed categories
     let clean_fname = normalized.trim_start_matches('/');
 
-    let target_path = if clean_fname.starts_with("crash-reports/") {
-        let sub = &clean_fname["crash-reports/".len()..];
+    let target_path = if let Some(sub) = clean_fname.strip_prefix("crash-reports/") {
         if sub.is_empty() || sub.contains('/') {
             return Err("Недопустимое имя файла в crash-reports".to_string());
         }
@@ -104,8 +103,7 @@ pub fn validate_and_resolve_log_path(inst_dir: &Path, file_name: &str) -> Result
             return Err("Недопустимое расширение файла отчёта о сбое".to_string());
         }
         inst_dir.join("crash-reports").join(sub)
-    } else if clean_fname.starts_with("logs/") {
-        let sub = &clean_fname["logs/".len()..];
+    } else if let Some(sub) = clean_fname.strip_prefix("logs/") {
         if sub.is_empty() || sub.contains('/') {
             return Err("Недопустимое имя файла в logs".to_string());
         }

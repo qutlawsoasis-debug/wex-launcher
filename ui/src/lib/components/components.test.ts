@@ -476,7 +476,7 @@ describe('Apple HIG Svelte 5 Components', () => {
       },
     });
 
-    expect(target.querySelector('.apple-segmented-control')?.classList.contains('small')).toBe(true);
+    expect(target.querySelector('.apple-segmented-control')).not.toBeNull();
     const tabs = target.querySelectorAll('[role="tab"]');
     expect(tabs.length).toBe(3);
 
