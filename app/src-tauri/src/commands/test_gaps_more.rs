@@ -63,9 +63,12 @@ async fn extras_save_skin_success_is_visible_in_history_command() {
     })
     .await
     .unwrap();
-    let history = wardrobe::extras_list_skin_history(ExtrasListSkinHistoryRequest {
-        history_dir: f.paths.root.to_string_lossy().into(),
-    })
+    let history = wardrobe::extras_list_skin_history(
+        ExtrasListSkinHistoryRequest {
+            history_dir: f.paths.root.to_string_lossy().into(),
+        },
+        f.app.state::<launch::PlayState>(),
+    )
     .await
     .unwrap();
     assert_eq!(history.items.len(), 1);
