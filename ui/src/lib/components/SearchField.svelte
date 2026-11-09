@@ -10,6 +10,7 @@
 -->
 <script lang="ts">
   import Icon from './icons/Icon.svelte';
+  import { t } from '../i18n';
 
   interface Props {
     value?: string;
@@ -21,7 +22,7 @@
 
   let {
     value = $bindable(''),
-    placeholder = 'Поиск...',
+    placeholder = t('search.placeholder_default'),
     disabled = false,
     oninput,
     onclear,
@@ -58,7 +59,7 @@
   <input
     bind:this={inputEl}
     type="search"
-    aria-label="Поле поиска"
+    aria-label={t('search.input_aria')}
     {placeholder}
     {value}
     {disabled}
@@ -72,9 +73,9 @@
     <button
       type="button"
       class="clear-btn"
-      title="Очистить"
+      title={t('common.clear')}
       onclick={clear}
-      aria-label="Очистить поиск"
+      aria-label={t('search.clear_aria')}
     >
       <Icon name="clear" size={11} color="var(--color-tertiary-label)" />
     </button>

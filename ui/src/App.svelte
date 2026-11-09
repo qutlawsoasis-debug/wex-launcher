@@ -137,30 +137,30 @@
       if (path.includes('join') || path.includes('lobby') || code) {
         return {
           kind: 'join',
-          title: `Вход в лобби ${code ? '#' + code : ''}`,
-          subtitle: 'Игрок приглашает вас присоединиться к общему миру Minecraft.',
-          target: code ? `#${code}` : 'Комната',
+          title: t('deeplink.title_lobby', { code: code ? '#' + code : '' }),
+          subtitle: t('deeplink.subtitle_lobby'),
+          target: code ? `#${code}` : t('deeplink.target_lobby_default'),
           raw_uri: uri,
-          confirm_text: 'Присоединиться',
+          confirm_text: t('deeplink.action_join'),
         };
       } else if (path.includes('server') || address) {
         return {
           kind: 'server',
-          title: 'Подключение к серверу',
-          subtitle: 'Добавить сервер в список избранных и запустить игру.',
-          target: address || 'Сервер',
+          title: t('deeplink.title_server'),
+          subtitle: t('deeplink.subtitle_server'),
+          target: address || t('deeplink.target_server_default'),
           raw_uri: uri,
-          confirm_text: 'Подключиться',
+          confirm_text: t('deeplink.action_connect'),
         };
       }
     } catch {}
     return {
       kind: 'custom',
-      title: 'Ссылка wex://',
-      subtitle: 'Лаунчер получил запрос на выполнение внешнего действия.',
+      title: t('deeplink.title_generic'),
+      subtitle: t('deeplink.subtitle_generic'),
       target: uri,
       raw_uri: uri,
-      confirm_text: 'Продолжить',
+      confirm_text: t('deeplink.action_proceed'),
     };
   }
 
@@ -196,8 +196,8 @@
       }
     } else if (action.kind === 'server') {
       activeTab = 'play';
-      clientStatus = `Подключение к ${action.target}...`;
-      addToast('info', 'Подключение к серверу', action.target);
+      clientStatus = t('app.connecting_to_server', { target: action.target });
+      addToast('info', t('app.toast_server_connecting'), action.target);
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('launch_game', {
@@ -206,20 +206,20 @@
           server: action.target,
         });
         isGameRunning = true;
-        clientStatus = 'Minecraft запущен';
+        clientStatus = t('app.minecraft_running');
       } catch (e: any) {
-        addToast('error', 'Ошибка подключения к серверу', String(e));
+        addToast('error', t('app.err_server_connect'), String(e));
       }
     } else if (action.kind === 'friend') {
       activeTab = 'friends';
       friendsSubtab = 'requests';
-      addToast('info', 'Запрос в друзья', `Отправка запроса: ${action.target}`);
+      addToast('info', t('app.toast_friend_request'), t('app.toast_friend_sending', { target: action.target }));
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('social_send_friend_request', { targetFriendCode: action.target });
-        addToast('success', 'Запрос отправлен', `Запрос для ${action.target} успешно отправлен`);
+        addToast('success', t('app.toast_request_sent'), t('app.toast_request_sent_desc', { target: action.target }));
       } catch (e: any) {
-        addToast('error', 'Не удалось отправить запрос в друзья', String(e));
+        addToast('error', t('app.err_friend_request'), String(e));
       }
     }
   }
@@ -258,7 +258,7 @@
   // Launch state
   let selectedVersion = $state('1.21.1');
   let playerName = $state('Player');
-  let clientStatus = $state('Клиент Wex готов');
+  let clientStatus = $state(t('play.status_client_ready'));
   let isLaunching = $state(false);
   let isGameRunning = $state(false);
   let playFastLaunchState = $state<'idle' | 'prewarming' | 'ready' | 'running'>('idle');
@@ -269,8 +269,8 @@
   let isOnline = $state(true);
   let skinHeadUrl = $state<string | undefined>(undefined);
   let progressPercentage = $state(0);
-  let progressStage = $state('Готов к запуску');
-  let progressDetail = $state('Нажмите «Играть» для старта');
+  let progressStage = $state(t('play.status_ready'));
+  let progressDetail = $state(t('play.status_click_to_start'));
   let progressSpeed = $state('');
   let launchError = $state<unknown>(null);
   let showImportWizard = $state(false);
@@ -376,7 +376,7 @@
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
       await getCurrentWindow().minimize();
     } catch {
-      addToast('info', 'Окно свёрнуто (симуляция)');
+      addToast('info', t('app.window_minimized_sim'));
     }
   }
 
@@ -395,7 +395,7 @@
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
       await getCurrentWindow().close();
     } catch {
-      addToast('info', 'Окно закрыто (симуляция)');
+      addToast('info', t('app.window_closed_sim'));
     }
   }
 
@@ -444,8 +444,8 @@
     launchError = null;
     cancelLaunchSimulation = false;
     progressPercentage = 0;
-    progressStage = 'Подготовка к запуску...';
-    progressDetail = `Инициализация профиля ${selectedVersion}`;
+    progressStage = t('app.prep_launch');
+    progressDetail = t('app.init_profile', { version: selectedVersion });
     progressSpeed = '';
 
     try {
@@ -457,8 +457,8 @@
       });
       isLaunching = false;
       isGameRunning = true;
-      clientStatus = 'Minecraft запущен';
-      addToast('success', 'Minecraft запущен', result);
+      clientStatus = t('app.game_running');
+      addToast('success', t('app.game_running'), result);
     } catch (err: any) {
       const isTauri =
         typeof window !== 'undefined' &&
@@ -473,20 +473,20 @@
 
       // Fallback in-browser progress simulation
       const steps = [
-        { stage: 'Проверка клиента Wex', pct: 15, detail: 'Проверка целостности jar-файлов', speed: '' },
-        { stage: 'Синхронизация сборки Wex', pct: 40, detail: 'Загрузка манифеста модов (142 мода)', speed: '14.8 МБ/с' },
-        { stage: 'Проверка Java Runtime', pct: 75, detail: 'OpenJDK 21 HotSpot готов к старту', speed: '8.2 МБ/с' },
-        { stage: 'Запуск Minecraft', pct: 100, detail: 'Инициализация графической сессии...', speed: '' },
+        { stage: t('app.client_check'), pct: 15, detail: t('app.check_jars'), speed: '' },
+        { stage: t('app.sync_pack'), pct: 40, detail: t('app.downloading_manifest'), speed: '14.8 MB/s' },
+        { stage: t('launch.check_java'), pct: 75, detail: t('app.jvm_start'), speed: '8.2 MB/s' },
+        { stage: t('app.launching_game'), pct: 100, detail: t('app.jvm_start'), speed: '' },
       ];
 
       for (const step of steps) {
         if (cancelLaunchSimulation) {
           isLaunching = false;
           progressPercentage = 0;
-          progressStage = 'Запуск отменён';
-          progressDetail = 'Нажмите «Играть» для повторной попытки';
+          progressStage = t('launch.stopped');
+          progressDetail = t('play.status_click_to_start');
           progressSpeed = '';
-          addToast('warning', 'Запуск остановлен', 'Процесс запуска был прерван пользователем.');
+          addToast('warning', t('launch.stopped'), t('app.game_stopped_user'));
           return;
         }
 
@@ -499,10 +499,10 @@
 
       isLaunching = false;
       isGameRunning = true;
-      progressStage = 'Minecraft запущен';
-      progressDetail = `Сессия ${selectedVersion} активна`;
+      progressStage = t('app.game_running');
+      progressDetail = t('app.game_running');
       progressSpeed = '';
-      addToast('success', 'Игра запущена', `Minecraft ${selectedVersion} успешно запущен для ${playerName}!`);
+      addToast('success', t('app.game_running'), t('servers.feedback_game_running', { address: playerName }));
     }
   }
 
@@ -522,10 +522,10 @@
       await invoke('shell_stop_game', { version: selectedVersion });
       isGameRunning = false;
       isLaunching = false;
-      clientStatus = 'Игра остановлена';
-      addToast('info', 'Minecraft остановлен');
+      clientStatus = t('app.game_stopped');
+      addToast('info', t('app.game_stopped_exit'));
     } catch (e) {
-      addToast('error', 'Ошибка остановки игры', String(e));
+      addToast('error', t('launch.stop_error'), String(e));
     }
   }
 
@@ -536,7 +536,7 @@
       if (!hash) return;
       const params = new URLSearchParams(hash);
       const screen = params.get('screen') || params.get('tab');
-      const t = params.get('theme');
+      const themeParam = params.get('theme');
 
       if (screen === 'splash') {
         isStartingUp = true;
@@ -553,8 +553,8 @@
       if (screen === 'onboarding' || params.get('onboarding') === 'true') {
         showOnboarding = true;
       }
-      if (t === 'light' || t === 'dark') {
-        theme.setAppearance(t);
+      if (themeParam === 'light' || themeParam === 'dark') {
+        theme.setAppearance(themeParam);
       }
       const bg = params.get('bg');
       if (bg === 'night' || bg === 'day' || bg === 'sunset' || bg === 'morning') {
@@ -592,19 +592,19 @@
         isLaunching = true;
         isGameRunning = false;
         progressPercentage = Number(params.get('progress') || 45);
-        progressStage = params.get('stageText') || 'Синхронизация сборки Wex';
-        progressDetail = params.get('detail') || 'Загрузка манифеста модов (142 мода)';
-        progressSpeed = params.get('speed') || '14.8 МБ/с';
+        progressStage = params.get('stageText') || t('app.sync_pack');
+        progressDetail = params.get('detail') || t('app.downloading_manifest');
+        progressSpeed = params.get('speed') || '';
       } else if (playState === 'running' || stageParam === 'running') {
         isLaunching = false;
         isGameRunning = true;
         playFastLaunchState = 'running';
-        addToast('success', 'Minecraft запущен', `Сессия ${selectedVersion} активна (PID 14820)`);
+        addToast('success', t('app.game_running'), t('app.game_running'));
       } else if (playState === 'idle_restored' || stageParam === 'idle_restored' || playState === 'exit') {
         isLaunching = false;
         isGameRunning = false;
         playFastLaunchState = 'idle';
-        addToast('info', 'Сессия завершена', 'Minecraft закрыт штатно (код 0)');
+        addToast('info', t('app.game_stopped'), t('app.game_stopped_exit'));
       } else if (playState === 'idle' || stageParam === 'idle') {
         isLaunching = false;
         isGameRunning = false;
@@ -616,24 +616,24 @@
       if (crashParam === 'oom') {
         currentCrashDiagnosis = {
           kind: 'OutOfMemory',
-          title: 'Нехватка оперативной памяти (ОЗУ)',
-          user_advice: 'Увеличьте выделенный объём памяти в Настройках лаунчера (рекомендуется 6–8 ГБ) или закройте фоновые приложения.',
+          title: t('crash.mock_oom_title'),
+          user_advice: t('crash.mock_oom_advice'),
           technical_summary: 'Exception in thread "main" java.lang.OutOfMemoryError: Java heap space\n\tat net.minecraft.client.Main.main(Main.java:123)',
         };
         crashSheetOpen = true;
       } else if (crashParam === 'mod') {
         currentCrashDiagnosis = {
           kind: { MissingFabricDependency: { mod_name: 'iris', required_dep: 'sodium' } },
-          title: 'Отсутствует зависимость для «iris»',
-          user_advice: 'Мод «iris» требует обязательной установки «sodium». Установите недостающую библиотеку или удалите мод во вкладке Мастерская.',
+          title: t('crash.mock_mod_title'),
+          user_advice: t('crash.mock_mod_advice'),
           technical_summary: 'net.fabricmc.loader.impl.FormattedException: Mod \'iris\' requires \'sodium\'',
         };
         crashSheetOpen = true;
       } else if (crashParam === 'unknown') {
         currentCrashDiagnosis = {
           kind: { Unknown: { exit_code: -1 } },
-          title: 'Игра завершилась с ошибкой (код -1)',
-          user_advice: 'Причина не определена. Анализатор не нашёл известных сигнатур сбоя в логах игры.',
+          title: t('crash.mock_unknown_title'),
+          user_advice: t('crash.mock_unknown_advice'),
           technical_summary: 'Process finished with exit code -1',
         };
         crashSheetOpen = true;
@@ -654,7 +654,7 @@
         initialLobbyRoom = {
           code: '#A7X9',
           host_name: 'Alex',
-          world_name: 'Выживание в тайге',
+          world_name: t('lobby.world_taiga'),
           tunnel_address: 'tunnel.playit.gg:25565',
           tunnel_active: true,
           tunnel_error: null,
@@ -671,10 +671,10 @@
         initialLobbyRoom = {
           code: '#FAIL1',
           host_name: 'Alex',
-          world_name: 'Мир Alex',
+          world_name: t('lobby.room_default_name', { name: 'Alex' }),
           tunnel_address: null,
           tunnel_active: false,
-          tunnel_error: 'Не удалось поднять Playit-туннель: служба туннелей временно недоступна',
+          tunnel_error: t('lobby.tunnel_service_unavailable'),
           is_host: true,
           players: [
             { name: 'Alex', is_host: true, ping_ms: 0, mods_synced: true },
@@ -736,7 +736,7 @@
           const running = await invoke<boolean>('is_game_running');
           isGameRunning = running;
           if (running) {
-            clientStatus = 'Minecraft запущен';
+            clientStatus = t('app.game_running');
           }
         } catch {}
       })(),
@@ -815,7 +815,7 @@
             progressPercentage = p.percentage;
             progressDetail = p.detail;
             progressSpeed = p.speed_bytes_per_sec > 0
-              ? `${(p.speed_bytes_per_sec / (1024 * 1024)).toFixed(1)} МБ/с`
+              ? `${(p.speed_bytes_per_sec / (1024 * 1024)).toFixed(1)} MB/s`
               : '';
           }).then((fn) => {
             unlistenProgress = fn;
@@ -830,19 +830,19 @@
             clientStatus = s.message;
             if (s.state === 'preparing') {
               progressStage = s.message;
-            } else if (s.state === 'launching' && s.message === 'Игра догружается…') {
-              playFastLaunchState = 'prewarming';
+            } else if (s.state === 'launching') {
+              isLaunching = true;
             } else if (s.state === 'running') {
               isLaunching = false;
               isGameRunning = true;
               playFastLaunchState = 'running';
               launchError = null;
-              addToast('success', 'Minecraft запущен', s.message);
+              addToast('success', t('app.game_running'), s.message);
             } else if (s.state === 'cancelled') {
               isLaunching = false;
               isGameRunning = false;
               playFastLaunchState = 'idle';
-              addToast('warning', 'Запуск отменён', s.message);
+              addToast('warning', t('launch.stopped'), s.message);
             } else if (s.state === 'error') {
               isLaunching = false;
               isGameRunning = false;
@@ -854,7 +854,7 @@
               isLaunching = false;
               isGameRunning = false;
               playFastLaunchState = 'idle';
-              addToast('info', 'Сессия завершена', s.message);
+              addToast('info', t('app.game_stopped'), s.message);
             }
           }).then((fn) => {
             unlistenStatus = fn;
@@ -885,7 +885,7 @@
             unlocked_at: string;
           }>('social-achievement-toast', (event) => {
             const a = event.payload;
-            addToast('success', `Достижение разблокировано: «${a.title}»`, a.description);
+            addToast('success', t('friends.ach_unlocked_title', { title: a.title }), a.description);
           }).then((fn) => {
             unlistenAchievement = fn;
           });
@@ -896,7 +896,7 @@
             from_nick: string;
           }>('social-lobby-invite', (event) => {
             const inv = event.payload;
-            addToast('info', `Приглашение в лобби ${inv.lobby_code}`, `${inv.from_nick} зовёт вас в игру`);
+            addToast('info', t('friends.lobby_invite_title', { code: inv.lobby_code }), t('friends.lobby_invite_desc', { nick: inv.from_nick }));
           }).then((fn) => {
             unlistenInvite = fn;
           });
@@ -955,10 +955,10 @@
             variant="ghost"
             size="small"
             onclick={() => theme.setAppearance(theme.isDark ? 'light' : 'dark')}
-            title="Переключить тему оформления"
+            title={t('theme.toggle')}
           >
             <Icon name={theme.isDark ? 'sun' : 'moon'} size={15} color="var(--color-secondary-label)" />
-            <span>{theme.isDark ? 'Светлая' : 'Тёмная'}</span>
+            <span>{theme.isDark ? t('theme.light') : t('theme.dark')}</span>
           </Button>
         </div>
       </div>
