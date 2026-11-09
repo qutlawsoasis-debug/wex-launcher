@@ -824,8 +824,10 @@
     border: 1px solid var(--color-separator);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
-    min-width: 250px;
-    max-width: 320px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
     user-select: none;
     transition: border-color var(--motion-duration-fast) var(--motion-spring-ease);
   }

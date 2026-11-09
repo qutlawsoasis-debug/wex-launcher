@@ -22,7 +22,7 @@
     showDone?: boolean;
     maxWidth?: string;
     onclose?: () => void;
-    ondone?: () => void;
+    ondone?: () => void | boolean | Promise<void | boolean>;
     children?: Snippet;
   }
 
@@ -56,8 +56,14 @@
     }
   }
 
-  function handleDone() {
-    ondone?.();
+  async function handleDone() {
+    if (ondone) {
+      const res = await ondone();
+      if (res === false) return;
+    }
+    if (ondone && open) {
+      return;
+    }
     close();
   }
 
@@ -203,6 +209,11 @@
     flex-direction: column;
     animation: sheetSlideUp var(--motion-duration-sheet-enter) var(--motion-curve-spring-system) forwards;
     outline: none;
+  }
+
+  .sheet-card:focus,
+  .sheet-card:focus-visible {
+    outline: none !important;
   }
 
   .grabber-area {

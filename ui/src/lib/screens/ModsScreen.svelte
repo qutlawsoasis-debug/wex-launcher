@@ -365,7 +365,7 @@
 
   <!-- Mods List Area -->
   <div class="mods-content">
-    <List header={i18n.locale === 'en' ? `Installed Mods — Minecraft ${selectedVersion} · ${filteredMods.length} of ${mods.length}` : `Установленные моды (версия ${selectedVersion}) • ${filteredMods.length} из ${mods.length}`}>
+    <List header={i18n.locale === 'en' ? `Installed Mods — Minecraft ${selectedVersion} · ${filteredMods.length} of ${mods.length}` : `Установленные моды — Minecraft ${selectedVersion} • ${filteredMods.length} из ${mods.length}`}>
       {#if loading}
         <Skeleton variant="row" count={5} />
       {:else if loadError && mods.length === 0}
@@ -381,8 +381,8 @@
         {#each filteredMods as m, idx (m.file_name)}
           <Row
             index={idx}
-            title="{m.name} {m.version}"
-            subtitle={m.description || m.file_name}
+            title={m.name}
+            subtitle={m.description ? `${m.version} • ${m.description}` : `${m.version} • ${m.file_name}`}
           >
             {#snippet leading()}
               <div class="mod-icon">

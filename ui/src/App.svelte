@@ -552,6 +552,8 @@
       }
       if (screen === 'onboarding' || params.get('onboarding') === 'true') {
         showOnboarding = true;
+      } else if (params.get('onboarding') === 'false') {
+        showOnboarding = false;
       }
       if (themeParam === 'light' || themeParam === 'dark') {
         theme.setAppearance(themeParam);

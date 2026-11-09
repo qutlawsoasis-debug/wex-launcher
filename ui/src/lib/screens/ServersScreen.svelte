@@ -348,7 +348,7 @@
 
     if (!name || !address) {
       addError = t('servers.err_fill_fields');
-      return;
+      return false;
     }
 
     try {
@@ -364,9 +364,11 @@
       addSheetOpen = false;
       newServerName = '';
       newServerAddress = '';
+      return true;
     } catch (e: any) {
       const msg = typeof e === 'string' ? e : e?.message || t('servers.err_save_failed');
       addError = msg;
+      return false;
     }
   }
 
@@ -387,7 +389,7 @@
 
     if (!name || !address) {
       editError = t('servers.err_fill_fields');
-      return;
+      return false;
     }
 
     try {
@@ -407,9 +409,11 @@
 
       editSheetOpen = false;
       editingServer = null;
+      return true;
     } catch (e: any) {
       const msg = typeof e === 'string' ? e : e?.message || t('servers.err_update_failed');
       editError = msg;
+      return false;
     }
   }
 
