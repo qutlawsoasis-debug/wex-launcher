@@ -1688,4 +1688,16 @@ mod tests {
         assert!(ids.contains(&"iris"));
         assert!(ids.contains(&"voicechat"));
     }
+    #[tokio::test]
+    async fn review_07_publish_rejects_missing_tunnel_config() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).and(path("/api/lobby"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "code":"ABC123", "hostToken":"fixture", "status":"created", "createdAt":0
+            }))).mount(&server).await;
+        let tmp = tempdir().unwrap();
+        let state = LobbyState::new(tmp.path().into(), &server.uri(), &server.uri());
+        assert!(publish_lan_world_internal(&state, "World", 54321, Some("Host".into())).await.is_err());
+    }
+
 }

@@ -430,4 +430,18 @@ mod tests {
         assert!(service.is_running().await);
         service.stop().await;
     }
+    #[tokio::test]
+    async fn review_26_failed_bind_can_retry_without_stop() {
+        let occupied = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let addr = occupied.local_addr().unwrap();
+        let service = LanDiscoveryService::new_with_bind(Duration::from_secs(1), addr, None);
+        service.start().await;
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert!(!service.is_running().await, "failed bind must not report running");
+        drop(occupied);
+        service.start().await;
+        assert!(service.is_running().await);
+        service.stop().await;
+    }
+
 }

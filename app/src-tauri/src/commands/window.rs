@@ -463,4 +463,17 @@ mod tests {
         let keep_on_start = false;
         assert!(!keep_on_start);
     }
+    #[test]
+    fn review_28_keep_window_overrides_legacy_tray_flag() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().to_path_buf()));
+        let cfg = CoreConfig {
+            minimize_to_tray: true,
+            game_window_behavior: "keep".into(),
+            ..Default::default()
+        };
+        cfg.save(&paths.config_file).unwrap();
+        assert!(!is_minimize_to_tray_enabled(&paths));
+    }
+
 }
