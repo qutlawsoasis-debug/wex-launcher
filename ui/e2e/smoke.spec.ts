@@ -336,7 +336,187 @@ test.describe('Wex UI Smoke Tests', () => {
     });
   }
 
-  // Test 4: Text Contrast >= 4.5:1 over All Scenery Backgrounds
+  // Test 4: Interactive Action Scenarios
+  for (const theme of THEMES) {
+    test.describe(`Action Scenarios - Theme: ${theme}`, () => {
+      // Scenario 1: «Играть» → прогресс → «В игре» → выход из игры
+      test(`action scenario: «Играть» → progress → «В игре» → exit game (${theme})`, async ({
+        page,
+      }) => {
+        const { consoleErrors, pageErrors } = await setupPageListeners(page);
+        await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
+
+        await page.goto(`/?tab=play&theme=${theme}`);
+        await page.waitForTimeout(300);
+
+        // Step 1: Initial idle state
+        await assertViewIntegrity(page, `Play Idle (${theme})`, consoleErrors, pageErrors);
+        const playBtn = page.locator('.dock-primary-action button');
+        await expect(playBtn).toBeVisible();
+
+        // Step 2: Click Play to trigger launch progress
+        await playBtn.click();
+        const progressDock = page.locator('.dock-progress-mode, .dock-progress');
+        await expect(progressDock).toBeVisible({ timeout: 2000 });
+        await assertViewIntegrity(page, `Play Launch Progress (${theme})`, consoleErrors, pageErrors);
+
+        // Step 3: Transition to Running ("В игре")
+        const runningBadge = page.locator('.tech-status-badge.running');
+        await expect(runningBadge).toBeVisible({ timeout: 4000 });
+        await assertViewIntegrity(page, `Play Running In-Game (${theme})`, consoleErrors, pageErrors);
+
+        // Step 4: Stop game / Exit
+        const stopBtn = page.locator('.dock-primary-action button');
+        await stopBtn.click();
+        await expect(runningBadge).not.toBeVisible({ timeout: 3000 });
+        await expect(page.locator('.dock-primary-action button')).toBeVisible();
+        await assertViewIntegrity(page, `Play Exited Game (${theme})`, consoleErrors, pageErrors);
+      });
+
+      // Scenario 2: создание комнаты лобби и вход по коду (мок)
+      test(`action scenario: lobby room creation and join by code (${theme})`, async ({
+        page,
+      }) => {
+        const { consoleErrors, pageErrors } = await setupPageListeners(page);
+        await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
+
+        await page.goto(`/?tab=lobby&theme=${theme}`);
+        await page.waitForTimeout(300);
+
+        // Step 1: Initial Lobby screen
+        await assertViewIntegrity(page, `Lobby Initial (${theme})`, consoleErrors, pageErrors);
+
+        // Step 2: Create room
+        const createBtn = page.locator('.host-card button.btn-primary, .host-card button:has-text("Открыть мир")');
+        await expect(createBtn).toBeVisible();
+        await createBtn.click();
+
+        const activeRoomMeta = page.locator('.room-meta, .room-header');
+        await expect(activeRoomMeta).toBeVisible({ timeout: 3000 });
+        await assertViewIntegrity(page, `Lobby Room Created (${theme})`, consoleErrors, pageErrors);
+
+        // Step 3: Leave created room
+        const leaveBtn = page.locator('.room-header-actions button');
+        await expect(leaveBtn).toBeVisible();
+        await leaveBtn.click();
+
+        const codeInput = page.locator('.code-input');
+        await expect(codeInput).toBeVisible({ timeout: 3000 });
+        await assertViewIntegrity(page, `Lobby Left Created Room (${theme})`, consoleErrors, pageErrors);
+
+        // Step 4: Join room by code
+        await codeInput.fill('A7X9');
+        const joinBtn = page.locator('.join-form button');
+        await expect(joinBtn).toBeEnabled();
+        await joinBtn.click();
+
+        await expect(activeRoomMeta).toBeVisible({ timeout: 3000 });
+        await assertViewIntegrity(page, `Lobby Room Joined By Code (${theme})`, consoleErrors, pageErrors);
+
+        // Step 5: Leave joined room
+        await page.locator('.room-header-actions button').click();
+        await expect(codeInput).toBeVisible({ timeout: 3000 });
+        await assertViewIntegrity(page, `Lobby Returned To Overview (${theme})`, consoleErrors, pageErrors);
+      });
+
+      // Scenario 3: добавление сервера и подключение
+      test(`action scenario: add server and connect (${theme})`, async ({
+        page,
+      }) => {
+        const { consoleErrors, pageErrors } = await setupPageListeners(page);
+        await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
+
+        await page.goto(`/?tab=servers&theme=${theme}`);
+        await page.waitForTimeout(300);
+
+        // Step 1: Initial servers view
+        await assertViewIntegrity(page, `Servers Initial (${theme})`, consoleErrors, pageErrors);
+
+        // Step 2: Open Add Server Sheet
+        const addBtn = page.locator('.toolbar-controls button:has-text("Добавить сервер")');
+        await expect(addBtn).toBeVisible();
+        await addBtn.click();
+
+        const nameInput = page.locator('#new-srv-name');
+        await expect(nameInput).toBeVisible({ timeout: 2000 });
+        await assertViewIntegrity(page, `Servers Add Sheet Open (${theme})`, consoleErrors, pageErrors);
+
+        // Step 3: Enter server details and save
+        await nameInput.fill('Smoke Test Server');
+        const addrInput = page.locator('#new-srv-addr');
+        await addrInput.fill('smoke.wex.lan:25565');
+
+        const saveBtn = page.locator('.sheet-card .header-action.trailing button, .sheet-card button:has-text("Сохранить")');
+        await saveBtn.click();
+
+        await expect(nameInput).not.toBeVisible({ timeout: 3000 });
+        await assertViewIntegrity(page, `Servers Server Added (${theme})`, consoleErrors, pageErrors);
+
+        // Step 4: Direct connect to server
+        const connectBtn = page.locator('.server-metrics button:has-text("Играть")').first();
+        await expect(connectBtn).toBeVisible();
+        await connectBtn.click();
+
+        const launchToast = page.locator('.launch-toast');
+        await expect(launchToast).toBeVisible({ timeout: 3000 });
+        await assertViewIntegrity(page, `Servers Direct Connected (${theme})`, consoleErrors, pageErrors);
+      });
+
+      // Scenario 4: переключение языка ru/en
+      test(`action scenario: language switching ru <-> en (${theme})`, async ({
+        page,
+      }) => {
+        const { consoleErrors, pageErrors } = await setupPageListeners(page);
+        await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
+
+        await page.goto(`/?tab=settings&theme=${theme}`);
+        await page.waitForTimeout(300);
+
+        // Step 1: Initial settings in Russian
+        await expect(page.locator('.nav-item:has-text("Играть")')).toBeVisible();
+        await assertViewIntegrity(page, `Settings Russian (${theme})`, consoleErrors, pageErrors);
+
+        // Step 2: Switch language to English
+        const enBtn = page.locator('button.segment-button:has-text("English")');
+        await expect(enBtn).toBeVisible();
+        await enBtn.click();
+
+        // Step 3: Verify English across sections
+        await expect(page.locator('.nav-item:has-text("Play")')).toBeVisible({ timeout: 2000 });
+        await assertViewIntegrity(page, `Settings English (${theme})`, consoleErrors, pageErrors);
+
+        // Navigate to Play screen in English
+        await page.locator('.nav-item:has-text("Play")').click();
+        await page.waitForTimeout(200);
+        await expect(page.locator('.dock-primary-action button:has-text("Play")')).toBeVisible();
+        await assertViewIntegrity(page, `Play Screen English (${theme})`, consoleErrors, pageErrors);
+
+        // Navigate to Servers screen in English
+        await page.locator('.nav-item:has-text("Servers")').click();
+        await page.waitForTimeout(200);
+        await expect(page.locator('button:has-text("Add Server")')).toBeVisible();
+        await assertViewIntegrity(page, `Servers Screen English (${theme})`, consoleErrors, pageErrors);
+
+        // Step 4: Switch back to Russian
+        await page.locator('.nav-item:has-text("Settings")').click();
+        await page.waitForTimeout(200);
+        const ruBtn = page.locator('button.segment-button:has-text("Русский")');
+        await expect(ruBtn).toBeVisible();
+        await ruBtn.click();
+
+        await expect(page.locator('.nav-item:has-text("Играть")')).toBeVisible({ timeout: 2000 });
+        await assertViewIntegrity(page, `Settings Switched Russian (${theme})`, consoleErrors, pageErrors);
+
+        // Navigate to Play screen in Russian
+        await page.locator('.nav-item:has-text("Играть")').click();
+        await page.waitForTimeout(200);
+        await expect(page.locator('.dock-primary-action button:has-text("Играть")')).toBeVisible();
+        await assertViewIntegrity(page, `Play Screen Russian (${theme})`, consoleErrors, pageErrors);
+      });
+    });
+  }
+
+  // Test 5: Text Contrast >= 4.5:1 over All Scenery Backgrounds
   for (const bg of BACKGROUNDS) {
     for (const theme of THEMES) {
       test(`verifies WCAG AA contrast >= 4.5:1 on background: ${bg} (${theme})`, async ({

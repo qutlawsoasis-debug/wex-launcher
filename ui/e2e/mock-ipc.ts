@@ -220,9 +220,31 @@ export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
     // Servers
     list_servers: mode === 'full' ? fullServers : [],
     ping_server: { latency_ms: 24, players_online: 15, players_max: 50, motd: 'Сервер доступен' },
-    add_server: { id: 'srv-new', name: 'New Server', address: 'play.example.com', version: '1.21.1', is_official: false },
+    add_server: (args: any) => ({
+      id: `srv-${Date.now()}`,
+      name: args?.name || 'New Server',
+      address: args?.address || 'play.example.com',
+      version: args?.version || '1.21.1',
+      is_official: false,
+      ping_ms: 25,
+      players_online: 5,
+      players_max: 50,
+      motd: 'Смоук-тестовый сервер',
+    }),
     edit_server: true,
     remove_server: true,
+
+    // Launch & Game Session
+    launch_game: async (args: any) => {
+      if (args && args.server) {
+        return `Игра запущена. Подключение к ${args.server}`;
+      }
+      // Brief delay to allow test assertions during progress state
+      await new Promise((r) => setTimeout(r, 600));
+      return 'Minecraft 1.21.1 запущен';
+    },
+    shell_stop_game: async () => true,
+    cancel_launch: async () => true,
 
     // Mods
     list_mods: mode === 'full' ? fullMods : [],
@@ -241,9 +263,46 @@ export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
       tunnel_address: 'lan.wex.lan:25565',
       port: 25565,
     },
-    create_lobby_room: { code: 'NEW1', host_name: 'Alex', world_name: 'Новое лобби' },
-    join_lobby_room: { code: 'JOIN1', host_name: 'Host', world_name: 'Комната' },
-    get_lobby_status: null,
+    create_lobby_room: (args: any) => ({
+      code: 'NEW1',
+      host_name: args?.playerName || 'Player',
+      world_name: args?.worldName || 'Мой мир',
+      is_host: true,
+      tunnel_active: true,
+      tunnel_address: 'tunnel.wex.lan:25565',
+      players: [
+        { id: 'p1', name: args?.playerName || 'Player', is_host: true, ping_ms: 5, mods_synced: true },
+      ],
+      mod_mismatch_count: 0,
+      total_mods: 42,
+    }),
+    join_lobby_room: (args: any) => ({
+      code: args?.code || 'JOIN1',
+      host_name: 'HostAlex',
+      world_name: 'Земли приключений',
+      is_host: false,
+      tunnel_active: true,
+      tunnel_address: 'tunnel.wex.lan:25565',
+      players: [
+        { id: 'p0', name: 'HostAlex', is_host: true, ping_ms: 22, mods_synced: true },
+        { id: 'p1', name: args?.playerName || 'Player', is_host: false, ping_ms: 35, mods_synced: true },
+      ],
+      mod_mismatch_count: 0,
+      total_mods: 42,
+    }),
+    get_lobby_status: {
+      code: 'NEW1',
+      host_name: 'Player',
+      world_name: 'Мой мир',
+      is_host: true,
+      tunnel_active: true,
+      tunnel_address: 'tunnel.wex.lan:25565',
+      players: [
+        { id: 'p1', name: 'Player', is_host: true, ping_ms: 5, mods_synced: true },
+      ],
+      mod_mismatch_count: 0,
+      total_mods: 42,
+    },
     close_lobby_room: true,
     kick_lobby_player: true,
 
