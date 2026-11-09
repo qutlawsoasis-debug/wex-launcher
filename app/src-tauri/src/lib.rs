@@ -136,6 +136,7 @@ pub fn run() {
             commands::launch::kill_game,
             commands::launch::get_playtime_summary,
             commands::launch::playtime_get_summary,
+            commands::launch::get_prewarm_status,
             // UI compatibility aliases
             commands::launch::launch_game,
             commands::launch::set_config,

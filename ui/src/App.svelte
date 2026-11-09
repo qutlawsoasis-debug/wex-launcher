@@ -262,6 +262,8 @@
   let clientStatus = $state('Клиент Wex готов');
   let isLaunching = $state(false);
   let isGameRunning = $state(false);
+  let playFastLaunchState = $state<'idle' | 'prewarming' | 'ready' | 'running'>('idle');
+  let playFastLaunchProgress = $state<number>(0);
   $effect(() => {
     setGameRunning(isGameRunning);
   });
@@ -576,24 +578,38 @@
         playerName = player;
       }
       const stageParam = params.get('stage');
-      if (stageParam === 'installing') {
+      const playState = params.get('playState') || params.get('prewarmState') || stageParam;
+      if (playState === 'prewarming' || playState === 'downloading') {
+        playFastLaunchState = 'prewarming';
+        playFastLaunchProgress = Number(params.get('progress') || 48);
+        isLaunching = false;
+        isGameRunning = false;
+      } else if (playState === 'ready' || playState === 'prewarmed') {
+        playFastLaunchState = 'ready';
+        playFastLaunchProgress = 100;
+        isLaunching = false;
+        isGameRunning = false;
+      } else if (stageParam === 'installing') {
         isLaunching = true;
         isGameRunning = false;
         progressPercentage = Number(params.get('progress') || 45);
         progressStage = params.get('stageText') || 'Синхронизация сборки Wex';
         progressDetail = params.get('detail') || 'Загрузка манифеста модов (142 мода)';
         progressSpeed = params.get('speed') || '14.8 МБ/с';
-      } else if (stageParam === 'running') {
+      } else if (playState === 'running' || stageParam === 'running') {
         isLaunching = false;
         isGameRunning = true;
+        playFastLaunchState = 'running';
         addToast('success', 'Minecraft запущен', `Сессия ${selectedVersion} активна (PID 14820)`);
-      } else if (stageParam === 'idle_restored') {
+      } else if (playState === 'idle_restored' || stageParam === 'idle_restored' || playState === 'exit') {
         isLaunching = false;
         isGameRunning = false;
+        playFastLaunchState = 'idle';
         addToast('info', 'Сессия завершена', 'Minecraft закрыт штатно (код 0)');
-      } else if (stageParam === 'idle') {
+      } else if (playState === 'idle' || stageParam === 'idle') {
         isLaunching = false;
         isGameRunning = false;
+        playFastLaunchState = 'idle';
       }
 
       // Hash crash triggers for tests and previews
@@ -689,6 +705,9 @@
     }
     if (typeof window !== 'undefined') {
       window.addEventListener('wex-show-onboarding', handleShowOnboardingEvent);
+      (window as any).__triggerToast = (type: 'info' | 'success' | 'warning' | 'error', title: string, message: string) => {
+        addToast(type, title, message);
+      };
     }
 
     applyHashRoute();
@@ -807,28 +826,52 @@
             clientStatus = s.message;
             if (s.state === 'preparing') {
               progressStage = s.message;
+            } else if (s.state === 'launching' && s.message === 'Игра догружается…') {
+              playFastLaunchState = 'prewarming';
             } else if (s.state === 'running') {
               isLaunching = false;
               isGameRunning = true;
+              playFastLaunchState = 'running';
               launchError = null;
               addToast('success', 'Minecraft запущен', s.message);
             } else if (s.state === 'cancelled') {
               isLaunching = false;
               isGameRunning = false;
+              playFastLaunchState = 'idle';
               addToast('warning', 'Запуск отменён', s.message);
             } else if (s.state === 'error') {
               isLaunching = false;
               isGameRunning = false;
+              playFastLaunchState = 'idle';
               launchError = s.message;
               const formatted = formatError(s.message, 'launch');
               addToast('error', formatted.title, formatted.description);
             } else if (s.state === 'idle') {
               isLaunching = false;
               isGameRunning = false;
+              playFastLaunchState = 'idle';
               addToast('info', 'Сессия завершена', s.message);
             }
           }).then((fn) => {
             unlistenStatus = fn;
+          });
+
+          listen<{
+            state: string;
+            progress?: number;
+            message?: string;
+          }>('prewarm-status', (event) => {
+            const p = event.payload;
+            if (p.state === 'prewarming') {
+              playFastLaunchState = 'prewarming';
+              playFastLaunchProgress = p.progress ?? 48;
+            } else if (p.state === 'ready') {
+              playFastLaunchState = 'ready';
+              playFastLaunchProgress = 100;
+            } else if (p.state === 'idle') {
+              playFastLaunchState = 'idle';
+              playFastLaunchProgress = 0;
+            }
           });
 
           listen<{
@@ -951,6 +994,8 @@
               {progressStage}
               {progressDetail}
               {progressSpeed}
+              prewarmState={playFastLaunchState}
+              prewarmProgress={playFastLaunchProgress}
               bind:launchError
               initialShowImportWizard={showImportWizard}
               onlaunch={handleLaunch}

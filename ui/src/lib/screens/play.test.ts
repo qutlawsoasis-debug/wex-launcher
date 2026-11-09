@@ -187,4 +187,95 @@ describe('PlayScreen Component Tests', () => {
 
     unmount(comp);
   });
+
+  // 6. Fast-Launch Prewarm Lifecycle & Visual States (wex-play-visual)
+  it('renders prewarming state with honest progress bar directly inside the Play button', async () => {
+    let launched = false;
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        prewarmState: 'prewarming',
+        prewarmProgress: 48,
+        onlaunch: () => {
+          launched = true;
+        },
+      },
+    });
+
+    await tick();
+
+    const btn = target.querySelector('.play-morph-btn.prewarming') as HTMLButtonElement;
+    expect(btn).not.toBeNull();
+    expect(btn.textContent).toContain('Игра догружается…');
+    expect(btn.textContent).toContain('48%');
+
+    const fill = target.querySelector('.prewarm-progress-fill') as HTMLElement;
+    expect(fill).not.toBeNull();
+    expect(fill.style.width).toBe('48%');
+
+    // Clicking prewarm button can initiate early takeover
+    btn.click();
+    await tick();
+    expect(launched).toBe(true);
+
+    unmount(comp);
+  });
+
+  it('renders ready state «Готово к запуску» with subtext «Прогрев готов»', async () => {
+    let launched = false;
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        prewarmState: 'ready',
+        onlaunch: () => {
+          launched = true;
+        },
+      },
+    });
+
+    await tick();
+
+    const btn = target.querySelector('.play-morph-btn.ready') as HTMLButtonElement;
+    expect(btn).not.toBeNull();
+    expect(btn.textContent).toContain('Готово к запуску');
+    expect(btn.textContent).toContain('Прогрев готов');
+
+    btn.click();
+    await tick();
+    expect(launched).toBe(true);
+
+    unmount(comp);
+  });
+
+  it('morphs Play button into «В игре» and triggers onstop on click', async () => {
+    let stopped = false;
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        isRunning: true,
+        onstop: () => {
+          stopped = true;
+        },
+      },
+    });
+
+    await tick();
+
+    const btn = target.querySelector('.play-morph-btn.running') as HTMLButtonElement;
+    expect(btn).not.toBeNull();
+    expect(btn.textContent).toContain('В игре');
+    expect(btn.classList.contains('secondary')).toBe(true);
+
+    btn.click();
+    await tick();
+    expect(stopped).toBe(true);
+
+    unmount(comp);
+  });
 });
