@@ -124,14 +124,17 @@ pub fn set_minimize_to_tray_preference(paths: &WexPaths, enabled: bool) -> Resul
 }
 
 /// Apply launch behavior: hide window if minimize_to_tray is true.
-pub fn apply_launch_window_behavior(window: &WebviewWindow, minimize_to_tray: bool) {
+pub fn apply_launch_window_behavior<R: tauri::Runtime>(
+    window: &WebviewWindow<R>,
+    minimize_to_tray: bool,
+) {
     if minimize_to_tray {
         let _ = window.hide();
     }
 }
 
 /// Restore window when game exits or is stopped.
-pub fn restore_window_from_game(window: &WebviewWindow) {
+pub fn restore_window_from_game<R: tauri::Runtime>(window: &WebviewWindow<R>) {
     let _ = window.show();
     let _ = window.unminimize();
     let _ = window.set_focus();
