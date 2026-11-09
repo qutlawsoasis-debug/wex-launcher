@@ -683,7 +683,7 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders SettingsScreen with RAM slider, Java options, Discord RPC, graphics presets, and About Wex', () => {
+  it('renders SettingsScreen with RAM slider, Java options, Discord RPC, graphics presets, and About Wex', async () => {
     const comp = mount(SettingsScreen, { target });
     expect(target.textContent).toContain('Тема оформления');
     expect(target.textContent).toContain('Цветовой акцент');
@@ -706,6 +706,14 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Очистить кэш');
     expect(target.textContent).not.toContain('.minecraft');
     expect(target.textContent).toContain('Wex');
+    expect(target.textContent).toContain('Журнал событий и краш-дампы');
+
+    const openLogsBtn = target.querySelector('[data-testid="btn-open-logs-sheet"]') as HTMLElement;
+    expect(openLogsBtn).not.toBeNull();
+    openLogsBtn.click();
+    await tick();
+    expect(target.textContent).toContain('latest.log');
+
     // Storage section (SPEC items 40–41: wex-verify-files)
     expect(target.textContent).toContain('Хранилище');
     expect(target.textContent).toContain('Проверить файлы игры');
@@ -785,7 +793,6 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).not.toContain('ИГРАЕТ В ИГРУ');
     expect(target.textContent).not.toContain('Модов: 142');
     expect(target.textContent).not.toContain('auramc');
-
     unmount(comp);
   });
 

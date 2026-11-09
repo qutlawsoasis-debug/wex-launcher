@@ -231,6 +231,10 @@ pub fn run() {
             commands::crash::crash_get_last_diagnosis,
             commands::crash::crash_open_log_file,
             commands::crash::crash_disable_mod,
+            // Logs commands (SPEC 2.10)
+            commands::logs::logs_list_files,
+            commands::logs::logs_read_file,
+            commands::logs::logs_open_folder,
             // Shell commands (SPEC 1.2)
             commands::shell::shell_check_network,
             commands::shell::shell_get_profile,

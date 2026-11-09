@@ -2,6 +2,7 @@ pub mod crash;
 pub mod friends;
 pub mod launch;
 pub mod lobby;
+pub mod logs;
 pub mod mods;
 pub mod music;
 pub mod network;

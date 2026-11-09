@@ -22,6 +22,7 @@
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Button from '../components/Button.svelte';
   import Icon from '../components/icons/Icon.svelte';
+  import LogsSheet from '../components/LogsSheet.svelte';
   import { theme } from '../design/theme.svelte';
   import { network } from '../design/network.svelte';
   import { AccentPresets, type AccentColor } from '../design/colors';
@@ -53,6 +54,7 @@
 
   // System & configuration state
   let selectedVersion = $state('1.21.1');
+  let logsSheetOpen = $state(false);
   let playerName = $state('Player');
   let totalMemoryMb = $state(16384);
   let ramMb = $state(4096);
@@ -700,6 +702,25 @@
           </div>
         {/snippet}
       </Row>
+
+      <Row
+        title="Журнал событий и краш-дампы"
+        subtitle="Просмотр latest.log, crash-reports и hs_err_pid для диагностики сбоев"
+      >
+        {#snippet trailing()}
+          <div class="dir-actions">
+            <Button
+              variant="secondary"
+              size="small"
+              onclick={() => (logsSheetOpen = true)}
+              title="Открыть лист журнала"
+            >
+              <Icon name="info" size={13} color="var(--color-secondary-label)" />
+              <span data-testid="btn-open-logs-sheet">Журнал</span>
+            </Button>
+          </div>
+        {/snippet}
+      </Row>
     </List>
 
     <!-- Storage Section -->
@@ -1062,6 +1083,8 @@
       </Button>
     </div>
   </div>
+
+  <LogsSheet bind:open={logsSheetOpen} version={selectedVersion} />
 </div>
 
 <style>

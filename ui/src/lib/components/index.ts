@@ -13,6 +13,7 @@ export { default as ProgressBar } from './ProgressBar.svelte';
 export { default as Toast } from './Toast.svelte';
 export { default as Logo } from './Logo.svelte';
 export { default as OfflineState } from './OfflineState.svelte';
+export { default as LogsSheet } from './LogsSheet.svelte';
 export { default as ErrorState } from './ErrorState.svelte';
 export { default as ReportSheet } from './ReportSheet.svelte';
 export { default as StoriesCarousel } from './StoriesCarousel.svelte';
