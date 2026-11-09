@@ -4,6 +4,7 @@
   "description": "Default capabilities for Wex Launcher",
   "windows": ["main"],
   "permissions": [
+    "launcher-ui",
     "core:default",
     "core:window:allow-start-dragging",
     "core:window:allow-minimize",
