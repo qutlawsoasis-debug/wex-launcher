@@ -166,7 +166,27 @@ pub async fn set_discord_rpc_enabled(
     }
 }
 
+/// Holds an active prewarmed client instance waiting for user trigger.
+pub struct PrewarmedInstance {
+    pub version: String,
+    pub nickname: String,
+    pub ram_mb: u32,
+    pub signal_file: std::path::PathBuf,
+    pub process: Option<wex_core::GameProcess>,
+    pub started_at: std::time::Instant,
+}
+
+impl Drop for PrewarmedInstance {
+    fn drop(&mut self) {
+        if let Some(mut proc) = self.process.take() {
+            let _ = proc.kill();
+        }
+        let _ = std::fs::remove_file(&self.signal_file);
+    }
+}
+
 /// Shared runtime state for the Play lifecycle.
+#[derive(Clone)]
 pub struct PlayState {
     pub core: Arc<dyn LauncherCore>,
     pub paths: WexPaths,
@@ -175,6 +195,9 @@ pub struct PlayState {
     pub running_version: Arc<Mutex<Option<String>>>,
     pub discord: Arc<Mutex<Option<DiscordRpcClient>>>,
     pub network: Option<super::network::NetworkState>,
+    pub prewarmed: Arc<Mutex<Option<PrewarmedInstance>>>,
+    pub is_prewarming: Arc<AtomicBool>,
+    pub active_process: Arc<Mutex<Option<wex_core::GameProcess>>>,
 }
 
 impl PlayState {
@@ -204,7 +227,7 @@ impl PlayState {
             *lock = Some(client);
         });
 
-        Self {
+        let state = Self {
             core,
             paths,
             is_launching: Arc::new(AtomicBool::new(false)),
@@ -212,7 +235,40 @@ impl PlayState {
             running_version: Arc::new(Mutex::new(None)),
             discord,
             network: Some(network),
-        }
+            prewarmed: Arc::new(Mutex::new(None)),
+            is_prewarming: Arc::new(AtomicBool::new(false)),
+            active_process: Arc::new(Mutex::new(None)),
+        };
+
+        // Trigger background verification & prewarm if enabled and enough RAM is present
+        let state_clone = state.clone();
+        tauri::async_runtime::spawn(async move {
+            let cfg =
+                wex_core::config::LauncherConfig::load_or_default(&state_clone.paths.config_file);
+            let version = cfg.selected_version.clone();
+            let paths_clone = state_clone.paths.clone();
+            let client = reqwest::Client::builder()
+                .user_agent("WexLauncher/0.1.0")
+                .build()
+                .unwrap_or_default();
+            let events = Arc::new(wex_core::NoopEventHandler);
+            let _ = wex_core::install_full_environment(
+                &paths_clone,
+                &version,
+                &client,
+                events.as_ref(),
+                4,
+            )
+            .await;
+
+            if cfg.fast_launch {
+                state_clone
+                    .trigger_prewarm(cfg.selected_version, cfg.nickname, cfg.max_memory_mb)
+                    .await;
+            }
+        });
+
+        state
     }
 
     pub fn new_with_core(paths: WexPaths, core: Arc<dyn LauncherCore>) -> Self {
@@ -225,6 +281,9 @@ impl PlayState {
             running_version: Arc::new(Mutex::new(None)),
             discord,
             network: None,
+            prewarmed: Arc::new(Mutex::new(None)),
+            is_prewarming: Arc::new(AtomicBool::new(false)),
+            active_process: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -242,7 +301,146 @@ impl PlayState {
             running_version: Arc::new(Mutex::new(None)),
             discord,
             network: Some(network),
+            prewarmed: Arc::new(Mutex::new(None)),
+            is_prewarming: Arc::new(AtomicBool::new(false)),
+            active_process: Arc::new(Mutex::new(None)),
         }
+    }
+
+    pub async fn cleanup_prewarm(&self) {
+        let mut pw_lock = self.prewarmed.lock().await;
+        if let Some(mut pw) = pw_lock.take() {
+            if let Some(mut proc) = pw.process.take() {
+                let _ = proc.kill();
+            }
+            let _ = std::fs::remove_file(&pw.signal_file);
+        }
+    }
+
+    pub async fn has_valid_prewarm(&self, version: &str, nickname: &str, ram_mb: u32) -> bool {
+        let mut pw_lock = self.prewarmed.lock().await;
+        if let Some(pw) = pw_lock.as_mut() {
+            if pw.version == version && pw.nickname == nickname && pw.ram_mb == ram_mb {
+                if let Some(proc) = pw.process.as_mut() {
+                    match proc.child.try_wait() {
+                        Ok(None) => true,
+                        _ => {
+                            *pw_lock = None;
+                            false
+                        }
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    pub async fn activate_prewarm(
+        &self,
+        version: &str,
+        nickname: &str,
+        ram_mb: u32,
+    ) -> Option<(u32, wex_core::GameProcess, u128)> {
+        let mut pw_lock = self.prewarmed.lock().await;
+        if let Some(mut pw) = pw_lock.take() {
+            if pw.version == version && pw.nickname == nickname && pw.ram_mb == ram_mb {
+                if let Some(mut proc) = pw.process.take() {
+                    match proc.child.try_wait() {
+                        Ok(None) => {
+                            let start = std::time::Instant::now();
+                            let _ = std::fs::write(&pw.signal_file, b"READY\n");
+                            let elapsed_ms = start.elapsed().as_millis();
+                            let pid = proc.pid;
+                            return Some((pid, proc, elapsed_ms));
+                        }
+                        _ => {
+                            let _ = std::fs::remove_file(&pw.signal_file);
+                        }
+                    }
+                }
+            } else {
+                if let Some(mut proc) = pw.process.take() {
+                    let _ = proc.kill();
+                }
+                let _ = std::fs::remove_file(&pw.signal_file);
+            }
+        }
+        None
+    }
+
+    pub async fn trigger_prewarm(&self, version: String, nickname: String, ram_mb: u32) {
+        if self.is_running.load(Ordering::SeqCst) || self.is_launching.load(Ordering::SeqCst) {
+            return;
+        }
+
+        let cfg = wex_core::config::LauncherConfig::load_or_default(&self.paths.config_file);
+        if !cfg.fast_launch {
+            return;
+        }
+
+        if self.is_prewarming.swap(true, Ordering::SeqCst) {
+            return;
+        }
+
+        if self.has_valid_prewarm(&version, &nickname, ram_mb).await {
+            self.is_prewarming.store(false, Ordering::SeqCst);
+            return;
+        }
+
+        self.cleanup_prewarm().await;
+
+        let paths_clone = self.paths.clone();
+        let prewarmed_clone = self.prewarmed.clone();
+        let is_prewarming_clone = self.is_prewarming.clone();
+
+        tauri::async_runtime::spawn(async move {
+            let signal_file = paths_clone.instance_dir(&version).join("prewarm.signal");
+            let _ = std::fs::remove_file(&signal_file);
+            let parent_pid = std::process::id();
+
+            let client = reqwest::Client::builder()
+                .user_agent("WexLauncher/0.1.0")
+                .build()
+                .unwrap_or_default();
+            let events = Arc::new(wex_core::NoopEventHandler);
+
+            let prewarm_res = wex_core::prepare_and_prewarm(
+                &paths_clone,
+                &cfg,
+                &version,
+                &client,
+                events,
+                4,
+                &[],
+                &signal_file,
+                parent_pid,
+            )
+            .await;
+
+            match prewarm_res {
+                Ok(proc) => {
+                    let mut lock = prewarmed_clone.lock().await;
+                    *lock = Some(PrewarmedInstance {
+                        version,
+                        nickname,
+                        ram_mb,
+                        signal_file,
+                        process: Some(proc),
+                        started_at: std::time::Instant::now(),
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!("[PREWARM] Failed to prewarm Minecraft: {}", e);
+                }
+            }
+
+            is_prewarming_clone.store(false, Ordering::SeqCst);
+        });
     }
 }
 
@@ -262,11 +460,29 @@ pub async fn save_config(
     config: LauncherConfig,
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
-    state
+    let old_cfg = wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file);
+    let ram_mb = config.ram_gb * 1024;
+    let need_restart = old_cfg.selected_version != config.selected_version
+        || old_cfg.nickname != config.player_name
+        || old_cfg.max_memory_mb != ram_mb;
+
+    let res = state
         .core
-        .save_config(config)
+        .save_config(config.clone())
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string());
+
+    if need_restart {
+        state.cleanup_prewarm().await;
+        let cfg = wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file);
+        if cfg.fast_launch {
+            state
+                .trigger_prewarm(config.selected_version, config.player_name, ram_mb)
+                .await;
+        }
+    }
+
+    res
 }
 
 /// Retrieve installed versions for selectors.
@@ -374,6 +590,204 @@ pub async fn start_game<R: tauri::Runtime>(
                 clear_discord_rpc(&state.discord).await;
             }
             return Err(e);
+        }
+    }
+
+    // 3.5. Fast-launch: check prewarm status
+    if cfg.fast_launch {
+        let activated_proc = if let Some(ready) = state
+            .activate_prewarm(&version, &nickname, cfg.max_memory_mb)
+            .await
+        {
+            Some(ready)
+        } else if state.is_prewarming.load(Ordering::SeqCst) {
+            // Clicked "Play" before prewarm finished initializing:
+            // 1. Emit honest progress status "Игра догружается…"
+            let _ = app.emit(
+                EVT_LAUNCH_STATUS,
+                LaunchStatusPayload {
+                    state: "launching".to_string(),
+                    message: "Игра догружается…".to_string(),
+                    exit_code: None,
+                },
+            );
+
+            // 2. Write signal immediately so client unhides window the instant it reaches main menu
+            let signal_file = state.paths.instance_dir(&version).join("prewarm.signal");
+            let _ = std::fs::create_dir_all(state.paths.instance_dir(&version));
+            let _ = std::fs::write(&signal_file, b"READY\n");
+
+            // 3. Wait for prewarm initialization to finish
+            let mut wait_cycles = 0;
+            while state.is_prewarming.load(Ordering::SeqCst) && wait_cycles < 600 {
+                tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                wait_cycles += 1;
+            }
+
+            state
+                .activate_prewarm(&version, &nickname, cfg.max_memory_mb)
+                .await
+        } else {
+            None
+        };
+
+        if let Some((pid, proc, elapsed_ms)) = activated_proc {
+            tracing::info!(
+                "[FAST-LAUNCH] Activated prewarmed instance in {}ms (PID: {})",
+                elapsed_ms,
+                pid
+            );
+            state.is_launching.store(false, Ordering::SeqCst);
+            state.is_running.store(true, Ordering::SeqCst);
+            {
+                let mut v = state.running_version.lock().await;
+                *v = Some(version.clone());
+            }
+
+            {
+                let mut ap = state.active_process.lock().await;
+                *ap = Some(proc);
+            }
+
+            // Update Discord RPC status to Playing
+            if cfg.discord_rpc {
+                set_discord_rpc(
+                    &state.discord,
+                    Activity::Playing {
+                        version: version.clone(),
+                        world_name: server.clone(),
+                        mod_count: None,
+                        start_timestamp: Some(chrono::Utc::now().timestamp()),
+                    },
+                )
+                .await;
+            }
+
+            let _ = app.emit(
+                EVT_LAUNCH_STATUS,
+                LaunchStatusPayload {
+                    state: "running".to_string(),
+                    message: "Minecraft запущен".to_string(),
+                    exit_code: None,
+                },
+            );
+
+            // Apply window minimize-to-tray behavior per wex-window specification
+            if let Some(w) = app.get_webview_window("main") {
+                let minimize = crate::commands::window::is_minimize_to_tray_enabled(&state.paths);
+                crate::commands::window::apply_launch_window_behavior(&w, minimize);
+            }
+
+            // Spawn background supervisor to monitor running prewarmed process
+            let app_clone = app.clone();
+            let is_running_clone = state.is_running.clone();
+            let running_version_clone = state.running_version.clone();
+            let discord_clone = state.discord.clone();
+            let active_proc_clone = state.active_process.clone();
+            let instance_dir = state.paths.instance_dir(&version);
+            let config_file = state.paths.config_file.clone();
+            let playtime_file = state.paths.playtime_file.clone();
+            let version_clone = version.clone();
+            let session_start = std::time::Instant::now();
+            let state_clone = state.inner().clone();
+
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                    let mut lock = active_proc_clone.lock().await;
+                    if let Some(proc) = lock.as_mut() {
+                        match proc.child.try_wait() {
+                            Ok(None) => continue,
+                            _ => {
+                                *lock = None;
+                                break;
+                            }
+                        }
+                    } else {
+                        break;
+                    }
+                }
+
+                // Record session duration into persistent playtime store
+                let elapsed_sec = session_start.elapsed().as_secs();
+                let mut store = PlaytimeStore::load_or_default(&playtime_file);
+                store.record_session(&version_clone, elapsed_sec);
+                let _ = store.save(&playtime_file);
+
+                is_running_clone.store(false, Ordering::SeqCst);
+                {
+                    let mut v = running_version_clone.lock().await;
+                    *v = None;
+                }
+
+                // Restore launcher window after game exits
+                if let Some(w) = app_clone.get_webview_window("main") {
+                    crate::commands::window::restore_window_from_game(&w);
+                }
+
+                // Switch Discord RPC back to InLauncher (or clear if disabled)
+                let latest_cfg = wex_core::config::LauncherConfig::load_or_default(&config_file);
+                if latest_cfg.discord_rpc {
+                    set_discord_rpc(&discord_clone, Activity::InLauncher).await;
+                } else {
+                    clear_discord_rpc(&discord_clone).await;
+                }
+
+                // Run crash diagnosis on instance logs
+                let diagnosis = analyze_crash(&instance_dir, None);
+                let (status_state, status_msg) = match &diagnosis.kind {
+                    CrashKind::Unknown { exit_code: Some(0) } => {
+                        ("idle".to_string(), "Minecraft закрыт штатно".to_string())
+                    }
+                    CrashKind::Unknown { exit_code: None } => {
+                        if diagnosis.title.contains("Неизвестный сбой")
+                            || diagnosis.technical_summary.is_empty()
+                        {
+                            ("idle".to_string(), "Сессия игры завершена".to_string())
+                        } else {
+                            (
+                                "error".to_string(),
+                                format!("{}: {}", diagnosis.title, diagnosis.user_advice),
+                            )
+                        }
+                    }
+                    _ => (
+                        "error".to_string(),
+                        format!("{}: {}", diagnosis.title, diagnosis.user_advice),
+                    ),
+                };
+
+                let _ = app_clone.emit(
+                    EVT_LAUNCH_STATUS,
+                    LaunchStatusPayload {
+                        state: status_state.clone(),
+                        message: status_msg,
+                        exit_code: None,
+                    },
+                );
+
+                if status_state == "error" {
+                    let dto: wex_ipc::models::CrashDiagnosisDto = diagnosis.clone().into();
+                    let _ = app_clone.emit("game-crash", dto);
+                }
+
+                // Re-trigger prewarm for next launch if configured
+                if latest_cfg.fast_launch {
+                    state_clone
+                        .trigger_prewarm(
+                            latest_cfg.selected_version,
+                            latest_cfg.nickname,
+                            latest_cfg.max_memory_mb,
+                        )
+                        .await;
+                }
+            });
+
+            return Ok(LaunchGameResponse {
+                success: true,
+                pid: Some(pid),
+                message: "Minecraft запущен (быстрый запуск)".to_string(),
+            });
         }
     }
 
@@ -577,6 +991,7 @@ pub async fn cancel_launch<R: tauri::Runtime>(
 ) -> Result<(), String> {
     let _ = state.core.cancel_launch().await;
     state.is_launching.store(false, Ordering::SeqCst);
+    state.cleanup_prewarm().await;
 
     let cfg = wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file);
     if cfg.discord_rpc {
@@ -613,6 +1028,11 @@ pub async fn kill_game(version: Option<String>, state: State<'_, PlayState>) -> 
             v.clone().unwrap_or_default()
         }
     };
+
+    if let Some(mut proc) = state.active_process.lock().await.take() {
+        let _ = proc.kill();
+    }
+    state.cleanup_prewarm().await;
 
     if !ver.is_empty() {
         let _ = state.core.kill_game(&ver).await;
@@ -975,5 +1395,60 @@ mod tests {
         assert_eq!(summary.current_version_formatted, "1 ч.");
         assert_eq!(summary.total_launches, 2);
         assert_eq!(summary.summary_text, "В игре: 1 ч. 30 мин. • Запусков: 2");
+    }
+
+    #[tokio::test]
+    async fn test_prewarm_lifecycle_and_cleanup() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let mock_core = Arc::new(MockLauncherCore::new());
+        let play_state = PlayState::new_with_core(paths.clone(), mock_core.clone());
+
+        // Initially no prewarm
+        assert!(!play_state.has_valid_prewarm("1.21.1", "Player", 4096).await);
+
+        // Prewarm signal file
+        let signal_file = tmp.path().join("test_prewarm.signal");
+        std::fs::write(&signal_file, b"INIT\n").unwrap();
+        assert!(signal_file.exists());
+
+        // Simulate spawned dummy process
+        let child = tokio::process::Command::new(if cfg!(target_os = "windows") {
+            "cmd.exe"
+        } else {
+            "sh"
+        })
+        .args(if cfg!(target_os = "windows") {
+            &["/c", "exit 0"][..]
+        } else {
+            &["-c", "exit 0"][..]
+        })
+        .spawn()
+        .unwrap();
+
+        let game_proc = wex_core::GameProcess {
+            pid: child.id().unwrap_or(0),
+            child,
+            log_path: tmp.path().join("latest.log"),
+            #[cfg(windows)]
+            _job_object: None,
+        };
+
+        {
+            let mut pw = play_state.prewarmed.lock().await;
+            *pw = Some(PrewarmedInstance {
+                version: "1.21.1".to_string(),
+                nickname: "Player".to_string(),
+                ram_mb: 4096,
+                signal_file: signal_file.clone(),
+                process: Some(game_proc),
+                started_at: std::time::Instant::now(),
+            });
+        }
+
+        // Cleanup should remove signal file
+        play_state.cleanup_prewarm().await;
+        assert!(!signal_file.exists());
+        assert!(!play_state.has_valid_prewarm("1.21.1", "Player", 4096).await);
     }
 }

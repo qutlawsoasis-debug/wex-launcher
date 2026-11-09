@@ -9,6 +9,7 @@ use crate::minecraft::{
     resolve_vanilla_libraries,
 };
 use crate::pack::sync_aura_pack;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::Write;
@@ -29,6 +30,8 @@ pub struct LaunchOptions<'a> {
     pub asset_index_id: &'a str,
     pub extra_jvm_args: &'a [String],
     pub quick_play_multiplayer: Option<&'a str>,
+    pub prewarm_signal: Option<&'a Path>,
+    pub prewarm_parent_pid: Option<u32>,
 }
 
 #[cfg(windows)]
@@ -235,7 +238,18 @@ pub fn build_launch_args(opts: &LaunchOptions) -> Vec<String> {
         args.push(arg.clone());
     }
 
-    if std::env::var("WEX_QA_BACKGROUND")
+    if let Some(signal) = opts.prewarm_signal {
+        args.push(format!("-Dwex.prewarm.signal={}", signal.display()));
+        if let Some(parent_pid) = opts.prewarm_parent_pid {
+            args.push(format!("-Dwex.prewarm.parentPid={}", parent_pid));
+        }
+        if !args.iter().any(|a| a.contains("wex.qa.background")) {
+            args.push("-Dwex.qa.background=true".to_string());
+        }
+        if !args.iter().any(|a| a.contains("aura.client.hiddenWindow")) {
+            args.push("-Daura.client.hiddenWindow=true".to_string());
+        }
+    } else if std::env::var("WEX_QA_BACKGROUND")
         .map(|v| v == "1" || v == "true")
         .unwrap_or(false)
         || opts
@@ -574,6 +588,7 @@ pub async fn install_full_environment(
     }
 
     let asset_index_id = pkg.asset_index.id;
+    let _ = mark_fast_path_verified(paths, version);
     Ok((
         java_binary,
         client_jar,
@@ -624,6 +639,142 @@ pub async fn prewarm_jvm(java_binary: &Path) -> Result<std::time::Duration> {
     Ok(start.elapsed())
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FastPathState {
+    pub version: String,
+    pub verified: bool,
+    pub client_jar_size: u64,
+    pub timestamp_utc: i64,
+}
+
+pub fn fast_path_state_path(paths: &WexPaths, version: &str) -> PathBuf {
+    paths.instance_dir(version).join("fast_launch.state.json")
+}
+
+pub fn mark_fast_path_verified(paths: &WexPaths, version: &str) -> Result<()> {
+    let client_jar = paths.client_jar(version);
+    let size = if let Ok(meta) = fs::metadata(&client_jar) {
+        meta.len()
+    } else {
+        0
+    };
+    let state = FastPathState {
+        version: version.to_string(),
+        verified: true,
+        client_jar_size: size,
+        timestamp_utc: chrono::Utc::now().timestamp(),
+    };
+    let inst_dir = paths.instance_dir(version);
+    let _ = fs::create_dir_all(&inst_dir);
+    if let Ok(content) = serde_json::to_string_pretty(&state) {
+        let _ = fs::write(fast_path_state_path(paths, version), content);
+    }
+    Ok(())
+}
+
+pub fn is_fast_path_ready(paths: &WexPaths, version: &str) -> bool {
+    let client_jar = paths.client_jar(version);
+    if !client_jar.exists() {
+        return false;
+    }
+
+    let state_file = fast_path_state_path(paths, version);
+    if !state_file.exists() {
+        return false;
+    }
+
+    let pkg_cache_file = paths
+        .versions_dir
+        .join(version)
+        .join(format!("{}.json", version));
+    if !pkg_cache_file.exists() {
+        return false;
+    }
+
+    let fabric_cache_file = paths
+        .versions_dir
+        .join(version)
+        .join(format!("fabric-{}.json", version));
+    if !fabric_cache_file.exists() {
+        return false;
+    }
+
+    let pack_state_file = paths.instance_dir(version).join("pack.state.json");
+    if !pack_state_file.exists() {
+        return false;
+    }
+
+    // Check Mojang Java binary exists
+    let java_dir = if version == "1.20.1" {
+        "java-runtime-gamma"
+    } else {
+        "java-runtime-delta"
+    };
+    let mojang_java = paths
+        .runtime_dir
+        .join(java_dir)
+        .join(if cfg!(target_os = "windows") {
+            "bin/javaw.exe"
+        } else {
+            "bin/java"
+        });
+    if !mojang_java.exists() {
+        return false;
+    }
+
+    true
+}
+
+pub type FastPathEnvironment = (PathBuf, PathBuf, Vec<PathBuf>, Vec<PathBuf>, String);
+
+#[allow(clippy::type_complexity)]
+pub fn resolve_fast_path_environment(
+    paths: &WexPaths,
+    version: &str,
+) -> Result<FastPathEnvironment> {
+    let pkg_cache_file = paths
+        .versions_dir
+        .join(version)
+        .join(format!("{}.json", version));
+    let content = fs::read_to_string(&pkg_cache_file)?;
+    let pkg: crate::minecraft::VersionPackage = serde_json::from_str(&content)?;
+
+    let fabric_cache_file = paths
+        .versions_dir
+        .join(version)
+        .join(format!("fabric-{}.json", version));
+    let fcontent = fs::read_to_string(&fabric_cache_file)?;
+    let fabric_profile: crate::fabric::FabricProfile = serde_json::from_str(&fcontent)?;
+
+    let vanilla_libs = resolve_vanilla_libraries(paths, &pkg);
+    let fabric_libs = resolve_fabric_libraries(paths, &fabric_profile);
+
+    let client_jar = paths.client_jar(version);
+    let java_dir = if version == "1.20.1" {
+        "java-runtime-gamma"
+    } else {
+        "java-runtime-delta"
+    };
+    let mojang_java = paths
+        .runtime_dir
+        .join(java_dir)
+        .join(if cfg!(target_os = "windows") {
+            "bin/javaw.exe"
+        } else {
+            "bin/java"
+        });
+
+    let asset_index_id = pkg.asset_index.id;
+
+    Ok((
+        mojang_java,
+        client_jar,
+        vanilla_libs,
+        fabric_libs,
+        asset_index_id,
+    ))
+}
+
 pub async fn prepare_and_launch(
     paths: &WexPaths,
     config: &LauncherConfig,
@@ -633,8 +784,85 @@ pub async fn prepare_and_launch(
     concurrency: usize,
     extra_jvm_args: &[String],
 ) -> Result<GameProcess> {
-    let (mojang_java, client_jar, vanilla_libs, fabric_libs, asset_index_id) =
-        install_full_environment(paths, version, client, events.as_ref(), concurrency).await?;
+    prepare_and_launch_with_options(
+        paths,
+        config,
+        version,
+        client,
+        events,
+        concurrency,
+        extra_jvm_args,
+        None,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn prepare_and_prewarm(
+    paths: &WexPaths,
+    config: &LauncherConfig,
+    version: &str,
+    client: &reqwest::Client,
+    events: Arc<dyn EventHandler>,
+    concurrency: usize,
+    extra_jvm_args: &[String],
+    signal_file: &Path,
+    parent_pid: u32,
+) -> Result<GameProcess> {
+    prepare_and_launch_with_options(
+        paths,
+        config,
+        version,
+        client,
+        events,
+        concurrency,
+        extra_jvm_args,
+        Some(signal_file),
+        Some(parent_pid),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn prepare_and_launch_with_options(
+    paths: &WexPaths,
+    config: &LauncherConfig,
+    version: &str,
+    client: &reqwest::Client,
+    events: Arc<dyn EventHandler>,
+    concurrency: usize,
+    extra_jvm_args: &[String],
+    prewarm_signal: Option<&Path>,
+    prewarm_parent_pid: Option<u32>,
+) -> Result<GameProcess> {
+    let (mojang_java, client_jar, vanilla_libs, fabric_libs, asset_index_id) = if is_fast_path_ready(
+        paths, version,
+    ) {
+        events.on_event(&Event::Log {
+                level: LogLevel::Info,
+                message: format!(
+                    "[FAST-LAUNCH] Использован быстрый путь запуска для Minecraft {}: проверка неизменённых файлов пропущена",
+                    version
+                ),
+            });
+        match resolve_fast_path_environment(paths, version) {
+            Ok(env) => env,
+            Err(e) => {
+                events.on_event(&Event::Log {
+                    level: LogLevel::Warn,
+                    message: format!(
+                        "[FAST-LAUNCH] Ошибка быстрого пути ({}), возврат к полной проверке",
+                        e
+                    ),
+                });
+                install_full_environment(paths, version, client, events.as_ref(), concurrency)
+                    .await?
+            }
+        }
+    } else {
+        install_full_environment(paths, version, client, events.as_ref(), concurrency).await?
+    };
 
     let java_binary = if let Some(custom) = &config.custom_java_path {
         if custom.exists() {
@@ -681,6 +909,8 @@ pub async fn prepare_and_launch(
         asset_index_id: &asset_index_id,
         extra_jvm_args,
         quick_play_multiplayer: config.quick_play_multiplayer.as_deref(),
+        prewarm_signal,
+        prewarm_parent_pid,
     };
 
     launch_game_process(launch_opts, events).await
@@ -870,6 +1100,8 @@ mod tests {
             asset_index_id: "5",
             extra_jvm_args: &[],
             quick_play_multiplayer: None,
+            prewarm_signal: None,
+            prewarm_parent_pid: None,
         };
 
         let args = build_launch_args(&launch_opts);
@@ -901,6 +1133,8 @@ mod tests {
             asset_index_id: "6",
             extra_jvm_args: &[],
             quick_play_multiplayer: Some("192.168.1.42:54321"),
+            prewarm_signal: None,
+            prewarm_parent_pid: None,
         };
 
         let args = build_launch_args(&launch_opts);
@@ -1018,5 +1252,100 @@ mod tests {
         );
         cfg.fast_start_jvm = true;
         assert!(cfg.fast_start_jvm);
+    }
+
+    #[test]
+    fn test_prewarm_arg_injection() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let config = LauncherConfig::default();
+
+        let java_bin = PathBuf::from("java.exe");
+        let client_jar = PathBuf::from("client.jar");
+        let vanilla_libs = Vec::new();
+        let fabric_libs = Vec::new();
+        let signal_path = tmp.path().join("prewarm.signal");
+
+        let launch_opts = LaunchOptions {
+            paths: &paths,
+            config: &config,
+            version: "1.21.1",
+            java_binary: &java_bin,
+            client_jar: &client_jar,
+            vanilla_libraries: &vanilla_libs,
+            fabric_libraries: &fabric_libs,
+            asset_index_id: "6",
+            extra_jvm_args: &[],
+            quick_play_multiplayer: None,
+            prewarm_signal: Some(&signal_path),
+            prewarm_parent_pid: Some(99999),
+        };
+
+        let args = build_launch_args(&launch_opts);
+        assert!(args
+            .iter()
+            .any(|a| a.starts_with("-Dwex.prewarm.signal=") && a.contains("prewarm.signal")));
+        assert!(args.iter().any(|a| a == "-Dwex.prewarm.parentPid=99999"));
+        assert!(args.iter().any(|a| a == "-Dwex.qa.background=true"));
+        assert!(args.iter().any(|a| a == "-Daura.client.hiddenWindow=true"));
+    }
+
+    #[test]
+    fn test_fast_path_state_lifecycle() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let version = "1.21.1";
+
+        // Initially not ready
+        assert!(!is_fast_path_ready(&paths, version));
+
+        // Create mock files
+        let client_jar = paths.client_jar(version);
+        fs::create_dir_all(client_jar.parent().unwrap()).unwrap();
+        fs::write(&client_jar, b"PK0304").unwrap();
+
+        let ver_dir = paths.versions_dir.join(version);
+        fs::create_dir_all(&ver_dir).unwrap();
+        let pkg_file = ver_dir.join(format!("{}.json", version));
+        fs::write(
+            &pkg_file,
+            r#"{"id":"1.21.1","mainClass":"net.minecraft.client.main.Main","downloads":{"client":{"sha1":"","size":0,"url":""}},"libraries":[],"assetIndex":{"id":"17","sha1":"","size":0,"url":"","totalSize":0}}"#,
+        )
+        .unwrap();
+
+        let fabric_file = ver_dir.join(format!("fabric-{}.json", version));
+        fs::write(
+            &fabric_file,
+            r#"{"id":"fabric-loader-0.19.5-1.21.1","mainClass":"net.fabricmc.loader.impl.launch.knot.KnotClient","libraries":[]}"#,
+        )
+        .unwrap();
+
+        let inst_dir = paths.instance_dir(version);
+        fs::create_dir_all(&inst_dir).unwrap();
+        fs::write(inst_dir.join("pack.state.json"), b"{}").unwrap();
+
+        let java_dir = paths.runtime_dir.join("java-runtime-delta").join("bin");
+        fs::create_dir_all(&java_dir).unwrap();
+        let java_bin = java_dir.join(if cfg!(target_os = "windows") {
+            "javaw.exe"
+        } else {
+            "java"
+        });
+        fs::write(&java_bin, b"stub").unwrap();
+
+        // Mark verified
+        mark_fast_path_verified(&paths, version).unwrap();
+
+        // Now fast path must be ready
+        assert!(is_fast_path_ready(&paths, version));
+
+        // Resolve fast path
+        let (java, jar, v_libs, f_libs, asset_idx) =
+            resolve_fast_path_environment(&paths, version).unwrap();
+        assert_eq!(jar, client_jar);
+        assert_eq!(java, java_bin);
+        assert_eq!(asset_idx, "17");
+        assert!(v_libs.is_empty());
+        assert!(f_libs.is_empty());
     }
 }

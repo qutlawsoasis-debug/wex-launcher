@@ -94,6 +94,8 @@ export const ru = {
 
   // Screen: Settings
   'settings.header_perf': 'Производительность и память',
+  'settings.fast_launch_title': 'Быстрый запуск',
+  'settings.fast_launch_subtitle': 'Предварительный запуск игры в фоновом режиме для мгновенного входа за 1–2 секунды',
   'settings.ram_title': 'Выделение оперативной памяти',
   'settings.ram_label': 'ОЗУ для Minecraft',
   'settings.ram_hint_system': 'Рекомендуется от 4096 до 6144 МБ (из {total} МБ доступных)',
