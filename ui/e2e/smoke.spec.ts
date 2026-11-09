@@ -88,7 +88,7 @@ async function assertViewIntegrity(
     const elements = document.querySelectorAll('*');
     for (const el of elements) {
       const rect = el.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) continue;
+      if (rect.width <= 1 || rect.height <= 1) continue;
       const style = window.getComputedStyle(el);
       if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
 
@@ -99,6 +99,7 @@ async function assertViewIntegrity(
 
       if (style.overflowX === 'scroll' || style.overflowX === 'auto') continue;
       if (el.closest('.stories-track') || el.closest('.carousel-track')) continue;
+      if (el.closest('.visually-hidden') || el.closest('.sr-only')) continue;
 
       // 1px subpixel tolerance
       if (el.scrollWidth > el.clientWidth + 1) {

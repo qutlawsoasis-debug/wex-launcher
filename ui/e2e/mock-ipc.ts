@@ -408,7 +408,9 @@ export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
       return null;
     },
   };
-  (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {};
+  (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+    unregisterListener: (_event?: string, _id?: number) => {},
+  };
 
   (window as any).__TRIGGER_CRASH__ = () => {
     const handlers = listeners.get('game-crash') || [];
