@@ -439,7 +439,7 @@ pub fn prepare_report_preview_impl(
 
     let export_obj = FullExportJson {
         launcher: "Wex Launcher",
-        launcher_version: "0.1.0",
+        launcher_version: env!("CARGO_PKG_VERSION"),
         game_version: ver,
         os: &os_info,
         java: &java_version,
@@ -456,7 +456,7 @@ pub fn prepare_report_preview_impl(
     let full_json_preview = serde_json::to_string_pretty(&export_obj).unwrap_or_default();
 
     BugReportPreviewDto {
-        launcher_version: "0.1.0".to_string(),
+        launcher_version: env!("CARGO_PKG_VERSION").to_string(),
         game_version: ver.to_string(),
         os_info,
         java_version,
@@ -773,7 +773,7 @@ mod tests {
         );
 
         assert_eq!(preview.game_version, "1.21.1");
-        assert_eq!(preview.launcher_version, "0.1.0");
+        assert_eq!(preview.launcher_version, env!("CARGO_PKG_VERSION"));
         assert!(preview
             .error_text
             .as_ref()

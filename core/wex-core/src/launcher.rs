@@ -1308,7 +1308,7 @@ mod tests {
         let bin_dir = comp_dir.join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
         fs::write(comp_dir.join("release"), "JAVA_VERSION=17\n").unwrap();
-        let javaw = bin_dir.join("javaw.exe");
+        let javaw = crate::java::get_java_binary_path(&paths.runtime_dir, comp, true);
         fs::write(&javaw, b"dummy java").unwrap();
 
         // 5. Installed pack state
