@@ -31,6 +31,7 @@ impl EventHandler for TauriEventHandler {
                 step,
                 total_steps,
             } => {
+                tracing::info!("[INSTALL] Stage {}/{}: {}", step, total_steps, stage);
                 let pct = if *total_steps > 0 {
                     ((*step as f32 - 1.0) / *total_steps as f32) * 100.0
                 } else {
@@ -83,6 +84,7 @@ impl EventHandler for TauriEventHandler {
                 );
             }
             Event::GameLaunched { pid } => {
+                tracing::info!("[LAUNCH] Minecraft game process started with PID: {}", pid);
                 let _ = self.app.emit(
                     EVT_LAUNCH_STATUS,
                     LaunchStatusPayload {
@@ -102,6 +104,12 @@ impl EventHandler for TauriEventHandler {
                 );
             }
             Event::Log { level, message } => {
+                match level {
+                    LogLevel::Debug => tracing::debug!("{}", message),
+                    LogLevel::Info => tracing::info!("{}", message),
+                    LogLevel::Warn => tracing::warn!("{}", message),
+                    LogLevel::Error => tracing::error!("{}", message),
+                }
                 let lvl = match level {
                     LogLevel::Debug => "DEBUG",
                     LogLevel::Info => "INFO",
@@ -117,6 +125,7 @@ impl EventHandler for TauriEventHandler {
                 );
             }
             Event::GameExited { exit_code } => {
+                tracing::info!("[LAUNCH] Minecraft process exited with code {:?}", exit_code);
                 let _ = self.app.emit(
                     EVT_LAUNCH_STATUS,
                     LaunchStatusPayload {
@@ -180,8 +189,8 @@ impl Drop for PrewarmedInstance {
     fn drop(&mut self) {
         if let Some(mut proc) = self.process.take() {
             let _ = proc.kill();
+            let _ = std::fs::remove_file(&self.signal_file);
         }
-        let _ = std::fs::remove_file(&self.signal_file);
     }
 }
 
@@ -246,13 +255,17 @@ impl PlayState {
             let cfg =
                 wex_core::config::LauncherConfig::load_or_default(&state_clone.paths.config_file);
             let version = cfg.selected_version.clone();
+            tracing::info!("[PREWARM-STARTUP] Read config version: {}, fast_launch: {}", version, cfg.fast_launch);
             let paths_clone = state_clone.paths.clone();
             let client = reqwest::Client::builder()
                 .user_agent("WexLauncher/0.1.0")
                 .build()
                 .unwrap_or_default();
             let events = Arc::new(wex_core::NoopEventHandler);
-            if !wex_core::is_fast_path_ready(&paths_clone, &version) {
+            let fp_ready = wex_core::is_fast_path_ready(&paths_clone, &version);
+            tracing::info!("[PREWARM-STARTUP] is_fast_path_ready for {}: {}", version, fp_ready);
+            if !fp_ready {
+                tracing::info!("[PREWARM-STARTUP] Running install_full_environment for {}", version);
                 let _ = wex_core::install_full_environment(
                     &paths_clone,
                     &version,
@@ -264,6 +277,7 @@ impl PlayState {
             }
 
             if cfg.fast_launch {
+                tracing::info!("[PREWARM-STARTUP] Calling trigger_prewarm for {}", cfg.selected_version);
                 state_clone
                     .trigger_prewarm(cfg.selected_version, cfg.nickname, cfg.max_memory_mb)
                     .await;
@@ -376,20 +390,25 @@ impl PlayState {
     }
 
     pub async fn trigger_prewarm(&self, version: String, nickname: String, ram_mb: u32) {
+        tracing::info!("[PREWARM] trigger_prewarm called for version: {}, nick: {}, ram: {}", version, nickname, ram_mb);
         if self.is_running.load(Ordering::SeqCst) || self.is_launching.load(Ordering::SeqCst) {
+            tracing::info!("[PREWARM] trigger_prewarm ignored: running or launching");
             return;
         }
 
         let cfg = wex_core::config::LauncherConfig::load_or_default(&self.paths.config_file);
         if !cfg.fast_launch {
+            tracing::info!("[PREWARM] trigger_prewarm ignored: fast_launch is false");
             return;
         }
 
         if self.is_prewarming.swap(true, Ordering::SeqCst) {
+            tracing::info!("[PREWARM] trigger_prewarm ignored: already prewarming");
             return;
         }
 
         if self.has_valid_prewarm(&version, &nickname, ram_mb).await {
+            tracing::info!("[PREWARM] trigger_prewarm ignored: already has valid prewarm");
             self.is_prewarming.store(false, Ordering::SeqCst);
             return;
         }
@@ -401,6 +420,7 @@ impl PlayState {
         let is_prewarming_clone = self.is_prewarming.clone();
 
         tauri::async_runtime::spawn(async move {
+            tracing::info!("[PREWARM] spawn background prewarm task for version {}", version);
             let signal_file = paths_clone.instance_dir(&version).join("prewarm.signal");
             let _ = std::fs::remove_file(&signal_file);
             let parent_pid = std::process::id();

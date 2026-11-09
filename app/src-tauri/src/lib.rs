@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod ipc;
+pub mod logging;
 
 pub use commands::servers::*;
 
@@ -25,6 +26,8 @@ impl Default for AppState {
 }
 
 pub fn run() {
+    logging::WexLogger::init();
+    tracing::info!("[LAUNCHER] Wex Launcher initializing...");
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
