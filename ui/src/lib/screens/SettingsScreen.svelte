@@ -23,15 +23,33 @@
   import Button from '../components/Button.svelte';
   import Icon from '../components/icons/Icon.svelte';
   import { theme } from '../design/theme.svelte';
+  import { network } from '../design/network.svelte';
   import { AccentPresets, type AccentColor } from '../design/colors';
   import { i18n, t, type SupportedLocale } from '../i18n';
   import { friendsLive } from '../services/friendsLive';
 
   interface Props {
     onopenonboarding?: () => void;
+    isGameRunning?: boolean;
+    version?: string;
   }
 
-  let { onopenonboarding }: Props = $props();
+  let {
+    onopenonboarding,
+    isGameRunning = false,
+    version: propVersion = '1.21.1',
+  }: Props = $props();
+
+  let ipcGameRunning = $state(false);
+  let isGameActive = $derived(isGameRunning || ipcGameRunning);
+
+  // Storage section state (SPEC items 40–41: wex-verify-files)
+  let cacheSizeFormatted = $state('0 Б');
+  let isCheckingIntegrity = $state(false);
+  let isCleaningCache = $state(false);
+  let integrityStatus = $state<string | null>(null);
+  let integrityDetail = $state<string | null>(null);
+  let cleanupStatus = $state<string | null>(null);
 
   // System & configuration state
   let selectedVersion = $state('1.21.1');
@@ -379,73 +397,171 @@
     saveConfig();
   }
 
-  // Maintenance: Verify instance files & Cleanup cache
-  let isVerifyingFiles = $state(false);
-  let verifyStatus = $state<string | null>(null);
-  let isCleaningCache = $state(false);
-  let cleanCacheStatus = $state<string | null>(null);
+  // Aliases for compatibility
+  let isVerifyingFiles = $derived(isCheckingIntegrity);
+  let verifyStatus = $derived(
+    integrityDetail
+      ? integrityStatus
+        ? `${integrityStatus} — ${integrityDetail}`
+        : integrityDetail
+      : integrityStatus
+  );
+  let cleanCacheStatus = $derived(cleanupStatus);
+
+  async function loadCacheInfo() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<{ total_bytes: number; formatted_size: string }>('get_storage_cache_info');
+      if (res && res.formatted_size) {
+        cacheSizeFormatted = res.formatted_size;
+      }
+    } catch {
+      cacheSizeFormatted = '0 Б';
+    }
+  }
+
+  async function checkGameRunningState() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const running = await invoke<boolean>('is_game_running');
+      ipcGameRunning = Boolean(running);
+    } catch {
+      // In-browser mock
+    }
+  }
 
   async function handleVerifyFiles() {
-    if (isVerifyingFiles) return;
-    isVerifyingFiles = true;
-    verifyStatus = 'Проверка файлов по манифесту...';
+    if (isGameActive || isCheckingIntegrity) return;
+    isCheckingIntegrity = true;
+    integrityStatus = 'Проверка...';
+    integrityDetail = 'Проверка файлов по манифесту...';
+
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const res = await invoke<{
-        success: boolean;
-        total_files: number;
-        verified_files: number;
-        repaired_files: number;
-        corrupted_files: number;
-        errors: string[];
-        message: string;
-      }>('verify_instance_files', { version: selectedVersion });
+      const ver = selectedVersion || propVersion;
+      let res: any;
+      try {
+        res = await invoke('verify_instance_files', { version: ver });
+      } catch (err: any) {
+        if (err?.message?.includes('манифест') || (typeof err === 'string' && err.includes('манифест'))) {
+          throw err;
+        }
+        res = await invoke('verify_game_files', { version: ver });
+      }
 
       if (res) {
-        verifyStatus = res.message;
-      } else {
-        verifyStatus = 'Проверка завершена';
+        integrityStatus = res.status || 'Проверка завершена';
+        integrityDetail = res.message || res.status;
       }
-    } catch (e: any) {
-      verifyStatus = `Ошибка проверки: ${e?.message || e || 'неизвестная ошибка'}`;
+    } catch (err: any) {
+      integrityStatus = 'Ошибка проверки';
+      const msg = typeof err === 'string' ? err : (err?.message || 'Не удалось проверить файлы игры');
+      integrityDetail = msg.startsWith('Ошибка проверки: ') ? msg : `Ошибка проверки: ${msg}`;
     } finally {
-      isVerifyingFiles = false;
+      isCheckingIntegrity = false;
     }
   }
 
-  async function handleCleanCache() {
-    if (isCleaningCache) return;
+  async function handleClearCache() {
+    if (isGameActive || isCleaningCache) return;
     isCleaningCache = true;
-    cleanCacheStatus = 'Очистка кэша и логов...';
+    cleanupStatus = 'Очистка кэша и логов...';
+
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const res = await invoke<{
-        success: boolean;
-        freed_bytes: number;
-        freed_formatted: string;
-        deleted_files_count: number;
-        message: string;
-      }>('cleanup_cache', { version: selectedVersion });
+      const ver = selectedVersion || propVersion;
+      let res: any;
+      try {
+        res = await invoke('cleanup_cache', { version: ver });
+      } catch (err: any) {
+        if (err?.message?.includes('заблокирован') || (typeof err === 'string' && err.includes('заблокирован'))) {
+          throw err;
+        }
+        res = await invoke('clear_storage_cache');
+      }
 
       if (res) {
-        cleanCacheStatus = res.message;
-      } else {
-        cleanCacheStatus = 'Очистка завершена';
+        cleanupStatus = res.message || res.status_text || 'Кэш очищен';
+        await loadCacheInfo();
       }
-    } catch (e: any) {
-      cleanCacheStatus = `Ошибка очистки: ${e?.message || e || 'неизвестная ошибка'}`;
+    } catch (err: any) {
+      const msg = typeof err === 'string' ? err : (err?.message || 'Ошибка очистки');
+      cleanupStatus = msg.startsWith('Ошибка очистки: ') ? msg : `Ошибка очистки: ${msg}`;
     } finally {
       isCleaningCache = false;
+      setTimeout(() => {
+        cleanupStatus = null;
+      }, 5000);
     }
   }
+
+  const handleCleanCache = handleClearCache;
+
+  let prevOnline = network.isOnline;
+  $effect(() => {
+    const currentOnline = network.isOnline;
+    if (currentOnline && !prevOnline) {
+      loadConfig();
+    }
+    prevOnline = currentOnline;
+  });
 
   onMount(() => {
     loadConfig();
+    loadCacheInfo();
+    checkGameRunningState();
+
+    let unlistenVerify: (() => void) | undefined;
+    if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+      import('@tauri-apps/api/event').then(({ listen }) => {
+        listen<{ stage?: string; downloaded?: number; total?: number; percentage?: number; message?: string }>(
+          'storage-verify-progress',
+          (event) => {
+            const p = event.payload;
+            if (p.stage) {
+              integrityStatus = p.stage;
+            } else if (p.downloaded !== undefined && p.total !== undefined) {
+              integrityStatus = `Проверка ${p.downloaded}/${p.total} (${Math.round(p.percentage || 0)}%)`;
+            }
+          }
+        ).then((fn) => {
+          unlistenVerify = fn;
+        });
+      }).catch(() => {});
+    }
+
+    return () => {
+      unlistenVerify?.();
+    };
   });
 </script>
 
 <div class="settings-screen">
   <div class="settings-content">
+    <!-- Honest Offline State Banner -->
+    {#if !network.isOnline}
+      <div class="settings-offline-banner" role="status" aria-live="polite">
+        <div class="offline-banner-left">
+          <Icon name="wifi-off" size={16} color="var(--color-system-orange)" />
+          <div class="offline-banner-text">
+            <span class="offline-banner-title">{t('offline.title')}</span>
+            <span class="offline-banner-desc">
+              {i18n.locale === 'en' ? 'Local launcher settings are active. Network sync will resume when online.' : 'Локальные параметры сохранены. Сетевая синхронизация возобновится при подключении.'}
+            </span>
+          </div>
+        </div>
+        <Button
+          variant="secondary"
+          size="small"
+          onclick={() => network.check()}
+          title="Проверить подключение к сети"
+        >
+          <Icon name="refresh" size={12} color="var(--color-secondary-label)" />
+          <span>{t('offline.retry')}</span>
+        </Button>
+      </div>
+    {/if}
+
     <!-- Performance & Memory -->
     <List header={t('settings.header_perf')}>
       <Row
@@ -537,6 +653,20 @@
     <!-- Data Directory & Network -->
     <List header={t('settings.header_dirs')}>
       <Row
+        title="Подключение к сети"
+        subtitle={network.isOnline
+          ? (i18n.locale === 'en' ? 'Online • Connected to network services' : 'В сети • Подключение к сетевым сервисам активно')
+          : (i18n.locale === 'en' ? 'Offline • Working in offline mode' : 'Нет подключения • Работа в офлайн-режиме')}
+      >
+        {#snippet trailing()}
+          <div class="network-status-badge" class:online={network.isOnline} class:offline={!network.isOnline}>
+            <span class="status-dot"></span>
+            <span>{network.isOnline ? (i18n.locale === 'en' ? 'Online' : 'В сети') : t('offline.title')}</span>
+          </div>
+        {/snippet}
+      </Row>
+
+      <Row
         title={t('settings.gamedir_title')}
         subtitle={gameDir || t('settings.gamedir_undefined')}
       >
@@ -554,50 +684,55 @@
           </div>
         {/snippet}
       </Row>
+    </List>
 
+    <!-- Storage Section -->
+    <List header="Хранилище">
       <Row
         title="Проверить файлы игры"
-        subtitle={verifyStatus || `Проверка SHA-256 файлов клиента версии ${selectedVersion} по манифесту пака и восстановление`}
+        subtitle={integrityDetail ? `${integrityStatus ? integrityStatus + ' — ' : ''}${integrityDetail}` : (integrityStatus || (isGameActive ? 'Недоступно во время работы игры' : 'Сверка хэшей установленной версии и игровых файлов с манифестом'))}
       >
         {#snippet trailing()}
-          <Button
-            variant="secondary"
-            size="small"
-            disabled={isVerifyingFiles}
-            onclick={handleVerifyFiles}
-            title="Проверить SHA-256 файлов инстанса"
-          >
-            {#if isVerifyingFiles}
-              <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
-              <span>Проверка...</span>
-            {:else}
-              <Icon name="check" size={13} color="var(--color-secondary-label)" />
-              <span>Проверить</span>
+          <div class="storage-action-wrap">
+            {#if isCheckingIntegrity}
+              <span class="storage-status-badge checking">Проверка...</span>
+            {:else if integrityStatus}
+              <span class="storage-status-badge result">{integrityStatus}</span>
             {/if}
-          </Button>
+            <Button
+              variant="secondary"
+              size="small"
+              disabled={isGameActive || isCheckingIntegrity}
+              onclick={handleVerifyFiles}
+              title={isGameActive ? 'Недоступно во время работы игры' : 'Проверить целостность файлов игры'}
+            >
+              <span>{isCheckingIntegrity ? 'Проверка...' : 'Проверить'}</span>
+            </Button>
+          </div>
         {/snippet}
       </Row>
 
       <Row
         title="Очистить кэш"
-        subtitle={cleanCacheStatus || 'Удаление логов сессий, crash-reports и временных файлов загрузок'}
+        subtitle={cleanupStatus ? cleanupStatus : `Размер кэша: ${cacheSizeFormatted}. Удаляются временные файлы загрузок, логи старше 7 дней и отчёты об ошибках.`}
       >
         {#snippet trailing()}
-          <Button
-            variant="secondary"
-            size="small"
-            disabled={isCleaningCache}
-            onclick={handleCleanCache}
-            title="Очистить кэш и освободить дисковое пространство"
-          >
+          <div class="storage-action-wrap">
             {#if isCleaningCache}
-              <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
-              <span>Очистка...</span>
-            {:else}
-              <Icon name="trash" size={13} color="var(--color-secondary-label)" />
-              <span>Очистить</span>
+              <span class="storage-status-badge checking">Очистка...</span>
+            {:else if cleanupStatus}
+              <span class="storage-status-badge success">Готово</span>
             {/if}
-          </Button>
+            <Button
+              variant="secondary"
+              size="small"
+              disabled={isGameActive || isCleaningCache}
+              onclick={handleClearCache}
+              title={isGameActive ? 'Недоступно во время работы игры' : 'Очистить кэш лаунчера'}
+            >
+              <span>{isCleaningCache ? 'Очистка...' : 'Очистить'}</span>
+            </Button>
+          </div>
         {/snippet}
       </Row>
     </List>
@@ -913,6 +1048,49 @@
     gap: 8px;
   }
 
+  .settings-offline-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--color-material-regular, rgba(30, 30, 35, 0.75));
+    border: 1px solid rgba(255, 159, 10, 0.3);
+    border-radius: var(--radius-large, 14px);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    animation: fadeIn var(--motion-duration-modal-enter) var(--motion-curve-spring-system);
+    margin-bottom: 8px;
+  }
+
+  .network-status-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: var(--text-caption-1, 11px);
+    font-weight: 500;
+  }
+
+  .network-status-badge.online {
+    background: rgba(48, 209, 88, 0.12);
+    color: var(--color-system-green);
+  }
+
+  .network-status-badge.offline {
+    background: rgba(255, 159, 10, 0.12);
+    color: var(--color-system-orange);
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
   .slider-wrapper {
     width: 100%;
     padding: 10px 0 4px;
@@ -947,6 +1125,33 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+
+  .storage-action-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .storage-status-badge {
+    font-size: var(--text-footnote);
+    color: var(--color-secondary-label);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    background-color: var(--color-tertiary-system-fill);
+    white-space: nowrap;
+  }
+
+  .storage-status-badge.checking {
+    color: var(--color-system-blue);
+  }
+
+  .storage-status-badge.success {
+    color: var(--color-system-green);
+  }
+
+  .storage-status-badge.result {
+    color: var(--color-secondary-label);
   }
 
   .accent-picker {

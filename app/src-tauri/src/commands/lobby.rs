@@ -107,11 +107,11 @@ fn format_lobby_error(err: &LobbyError) -> String {
             } else if !message.is_empty() {
                 message.clone()
             } else {
-                format!("Ошибка сервиса лобби (HTTP {status})")
+                "Сервер комнат временно недоступен. Попробуйте подключиться позже.".to_string()
             }
         }
-        LobbyError::Json(_) => "Некорректный формат ответа от сервиса лобби.".to_string(),
-        LobbyError::Url(_) => "Недопустимый адрес сервиса лобби.".to_string(),
+        LobbyError::Json(_) => "Некорректный формат ответа от сервера комнат.".to_string(),
+        LobbyError::Url(_) => "Недопустимый адрес сервера комнат.".to_string(),
     }
 }
 
@@ -138,7 +138,12 @@ async fn fetch_open_rooms(
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(3))
         .build()
-        .map_err(|e| IpcError::internal("Не удалось создать HTTP-клиент", Some(e.to_string())))?;
+        .map_err(|e| {
+            IpcError::internal(
+                "Не удалось настроить сетевое подключение. Попробуйте перезапустить лаунчер.",
+                Some(e.to_string()),
+            )
+        })?;
 
     let resp = http
         .get(&url_str)
@@ -148,7 +153,7 @@ async fn fetch_open_rooms(
         .map_err(|e| {
             IpcError::new(
                 "NET_LOBBY_API_ERROR",
-                "Сервис недоступен. Не удалось связаться с сервером комнат",
+                "Сервис недоступен: не удалось связаться с сервером комнат. Проверьте интернет-соединение или попробуйте позже.",
                 Some(e.to_string()),
             )
         })?;
@@ -156,7 +161,7 @@ async fn fetch_open_rooms(
     if !resp.status().is_success() {
         return Err(IpcError::new(
             "NET_LOBBY_API_ERROR",
-            "Сервис недоступен. Сервер комнат вернул ошибку",
+            "Сервер комнат временно недоступен. Попробуйте подключиться позже.",
             Some(format!("HTTP {}", resp.status())),
         ));
     }
@@ -402,7 +407,7 @@ pub async fn net_tunnel_ensure_binary(
     let path = ensure_binary_downloaded(&dest, Some(&state.event_bus))
         .await
         .map_err(|e| {
-            IpcError::internal("Не удалось загрузить бинарник Playit", Some(e.to_string()))
+            IpcError::internal("Не удалось загрузить сетевой модуль туннеля. Проверьте подключение к интернету и повторите попытку.", Some(e.to_string()))
         })?;
     Ok(NetTunnelEnsureBinaryResponse {
         path: path.to_string_lossy().to_string(),
@@ -420,7 +425,10 @@ pub async fn net_tunnel_start(
     let bin = PathBuf::from(&request.binary_path);
     let secret = PathBuf::from(&request.secret_key);
     supervisor.start(&bin, &secret).await.map_err(|e| {
-        IpcError::internal("Не удалось запустить playit-agent", Some(e.to_string()))
+        IpcError::internal(
+            "Не удалось запустить сетевой туннель. Проверьте исключения брандмауэра и антивируса.",
+            Some(e.to_string()),
+        )
     })?;
     *sup_lock = Some(supervisor);
     Ok(NetTunnelStartResponse { pid: 0 })

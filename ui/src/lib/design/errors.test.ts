@@ -1,8 +1,37 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
-import { formatError, type FormattedError } from './errors';
+import { formatError, sanitizeUserMessage, type FormattedError } from './errors';
 import ErrorState from '../components/ErrorState.svelte';
 import { ERROR_CODES, type IpcError } from '../ipc/generated/error';
+
+const BANNED_TECHNICAL_WORDS = [
+  'reqwest',
+  'ipc',
+  'os error',
+  'exit code',
+  'status code',
+  'exception',
+  'errno',
+  'nullpointer',
+  'stacktrace',
+  'failed to',
+  'c:\\users\\',
+  '/home/',
+  '/users/',
+];
+
+function assertNoBannedWordsOrPaths(text: string, context: string) {
+  const lower = text.toLowerCase();
+  for (const word of BANNED_TECHNICAL_WORDS) {
+    expect(
+      lower.includes(word),
+      `[${context}] contains banned technical word or path "${word}": "${text}"`
+    ).toBe(false);
+  }
+  // Must contain Russian Cyrillic characters
+  const hasCyrillic = /[а-яёА-ЯЁ]/.test(text);
+  expect(hasCyrillic, `[${context}] must be localized in Russian: "${text}"`).toBe(true);
+}
 
 describe('Error Mapping (formatError)', () => {
   it('maps typed IpcError object into clean Russian title and description', () => {
@@ -223,5 +252,172 @@ describe('ErrorState Component', () => {
     );
 
     unmount(component);
+  });
+});
+
+describe('Strict Player-Facing Error Texts (wex-error-texts requirements)', () => {
+  it('covers Scenario 1: нет интернета (no internet)', () => {
+    const rawPatterns = [
+      'нет интернета',
+      'No internet connection detected',
+      'network unreachable (os error 101)',
+      'failed to connect to host',
+    ];
+
+    for (const raw of rawPatterns) {
+      const formatted = formatError(raw, 'install');
+      expect(formatted.code).toBe(ERROR_CODES.NETWORK_ERROR);
+      expect(formatted.title).toBe('Нет подключения к интернету');
+      assertNoBannedWordsOrPaths(formatted.title, 'no-internet-title');
+      assertNoBannedWordsOrPaths(formatted.description, 'no-internet-desc');
+    }
+
+    const typedErr = formatError({ code: ERROR_CODES.NETWORK_ERROR });
+    expect(typedErr.title).toBe('Нет подключения к интернету');
+    assertNoBannedWordsOrPaths(typedErr.title, 'no-internet-typed-title');
+    assertNoBannedWordsOrPaths(typedErr.description, 'no-internet-typed-desc');
+  });
+
+  it('covers Scenario 2: сервер не отвечает (server timeout / unresponsive)', () => {
+    const rawPatterns = [
+      'timed out',
+      'Connection timed out after 3000ms',
+      'сервер не отвечает на запрос',
+      'gateway timeout 504',
+    ];
+
+    for (const raw of rawPatterns) {
+      const formatted = formatError(raw, 'lobby');
+      expect(formatted.code).toBe(ERROR_CODES.IO_TIMED_OUT);
+      expect(formatted.title).toBe('Сервер не отвечает');
+      assertNoBannedWordsOrPaths(formatted.title, 'server-timeout-title');
+      assertNoBannedWordsOrPaths(formatted.description, 'server-timeout-desc');
+    }
+
+    const typedErr = formatError({ code: ERROR_CODES.IO_TIMED_OUT });
+    expect(typedErr.title).toBe('Сервер не отвечает');
+    assertNoBannedWordsOrPaths(typedErr.title, 'server-timeout-typed-title');
+    assertNoBannedWordsOrPaths(typedErr.description, 'server-timeout-typed-desc');
+  });
+
+  it('covers Scenario 3: нет места на диске (disk full / out of space)', () => {
+    const rawPatterns = [
+      'There is not enough space on the disk.',
+      'no space left on device',
+      'диск заполнен: освободите место',
+      'error 112: disk full',
+    ];
+
+    for (const raw of rawPatterns) {
+      const formatted = formatError(raw, 'workshop');
+      expect(formatted.title).toBe('Недостаточно места на диске');
+      assertNoBannedWordsOrPaths(formatted.title, 'disk-full-title');
+      assertNoBannedWordsOrPaths(formatted.description, 'disk-full-desc');
+    }
+
+    const typedErr = formatError({ code: ERROR_CODES.IO_DISK_FULL });
+    expect(typedErr.title).toBe('Недостаточно места на диске');
+    assertNoBannedWordsOrPaths(typedErr.title, 'disk-full-typed-title');
+    assertNoBannedWordsOrPaths(typedErr.description, 'disk-full-typed-desc');
+  });
+
+  it('covers Scenario 4: антивирус заблокировал файл (antivirus / access denied)', () => {
+    const rawPatterns = [
+      'Антивирус заблокировал файл client.jar',
+      'Access is denied (os error 5)',
+      'Permission denied: operation not permitted by antivirus',
+      'Файл заблокирован антивирусом',
+    ];
+
+    for (const raw of rawPatterns) {
+      const formatted = formatError(raw, 'launch');
+      assertNoBannedWordsOrPaths(formatted.title, 'antivirus-title');
+      assertNoBannedWordsOrPaths(formatted.description, 'antivirus-desc');
+      // Description must mention antivirus or system access
+      expect(
+        formatted.description.includes('антивирус') || formatted.description.includes('Операционная система')
+      ).toBe(true);
+    }
+
+    const typedErr = formatError({ code: 'ANTIVIRUS_BLOCKED' });
+    expect(typedErr.title).toBe('Антивирус заблокировал файл');
+    assertNoBannedWordsOrPaths(typedErr.title, 'antivirus-typed-title');
+    assertNoBannedWordsOrPaths(typedErr.description, 'antivirus-typed-desc');
+  });
+
+  it('covers Scenario 5: Java не запускается (Java missing / launch failure)', () => {
+    const rawMissing = 'cannot find java at C:\\Program Files\\Java';
+    const formattedMissing = formatError(rawMissing, 'java');
+    expect(formattedMissing.code).toBe(ERROR_CODES.JAVA_NOT_FOUND);
+    assertNoBannedWordsOrPaths(formattedMissing.title, 'java-missing-title');
+    assertNoBannedWordsOrPaths(formattedMissing.description, 'java-missing-desc');
+    expect(formattedMissing.primaryAction?.type).toBe('settings');
+
+    const rawRuntime = 'Java runtime error: failed to launch JVM';
+    const formattedRuntime = formatError(rawRuntime, 'java');
+    expect(formattedRuntime.code).toBe(ERROR_CODES.JAVA_RUNTIME_ERROR);
+    expect(formattedRuntime.title).toBe('Ошибка среды выполнения Java');
+    assertNoBannedWordsOrPaths(formattedRuntime.title, 'java-runtime-title');
+    assertNoBannedWordsOrPaths(formattedRuntime.description, 'java-runtime-desc');
+    expect(formattedRuntime.primaryAction?.type).toBe('settings');
+  });
+
+  it('covers Scenario 6: игра упала (game crashed / process exit)', () => {
+    const rawPatterns = [
+      'Process exited with code 1',
+      'Process exited with code -1',
+      'Игра упала при загрузке мира',
+      'Game crashed due to exception',
+    ];
+
+    for (const raw of rawPatterns) {
+      const formatted = formatError(raw, 'launch');
+      expect(formatted.code).toBe(ERROR_CODES.LAUNCH_PROCESS_FAILED);
+      expect(formatted.title).toBe('Сбой игрового процесса');
+      assertNoBannedWordsOrPaths(formatted.title, 'game-crash-title');
+      assertNoBannedWordsOrPaths(formatted.description, 'game-crash-desc');
+      expect(formatted.secondaryAction?.type).toBe('settings');
+    }
+  });
+
+  it('covers Scenario 7: мало памяти (out of memory)', () => {
+    const rawPatterns = [
+      'Could not reserve enough space for 8388608KB object heap',
+      'OutOfMemoryError: Java heap space',
+      'нехватка оперативной памяти',
+    ];
+
+    for (const raw of rawPatterns) {
+      const formatted = formatError(raw, 'launch');
+      expect(formatted.code).toBe(ERROR_CODES.LAUNCH_OUT_OF_MEMORY);
+      expect(formatted.title).toBe('Недостаточно оперативной памяти');
+      assertNoBannedWordsOrPaths(formatted.title, 'oom-title');
+      assertNoBannedWordsOrPaths(formatted.description, 'oom-desc');
+      expect(formatted.primaryAction?.type).toBe('settings');
+    }
+  });
+
+  it('verifies that ALL error codes produce clean Russian without banned technical jargon or paths', () => {
+    for (const [codeKey, codeVal] of Object.entries(ERROR_CODES)) {
+      const formatted = formatError({ code: codeVal });
+      assertNoBannedWordsOrPaths(formatted.title, `code-${codeKey}-title`);
+      assertNoBannedWordsOrPaths(formatted.description, `code-${codeKey}-desc`);
+      expect(formatted.title.length).toBeGreaterThan(3);
+      expect(formatted.description.length).toBeGreaterThan(10);
+    }
+  });
+
+  it('sanitizes user paths and technical prefixes from raw error strings', () => {
+    const rawWithPath = 'C:\\Users\\JohnDoe\\AppData\\Local\\Wex\\launcher.exe (os error 5)';
+    const sanitized = sanitizeUserMessage(rawWithPath);
+    expect(sanitized.includes('JohnDoe')).toBe(false);
+    expect(sanitized.includes('os error')).toBe(false);
+    expect(sanitized).toBe('AppData\\Local\\Wex\\launcher.exe');
+
+    const unixPath = '/home/username/wex/repo/error.log [IO_ERROR]';
+    const sanitizedUnix = sanitizeUserMessage(unixPath);
+    expect(sanitizedUnix.includes('username')).toBe(false);
+    expect(sanitizedUnix.includes('/home/')).toBe(false);
+    expect(sanitizedUnix).toBe('wex/repo/error.log');
   });
 });

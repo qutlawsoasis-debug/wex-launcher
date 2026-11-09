@@ -22,6 +22,7 @@
   import ErrorState from '../components/ErrorState.svelte';
   import Skeleton from '../components/Skeleton.svelte';
   import EmptyState from '../components/EmptyState.svelte';
+  import { network } from '../design/network.svelte';
   import { t, i18n } from '../i18n';
 
   export interface ModEntryModel {
@@ -254,12 +255,45 @@
     loadMods(newVer);
   }
 
+  let prevOnline = network.isOnline;
+  $effect(() => {
+    const currentOnline = network.isOnline;
+    if (currentOnline && !prevOnline) {
+      loadMods(selectedVersion);
+    }
+    prevOnline = currentOnline;
+  });
+
   onMount(() => {
     loadMods(selectedVersion);
   });
 </script>
 
 <div class="mods-screen">
+  <!-- Honest Offline State Banner -->
+  {#if !network.isOnline}
+    <div class="mods-offline-banner" role="status" aria-live="polite">
+      <div class="offline-banner-left">
+        <Icon name="wifi-off" size={16} color="var(--color-system-orange)" />
+        <div class="offline-banner-text">
+          <span class="offline-banner-title">{t('offline.title')}</span>
+          <span class="offline-banner-desc">
+            {i18n.locale === 'en' ? 'Installed mods management and folder are available offline.' : 'Управление установленными модами и папка инстанса доступны офлайн.'}
+          </span>
+        </div>
+      </div>
+      <Button
+        variant="secondary"
+        size="small"
+        onclick={() => network.check()}
+        title="Проверить подключение к сети"
+      >
+        <Icon name="refresh" size={12} color="var(--color-secondary-label)" />
+        <span>{t('offline.retry')}</span>
+      </Button>
+    </div>
+  {/if}
+
   <!-- Version switcher & Primary toolbar -->
   <div class="screen-header">
     <div class="header-left">
@@ -414,6 +448,21 @@
     overflow-y: auto;
     font-family: var(--font-system);
     box-sizing: border-box;
+  }
+
+  .mods-offline-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--color-material-regular, rgba(30, 30, 35, 0.75));
+    border: 1px solid rgba(255, 159, 10, 0.3);
+    border-radius: var(--radius-large, 14px);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    animation: fadeIn var(--motion-duration-modal-enter) var(--motion-curve-spring-system);
   }
 
   .screen-header {

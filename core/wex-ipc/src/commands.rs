@@ -575,6 +575,45 @@ pub struct SocialCheckLauncherUpdateRequest {
     pub target_platform: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct SocialCheckLauncherUpdateResponse {
+    pub update: UpdateCheckResultDto,
+}
+
+// ============================================================================
+// Storage Commands (SPEC items 40–41: wex-verify-files)
+// ============================================================================
+
+pub const CMD_STORAGE_VERIFY_FILES: &str = "storage_verify_files";
+pub const CMD_STORAGE_GET_CACHE_INFO: &str = "storage_get_cache_info";
+pub const CMD_STORAGE_CLEAR_CACHE: &str = "storage_clear_cache";
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct StorageVerifyFilesRequest {
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct StorageVerifyFilesResponse {
+    pub result: IntegrityCheckResultDto,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct StorageGetCacheInfoRequest {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct StorageGetCacheInfoResponse {
+    pub info: StorageCacheInfoDto,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct StorageClearCacheRequest {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct StorageClearCacheResponse {
+    pub result: ClearStorageCacheResultDto,
+}
+
 // ============================================================================
 // Music Commands
 // ============================================================================

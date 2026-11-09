@@ -11,9 +11,9 @@ use thiserror::Error;
 pub enum SkinError {
     #[error("Ошибка декодирования изображения: {0}")]
     ImageError(#[from] image::ImageError),
-    #[error("Файл не является корректным PNG: {0}")]
+    #[error("Файл не в формате PNG. Скин должен быть в формате .png: {0}")]
     InvalidPng(String),
-    #[error("Неподдерживаемый размер скина ({width}x{height}): требуется 64x64 или 64x32")]
+    #[error("Размер скина {width}×{height} не поддерживается. Разрешение должно быть ровно 64×64 или 64×32 пикселя")]
     UnsupportedDimensions { width: u32, height: u32 },
     #[error("Размер файла превышает лимит в 2 МБ")]
     FileTooLarge,
@@ -82,7 +82,7 @@ pub fn validate_skin_bytes(bytes: &[u8]) -> SkinValidationResult {
     if bytes.len() < 8 || &bytes[0..8] != b"\x89PNG\r\n\x1a\n" {
         return SkinValidationResult {
             is_valid: false,
-            error: Some("Файл не является PNG изображением".to_string()),
+            error: Some("Файл не в формате PNG. Скин должен быть в формате .png".to_string()),
             width: 0,
             height: 0,
         };
@@ -102,7 +102,7 @@ pub fn validate_skin_bytes(bytes: &[u8]) -> SkinValidationResult {
                 SkinValidationResult {
                     is_valid: false,
                     error: Some(format!(
-                        "Неподдерживаемый размер скина ({}x{}). Требуется 64x64 или 64x32",
+                        "Размер скина {}×{} не поддерживается. Разрешение должно быть ровно 64×64 или 64×32 пикселя",
                         w, h
                     )),
                     width: w,
@@ -112,7 +112,7 @@ pub fn validate_skin_bytes(bytes: &[u8]) -> SkinValidationResult {
         }
         Err(e) => SkinValidationResult {
             is_valid: false,
-            error: Some(format!("Поврежденный файл PNG: {}", e)),
+            error: Some(format!("Повреждённый файл PNG: {}", e)),
             width: 0,
             height: 0,
         },

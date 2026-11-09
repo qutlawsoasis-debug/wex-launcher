@@ -1284,3 +1284,31 @@ pub struct OnboardingCompleteRequest {
     pub version: String,
     pub ram_mb: u32,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct IntegrityCheckResultDto {
+    pub total_files: u32,
+    pub checked_files: u32,
+    pub corrupted_files: u32,
+    pub repaired_files: u32,
+    pub status: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct StorageCacheInfoDto {
+    pub total_bytes: u64,
+    pub formatted_size: String,
+    pub logs_bytes: u64,
+    pub crash_reports_bytes: u64,
+    pub temp_bytes: u64,
+    pub file_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct ClearStorageCacheResultDto {
+    pub bytes_freed: u64,
+    pub formatted_freed: String,
+    pub files_deleted: u32,
+    pub status_text: String,
+}

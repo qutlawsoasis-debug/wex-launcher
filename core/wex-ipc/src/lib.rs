@@ -111,7 +111,8 @@ mod tests {
         };
         let ipc_err3: IpcError = lobby_err.into();
         assert_eq!(ipc_err3.code, "NET_LOBBY_NOT_FOUND");
-        assert_eq!(ipc_err3.message, "Room not found");
+        assert!(ipc_err3.message.contains("Комната не найдена"));
+        assert!(ipc_err3.technical.unwrap().contains("Room not found"));
 
         // Friend error
         let friend_err = wex_social::friends::FriendError::Unauthorized;

@@ -50,9 +50,12 @@ impl LauncherCore for WexLauncherCore {
 
     async fn save_config(&self, config: IpcConfig) -> IpcResult<()> {
         let core_cfg: CoreConfig = config.into();
-        core_cfg
-            .save(&self.paths.config_file)
-            .map_err(|e| IpcError::internal("Failed to save config", Some(e.to_string())))
+        core_cfg.save(&self.paths.config_file).map_err(|e| {
+            IpcError::internal(
+                "Не удалось сохранить файл конфигурации. Проверьте свободное место на диске.",
+                Some(e.to_string()),
+            )
+        })
     }
 
     async fn get_installed_versions(&self) -> IpcResult<Vec<InstalledVersion>> {
@@ -90,7 +93,7 @@ impl LauncherCore for WexLauncherCore {
             Ok(_) => Ok(InstallInstanceResponse {
                 success: true,
                 version: request.version,
-                message: "Environment installed successfully".to_string(),
+                message: "Файлы игры успешно установлены".to_string(),
             }),
             Err(e) => Err(e.into()),
         }

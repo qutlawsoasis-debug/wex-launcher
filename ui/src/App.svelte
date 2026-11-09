@@ -812,7 +812,7 @@
           {:else if activeTab === 'mods'}
             <ModsScreen />
           {:else if activeTab === 'settings'}
-            <SettingsScreen onopenonboarding={() => { showOnboarding = true; }} />
+            <SettingsScreen isGameRunning={isGameRunning} version={selectedVersion} onopenonboarding={() => { showOnboarding = true; }} />
           {:else if activeTab === 'showcase'}
             <ShowcaseScreen />
           {/if}

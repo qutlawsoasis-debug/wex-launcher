@@ -29,6 +29,7 @@
   import Icon from '../components/icons/Icon.svelte';
   import ErrorState from '../components/ErrorState.svelte';
   import { formatError } from '../design/errors';
+  import { network } from '../design/network.svelte';
   import { t, i18n } from '../i18n';
   import type { WorldItemDto, WorldBackupItemDto, ScreenshotItemDto } from '../ipc/generated';
 
@@ -86,6 +87,15 @@
       activeTab = initialTab;
       refreshCurrentTab();
     }
+  });
+
+  let prevOnline = network.isOnline;
+  $effect(() => {
+    const currentOnline = network.isOnline;
+    if (currentOnline && !prevOnline) {
+      refreshCurrentTab();
+    }
+    prevOnline = currentOnline;
   });
 
   // Data state
@@ -679,6 +689,30 @@
       </Button>
     </div>
   </header>
+
+  <!-- Honest Offline State Banner -->
+  {#if !network.isOnline}
+    <div class="workshop-offline-banner" role="status" aria-live="polite">
+      <div class="offline-banner-left">
+        <Icon name="wifi-off" size={16} color="var(--color-system-orange)" />
+        <div class="offline-banner-text">
+          <span class="offline-banner-title">{t('offline.title')}</span>
+          <span class="offline-banner-desc">
+            {i18n.locale === 'en' ? 'Single-player worlds, resource packs, shaders, and screenshots are fully available offline.' : 'Одиночные миры, ресурс-паки, шейдеры и скриншоты полностью доступны офлайн.'}
+          </span>
+        </div>
+      </div>
+      <Button
+        variant="secondary"
+        size="small"
+        onclick={() => network.check()}
+        title="Проверить подключение к сети"
+      >
+        <Icon name="refresh" size={12} color="var(--color-secondary-label)" />
+        <span>{t('offline.retry')}</span>
+      </Button>
+    </div>
+  {/if}
 
   <!-- Main Content Area -->
   <div class="workshop-content">
@@ -1462,6 +1496,44 @@
     background-color: var(--glass-surface-overlay);
     gap: 16px;
     flex-shrink: 0;
+  }
+
+  .workshop-offline-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 24px;
+    background: var(--color-material-regular, rgba(30, 30, 35, 0.75));
+    border-bottom: 1px solid rgba(255, 159, 10, 0.3);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    animation: fadeIn var(--motion-duration-modal-enter) var(--motion-curve-spring-system);
+    flex-shrink: 0;
+  }
+
+  .offline-banner-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .offline-banner-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .offline-banner-title {
+    font-size: var(--text-footnote, 13px);
+    font-weight: 600;
+    color: var(--color-label);
+  }
+
+  .offline-banner-desc {
+    font-size: var(--text-caption-1, 11px);
+    color: var(--color-secondary-label);
   }
 
   .header-left {
