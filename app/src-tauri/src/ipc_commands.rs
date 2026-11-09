@@ -90,6 +90,7 @@ pub const IPC_COMMANDS: &[&str] = &[
     "net_tunnel_status",
     "create_lobby_room",
     "join_lobby_room",
+    "prepare_lobby_join",
     "get_lobby_status",
     "close_lobby_room",
     "kick_lobby_player",
