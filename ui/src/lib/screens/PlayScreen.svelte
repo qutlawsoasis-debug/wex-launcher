@@ -348,7 +348,7 @@
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('updater_open_download_url', { url });
     } catch {
-      if (typeof window !== 'undefined') window.open(url, '_blank');
+      clientStatus = 'Не удалось открыть ссылку загрузки. Повторите попытку позже.';
     }
   }
 

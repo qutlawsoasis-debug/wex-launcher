@@ -80,6 +80,11 @@ pub fn parse_deep_link(raw: &str) -> Result<DeepLinkAction, String> {
         return Err("Пустая ссылка протокола".to_string());
     }
 
+    // Protocol actions, room codes and server targets use ASCII (IDNs use punycode).
+    if !trimmed.is_ascii() {
+        return Err("Недопустимые Unicode-символы в ссылке протокола".to_string());
+    }
+
     // Scheme extraction (wex:// or aura:// or wex: / aura:)
     let after_scheme = if let Some(rest) = strip_prefix_case_insensitive(trimmed, "wex://") {
         rest
@@ -135,7 +140,9 @@ pub fn parse_deep_link(raw: &str) -> Result<DeepLinkAction, String> {
 }
 
 fn strip_prefix_case_insensitive<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
-    if s.len() >= prefix.len() && s[..prefix.len()].eq_ignore_ascii_case(prefix) {
+    if s.get(..prefix.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+    {
         Some(&s[prefix.len()..])
     } else {
         None
@@ -254,6 +261,25 @@ pub fn register_deep_link_schemes(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn security_regression_deep_link_unicode_returns_error_without_panic() {
+        for uri in [
+            "wex:\u{1f600}",
+            "aura:\u{1f600}",
+            "\u{1f600}\u{1f600}",
+            "wex://\u{1f600}/x",
+            "aura://join/\u{1f600}",
+            "wex://server/\u{1f600}",
+        ] {
+            let result = std::panic::catch_unwind(|| parse_deep_link(uri));
+            assert!(result.is_ok(), "deep link panicked: {uri}");
+            assert!(
+                result.unwrap().is_err(),
+                "invalid deep link was accepted: {uri}"
+            );
+        }
+    }
 
     #[test]
     fn test_parse_valid_join_wex_scheme() {

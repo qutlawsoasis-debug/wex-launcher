@@ -29,7 +29,7 @@ use wex_ipc::models::{
 use wex_net::events::{NetEventBus, TunnelStatus};
 use wex_net::lan::LanDiscoveryService;
 use wex_net::lobby::{HeartbeatHandle, LobbyApiClient, LobbyError};
-use wex_net::tunnel::{ensure_binary_downloaded, PlayitSupervisor};
+use wex_net::tunnel::{ensure_binary_downloaded, playit_binary_path, PlayitSupervisor};
 
 use crate::ipc::{LobbyPlayerModel, LobbyRoomModel};
 
@@ -403,8 +403,8 @@ pub async fn net_tunnel_ensure_binary(
     request: NetTunnelEnsureBinaryRequest,
     state: State<'_, LobbyState>,
 ) -> IpcResult<NetTunnelEnsureBinaryResponse> {
-    let dest = PathBuf::from(&request.destination_path);
-    let path = ensure_binary_downloaded(&dest, Some(&state.event_bus))
+    let NetTunnelEnsureBinaryRequest {} = request;
+    let path = ensure_binary_downloaded(&state.tools_dir, Some(&state.event_bus))
         .await
         .map_err(|e| {
             IpcError::internal("Не удалось загрузить сетевой модуль туннеля. Проверьте подключение к интернету и повторите попытку.", Some(e.to_string()))
@@ -422,8 +422,9 @@ pub async fn net_tunnel_start(
 ) -> IpcResult<NetTunnelStartResponse> {
     let mut sup_lock = state.supervisor.lock().await;
     let mut supervisor = PlayitSupervisor::new(Some(state.event_bus.clone()));
-    let bin = PathBuf::from(&request.binary_path);
-    let secret = PathBuf::from(&request.secret_key);
+    let NetTunnelStartRequest {} = request;
+    let bin = playit_binary_path(&state.tools_dir);
+    let secret = state.tools_dir.join("playit-secret.toml");
     supervisor.start(&bin, &secret).await.map_err(|e| {
         IpcError::internal(
             "Не удалось запустить сетевой туннель. Проверьте исключения брандмауэра и антивируса.",
