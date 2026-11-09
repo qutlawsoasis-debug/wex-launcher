@@ -812,7 +812,10 @@ mod tests {
 
         // Offline client (connection will fail immediately)
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_millis(50))
+            // Route every request to a closed local port so the test is truly offline
+            // (a short timeout alone still reaches GitHub on fast CI runners).
+            .proxy(reqwest::Proxy::all("http://127.0.0.1:9").unwrap())
+            .timeout(std::time::Duration::from_millis(500))
             .build()
             .unwrap();
         let events = crate::event::NoopEventHandler;
