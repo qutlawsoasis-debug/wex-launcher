@@ -64,10 +64,16 @@ pub struct LauncherSettingsDto {
     pub minimize_to_tray: bool,
     #[serde(default = "default_true")]
     pub friend_notifications: bool,
+    #[serde(default = "default_window_behavior")]
+    pub game_window_behavior: String, // "keep" | "minimize" | "tray"
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_window_behavior() -> String {
+    "minimize".to_string()
 }
 
 impl Default for LauncherSettingsDto {
@@ -92,6 +98,7 @@ impl Default for LauncherSettingsDto {
             fast_start_jvm: false,
             minimize_to_tray: true,
             friend_notifications: true,
+            game_window_behavior: "minimize".to_string(),
         }
     }
 }
@@ -185,6 +192,7 @@ pub fn get_launcher_settings_impl(paths: &WexPaths) -> LauncherSettingsDto {
         fast_start_jvm: cfg.fast_start_jvm,
         minimize_to_tray: cfg.minimize_to_tray,
         friend_notifications: cfg.friend_notifications,
+        game_window_behavior: cfg.game_window_behavior,
     }
 }
 
@@ -225,6 +233,7 @@ pub async fn save_launcher_settings_impl(
     cfg.fast_start_jvm = new_settings.fast_start_jvm;
     cfg.minimize_to_tray = new_settings.minimize_to_tray;
     cfg.friend_notifications = new_settings.friend_notifications;
+    cfg.game_window_behavior = new_settings.game_window_behavior;
 
     cfg.save(&paths.config_file)
         .map_err(|e| format!("Не удалось сохранить конфигурацию: {}", e))?;
@@ -693,6 +702,7 @@ mod tests {
         updated.language = "en".to_string();
         updated.fast_start_jvm = true;
         updated.minimize_to_tray = false;
+        updated.game_window_behavior = "tray".to_string();
 
         save_launcher_settings_impl(updated, &paths, &mock_core)
             .await
@@ -712,6 +722,7 @@ mod tests {
         assert_eq!(reloaded.language, "en");
         assert!(reloaded.fast_start_jvm);
         assert!(!reloaded.minimize_to_tray);
+        assert_eq!(reloaded.game_window_behavior, "tray");
     }
 
     #[tokio::test]

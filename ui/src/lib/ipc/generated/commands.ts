@@ -5,6 +5,7 @@ import type {
     AchievementProgressDto,
     ClearStorageCacheResultDto,
     CrashDiagnosisDto,
+    DeepLinkActionDto,
     DiscordActivityDto,
     FriendItemDto,
     FriendProfileDto,
@@ -235,6 +236,10 @@ export type MusicUpdateSessionRequest = { session: MusicSessionStateDto, };;
 
 export type MusicCheckCommandResponse = { command: string | null, };;
 
+export type ParseDeepLinkRequest = { uri: string, };;
+
+export type ParseDeepLinkResponse = { action: DeepLinkActionDto, };;
+
 export const COMMANDS = {
     CORE_GET_CONFIG: "core_get_config",
     CORE_SAVE_CONFIG: "core_save_config",
@@ -312,6 +317,9 @@ export const COMMANDS = {
     MUSIC_GET_SMTC_STATE: "music_get_smtc_state",
     MUSIC_UPDATE_SESSION: "music_update_session",
     MUSIC_CHECK_COMMAND: "music_check_command",
+    DEEP_LINK_PARSE: "deep_link_parse",
+    DEEP_LINK_GET_PENDING: "deep_link_get_pending",
+    DEEP_LINK_CLEAR_PENDING: "deep_link_clear_pending",
 } as const;
 
 export type IpcCommandName = typeof COMMANDS[keyof typeof COMMANDS];

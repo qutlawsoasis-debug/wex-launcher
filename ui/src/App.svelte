@@ -31,7 +31,7 @@
   import MusicDiskWidget from './lib/components/MusicDiskWidget.svelte';
   import OnboardingModal from './lib/components/OnboardingModal.svelte';
   import DeepLinkConfirmationModal, { type DeepLinkAction } from './lib/components/DeepLinkConfirmationModal.svelte';
-  import type { CrashDiagnosisDto } from './lib/ipc/generated/models';
+  import type { CrashDiagnosisDto, DeepLinkActionDto } from './lib/ipc/generated/models';
   import { initIdleManager, setGameRunning, createIdleInterval } from './lib/design/idleManager';
   import { friendsLive, parseWexJoinUri } from './lib/services/friendsLive';
 
@@ -51,7 +51,7 @@
 
   // Deep link modal state (Apple HIG Alert / SPEC 2.11)
   let deepLinkModalOpen = $state(false);
-  let pendingDeepLink = $state<DeepLinkAction | null>(null);
+  let pendingDeepLink = $state<DeepLinkAction | DeepLinkActionDto | null>(null);
 
   function parseClientDeepLink(uri: string): DeepLinkAction {
     try {
@@ -106,24 +106,59 @@
     deepLinkModalOpen = true;
   }
 
-  async function handleConfirmDeepLink(action: DeepLinkAction) {
+  async function handleConfirmDeepLink(action: DeepLinkAction | DeepLinkActionDto) {
     deepLinkModalOpen = false;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('clear_pending_deep_link');
+    } catch {}
+
     if (action.kind === 'join') {
       activeTab = 'lobby';
       addToast('info', 'Подключение к лобби', `Код: ${action.target}`);
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('join_lobby_room', { code: action.target.toUpperCase(), playerName });
+      } catch (e: any) {
+        // Ignored in mock preview
+      }
     } else if (action.kind === 'server') {
       activeTab = 'play';
+      clientStatus = `Подключение к ${action.target}...`;
       addToast('info', 'Подключение к серверу', action.target);
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('launch_game', {
+          version: selectedVersion,
+          nickname: playerName,
+          server: action.target,
+        });
+        isGameRunning = true;
+        clientStatus = 'Minecraft запущен';
+      } catch (e: any) {
+        addToast('error', 'Ошибка подключения к серверу', String(e));
+      }
     } else if (action.kind === 'friend') {
       activeTab = 'friends';
       friendsSubtab = 'requests';
       addToast('info', 'Запрос в друзья', `Отправка запроса: ${action.target}`);
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('social_send_friend_request', { friend_code: action.target });
+        addToast('success', 'Запрос отправлен', `Запрос для ${action.target} успешно отправлен`);
+      } catch (e: any) {
+        addToast('error', 'Не удалось отправить запрос в друзья', String(e));
+      }
     }
   }
 
-  function handleCancelDeepLink() {
+  async function handleCancelDeepLink() {
     deepLinkModalOpen = false;
     pendingDeepLink = null;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('clear_pending_deep_link');
+    } catch {}
   }
 
   $effect(() => {
@@ -593,7 +628,7 @@
       activeTab = 'lobby';
     });
 
-    // Initial checks: parallelized network, profile, and active running game state
+    // Initial checks: parallelized network, profile, deep link and active running game state
     Promise.allSettled([
       checkNetwork(),
       loadProfile(),
@@ -613,6 +648,11 @@
           const cfg = await invoke<{ friend_notifications?: boolean }>('get_launcher_settings');
           if (cfg && cfg.friend_notifications !== undefined) {
             friendsLive.setNotificationsEnabled(cfg.friend_notifications);
+          }
+          const pending = await invoke<DeepLinkActionDto | null>('get_pending_deep_link');
+          if (pending) {
+            pendingDeepLink = pending;
+            deepLinkModalOpen = true;
           }
         } catch {}
       })(),
@@ -635,6 +675,8 @@
     let unlistenAchievement: (() => void) | undefined;
     let unlistenInvite: (() => void) | undefined;
     let unlistenCrash: (() => void) | undefined;
+    let unlistenDeepLink: (() => void) | undefined;
+    let unlistenPluginDeepLink: (() => void) | undefined;
 
     if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
       import('@tauri-apps/api/event')
@@ -644,6 +686,23 @@
             crashSheetOpen = true;
           }).then((fn) => {
             unlistenCrash = fn;
+          });
+          listen<DeepLinkActionDto>('wex://deep-link', (event) => {
+            if (event.payload) {
+              pendingDeepLink = event.payload;
+              deepLinkModalOpen = true;
+            }
+          }).then((fn) => {
+            unlistenDeepLink = fn;
+          });
+          listen<string | string[]>('deep-link://new-url', async (event) => {
+            const urls = Array.isArray(event.payload) ? event.payload : [event.payload];
+            const firstUrl = urls.find((u) => typeof u === 'string' && (u.startsWith('wex://') || u.startsWith('aura://')));
+            if (firstUrl) {
+              await handleRawDeepLink(firstUrl);
+            }
+          }).then((fn) => {
+            unlistenPluginDeepLink = fn;
           });
           listen<{
             stage: string;
@@ -739,6 +798,8 @@
       unlistenAchievement?.();
       unlistenInvite?.();
       unlistenCrash?.();
+      unlistenDeepLink?.();
+      unlistenPluginDeepLink?.();
     };
   });
 
@@ -906,7 +967,7 @@
     }}
   />
 
-  <!-- Deep Link Confirmation Modal (wex://) -->
+  <!-- Deep Link Confirmation Modal (SPEC 2.11 / Apple HIG Alert) -->
   <DeepLinkConfirmationModal
     bind:open={deepLinkModalOpen}
     action={pendingDeepLink}

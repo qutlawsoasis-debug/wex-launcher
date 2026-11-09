@@ -22,6 +22,7 @@
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Button from '../components/Button.svelte';
   import Icon from '../components/icons/Icon.svelte';
+  import LogsSheet from '../components/LogsSheet.svelte';
   import { theme } from '../design/theme.svelte';
   import { network } from '../design/network.svelte';
   import { AccentPresets, type AccentColor } from '../design/colors';
@@ -53,6 +54,7 @@
 
   // System & configuration state
   let selectedVersion = $state('1.21.1');
+  let logsSheetOpen = $state(false);
   let playerName = $state('Player');
   let totalMemoryMb = $state(16384);
   let ramMb = $state(4096);
@@ -70,6 +72,56 @@
   let launcherVersion = $state('1.0.0');
   let osName = $state('windows');
   let minimizeToTray = $state(true);
+  let gameWindowBehavior = $state('minimize');
+  let updateChecking = $state(false);
+  let updateStatusText = $state('');
+  let updateAvailable = $state(false);
+  let canAutoUpdateSettings = $state(false);
+  let updateDownloadUrl = $state('');
+
+  async function handleCheckUpdateSettings() {
+    updateChecking = true;
+    updateStatusText = 'Проверка обновлений…';
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<any>('updater_check');
+      if (res && res.update_available) {
+        updateAvailable = true;
+        canAutoUpdateSettings = Boolean(
+          res.can_auto_update ?? (res.signature && res.signature.length >= 32)
+        );
+        updateDownloadUrl = res.download_url || '';
+        updateStatusText = `Доступна версия ${res.latest_version || ''}${!canAutoUpdateSettings ? ' (неподписанная)' : ''}`;
+      } else {
+        updateAvailable = false;
+        updateStatusText = 'У вас установлена последняя версия';
+      }
+    } catch {
+      updateStatusText = 'Не удалось проверить обновления';
+    } finally {
+      updateChecking = false;
+    }
+  }
+
+  async function handleApplyUpdateSettings() {
+    if (!updateDownloadUrl) return;
+    if (!canAutoUpdateSettings) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('updater_open_download_url', { url: updateDownloadUrl });
+      } catch {
+        if (typeof window !== 'undefined') window.open(updateDownloadUrl, '_blank');
+      }
+    } else {
+      updateStatusText = 'Перейдите на экран «Играть» для установки';
+    }
+  }
+
+  const gameWindowBehaviorOptions = [
+    { value: 'keep', label: 'Оставить' },
+    { value: 'minimize', label: 'Свернуть' },
+    { value: 'tray', label: 'Скрыть в трей' },
+  ];
 
   let graphicsOptions = $derived([
     { value: 'Low', label: t('settings.graphics_low') },
@@ -223,6 +275,7 @@
         reduce_motion?: boolean;
         reduce_transparency?: boolean;
         minimize_to_tray?: boolean;
+        game_window_behavior?: string;
       }>('get_launcher_settings');
 
       if (cfg) {
@@ -249,6 +302,7 @@
         if (cfg.appearance) theme.setAppearance(cfg.appearance as 'dark' | 'light' | 'auto');
         if (cfg.accent) theme.setAccent(cfg.accent as AccentColor);
         if (cfg.minimize_to_tray !== undefined) minimizeToTray = cfg.minimize_to_tray;
+        if (cfg.game_window_behavior) gameWindowBehavior = cfg.game_window_behavior;
         theme.setReduceMotion(cfg.reduce_motion ?? false);
         theme.setReduceTransparency(cfg.reduce_transparency ?? false);
       }
@@ -308,6 +362,7 @@
           reduce_motion: theme.reduceMotion,
           reduce_transparency: theme.reduceTransparency,
           minimize_to_tray: minimizeToTray,
+          game_window_behavior: gameWindowBehavior,
         },
       });
     } catch {
@@ -371,6 +426,12 @@
     theme.setAccent('blue');
     theme.setReduceMotion(false);
     theme.setReduceTransparency(false);
+    gameWindowBehavior = 'minimize';
+    saveConfig();
+  }
+
+  function handleGameWindowBehaviorChange(val: string) {
+    gameWindowBehavior = val;
     saveConfig();
   }
 
@@ -684,6 +745,25 @@
           </div>
         {/snippet}
       </Row>
+
+      <Row
+        title="Журнал событий и краш-дампы"
+        subtitle="Просмотр latest.log, crash-reports и hs_err_pid для диагностики сбоев"
+      >
+        {#snippet trailing()}
+          <div class="dir-actions">
+            <Button
+              variant="secondary"
+              size="small"
+              onclick={() => (logsSheetOpen = true)}
+              title="Открыть лист журнала"
+            >
+              <Icon name="info" size={13} color="var(--color-secondary-label)" />
+              <span data-testid="btn-open-logs-sheet">Журнал</span>
+            </Button>
+          </div>
+        {/snippet}
+      </Row>
     </List>
 
     <!-- Storage Section -->
@@ -922,6 +1002,26 @@
       </Row>
     </List>
 
+    <!-- Window Behavior During Game (SPEC 1.2 / Apple HIG) -->
+    <List header="Поведение окна">
+      <Row
+        title="Во время игры"
+        subtitle="Действие с окном лаунчера после старта игры: оставить открытым, свернуть или спрятать в область уведомлений"
+      >
+        {#snippet trailing()}
+          <div style="width: 320px;">
+            <SegmentedControl
+              options={gameWindowBehaviorOptions}
+              value={gameWindowBehavior}
+              ariaLabel="Во время игры"
+              onchange={handleGameWindowBehaviorChange}
+              size="small"
+            />
+          </div>
+        {/snippet}
+      </Row>
+    </List>
+
     <!-- Accessibility / Универсальный доступ -->
     <List header={t('settings.header_a11y')}>
       <Row
@@ -983,6 +1083,32 @@
         trailingText="Wex Project"
       />
       <Row
+        title="Самообновление лаунчера"
+        subtitle={updateStatusText || `Проверка релизов по latest.json`}
+      >
+        {#snippet trailing()}
+          {#if updateChecking}
+            <span class="updating-text">Проверка…</span>
+          {:else if updateAvailable}
+            <Button
+              variant="primary"
+              size="small"
+              onclick={handleApplyUpdateSettings}
+            >
+              {canAutoUpdateSettings ? 'Обновить' : 'Скачать'}
+            </Button>
+          {:else}
+            <Button
+              variant="secondary"
+              size="small"
+              onclick={handleCheckUpdateSettings}
+            >
+              Проверить
+            </Button>
+          {/if}
+        {/snippet}
+      </Row>
+      <Row
         title={t('settings.about_stack_title')}
         subtitle={t('settings.about_stack_subtitle')}
         trailingText="v1.0.0"
@@ -1026,6 +1152,8 @@
       </Button>
     </div>
   </div>
+
+  <LogsSheet bind:open={logsSheetOpen} version={selectedVersion} />
 </div>
 
 <style>
@@ -1361,5 +1489,10 @@
   .disabled-desc {
     font-size: 12px;
     color: var(--color-tertiary-label);
+  }
+
+  .updating-text {
+    font-size: var(--text-caption-1);
+    color: var(--color-secondary-label);
   }
 </style>

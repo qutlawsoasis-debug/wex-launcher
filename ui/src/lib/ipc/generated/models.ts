@@ -112,3 +112,5 @@ export type StorageCacheInfoDto = { total_bytes: bigint, formatted_size: string,
 
 export type ClearStorageCacheResultDto = { bytes_freed: bigint, formatted_freed: string, files_deleted: number, status_text: string, };;
 
+export type DeepLinkActionDto = { kind: string, target: string, raw_uri: string, title: string, subtitle: string, confirm_text: string, };;
+
