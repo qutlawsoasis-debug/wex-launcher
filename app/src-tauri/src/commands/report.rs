@@ -581,13 +581,7 @@ pub fn save_report_zip_impl(
 
     let file_size_bytes = fs::metadata(&zip_path).map(|m| m.len()).unwrap_or(0);
 
-    // Open explorer with file selected on Windows
-    #[cfg(target_os = "windows")]
-    {
-        let _ = std::process::Command::new("explorer.exe")
-            .arg(format!("/select,\"{}\"", zip_path.display()))
-            .spawn();
-    }
+    reveal_saved_report(&zip_path);
 
     Ok(SaveReportResultDto {
         success: true,
@@ -595,6 +589,26 @@ pub fn save_report_zip_impl(
         file_name: zip_name,
         file_size_bytes,
     })
+}
+
+#[cfg(test)]
+thread_local! {
+    static REVEALED_REPORT: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+fn reveal_saved_report(zip_path: &std::path::Path) {
+    #[cfg(test)]
+    REVEALED_REPORT.with(|path| *path.borrow_mut() = Some(zip_path.to_path_buf()));
+
+    #[cfg(all(target_os = "windows", not(test)))]
+    {
+        let _ = std::process::Command::new("explorer.exe")
+            .arg(format!("/select,\"{}\"", zip_path.display()))
+            .spawn();
+    }
+
+    #[cfg(all(not(target_os = "windows"), not(test)))]
+    let _ = zip_path;
 }
 
 /// Formats the entire report into clipboard-friendly Markdown text.
@@ -820,6 +834,7 @@ mod tests {
         assert!(res.success);
         let zip_path = PathBuf::from(&res.zip_path);
         assert!(zip_path.is_file());
+        REVEALED_REPORT.with(|path| assert_eq!(path.borrow().as_ref(), Some(&zip_path)));
         assert!(res.file_size_bytes > 0);
 
         // Read and verify zip contents
