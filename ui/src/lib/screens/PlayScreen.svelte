@@ -172,7 +172,7 @@
 
   function getSafeAssetUrl(filePath: string | null): string | null {
     if (!filePath) return null;
-    if (filePath.startsWith('data:') || filePath.startsWith('blob:')) return filePath;
+    if (filePath.startsWith('data:') || filePath.startsWith('blob:') || filePath.startsWith('http:') || filePath.startsWith('https:')) return filePath;
     try {
       return (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
         ? `https://asset.localhost/${encodeURIComponent(filePath.replace(/\\/g, '/'))}`
@@ -883,6 +883,7 @@ $effect(() => {
               }
             }}
             title="Нажмите, чтобы открыть в Мастерской"
+            aria-label="Последний скриншот. Нажмите, чтобы открыть в Мастерской"
           >
             <div class="glance-img-container">
               <img

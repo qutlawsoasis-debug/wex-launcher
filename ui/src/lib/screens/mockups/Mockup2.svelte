@@ -49,7 +49,7 @@
     selectedVersion === '1.20.1' ? 'Java 17 • 64-bit' : 'Java 21 • 64-bit'
   );
 
-  let heroImage = $derived(theme.isDark ? '/art/sunset.png' : '/art/day.png');
+  let heroImage = $derived(theme.isDark ? '/art/sunset.webp' : '/art/day.webp');
 </script>
 
 <div class="mockup2-container">
