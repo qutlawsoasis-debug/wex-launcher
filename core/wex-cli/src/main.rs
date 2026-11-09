@@ -180,23 +180,51 @@ async fn main() -> Result<()> {
                     })
                     .collect();
 
-                let mut root = wex_net::load_servers_dat(&servers_dat_path).unwrap_or_else(|_| {
-                    wex_net::NbtTag::Compound(vec![(
+                if servers_dat_path.exists() {
+                    match wex_net::load_servers_dat(&servers_dat_path) {
+                        Ok(mut root) => {
+                            wex_net::merge_pack_servers(&mut root, &pack_entries);
+                            if let Err(e) = wex_net::save_servers_dat(&servers_dat_path, &root) {
+                                eprintln!(
+                                    "Предупреждение: Не удалось сохранить серверы в {:?}: {}",
+                                    servers_dat_path, e
+                                );
+                            } else {
+                                println!(
+                                    "Imported {} server(s) into {:?}",
+                                    pack_entries.len(),
+                                    servers_dat_path
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "Предупреждение: Не удалось прочитать existing servers.dat: {}. Файл сохранён без перезаписи.",
+                                e
+                            );
+                        }
+                    }
+                } else {
+                    let mut root = wex_net::NbtTag::Compound(vec![(
                         "servers".to_string(),
                         wex_net::NbtTag::List {
                             tag_id: 10,
                             elements: Vec::new(),
                         },
-                    )])
-                });
-
-                wex_net::merge_pack_servers(&mut root, &pack_entries);
-                if wex_net::save_servers_dat(&servers_dat_path, &root).is_ok() {
-                    println!(
-                        "Imported {} server(s) into {:?}",
-                        pack_entries.len(),
-                        servers_dat_path
-                    );
+                    )]);
+                    wex_net::merge_pack_servers(&mut root, &pack_entries);
+                    if let Err(e) = wex_net::save_servers_dat(&servers_dat_path, &root) {
+                        eprintln!(
+                            "Предупреждение: Не удалось сохранить серверы в {:?}: {}",
+                            servers_dat_path, e
+                        );
+                    } else {
+                        println!(
+                            "Imported {} server(s) into {:?}",
+                            pack_entries.len(),
+                            servers_dat_path
+                        );
+                    }
                 }
             }
 
