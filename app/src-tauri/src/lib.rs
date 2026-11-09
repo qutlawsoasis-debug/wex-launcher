@@ -148,6 +148,8 @@ pub fn run() {
             commands::lobby::net_lan_stop_discovery,
             commands::lobby::net_lan_is_discovering,
             commands::lobby::publish_lan_world,
+            commands::lobby::retry_lobby_tunnel,
+            commands::lobby::net_compare_manifests,
             // Wardrobe commands
             commands::wardrobe::extras_validate_skin,
             commands::wardrobe::extras_convert_skin,

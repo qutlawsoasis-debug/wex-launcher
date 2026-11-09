@@ -683,7 +683,7 @@
           {:else if activeTab === 'servers'}
             <ServersScreen />
           {:else if activeTab === 'lobby'}
-            <LobbyScreen />
+            <LobbyScreen {playerName} />
           {:else if activeTab === 'friends'}
             <FriendsScreen tab={friendsSubtab} />
           {:else if activeTab === 'wardrobe'}

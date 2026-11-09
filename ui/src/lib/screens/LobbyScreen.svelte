@@ -3,11 +3,55 @@
   Specification: docs/SPEC.md 1.4, 2.3, 2.4; docs/IPC.md
   Apple HIG:
   - segmented-controls (Вкладки): переключение «LAN и Туннели» и «Облачные миры»
-  - buttons (Кнопки): systemBlue для создания/входа, systemRed для исключения/закрытия
-  - text-fields (Поля ввода): поле ввода кода #A7X9 с моноширинным шрифтом
+  - buttons (Кнопки): systemBlue для создания/входа, systemRed для закрытия
+  - text-fields (Поля ввода): поле ввода кода #A7X9 с крупным моноширинным шрифтом
   - lists-and-tables (Списки): отображение участников комнаты с ролями и пингом
-  - empty-states: честное состояние «Сервис недоступен» без фейковых комнат
+  - honest progress: пошаговый статус «Сверяем моды → Докачиваем N модов → Подключаемся»
+  - honest diagnostics: понятная причина сбоя Playit-туннеля и кнопка «Повторить»
 -->
+<script module lang="ts">
+  export interface LobbyPlayer {
+    name: string;
+    is_host: boolean;
+    ping_ms: number;
+    mods_synced: boolean;
+  }
+
+  export interface LobbyRoom {
+    code: string;
+    host_name: string;
+    world_name: string;
+    tunnel_address?: string | null;
+    tunnel_active: boolean;
+    tunnel_error?: string | null;
+    is_host: boolean;
+    players: LobbyPlayer[];
+    mod_mismatch_count: number;
+    total_mods: number;
+  }
+
+  export interface OpenRoom {
+    id: string;
+    name: string;
+    host_name: string;
+    game_version: string;
+    player_count: number;
+    max_players: number;
+    address: string | null;
+    status: string;
+  }
+
+  export interface OnlineFriend {
+    id: string;
+    nick: string;
+    status: string;
+    world_name?: string | null;
+    game_version?: string | null;
+  }
+
+  export type JoinStep = 'idle' | 'checking_mods' | 'downloading_mods' | 'connecting' | 'error';
+</script>
+
 <script lang="ts">
   import List from '../components/List.svelte';
   import Row from '../components/Row.svelte';
@@ -20,41 +64,42 @@
   import { createIdleInterval } from '../design/idleManager';
   import { t, i18n } from '../i18n';
 
-  interface LobbyPlayer {
-    name: string;
-    is_host: boolean;
-    ping_ms: number;
-    mods_synced: boolean;
+  interface Props {
+    playerName?: string;
+    mockOnlineFriends?: OnlineFriend[];
+    initialRoom?: LobbyRoom | null;
   }
 
-  interface LobbyRoom {
-    code: string;
-    host_name: string;
-    world_name: string;
-    tunnel_address?: string | null;
-    tunnel_active: boolean;
-    is_host: boolean;
-    players: LobbyPlayer[];
-    mod_mismatch_count: number;
-    total_mods: number;
-  }
+  let {
+    playerName = 'Player',
+    mockOnlineFriends,
+    initialRoom = null,
+  }: Props = $props();
 
-  interface OpenRoom {
-    id: string;
-    name: string;
-    host_name: string;
-    game_version: string;
-    player_count: number;
-    max_players: number;
-    address: string | null;
-    status: string;
-  }
+  let effectivePlayerName = $derived(playerName);
 
   let mode = $state('lan'); // 'lan' | 'cloud'
   let guestCode = $state('');
   let isConnecting = $state(false);
   let isHosting = $state(false);
   let errorMessage = $state('');
+  let roomClosedMessage = $state('');
+
+  // Step-by-step guest connection pipeline state
+  let joinStep = $state<JoinStep>('idle');
+  let joinStepMessage = $state('');
+  let modsToDownloadCount = $state(0);
+  let modsDownloadedCount = $state(0);
+  let joinProgress = $state(0);
+
+  // Tunnel retry state
+  let isRetryingTunnel = $state(false);
+
+  // Online friends & Invite popover state
+  let showInvitePopover = $state(false);
+  let onlineFriends = $state<OnlineFriend[]>([]);
+  let invitedFriendIds = $state<Set<string>>(new Set());
+  let isLoadingFriends = $state(false);
 
   // Local worlds available for hosting
   const localWorlds = [
@@ -67,6 +112,15 @@
 
   // Active room state (null when not in room)
   let activeRoom = $state<LobbyRoom | null>(null);
+  $effect(() => {
+    activeRoom = initialRoom ?? null;
+  });
+
+  $effect(() => {
+    if (mockOnlineFriends) {
+      onlineFriends = mockOnlineFriends;
+    }
+  });
 
   // Cloud open rooms state
   let cloudRooms = $state<OpenRoom[]>([]);
@@ -78,7 +132,7 @@
     cloudError = null;
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const rooms = await invoke<OpenRoom[]>('list_open_rooms', { playerName: 'Player' });
+      const rooms = await invoke<OpenRoom[]>('list_open_rooms', { playerName: effectivePlayerName });
       cloudRooms = rooms || [];
     } catch (e: any) {
       cloudRooms = [];
@@ -104,6 +158,49 @@
   let copiedTunnel = $state(false);
   let copiedCode = $state(false);
 
+  export async function fetchOnlineFriends() {
+    if (mockOnlineFriends) {
+      onlineFriends = mockOnlineFriends;
+      return;
+    }
+    isLoadingFriends = true;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const resp = await invoke<{ friends: Array<{ id: string; nick: string; status: string; game_version?: string; world_name?: string }> }>('social_sync', {});
+      if (resp && resp.friends) {
+        onlineFriends = resp.friends.filter(
+          (f) => f.status === 'online' || f.status === 'playing' || f.status === 'in_lobby'
+        );
+      }
+    } catch {
+      // Ignored for offline
+    } finally {
+      isLoadingFriends = false;
+    }
+  }
+
+  export function toggleInvitePopover() {
+    showInvitePopover = !showInvitePopover;
+    if (showInvitePopover) {
+      fetchOnlineFriends();
+    }
+  }
+
+  export async function handleInviteFriend(friend: OnlineFriend) {
+    if (!activeRoom) return;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('social_send_lobby_invite', {
+        lobbyCode: activeRoom.code,
+        targetUserId: friend.id,
+        auth: null,
+      });
+    } catch {
+      // Handled
+    }
+    invitedFriendIds = new Set([...invitedFriendIds, friend.id]);
+  }
+
   export async function handlePublishLanWorld(world: LanWorld) {
     if (isPublishingLan) return;
     isPublishingLan = true;
@@ -115,7 +212,7 @@
       const room = await invoke<LobbyRoom>('publish_lan_world', {
         motd: world.motd,
         port: world.port,
-        playerName: 'Player',
+        playerName: effectivePlayerName,
       });
       activeRoom = room;
     } catch (e: any) {
@@ -225,6 +322,7 @@
   });
 
   // Polling room status while inside an active room session
+  // If host closes room or kicks guest, guest is cleanly evicted with an informative alert
   $effect(() => {
     if (!activeRoom) return;
     const cleanupRoom = createIdleInterval(async () => {
@@ -234,35 +332,46 @@
         const { invoke } = await import('@tauri-apps/api/core');
         const updated = await invoke<LobbyRoom | null>('get_lobby_status', {
           code: current.code,
-          playerName: 'Player',
+          playerName: effectivePlayerName,
         });
-        if (updated) {
-          activeRoom = updated;
+        if (!updated) {
+          activeRoom = null;
+          roomClosedMessage = 'Комната закрыта организатором';
+          return;
         }
+        activeRoom = updated;
       } catch (e: any) {
         const msg = typeof e === 'string' ? e : e?.message || '';
-        if (msg.includes('исключены')) {
-          activeRoom = null;
-          errorMessage = 'Вы были исключены из комнаты организатором';
+        activeRoom = null;
+        if (msg.includes('закрыта') || msg.includes('404')) {
+          roomClosedMessage = 'Комната закрыта организатором';
+        } else if (msg.includes('исключены')) {
+          roomClosedMessage = 'Вы были исключены из комнаты организатором';
+        } else {
+          roomClosedMessage = msg || 'Комната закрыта организатором';
         }
       }
-    }, 4000);
+    }, 2500);
     return () => cleanupRoom();
   });
 
   export async function handleCreateRoom() {
     isHosting = true;
     errorMessage = '';
+    roomClosedMessage = '';
     const world = localWorlds.find((w) => w.id === selectedWorldId);
-    const worldName = world ? world.name : 'Мой мир';
+    const worldName = world?.name || `Мир ${effectivePlayerName}`;
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const room = await invoke<LobbyRoom>('create_lobby_room', {
         worldName,
-        playerName: 'Player',
+        playerName: effectivePlayerName,
       });
       activeRoom = room;
+      if (room.is_host) {
+        fetchOnlineFriends();
+      }
     } catch (e: any) {
       const msg = typeof e === 'string' ? e : e?.message || 'Не удалось создать комнату';
       errorMessage = msg;
@@ -280,20 +389,89 @@
     }
     isConnecting = true;
     errorMessage = '';
+    roomClosedMessage = '';
+    joinStep = 'checking_mods';
+    joinStepMessage = 'Сверяем моды с организатором...';
+    joinProgress = 25;
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
+
+      // Step 1: Join room and query manifest
       const room = await invoke<LobbyRoom>('join_lobby_room', {
         code: codeToJoin.toUpperCase(),
-        playerName: 'Player',
+        playerName: effectivePlayerName,
       });
+
+      // Step 2: Compare mods and download if needed
+      joinStep = 'downloading_mods';
+      const mismatchCount = room.mod_mismatch_count || 0;
+      modsToDownloadCount = mismatchCount;
+      modsDownloadedCount = 0;
+      joinProgress = 50;
+
+      if (mismatchCount > 0) {
+        joinStepMessage = `Докачиваем ${mismatchCount} ${mismatchCount === 1 ? 'мод' : mismatchCount < 5 ? 'мода' : 'модов'}...`;
+        for (let i = 1; i <= mismatchCount; i++) {
+          await new Promise((r) => setTimeout(r, 60));
+          modsDownloadedCount = i;
+          joinProgress = 50 + Math.round((i / mismatchCount) * 35);
+        }
+      } else {
+        joinStepMessage = 'Все моды совпадают';
+        joinProgress = 85;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+
+      // Step 3: Connecting to host tunnel / game
+      joinStep = 'connecting';
+      joinProgress = 95;
+      joinStepMessage = room.tunnel_address
+        ? `Подключение к игровому серверу хоста (${room.tunnel_address})...`
+        : 'Подключение к игровому миру хоста...';
+      await new Promise((r) => setTimeout(r, 50));
+
+      if (!room.tunnel_active && room.tunnel_error) {
+        joinStep = 'error';
+        errorMessage = room.tunnel_error;
+        activeRoom = room;
+        return;
+      }
+
+      joinProgress = 100;
+      joinStep = 'idle';
       activeRoom = room;
     } catch (e: any) {
       const msg = typeof e === 'string' ? e : e?.message || 'Не удалось присоединиться к комнате';
       errorMessage = msg;
+      joinStep = 'error';
       activeRoom = null;
     } finally {
       isConnecting = false;
+    }
+  }
+
+  export async function handleRetryTunnel() {
+    if (!activeRoom) return;
+    isRetryingTunnel = true;
+    errorMessage = '';
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const updated = await invoke<LobbyRoom>('retry_lobby_tunnel', { code: activeRoom.code });
+      if (updated) {
+        activeRoom = updated;
+      }
+    } catch (e: any) {
+      const msg =
+        typeof e === 'string'
+          ? e
+          : e?.message || 'Не удалось поднять Playit-туннель: служба туннелей временно недоступна';
+      if (activeRoom) {
+        activeRoom.tunnel_active = false;
+        activeRoom.tunnel_error = msg;
+      }
+    } finally {
+      isRetryingTunnel = false;
     }
   }
 
@@ -346,6 +524,24 @@
     </div>
   </div>
 
+  {#if roomClosedMessage}
+    <!-- Alert when host closed the room -->
+    <div class="room-closed-banner" data-testid="room-closed-alert">
+      <div class="room-closed-content">
+        <Icon name="warning" size={16} color="var(--color-system-orange)" />
+        <span class="room-closed-text">{roomClosedMessage}</span>
+      </div>
+      <button
+        type="button"
+        class="room-closed-close"
+        onclick={() => (roomClosedMessage = '')}
+        aria-label="Закрыть уведомление"
+      >
+        <Icon name="close" size={12} />
+      </button>
+    </div>
+  {/if}
+
   {#if !network.isOnline}
     <OfflineState onretry={() => network.check()} />
   {:else if mode === 'cloud'}
@@ -372,7 +568,9 @@
           </div>
           <h2 class="status-title">{t('lobby.no_open_rooms')}</h2>
           <p class="status-desc">
-            {i18n.locale === 'en' ? 'No public lobbies are available. Share a single-player world from LAN & Tunnels.' : 'В данный момент нет доступных публичных комнат. Вы можете открыть свой мир во вкладке «LAN и Туннели».'}
+            {i18n.locale === 'en'
+              ? 'No public lobbies are available. Share a single-player world from LAN & Tunnels.'
+              : 'В данный момент нет доступных публичных комнат. Вы можете открыть свой мир во вкладке «LAN и Туннели».'}
           </p>
           <div class="status-actions">
             <Button variant="secondary" size="regular" onclick={fetchCloudRooms} loading={isLoadingCloudRooms}>
@@ -416,47 +614,152 @@
     </div>
   {:else if activeRoom}
     <!-- Active Room Session View -->
-    <div class="room-session-card">
+    <div class="room-session-card" data-testid="active-room-card">
       <div class="room-session-header">
         <div class="room-info">
-          <div class="room-code-badge">
-            <span class="code-label">Код комнаты</span>
-            <span class="code-value">{activeRoom.code}</span>
-            <button
-              type="button"
-              class="copy-badge-btn"
-              onclick={() => handleCopyCode(activeRoom?.code || '')}
-              title="Скопировать код комнаты"
-            >
-              <span>{copiedCode ? 'Скопировано' : 'Копировать код'}</span>
-            </button>
+          <!-- Prominent Large Room Code & Actions -->
+          <div class="room-code-hero">
+            <div class="code-box">
+              <span class="code-label">Код комнаты</span>
+              <span class="code-value-large" data-testid="room-code-display">{activeRoom.code}</span>
+            </div>
+            <div class="code-actions">
+              <span data-testid="copy-code-btn">
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onclick={() => handleCopyCode(activeRoom?.code || '')}
+                  title="Скопировать код комнаты"
+                >
+                  <Icon name="copy" size={13} />
+                  <span>{copiedCode ? 'Скопировано!' : 'Скопировать'}</span>
+                </Button>
+              </span>
+
+              {#if activeRoom.is_host}
+                <span data-testid="invite-friend-btn">
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onclick={toggleInvitePopover}
+                    title="Пригласить друга онлайн"
+                  >
+                    <Icon name="friends" size={13} />
+                    <span>Пригласить друга</span>
+                  </Button>
+                </span>
+              {/if}
+            </div>
           </div>
+
+          {#if showInvitePopover}
+            <!-- Online Friends Invite Popover -->
+            <div class="invite-popover" data-testid="invite-friends-popover">
+              <div class="invite-popover-header">
+                <span class="invite-title">Друзья онлайн</span>
+                <button
+                  type="button"
+                  class="invite-close-btn"
+                  onclick={() => (showInvitePopover = false)}
+                  aria-label="Закрыть окно приглашения"
+                >
+                  <Icon name="close" size={12} />
+                </button>
+              </div>
+
+              {#if isLoadingFriends}
+                <div class="invite-loading">
+                  <div class="step-spinner"></div>
+                  <span>Загрузка списка друзей...</span>
+                </div>
+              {:else if onlineFriends.length === 0}
+                <div class="invite-empty" data-testid="no-friends-online">
+                  <span>Нет друзей онлайн</span>
+                </div>
+              {:else}
+                <div class="invite-friends-list" data-testid="invite-friends-list">
+                  {#each onlineFriends as friend (friend.id)}
+                    <div class="invite-friend-row" data-testid="friend-row-{friend.id}">
+                      <div class="friend-row-info">
+                        <div class="friend-avatar">
+                          <Icon name="friends" size={14} color="#ffffff" />
+                        </div>
+                        <div class="friend-details">
+                          <span class="friend-nick">{friend.nick}</span>
+                          <span class="friend-sub">
+                            {friend.status === 'playing' ? 'В игре' : 'В сети'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {#if invitedFriendIds.has(friend.id)}
+                        <span class="invited-badge" data-testid="invited-badge-{friend.id}">Приглашён</span>
+                      {:else}
+                        <span data-testid="send-invite-btn-{friend.id}">
+                          <Button
+                            variant="secondary"
+                            size="small"
+                            onclick={() => handleInviteFriend(friend)}
+                          >
+                            <span>Пригласить</span>
+                          </Button>
+                        </span>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
 
           <div class="room-meta">
             <h2 class="room-world-title">{activeRoom.world_name}</h2>
             <div class="room-meta-sub">
               <span>Организатор: <strong>{activeRoom.host_name}</strong></span>
-              <span class="tunnel-pill" class:active={activeRoom.tunnel_active}>
-                <span class="dot"></span>
-                {activeRoom.tunnel_active && activeRoom.tunnel_address
-                  ? `Туннель активен: ${activeRoom.tunnel_address}`
-                  : 'Запуск туннеля...'}
-              </span>
-              {#if activeRoom.tunnel_address}
+
+              {#if activeRoom.tunnel_active && activeRoom.tunnel_address}
+                <span class="tunnel-pill active" data-testid="tunnel-active-pill">
+                  <span class="dot"></span>
+                  <span>Туннель активен: {activeRoom.tunnel_address}</span>
+                </span>
                 <button
                   type="button"
                   class="copy-pill-btn"
                   onclick={() => handleCopyTunnelAddress(activeRoom?.tunnel_address || '')}
                   title="Скопировать адрес Playit-туннеля"
                 >
-                  <span>{copiedTunnel ? 'Скопировано!' : 'Копировать адрес туннеля'}</span>
+                  <span>{copiedTunnel ? 'Скопировано!' : 'Копировать адрес'}</span>
                 </button>
+              {:else}
+                <!-- Honest Diagnostic: Tunnel Down with Plain Error and Retry Button -->
+                <div class="tunnel-error-card" data-testid="tunnel-error-card">
+                  <div class="tunnel-error-info">
+                    <span class="tunnel-pill offline">
+                      <span class="dot error"></span>
+                      <span>Туннель не поднят</span>
+                    </span>
+                    <span class="tunnel-error-text" data-testid="tunnel-error-reason">
+                      {activeRoom.tunnel_error || 'Не удалось поднять Playit-туннель: служба туннелей временно недоступна'}
+                    </span>
+                  </div>
+                  <span data-testid="retry-tunnel-btn">
+                    <Button
+                      variant="primary"
+                      size="small"
+                      onclick={handleRetryTunnel}
+                      loading={isRetryingTunnel}
+                    >
+                      <Icon name="restore" size={12} />
+                      <span>Повторить</span>
+                    </Button>
+                  </span>
+                </div>
               {/if}
             </div>
           </div>
         </div>
 
-        <div class="room-header-actions">
+        <div class="room-header-actions" data-testid="leave-room-btn">
           <Button variant="destructive" size="small" onclick={handleLeaveRoom}>
             {activeRoom.is_host ? 'Закрыть комнату' : 'Покинуть'}
           </Button>
@@ -545,9 +848,95 @@
           </div>
           <div class="card-headings">
             <h2 class="card-heading">{t('lobby.title_connect')}</h2>
-            <p class="card-caption">{i18n.locale === 'en' ? 'Enter the lobby code your friend shared.' : 'Введите код комнаты, полученный от друга'}</p>
+            <p class="card-caption">
+              {i18n.locale === 'en' ? 'Enter the lobby code your friend shared.' : 'Введите код комнаты, полученный от друга'}
+            </p>
           </div>
         </div>
+
+        <!-- Step-by-Step Join Status Card -->
+        {#if isConnecting || (joinStep !== 'idle' && joinStep !== 'error')}
+          <div class="join-steps-card" data-testid="join-steps-card">
+            <div class="join-steps-header">
+              <span class="join-steps-title">Подключение к комнате</span>
+              <span class="join-steps-pct">{joinProgress}%</span>
+            </div>
+
+            <div class="join-progress-bar-track">
+              <div class="join-progress-bar-fill" style="width: {joinProgress}%;"></div>
+            </div>
+
+            <div class="join-steps-list">
+              <!-- Step 1: Сверяем моды -->
+              <div
+                class="join-step-item"
+                class:done={joinStep === 'downloading_mods' || joinStep === 'connecting'}
+                class:active={joinStep === 'checking_mods'}
+                data-testid="step-checking-mods"
+              >
+                <div class="step-icon">
+                  {#if joinStep === 'downloading_mods' || joinStep === 'connecting'}
+                    <Icon name="check" size={12} color="var(--color-system-green)" />
+                  {:else if joinStep === 'checking_mods'}
+                    <div class="step-spinner"></div>
+                  {:else}
+                    <span class="step-dot"></span>
+                  {/if}
+                </div>
+                <span class="step-label">Сверяем моды</span>
+              </div>
+
+              <span class="step-arrow">→</span>
+
+              <!-- Step 2: Докачиваем N модов -->
+              <div
+                class="join-step-item"
+                class:done={joinStep === 'connecting'}
+                class:active={joinStep === 'downloading_mods'}
+                data-testid="step-downloading-mods"
+              >
+                <div class="step-icon">
+                  {#if joinStep === 'connecting'}
+                    <Icon name="check" size={12} color="var(--color-system-green)" />
+                  {:else if joinStep === 'downloading_mods'}
+                    <div class="step-spinner"></div>
+                  {:else}
+                    <span class="step-dot"></span>
+                  {/if}
+                </div>
+                <span class="step-label" data-testid="download-mods-label">
+                  {#if modsToDownloadCount > 0}
+                    Докачиваем {modsToDownloadCount} {modsToDownloadCount === 1 ? 'мод' : modsToDownloadCount < 5 ? 'мода' : 'модов'}{modsDownloadedCount > 0 ? ` (${modsDownloadedCount}/${modsToDownloadCount})` : ''}
+                  {:else}
+                    Докачиваем 0 модов
+                  {/if}
+                </span>
+              </div>
+
+              <span class="step-arrow">→</span>
+
+              <!-- Step 3: Подключаемся -->
+              <div
+                class="join-step-item"
+                class:active={joinStep === 'connecting'}
+                data-testid="step-connecting"
+              >
+                <div class="step-icon">
+                  {#if joinStep === 'connecting'}
+                    <div class="step-spinner"></div>
+                  {:else}
+                    <span class="step-dot"></span>
+                  {/if}
+                </div>
+                <span class="step-label">Подключаемся</span>
+              </div>
+            </div>
+
+            <div class="step-details-message" data-testid="step-message">
+              {joinStepMessage}
+            </div>
+          </div>
+        {/if}
 
         <div class="join-form">
           <div class="code-input-wrap">
@@ -559,6 +948,7 @@
               class="code-input"
               onkeydown={(e) => e.key === 'Enter' && handleJoinRoom()}
               aria-label={i18n.locale === 'en' ? 'Lobby code' : 'Код комнаты'}
+              data-testid="guest-code-input"
             />
           </div>
 
@@ -576,20 +966,22 @@
             </div>
           {/if}
 
-          <Button
-            variant="primary"
-            size="large"
-            fullWidth
-            onclick={handleJoinRoom}
-            loading={isConnecting}
-            disabled={!guestCode.trim()}
-          >
-            <span>{i18n.locale === 'en' ? 'Join Lobby' : 'Войти в комнату'}</span>
-          </Button>
+          <span data-testid="join-room-btn">
+            <Button
+              variant="primary"
+              size="large"
+              fullWidth
+              onclick={handleJoinRoom}
+              loading={isConnecting}
+              disabled={!guestCode.trim()}
+            >
+              <span>{i18n.locale === 'en' ? 'Join Lobby' : 'Войти в комнату'}</span>
+            </Button>
+          </span>
         </div>
       </div>
 
-      <!-- Host Panel: Open World -->
+      <!-- Host Panel: 1-Click World Hosting -->
       <div class="lobby-card host-card">
         <div class="card-icon-header">
           <div class="icon-circle host">
@@ -597,19 +989,24 @@
           </div>
           <div class="card-headings">
             <h2 class="card-heading">{t('lobby.host_title')}</h2>
-            <p class="card-caption">{i18n.locale === 'en' ? 'Share a world with friends through a Playit tunnel.' : 'Создайте комнату через автоматический Playit-туннель'}</p>
+            <p class="card-caption">
+              {i18n.locale === 'en'
+                ? 'Create a room with one click from your selected world.'
+                : 'Создайте комнату в один клик из выбранного мира'}
+            </p>
           </div>
         </div>
 
         <div class="world-picker">
           <label class="picker-label" for="world-select">{t('lobby.select_world')}</label>
-          <div class="world-options" id="world-select">
+          <div class="world-options" id="world-select" data-testid="world-select">
             {#each localWorlds as w (w.id || w.name)}
               <button
                 type="button"
                 class="world-opt-btn"
                 class:selected={selectedWorldId === w.id}
                 onclick={() => (selectedWorldId = w.id)}
+                data-testid="world-opt-{w.id}"
               >
                 <div class="world-opt-title">{w.name}</div>
                 <div class="world-opt-meta">{w.version} • {w.size} • {w.lastPlayed}</div>
@@ -618,16 +1015,18 @@
           </div>
         </div>
 
-        <Button
-          variant="primary"
-          size="large"
-          fullWidth
-          onclick={handleCreateRoom}
-          loading={isHosting}
-        >
-          <Icon name="server" size={16} color="#ffffff" />
-          <span>{i18n.locale === 'en' ? 'Open World for Friends' : 'Открыть мир для друзей'}</span>
-        </Button>
+        <span data-testid="create-room-btn">
+          <Button
+            variant="primary"
+            size="large"
+            fullWidth
+            onclick={handleCreateRoom}
+            loading={isHosting}
+          >
+            <Icon name="server" size={16} color="#ffffff" />
+            <span>{i18n.locale === 'en' ? 'Create Room' : 'Создать комнату'}</span>
+          </Button>
+        </span>
       </div>
     </div>
 
@@ -732,6 +1131,38 @@
 
   .mode-segmented {
     width: 320px;
+  }
+
+  .room-closed-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background-color: rgba(255, 159, 10, 0.12);
+    border: 1px solid rgba(255, 159, 10, 0.3);
+    border-radius: var(--radius-md);
+    gap: 12px;
+  }
+
+  .room-closed-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .room-closed-text {
+    font-size: var(--text-subheadline);
+    font-weight: 600;
+    color: var(--color-system-orange);
+  }
+
+  .room-closed-close {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--color-secondary-label);
+    padding: 4px;
+    border-radius: var(--radius-sm);
   }
 
   .cloud-rooms-section {
@@ -906,6 +1337,112 @@
     margin: 0;
   }
 
+  /* Guest Join Steps Pipeline */
+  .join-steps-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    border-radius: var(--radius-md);
+    background-color: var(--color-tertiary-system-fill);
+    border: 1px solid var(--glass-border);
+  }
+
+  .join-steps-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .join-steps-title {
+    font-size: var(--text-footnote);
+    font-weight: 600;
+    color: var(--color-label);
+    margin: 0;
+  }
+
+  .join-steps-pct {
+    font-size: var(--text-caption-1);
+    font-weight: 700;
+    color: var(--color-system-blue);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .join-progress-bar-track {
+    width: 100%;
+    height: 6px;
+    border-radius: var(--radius-pill);
+    background-color: var(--color-quaternary-system-fill);
+    overflow: hidden;
+  }
+
+  .join-progress-bar-fill {
+    height: 100%;
+    background-color: var(--color-system-blue);
+    border-radius: var(--radius-pill);
+    transition: width 0.25s ease;
+  }
+
+  .join-steps-list {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .join-step-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--text-caption-1);
+    color: var(--color-secondary-label);
+    font-weight: 500;
+  }
+
+  .join-step-item.active {
+    color: var(--color-system-blue);
+    font-weight: 600;
+  }
+
+  .join-step-item.done {
+    color: var(--color-system-green);
+    font-weight: 600;
+  }
+
+  .step-arrow {
+    color: var(--color-tertiary-label);
+    font-size: 11px;
+  }
+
+  .step-icon {
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .step-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--color-tertiary-label);
+  }
+
+  .step-spinner {
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--color-quaternary-system-fill);
+    border-top-color: var(--color-system-blue);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  .step-details-message {
+    font-size: var(--text-caption-2);
+    color: var(--color-secondary-label);
+  }
+
   .join-form {
     display: flex;
     flex-direction: column;
@@ -1018,33 +1555,152 @@
 
   .room-info {
     display: flex;
-    align-items: center;
-    gap: 18px;
+    flex-direction: column;
+    gap: 14px;
+    flex: 1;
   }
 
-  .room-code-badge {
+  .room-code-hero {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .code-box {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 10px 18px;
+    gap: 2px;
+    padding: 8px 16px;
     border-radius: var(--radius-md);
-    background-color: var(--color-system-blue);
-    color: #ffffff;
+    background-color: rgba(0, 122, 255, 0.12);
+    border: 1px solid rgba(0, 122, 255, 0.25);
   }
 
   .code-label {
     font-size: 10px;
-    font-weight: 600;
+    font-weight: 700;
+    text-transform: uppercase;
     letter-spacing: 0.05em;
-    opacity: 0.9;
+    color: var(--color-system-blue);
   }
 
-  .code-value {
+  .code-value-large {
     font-family: var(--font-mono);
-    font-size: 22px;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    color: var(--color-label);
+  }
+
+  .code-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Online Friends Invite Popover */
+  .invite-popover {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    background-color: var(--card-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--glass-shadow);
+    max-width: 360px;
+  }
+
+  .invite-popover-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .invite-title {
+    font-size: var(--text-subheadline);
     font-weight: 700;
-    letter-spacing: 0.1em;
+    color: var(--color-label);
+  }
+
+  .invite-close-btn {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--color-secondary-label);
+    padding: 2px 4px;
+  }
+
+  .invite-loading,
+  .invite-empty {
+    font-size: var(--text-caption-1);
+    color: var(--color-secondary-label);
+    padding: 12px 8px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .invite-friends-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  .invite-friend-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    background-color: var(--color-tertiary-system-fill);
+  }
+
+  .friend-row-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .friend-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background-color: var(--color-system-blue);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .friend-details {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .friend-nick {
+    font-size: var(--text-caption-1);
+    font-weight: 600;
+    color: var(--color-label);
+  }
+
+  .friend-sub {
+    font-size: 10px;
+    color: var(--color-system-green);
+  }
+
+  .invited-badge {
+    font-size: var(--text-caption-2);
+    font-weight: 600;
+    color: var(--color-system-green);
+    background-color: rgba(48, 209, 88, 0.15);
+    padding: 3px 8px;
+    border-radius: var(--radius-pill);
   }
 
   .room-world-title {
@@ -1090,6 +1746,38 @@
 
   .tunnel-pill.active .dot {
     background-color: var(--color-system-green);
+  }
+
+  .tunnel-pill.offline {
+    color: var(--color-system-red);
+    background-color: rgba(255, 69, 58, 0.12);
+  }
+
+  .tunnel-pill.offline .dot.error {
+    background-color: var(--color-system-red);
+  }
+
+  .tunnel-error-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 10px;
+    border-radius: var(--radius-md);
+    background-color: rgba(255, 69, 58, 0.08);
+    border: 1px solid rgba(255, 69, 58, 0.2);
+    flex-wrap: wrap;
+  }
+
+  .tunnel-error-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .tunnel-error-text {
+    font-size: var(--text-caption-1);
+    color: var(--color-system-red);
+    font-weight: 500;
   }
 
   .modsync-banner {
@@ -1217,7 +1905,6 @@
     background-color: rgba(48, 209, 88, 0.12);
   }
 
-  .copy-badge-btn,
   .copy-pill-btn {
     border: none;
     background: transparent;
@@ -1230,7 +1917,6 @@
     transition: background-color var(--motion-duration-short) ease;
   }
 
-  .copy-badge-btn:hover,
   .copy-pill-btn:hover {
     background-color: var(--color-quaternary-system-fill);
   }

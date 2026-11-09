@@ -119,6 +119,8 @@ pub struct LobbyRoomModel {
     pub world_name: String,
     pub tunnel_address: Option<String>,
     pub tunnel_active: bool,
+    #[serde(default)]
+    pub tunnel_error: Option<String>,
     pub is_host: bool,
     pub players: Vec<LobbyPlayerModel>,
     pub mod_mismatch_count: usize,
