@@ -294,7 +294,6 @@
     font-family: var(--font-family-mono, monospace);
     font-weight: 700;
     color: var(--color-label);
-    letter-spacing: 0.5px;
   }
 
   .raw-uri-row {

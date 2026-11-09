@@ -93,6 +93,9 @@
     loading = true;
     loadError = null;
     try {
+      if (typeof window !== 'undefined' && (window as any).__MOCK_DELAY__) {
+        await new Promise((r) => setTimeout(r, (window as any).__MOCK_DELAY__));
+      }
       const { invoke } = await import('@tauri-apps/api/core');
       const res = await invoke<ModEntryModel[]>('list_mods', { version });
       if (Array.isArray(res)) {
@@ -449,6 +452,7 @@
 
   .tabs-wrap {
     flex-shrink: 0;
+    min-width: 320px;
   }
 
   .mods-content {
