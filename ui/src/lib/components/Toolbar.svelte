@@ -214,6 +214,11 @@
     background-color: var(--color-quaternary-system-fill);
   }
 
+  .window-btn:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 1px;
+  }
+
   .window-btn.close:hover {
     background-color: var(--color-system-red-accessible);
     color: #ffffff;

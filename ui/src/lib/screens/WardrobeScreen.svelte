@@ -628,6 +628,7 @@
               class="reset-angle-btn"
               onclick={() => renderer3d?.resetOrientation()}
               title="Сбросить угол обзора"
+              aria-label="Сбросить угол обзора"
               type="button"
             >
               Сброс угла
