@@ -453,6 +453,7 @@
 
   .tabs-wrap {
     flex-shrink: 0;
+    min-width: 580px;
   }
 
   .mods-content {

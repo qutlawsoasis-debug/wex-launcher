@@ -52,10 +52,12 @@
   --text-caption-1: 12px;
   --line-caption-1: 16px;
   --weight-caption-1: 400;
+  --text-caption1: 12px;
 
   --text-caption-2: 11px;
   --line-caption-2: 13px;
   --weight-caption-2: 400;
+  --text-caption2: 11px;
 
   /* Motion & Spring timings (Apple HIG Motion & ui/src/lib/motion) */
   --motion-duration-short: 150ms;
