@@ -668,7 +668,7 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Сворачивать в трей при запуске игры');
     expect(target.textContent).toContain('Язык интерфейса');
     expect(target.textContent).toContain('О программе');
-    expect(target.textContent).toContain('Tauri 2');
+    expect(target.textContent).toContain('Windows 10/11, 64-бит');
     expect(target.textContent).toContain('Проверить файлы игры');
     expect(target.textContent).toContain('Очистить кэш');
     expect(target.textContent).not.toContain('.minecraft');

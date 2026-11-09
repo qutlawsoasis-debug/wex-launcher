@@ -61,9 +61,16 @@
   let notificationSounds = $state(true);
   let fastStartJvm = $state(false);
   let language = $state<string>(i18n.locale);
-  let launcherVersion = $state('1.0.0');
+  let launcherVersion = $state('—');
   let osName = $state('windows');
   let minimizeToTray = $state(true);
+
+  let displayOs = $derived.by(() => {
+    if (!osName || osName.toLowerCase() === 'windows') {
+      return 'Windows 10/11, 64-бит';
+    }
+    return `${osName}, 64-бит`;
+  });
 
   // Updates state
   let isCheckingUpdates = $state(false);
@@ -193,12 +200,22 @@
 
   async function loadConfig() {
     try {
+      const { getVersion } = await import('@tauri-apps/api/app');
+      const v = await getVersion();
+      if (v) launcherVersion = v;
+    } catch {
+      // In-browser mock stays '—'
+    }
+
+    try {
       const { invoke } = await import('@tauri-apps/api/core');
       const sys = await invoke<{ total_memory_mb: number; os_name: string; launcher_version: string; data_dir?: string }>('get_system_info');
       if (sys) {
         if (sys.total_memory_mb) totalMemoryMb = sys.total_memory_mb;
         if (sys.os_name) osName = sys.os_name;
-        if (sys.launcher_version) launcherVersion = sys.launcher_version;
+        if (sys.launcher_version && sys.launcher_version !== '1.0.0') {
+          launcherVersion = sys.launcher_version;
+        }
         if (sys.data_dir) gameDir = sys.data_dir;
       }
 
@@ -477,13 +494,13 @@
           : `Доступна новая версия: v${res.version || res.new_version || '1.1.0'}`;
       } else {
         updateStatus = i18n.locale === 'en'
-          ? `Wex ${launcherVersion} is up to date`
-          : `Установлена актуальная версия Wex ${launcherVersion}`;
+          ? (launcherVersion !== '—' ? `Wex ${launcherVersion} is up to date` : 'Wex is up to date')
+          : (launcherVersion !== '—' ? `Установлена актуальная версия Wex ${launcherVersion}` : 'Установлена актуальная версия Wex');
       }
     } catch {
       updateStatus = i18n.locale === 'en'
-        ? `Wex ${launcherVersion} is up to date`
-        : `Установлена актуальная версия Wex ${launcherVersion}`;
+        ? (launcherVersion !== '—' ? `Wex ${launcherVersion} is up to date` : 'Wex is up to date')
+        : (launcherVersion !== '—' ? `Установлена актуальная версия Wex ${launcherVersion}` : 'Установлена актуальная версия Wex');
     } finally {
       isCheckingUpdates = false;
     }
@@ -654,15 +671,15 @@
       id: 'storage_verify',
       group: 'storage',
       title: 'Проверить файлы игры',
-      subtitle: verifyStatus || `Проверка SHA-256 файлов клиента версии ${selectedVersion} по манифесту пака и восстановление`,
-      keywords: ['проверить', 'файлы', 'целостность', 'sha256', 'восстановление', 'битые', 'verify', 'repair', 'integrity'],
+      subtitle: verifyStatus || (i18n.locale === 'en' ? `Verifies game files for version ${selectedVersion} and downloads damaged ones` : `Сверяет файлы игры версии ${selectedVersion} и докачивает повреждённые`),
+      keywords: ['проверить', 'файлы', 'докачать', 'восстановление', 'целостность', 'verify', 'repair', 'integrity'],
     },
     {
       id: 'storage_clean',
       group: 'storage',
       title: 'Очистить кэш',
-      subtitle: cleanCacheStatus || 'Удаление логов сессий, crash-reports и временных файлов загрузок',
-      keywords: ['кэш', 'очистка', 'удалить', 'логи', 'память', 'диск', 'освободить', 'cache', 'clean', 'trash', 'free'],
+      subtitle: cleanCacheStatus || (i18n.locale === 'en' ? 'Removes session logs, crash reports, and temporary download files' : 'Удаление логов сессий, отчётов о вылетах и временных файлов загрузок'),
+      keywords: ['кэш', 'очистка', 'удалить', 'логи', 'вылеты', 'отчеты', 'память', 'диск', 'освободить', 'cache', 'clean', 'trash', 'free'],
     },
 
     // 7. About / System
@@ -670,15 +687,8 @@
       id: 'about_program',
       group: 'about',
       title: t('settings.about_title'),
-      subtitle: t('settings.about_subtitle', { version: launcherVersion, os: osName }),
+      subtitle: t('settings.about_subtitle', { version: launcherVersion, os: displayOs }),
       keywords: ['о программе', 'лаунчер', 'wex', 'версия', 'система', 'about', 'version', 'os'],
-    },
-    {
-      id: 'about_stack',
-      group: 'about',
-      title: t('settings.about_stack_title'),
-      subtitle: t('settings.about_stack_subtitle'),
-      keywords: ['стек', 'технологии', 'tauri', 'rust', 'svelte', 'typescript', 'stack', 'tauri 2'],
     },
     {
       id: 'about_reset',
@@ -693,7 +703,7 @@
       id: 'updates_check',
       group: 'updates',
       title: i18n.locale === 'en' ? 'Launcher Updates' : 'Обновление Wex Launcher',
-      subtitle: updateStatus || (i18n.locale === 'en' ? `Wex ${launcherVersion} is up to date` : `Установлена актуальная версия Wex ${launcherVersion}`),
+      subtitle: updateStatus || (i18n.locale === 'en' ? (launcherVersion !== '—' ? `Wex ${launcherVersion} is up to date` : 'Wex is up to date') : (launcherVersion !== '—' ? `Установлена актуальная версия Wex ${launcherVersion}` : 'Установлена актуальная версия Wex')),
       keywords: ['обновление', 'проверить', 'версия', 'апдейт', 'update', 'upgrade', 'new', 'version', 'patch'],
     },
     {
@@ -1234,7 +1244,7 @@
         {#if isItemVisible('storage_verify')}
           <Row
             title="Проверить файлы игры"
-            subtitle={verifyStatus || `Проверка SHA-256 файлов клиента версии ${selectedVersion} по манифесту пака и восстановление`}
+            subtitle={verifyStatus || (i18n.locale === 'en' ? `Verifies game files for version ${selectedVersion} and downloads damaged ones` : `Сверяет файлы игры версии ${selectedVersion} и докачивает повреждённые`)}
           >
             {#snippet trailing()}
               <Button
@@ -1242,7 +1252,7 @@
                 size="small"
                 disabled={isVerifyingFiles}
                 onclick={handleVerifyFiles}
-                title="Проверить SHA-256 файлов инстанса"
+                title="Проверить целостность файлов инстанса"
               >
                 {#if isVerifyingFiles}
                   <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
@@ -1259,7 +1269,7 @@
         {#if isItemVisible('storage_clean')}
           <Row
             title="Очистить кэш"
-            subtitle={cleanCacheStatus || 'Удаление логов сессий, crash-reports и временных файлов загрузок'}
+            subtitle={cleanCacheStatus || (i18n.locale === 'en' ? 'Removes session logs, crash reports, and temporary download files' : 'Удаление логов сессий, отчётов о вылетах и временных файлов загрузок')}
           >
             {#snippet trailing()}
               <Button
@@ -1289,16 +1299,8 @@
         {#if isItemVisible('about_program')}
           <Row
             title={t('settings.about_title')}
-            subtitle={t('settings.about_subtitle', { version: launcherVersion, os: osName })}
+            subtitle={t('settings.about_subtitle', { version: launcherVersion, os: displayOs })}
             trailingText="Wex Project"
-          />
-        {/if}
-
-        {#if isItemVisible('about_stack')}
-          <Row
-            title={t('settings.about_stack_title')}
-            subtitle={t('settings.about_stack_subtitle')}
-            trailingText="Tauri 2"
           />
         {/if}
 
@@ -1327,7 +1329,7 @@
         {#if isItemVisible('updates_check')}
           <Row
             title={i18n.locale === 'en' ? 'Launcher Updates' : 'Обновление Wex Launcher'}
-            subtitle={updateStatus || (i18n.locale === 'en' ? `Wex ${launcherVersion} is up to date` : `Установлена актуальная версия Wex ${launcherVersion}`)}
+            subtitle={updateStatus || (i18n.locale === 'en' ? (launcherVersion !== '—' ? `Wex ${launcherVersion} is up to date` : 'Wex is up to date') : (launcherVersion !== '—' ? `Установлена актуальная версия Wex ${launcherVersion}` : 'Установлена актуальная версия Wex'))}
           >
             {#snippet trailing()}
               <Button

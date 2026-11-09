@@ -150,7 +150,7 @@ export const ru = {
   'settings.reduce_transparency_subtitle': 'Замена эффектов размытия фона на контрастные непрозрачные заливки',
   'settings.header_about': 'О программе',
   'settings.about_title': 'О программе (Wex Launcher)',
-  'settings.about_subtitle': 'Версия {version} • ОС: {os} • 64-бит',
+  'settings.about_subtitle': 'Версия {version} • {os}',
   'settings.about_stack_title': 'Технологический стек',
   'settings.about_stack_subtitle': 'Tauri 2 • Svelte 5 • TypeScript 5.8 • Rust (core/wex-core, wex-extras)',
   'settings.reset_defaults': 'Сбросить настройки по умолчанию',
