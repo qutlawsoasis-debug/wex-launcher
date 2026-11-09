@@ -334,11 +334,8 @@ pub fn import_from_dir(aura_dir: &Path) -> Result<OldLauncherData, ImportError> 
                                 .to_string_lossy()
                                 .to_string();
 
-                            // Avoid duplicate worlds by folder_name
-                            if !worlds
-                                .iter()
-                                .any(|w: &ImportedWorld| w.folder_name == folder_name)
-                            {
+                            // The same folder name in two instances represents two worlds.
+                            if !worlds.iter().any(|w: &ImportedWorld| w.source_path == p) {
                                 let display_name = parse_level_name_fallback(&level_dat)
                                     .unwrap_or_else(|| folder_name.clone());
                                 let size_bytes = dir_size_recursive(&p);
@@ -428,79 +425,82 @@ fn dir_size_recursive(path: &Path) -> u64 {
     total
 }
 
-// Simple binary NBT scanner for servers.dat to avoid complex NBT dependencies in wex-extras
+// Parse compound boundaries so nearby entries cannot steal each other's names/icons.
 fn parse_servers_dat_bytes(bytes: &[u8]) -> Vec<ImportedServer> {
-    let mut servers = Vec::new();
-    let mut i = 0;
-
-    while i < bytes.len() {
-        // Look for string tag with name "ip" (TagType: 8, Name length: 2, Name: "ip")
-        // In uncompressed NBT: byte 0x08, [0x00, 0x02], b"ip", [len_hi, len_lo], string_bytes
-        if i + 5 < bytes.len()
-            && bytes[i] == 0x08
-            && bytes[i + 1] == 0x00
-            && bytes[i + 2] == 0x02
-            && &bytes[i + 3..i + 5] == b"ip"
-        {
-            let ip_len_pos = i + 5;
-            if ip_len_pos + 2 <= bytes.len() {
-                let ip_len =
-                    u16::from_be_bytes([bytes[ip_len_pos], bytes[ip_len_pos + 1]]) as usize;
-                let ip_start = ip_len_pos + 2;
-                if ip_start + ip_len <= bytes.len() {
-                    let ip =
-                        String::from_utf8_lossy(&bytes[ip_start..ip_start + ip_len]).to_string();
-
-                    // Search nearby for "name" tag within 256 bytes backwards or forwards
-                    let mut name = ip.clone();
-                    let search_start = i.saturating_sub(256);
-                    let search_end = (i + ip_len + 256).min(bytes.len());
-
-                    for j in search_start..search_end.saturating_sub(7) {
-                        if bytes[j] == 0x08
-                            && bytes[j + 1] == 0x00
-                            && bytes[j + 2] == 0x04
-                            && &bytes[j + 3..j + 7] == b"name"
-                        {
-                            let n_len_pos = j + 7;
-                            if n_len_pos + 2 <= bytes.len() {
-                                let n_len =
-                                    u16::from_be_bytes([bytes[n_len_pos], bytes[n_len_pos + 1]])
-                                        as usize;
-                                let n_start = n_len_pos + 2;
-                                if n_start + n_len <= bytes.len() {
-                                    name =
-                                        String::from_utf8_lossy(&bytes[n_start..n_start + n_len])
-                                            .to_string();
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    if !ip.is_empty() {
-                        servers.push(ImportedServer {
-                            name,
-                            ip,
-                            icon: None,
-                        });
-                    }
-
-                    i = ip_start + ip_len;
-                    continue;
-                }
+    use wex_net::{servers::NbtReader, NbtTag};
+    let Ok((_, root)) = NbtReader::new(std::io::Cursor::new(bytes)).read_root() else {
+        return Vec::new();
+    };
+    let Some(NbtTag::List { elements, .. }) = root.get("servers") else {
+        return Vec::new();
+    };
+    elements
+        .iter()
+        .filter_map(|entry| {
+            let ip = entry.get_string("ip")?.trim();
+            if ip.is_empty() {
+                return None;
             }
-        }
-        i += 1;
-    }
-
-    servers
+            Some(ImportedServer {
+                name: entry.get_string("name").unwrap_or(ip).to_string(),
+                ip: ip.to_string(),
+                icon: entry.get_string("icon").map(str::to_string),
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn worlds_with_same_folder_in_both_versions_are_distinct() {
+        let dir = tempdir().unwrap();
+        for version in ["1.20.1", "1.21.1"] {
+            let world = dir
+                .path()
+                .join("instances")
+                .join(version)
+                .join("saves/SameWorld");
+            fs::create_dir_all(&world).unwrap();
+            fs::write(world.join("level.dat"), version).unwrap();
+        }
+        let data = import_from_dir(dir.path()).unwrap();
+        assert_eq!(data.worlds.len(), 2);
+        assert_ne!(data.worlds[0].version, data.worlds[1].version);
+    }
+
+    #[test]
+    fn servers_keep_their_own_names_and_icons() {
+        use wex_net::NbtTag;
+        let dir = tempdir().unwrap();
+        let entries = [
+            ("First", "first.example", "icon-a"),
+            ("Second", "second.example", "icon-b"),
+        ]
+        .map(|(name, ip, icon)| {
+            NbtTag::Compound(vec![
+                ("name".into(), NbtTag::String(name.into())),
+                ("ip".into(), NbtTag::String(ip.into())),
+                ("icon".into(), NbtTag::String(icon.into())),
+            ])
+        })
+        .to_vec();
+        let root = NbtTag::Compound(vec![(
+            "servers".into(),
+            NbtTag::List {
+                tag_id: 10,
+                elements: entries,
+            },
+        )]);
+        wex_net::save_servers_dat(dir.path().join("servers.dat"), &root).unwrap();
+        let data = import_from_dir(dir.path()).unwrap();
+        assert_eq!(data.servers.len(), 2);
+        assert_eq!(data.servers[1].name, "Second");
+        assert_eq!(data.servers[1].icon.as_deref(), Some("icon-b"));
+    }
 
     #[test]
     fn test_import_from_fixture_dir() {
@@ -535,22 +535,23 @@ mod tests {
         let inst_dir = aura_path.join("instances").join("1.20.1");
         fs::create_dir_all(&inst_dir).unwrap();
 
-        let mut nbt_dummy = Vec::new();
-        // tag 8 "name": "Aura Official"
-        nbt_dummy.push(0x08);
-        nbt_dummy.extend_from_slice(&[0x00, 0x04]);
-        nbt_dummy.extend_from_slice(b"name");
-        nbt_dummy.extend_from_slice(&[0x00, 0x0D]);
-        nbt_dummy.extend_from_slice(b"Aura Official");
-
-        // tag 8 "ip": "play.auramc.net"
-        nbt_dummy.push(0x08);
-        nbt_dummy.extend_from_slice(&[0x00, 0x02]);
-        nbt_dummy.extend_from_slice(b"ip");
-        nbt_dummy.extend_from_slice(&[0x00, 0x0F]);
-        nbt_dummy.extend_from_slice(b"play.auramc.net");
-
-        fs::write(inst_dir.join("servers.dat"), &nbt_dummy).unwrap();
+        let root = wex_net::NbtTag::Compound(vec![(
+            "servers".into(),
+            wex_net::NbtTag::List {
+                tag_id: 10,
+                elements: vec![wex_net::NbtTag::Compound(vec![
+                    (
+                        "name".into(),
+                        wex_net::NbtTag::String("Aura Official".into()),
+                    ),
+                    (
+                        "ip".into(),
+                        wex_net::NbtTag::String("play.auramc.net".into()),
+                    ),
+                ])],
+            },
+        )]);
+        wex_net::save_servers_dat(inst_dir.join("servers.dat"), &root).unwrap();
 
         // 3. Write a mock skin
         let skins_dir = aura_path.join("skins");
