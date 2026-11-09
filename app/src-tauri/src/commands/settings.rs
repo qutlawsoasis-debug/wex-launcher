@@ -720,10 +720,11 @@ mod tests {
         let mock_core = MockLauncherCore::new();
 
         // 1. Initial settings
+        let expected_def = CoreConfig::default();
         let settings = get_launcher_settings_impl(&paths);
         assert_eq!(settings.player_name, "Player");
-        assert_eq!(settings.ram_mb, 4096);
-        assert_eq!(settings.graphics_preset, "High");
+        assert_eq!(settings.ram_mb, expected_def.max_memory_mb);
+        assert_eq!(settings.graphics_preset, expected_def.graphics_preset);
         assert_eq!(settings.java_mode, "auto");
         assert!(settings.discord_rpc);
         assert_eq!(settings.language, "ru");
@@ -782,10 +783,11 @@ mod tests {
             .unwrap();
 
         // Reset
+        let expected_def = CoreConfig::default();
         let reset = reset_settings_impl(&paths, &mock_core).await.unwrap();
         assert_eq!(reset.player_name, "Player");
-        assert_eq!(reset.ram_mb, 4096);
-        assert_eq!(reset.graphics_preset, "High");
+        assert_eq!(reset.ram_mb, expected_def.max_memory_mb);
+        assert_eq!(reset.graphics_preset, expected_def.graphics_preset);
         assert_eq!(reset.java_mode, "auto");
         assert!(reset.discord_rpc);
         assert!(reset.minimize_to_tray);

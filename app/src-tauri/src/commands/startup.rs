@@ -177,7 +177,7 @@ mod tests {
         };
 
         assert_eq!(info.app_name, "Wex");
-        assert_eq!(info.app_version, "0.1.0");
+        assert_eq!(info.app_version, env!("CARGO_PKG_VERSION"));
         assert!(info.directories_ok);
         assert_eq!(info.config.selected_version, "1.20.1");
     }
