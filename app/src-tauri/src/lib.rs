@@ -26,6 +26,7 @@ impl Default for AppState {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             commands::tray::restore_window(app);
@@ -162,6 +163,10 @@ pub fn run() {
             commands::overview::overview_get_news,
             commands::overview::social_check_launcher_update,
             commands::overview::overview_check_update,
+            commands::updater::updater_check,
+            commands::updater::updater_install,
+            commands::updater::updater_restart,
+            commands::updater::updater_open_download_url,
             commands::overview::extras_detect_old_launcher,
             commands::overview::extras_import_old_launcher,
             commands::overview::extras_apply_import,

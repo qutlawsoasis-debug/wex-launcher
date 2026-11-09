@@ -628,10 +628,7 @@ pub async fn is_game_running(state: State<'_, PlayState>) -> Result<bool, String
 
 /// Force kill the game instance.
 #[tauri::command]
-pub async fn kill_game(
-    version: Option<String>,
-    state: State<'_, PlayState>,
-) -> Result<(), String> {
+pub async fn kill_game(version: Option<String>, state: State<'_, PlayState>) -> Result<(), String> {
     let ver = match version {
         Some(v) => v,
         None => {
