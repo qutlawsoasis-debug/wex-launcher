@@ -13,6 +13,15 @@ test('CSP blocks injected scripts, eval and remote fetch while the UI loads', as
     contentType: 'application/javascript',
     body: `
     (async () => {
+    const violations = new Set();
+    const connectionViolation = new Promise(resolve => {
+      document.addEventListener('securitypolicyviolation', event => {
+        if (event.effectiveDirective === 'connect-src' && event.blockedURI.startsWith('https://example.invalid')) {
+          violations.add(event.effectiveDirective);
+          resolve();
+        }
+      });
+    });
     const script = document.createElement('script');
     script.textContent = 'window.__csp_injected = true';
     document.head.append(script);
@@ -20,10 +29,11 @@ test('CSP blocks injected scripts, eval and remote fetch while the UI loads', as
     try { (0, eval)('1 + 1'); } catch { evalBlocked = true; }
     let networkBlocked = false;
     try { await fetch('https://example.invalid/csp-probe'); } catch { networkBlocked = true; }
+    await Promise.race([connectionViolation, new Promise(resolve => setTimeout(resolve, 1000))]);
     window.__csp_result = {
       inlineBlocked: !window.__csp_injected,
       evalBlocked,
-      networkBlocked,
+      networkBlocked: networkBlocked && violations.has('connect-src'),
     };
     })();`,
   }));

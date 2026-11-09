@@ -591,6 +591,12 @@
           "markdownDescription": "Enables the get_playtime_summary command without any pre-configured scope."
         },
         {
+          "description": "Enables the get_prewarm_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-prewarm-status",
+          "markdownDescription": "Enables the get_prewarm_status command without any pre-configured scope."
+        },
+        {
           "description": "Enables the get_storage_cache_info command without any pre-configured scope.",
           "type": "string",
           "const": "allow-get-storage-cache-info",
@@ -1681,6 +1687,12 @@
           "type": "string",
           "const": "deny-get-playtime-summary",
           "markdownDescription": "Denies the get_playtime_summary command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_prewarm_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-prewarm-status",
+          "markdownDescription": "Denies the get_prewarm_status command without any pre-configured scope."
         },
         {
           "description": "Denies the get_storage_cache_info command without any pre-configured scope.",
