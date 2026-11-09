@@ -70,12 +70,14 @@
     playerName?: string;
     initialRoom?: LobbyRoom | null;
     version?: string;
+    onroomchange?: (room: LobbyRoom | null) => void;
   }
 
   let {
     playerName = 'Player',
     initialRoom = null,
     version = '1.21.1',
+    onroomchange,
   }: Props = $props();
 
   let effectivePlayerName = $derived(playerName);
@@ -121,6 +123,7 @@
   $effect(() => {
     activeRoom = initialRoom ?? null;
   });
+  $effect(() => { onroomchange?.(activeRoom); });
 
 
   // Cloud open rooms state

@@ -364,7 +364,10 @@ pub async fn social_set_presence(
     let client = { state.client.lock().await.clone() };
     let wex_auth: UserAuth = auth_dto.into();
     let wex_pres: wex_social::UserPresence = pres_dto.into();
-    let _ = client.sync(&wex_auth, Some(&wex_pres)).await;
+    client
+        .sync(&wex_auth, Some(&wex_pres))
+        .await
+        .map_err(IpcError::from)?;
     Ok(())
 }
 

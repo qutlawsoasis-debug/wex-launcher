@@ -1273,4 +1273,9 @@ export const en = {
   'play.update_btn_retry_title': 'Try downloading update again',
   'play.update_link_error': 'Failed to open download link. Please try again later.',
   'settings.update_link_error': 'Failed to open download link. Please try again later.',
+  'play.prewarm_loading': 'Finishing game preparation…',
+  'play.prewarm_ready': 'Ready to Play',
+  'play.prewarm_complete': 'Prewarm complete',
+  'play.prewarm_stop': 'In Game • Stop',
+  'play.prewarm_ready_title': 'Ready to Play (Prewarm Complete)',
 } as const;

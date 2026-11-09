@@ -18,6 +18,7 @@
   import Icon from './lib/components/icons/Icon.svelte';
 
   import PlayScreen from './lib/screens/PlayScreen.svelte';
+  import type { LobbyRoom } from './lib/screens/LobbyScreen.svelte';
   import type { CrashDiagnosisDto, DeepLinkActionDto } from './lib/ipc/generated/models';
   import type { DeepLinkAction } from './lib/components/DeepLinkConfirmationModal.svelte';
   import { initIdleManager, setGameRunning, createIdleInterval } from './lib/design/idleManager';
@@ -116,7 +117,7 @@
   let friendsSubtab = $state<'friends' | 'requests' | 'achievements'>('friends');
   let workshopSubtab = $state<'worlds' | 'resourcepacks' | 'shaders' | 'screenshots'>('worlds');
   let isMaximized = $state(false);
-  let initialLobbyRoom = $state<any>(null);
+  let initialLobbyRoom = $state<LobbyRoom | null>(null);
 
   // Crash report modal state
   let crashSheetOpen = $state(false);
@@ -187,15 +188,11 @@
     } catch {}
 
     if (action.kind === 'join') {
-      activeTab = 'lobby';
-    if (action.kind === 'join') {
-      activeTab = 'lobby';
-      addToast('info', t('app.toast_lobby_connecting'), t('app.toast_lobby_code', { code: action.target }));
       try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('join_lobby_room', { code: action.target.toUpperCase(), playerName });
-      } catch (e: any) {
-        // Ignored in mock preview
+        await friendsLive.handleJoin(action.target);
+      } catch (error) {
+        const formatted = formatError(error, 'lobby');
+        addToast('error', formatted.title, formatted.description);
       }
     } else if (action.kind === 'server') {
       activeTab = 'play';
@@ -219,12 +216,11 @@
       addToast('info', t('app.toast_friend_request'), t('app.toast_friend_sending', { target: action.target }));
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('social_send_friend_request', { friend_code: action.target });
+        await invoke('social_send_friend_request', { targetFriendCode: action.target });
         addToast('success', t('app.toast_request_sent'), t('app.toast_request_sent_desc', { target: action.target }));
       } catch (e: any) {
         addToast('error', t('app.err_friend_request'), String(e));
       }
-    }
     }
   }
 
@@ -598,7 +594,7 @@
         progressPercentage = Number(params.get('progress') || 45);
         progressStage = params.get('stageText') || t('app.sync_pack');
         progressDetail = params.get('detail') || t('app.downloading_manifest');
-        progressSpeed = params.get('speed') || '14.8 MB/s';
+        progressSpeed = params.get('speed') || '';
       } else if (playState === 'running' || stageParam === 'running') {
         isLaunching = false;
         isGameRunning = true;
@@ -717,13 +713,18 @@
     window.addEventListener('hashchange', applyHashRoute);
 
     // Real-time Friends Poller & Notifications
-    friendsLive.start();
     const unlistenLiveNotifs = friendsLive.onNotification((notif) => {
       addToast('info', notif.title, notif.description, notif.action);
     });
-    const unlistenLiveJoin = friendsLive.onJoin(() => {
+    const unlistenLiveJoin = friendsLive.onJoin((_code, room) => {
+      if (room) initialLobbyRoom = room;
       activeTab = 'lobby';
     });
+    const unlistenLiveError = friendsLive.onError((error, context) => {
+      const formatted = formatError(error, context);
+      addToast('error', formatted.title, formatted.description);
+    });
+    friendsLive.start();
 
     // Initial checks: parallelized network, profile, deep link and active running game state
     Promise.allSettled([
@@ -829,8 +830,8 @@
             clientStatus = s.message;
             if (s.state === 'preparing') {
               progressStage = s.message;
-            } else if (s.state === 'launching' && s.message === 'Игра догружается…') {
-              playFastLaunchState = 'prewarming';
+            } else if (s.state === 'launching') {
+              isLaunching = true;
             } else if (s.state === 'running') {
               isLaunching = false;
               isGameRunning = true;
@@ -913,6 +914,7 @@
       cleanupNet();
       unlistenLiveNotifs();
       unlistenLiveJoin();
+      unlistenLiveError();
       friendsLive.stop();
       unlistenProgress?.();
       unlistenStatus?.();
@@ -925,6 +927,7 @@
   });
 
   $effect(() => {
+    friendsLive.setSessionContext({ playerName, gameVersion: selectedVersion, lobby: initialLobbyRoom });
     friendsLive.setGameRunning(isGameRunning);
   });
 </script>
@@ -1026,7 +1029,7 @@
           {:else if activeTab === 'lobby'}
             {#if screenComponents.lobby}
               {@const LobbyScreen = screenComponents.lobby}
-              <LobbyScreen {playerName} version={selectedVersion} initialRoom={initialLobbyRoom} />
+              <LobbyScreen {playerName} version={selectedVersion} initialRoom={initialLobbyRoom} onroomchange={(room: LobbyRoom | null) => { initialLobbyRoom = room; }} />
             {/if}
           {:else if activeTab === 'friends'}
             {#if screenComponents.friends}

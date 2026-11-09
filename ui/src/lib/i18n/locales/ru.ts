@@ -1273,6 +1273,11 @@ export const ru = {
   'play.update_btn_retry_title': 'Попробовать загрузить обновление снова',
   'play.update_link_error': 'Не удалось открыть ссылку загрузки. Повторите попытку позже.',
   'settings.update_link_error': 'Не удалось открыть ссылку загрузки. Повторите попытку позже.',
+  'play.prewarm_loading': 'Игра догружается…',
+  'play.prewarm_ready': 'Готово к запуску',
+  'play.prewarm_complete': 'Прогрев готов',
+  'play.prewarm_stop': 'В игре • Остановить',
+  'play.prewarm_ready_title': 'Готово к запуску (прогрев завершён)',
 } as const;
 
 export type TranslationKey = keyof typeof ru;
