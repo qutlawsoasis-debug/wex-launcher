@@ -53,7 +53,7 @@
     class="apple-toggle"
     class:checked
     role="switch"
-    aria-label={ariaLabel || label || undefined}
+    aria-label={ariaLabel || label || 'Переключатель'}
     aria-checked={checked}
     aria-disabled={disabled}
     tabindex={disabled ? -1 : 0}

@@ -998,10 +998,13 @@
 
         <div class="world-picker">
           <label class="picker-label" for="world-select">{t('lobby.select_world')}</label>
-          <div class="world-options" id="world-select" data-testid="world-select">
+          <div class="world-options" id="world-select" data-testid="world-select" role="radiogroup" aria-label={t('lobby.select_world')}>
             {#each localWorlds as w (w.id || w.name)}
               <button
                 type="button"
+                role="radio"
+                aria-checked={selectedWorldId === w.id}
+                aria-label="{w.name}, {w.version}"
                 class="world-opt-btn"
                 class:selected={selectedWorldId === w.id}
                 onclick={() => (selectedWorldId = w.id)}
