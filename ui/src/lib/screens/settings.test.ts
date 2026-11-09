@@ -7,6 +7,9 @@ const invokeMock = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
 }));
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(() => Promise.resolve(() => {})),
+}));
 
 describe('SettingsScreen Component Tests', () => {
   let target: HTMLElement;
@@ -16,6 +19,7 @@ describe('SettingsScreen Component Tests', () => {
     document.body.appendChild(target);
     (window as any).__TAURI_INTERNALS__ = {
       invoke: (cmd: string, args: Record<string, unknown>) => invokeMock(cmd, args),
+      transformCallback: () => 1,
     };
     vi.clearAllMocks();
   });

@@ -168,8 +168,6 @@ vi.mock('@tauri-apps/api/core', () => {
     invoke: defaultInvoke,
   };
 });
-  };
-});
 
 if (typeof window !== 'undefined') {
   (window as any).__TAURI_INTERNALS__ = {

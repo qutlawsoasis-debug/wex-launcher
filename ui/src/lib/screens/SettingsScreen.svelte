@@ -30,15 +30,15 @@
 
   interface Props {
     onopenonboarding?: () => void;
-  }
-
-  let { onopenonboarding }: Props = $props();
-
-  interface Props {
     isGameRunning?: boolean;
     version?: string;
   }
-  let { isGameRunning = false, version: propVersion = '1.21.1' }: Props = $props();
+
+  let {
+    onopenonboarding,
+    isGameRunning = false,
+    version: propVersion = '1.21.1',
+  }: Props = $props();
 
   let ipcGameRunning = $state(false);
   let isGameActive = $derived(isGameRunning || ipcGameRunning);
@@ -433,27 +433,30 @@
   async function handleVerifyFiles() {
     if (isGameActive || isCheckingIntegrity) return;
     isCheckingIntegrity = true;
-    integrityStatus = 'Проверка файлов сборки...';
-    integrityDetail = null;
+    integrityStatus = 'Проверка...';
+    integrityDetail = 'Проверка файлов по манифесту...';
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const res = await invoke<{
-        total_files: number;
-        checked_files: number;
-        corrupted_files: number;
-        repaired_files: number;
-        status: string;
-        message: string;
-      }>('verify_game_files', { version: selectedVersion || propVersion });
+      const ver = selectedVersion || propVersion;
+      let res: any;
+      try {
+        res = await invoke('verify_instance_files', { version: ver });
+      } catch (err: any) {
+        if (err?.message?.includes('манифест') || (typeof err === 'string' && err.includes('манифест'))) {
+          throw err;
+        }
+        res = await invoke('verify_game_files', { version: ver });
+      }
 
       if (res) {
-        integrityStatus = res.status;
-        integrityDetail = res.message;
+        integrityStatus = res.status || 'Проверка завершена';
+        integrityDetail = res.message || res.status;
       }
     } catch (err: any) {
       integrityStatus = 'Ошибка проверки';
-      integrityDetail = typeof err === 'string' ? err : 'Не удалось проверить файлы игры';
+      const msg = typeof err === 'string' ? err : (err?.message || 'Не удалось проверить файлы игры');
+      integrityDetail = msg.startsWith('Ошибка проверки: ') ? msg : `Ошибка проверки: ${msg}`;
     } finally {
       isCheckingIntegrity = false;
     }
@@ -462,23 +465,28 @@
   async function handleClearCache() {
     if (isGameActive || isCleaningCache) return;
     isCleaningCache = true;
-    cleanupStatus = 'Очистка...';
+    cleanupStatus = 'Очистка кэша и логов...';
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const res = await invoke<{
-        bytes_freed: number;
-        formatted_freed: string;
-        files_deleted: number;
-        status_text: string;
-      }>('clear_storage_cache');
+      const ver = selectedVersion || propVersion;
+      let res: any;
+      try {
+        res = await invoke('cleanup_cache', { version: ver });
+      } catch (err: any) {
+        if (err?.message?.includes('заблокирован') || (typeof err === 'string' && err.includes('заблокирован'))) {
+          throw err;
+        }
+        res = await invoke('clear_storage_cache');
+      }
 
       if (res) {
-        cleanupStatus = res.status_text;
+        cleanupStatus = res.message || res.status_text || 'Кэш очищен';
         await loadCacheInfo();
       }
     } catch (err: any) {
-      cleanupStatus = typeof err === 'string' ? err : 'Ошибка очистки';
+      const msg = typeof err === 'string' ? err : (err?.message || 'Ошибка очистки');
+      cleanupStatus = msg.startsWith('Ошибка очистки: ') ? msg : `Ошибка очистки: ${msg}`;
     } finally {
       isCleaningCache = false;
       setTimeout(() => {
