@@ -59,9 +59,17 @@
     selectedVersion?: string;
     initialTab?: string;
     ontoast?: (type: 'info' | 'success' | 'warning' | 'error', title: string, description?: string) => void;
+    playerName?: string;
+    onopenlobby?: (room: any) => void;
   }
 
-  let { selectedVersion = '1.21.1', initialTab = 'worlds', ontoast }: Props = $props();
+  let {
+    selectedVersion = '1.21.1',
+    initialTab = 'worlds',
+    ontoast,
+    playerName = 'Player',
+    onopenlobby,
+  }: Props = $props();
 
   // Active section tab: 'worlds' | 'resourcepacks' | 'shaders' | 'screenshots'
   let activeTab = $state('worlds');
@@ -107,8 +115,10 @@
   let restoreSheetOpen = $state(false);
   let backupToRestore = $state<WorldBackupItemDto | null>(null);
   let isRestoring = $state(false);
+  let backupBeforeRestore = $state(true);
 
   let isBackingUp = $state<Record<string, boolean>>({});
+  let isOpeningInLobby = $state<Record<string, boolean>>({});
 
   // Confirmation modal state: Pack Delete (Resource pack or Shader)
   let deletePackSheetOpen = $state(false);
@@ -290,6 +300,17 @@
     }
   }
 
+  async function handleOpenScreenshotsFolder() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('workshop_open_screenshots_folder', { version: currentVersion });
+    } catch {
+      if (screenshots.length > 0) {
+        handleOpenPath(screenshots[0].file_path);
+      }
+    }
+  }
+
   function refreshCurrentTab() {
     if (activeTab === 'worlds') loadWorlds();
     else if (activeTab === 'resourcepacks') loadResourcePacks();
@@ -298,6 +319,26 @@
   }
 
   // --- Worlds actions ---
+
+  async function handleOpenInLobby(world: WorldItemDto) {
+    isOpeningInLobby = { ...isOpeningInLobby, [world.folder_name]: true };
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const room = await invoke('create_lobby_room', {
+        worldName: world.display_name || world.folder_name,
+        playerName: playerName || 'Player',
+      });
+      notify('success', 'Комната лобби создана', `Мир «${world.display_name}» открыт для друзей`);
+      if (onopenlobby) {
+        onopenlobby(room);
+      }
+    } catch (err) {
+      const formatted = formatError(err, 'workshop');
+      notify('error', 'Не удалось открыть в лобби', formatted.description || String(err));
+    } finally {
+      isOpeningInLobby = { ...isOpeningInLobby, [world.folder_name]: false };
+    }
+  }
 
   async function handleCreateBackup(world: WorldItemDto) {
     isBackingUp = { ...isBackingUp, [world.folder_name]: true };
@@ -347,6 +388,16 @@
     isRestoring = true;
     try {
       const { invoke } = await import('@tauri-apps/api/core');
+      if (backupBeforeRestore) {
+        try {
+          await invoke('workshop_create_world_backup', {
+            worldFolder: selectedWorldForBackups.folder_path,
+            version: currentVersion,
+          });
+        } catch {
+          // Proceed with restore even if precautionary backup had error
+        }
+      }
       await invoke('workshop_restore_world_backup', {
         backupPath: backupToRestore.file_path,
         targetWorldFolder: selectedWorldForBackups.folder_path,
@@ -602,6 +653,18 @@
         >
           <span>{t('workshop.folder_shaders')}</span>
         </Button>
+      {:else if activeTab === 'screenshots'}
+        <span data-testid="open-screenshots-folder-wrap">
+          <Button
+            variant="secondary"
+            size="small"
+            onclick={handleOpenScreenshotsFolder}
+            title={i18n.locale === 'en' ? 'Open screenshots folder' : 'Открыть папку со скриншотами'}
+          >
+            <Icon name="folder" size={14} color="var(--color-label)" />
+            <span>Открыть папку</span>
+          </Button>
+        </span>
       {/if}
 
       <Button
@@ -626,9 +689,9 @@
           <div class="empty-icon-wrap">
             <Icon name="folder" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h2 class="empty-title">{t('workshop.worlds_empty_title')}</h2>
+          <h2 class="empty-title">Миров пока нет</h2>
           <p class="empty-description">
-            {t('workshop.worlds_empty_desc', { version: currentVersion })}, {i18n.locale === 'en' ? 'then manage it here.' : 'чтобы управлять им здесь.'}
+            Создайте мир в одиночной игре Minecraft, и он автоматически появится здесь.
           </p>
         </div>
       {:else}
@@ -678,35 +741,54 @@
               </div>
 
               <div class="world-actions">
-                <Button
-                  variant="secondary"
-                  size="small"
-                  onclick={() => handleCreateBackup(world)}
-                  loading={isBackingUp[world.folder_name]}
-                  title="Создать zip-архив мира"
-                >
-                  <Icon name="restore" size={14} color="var(--color-label)" />
-                  <span>Резервная копия</span>
-                </Button>
+                <span data-testid="open-in-lobby-btn-{world.folder_name}">
+                  <Button
+                    variant="primary"
+                    size="small"
+                    onclick={() => handleOpenInLobby(world)}
+                    loading={isOpeningInLobby[world.folder_name]}
+                    title="Создать комнату в лобби для совместной игры с друзьями"
+                  >
+                    <Icon name="friends" size={14} color="#ffffff" />
+                    <span>Открыть в лобби</span>
+                  </Button>
+                </span>
 
-                <Button
-                  variant="secondary"
-                  size="small"
-                  onclick={() => openBackupsSheet(world)}
-                  title="Восстановить из имеющейся копии"
-                >
-                  <span>Восстановить…</span>
-                </Button>
+                <span data-testid="create-backup-btn-{world.folder_name}">
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onclick={() => handleCreateBackup(world)}
+                    loading={isBackingUp[world.folder_name]}
+                    title="Создать zip-архив мира"
+                  >
+                    <Icon name="restore" size={14} color="var(--color-label)" />
+                    <span>Резервная копия</span>
+                  </Button>
+                </span>
 
-                <Button
-                  variant="destructive"
-                  size="small"
-                  onclick={() => promptDelete(world)}
-                  title="Удалить мир с диска"
-                >
-                  <Icon name="close" size={13} color="#ffffff" />
-                  <span>Удалить</span>
-                </Button>
+                <span data-testid="restore-world-btn-{world.folder_name}">
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onclick={() => openBackupsSheet(world)}
+                    title="Восстановить из имеющейся копии"
+                  >
+                    <span>Восстановить…</span>
+                  </Button>
+                </span>
+
+                <span data-testid="delete-world-btn-{world.folder_name}">
+                  <Button
+                    variant="destructive"
+                    size="small"
+                    onclick={() => promptDelete(world)}
+                    title="Удалить мир с диска"
+                  >
+                    <Icon name="close" size={13} color="#ffffff" />
+                    <span>Удалить</span>
+                  </Button>
+                </span>
               </div>
             </div>
           {/each}
@@ -949,10 +1031,16 @@
           <div class="empty-icon-wrap">
             <Icon name="sun" size={36} color="var(--color-tertiary-label)" />
           </div>
-          <h2 class="empty-title">{t('workshop.screenshots_empty_title')}</h2>
+          <h2 class="empty-title">Скриншотов пока нет</h2>
           <p class="empty-description">
-            {t('workshop.screenshots_empty_desc')}
+            Нажмите F2 во время игры в Minecraft, чтобы сделать красивый снимок экрана.
           </p>
+          <div style="margin-top: 16px;">
+            <Button variant="secondary" size="small" onclick={handleOpenScreenshotsFolder}>
+              <Icon name="folder" size={14} color="var(--color-label)" />
+              <span>Открыть папку</span>
+            </Button>
+          </div>
         </div>
       {:else}
         <div class="screenshots-grid" data-testid="screenshots-grid">
@@ -996,23 +1084,25 @@
                         class="overlay-btn"
                         onclick={(e) => handleCopyScreenshot(shot, e)}
                         title="Скопировать изображение в буфер обмена"
-                        aria-label="Скопировать изображение"
+                        aria-label="Скопировать"
+                        data-testid="copy-screenshot-btn"
                       >
                         <Icon name="copy" size={15} color="#ffffff" />
-                        <span>Копия</span>
+                        <span>Скопировать</span>
                       </button>
                       <button
                         type="button"
                         class="overlay-btn"
                         onclick={(e) => {
                           e.stopPropagation();
-                          handleOpenPath(shot.file_path);
+                          handleOpenScreenshotsFolder();
                         }}
-                        title="Открыть в проводнике"
-                        aria-label="Открыть в проводнике"
+                        title="Открыть папку со скриншотами"
+                        aria-label="Открыть папку"
+                        data-testid="open-screenshot-folder-btn"
                       >
                         <Icon name="folder" size={15} color="#ffffff" />
-                        <span>Файл</span>
+                        <span>Открыть папку</span>
                       </button>
                     </div>
                   </div>
@@ -1058,22 +1148,26 @@
       </div>
 
       <div class="preview-actions-bar">
-        <Button
-          variant="secondary"
-          size="regular"
-          onclick={() => handleCopyScreenshot(previewScreenshot!)}
-        >
-          <Icon name="copy" size={16} color="var(--color-primary-label)" />
-          <span>Скопировать в буфер</span>
-        </Button>
-        <Button
-          variant="secondary"
-          size="regular"
-          onclick={() => handleOpenPath(previewScreenshot!.file_path)}
-        >
-          <Icon name="folder" size={16} color="var(--color-primary-label)" />
-          <span>Открыть в проводнике</span>
-        </Button>
+        <span data-testid="preview-copy-btn">
+          <Button
+            variant="secondary"
+            size="regular"
+            onclick={() => handleCopyScreenshot(previewScreenshot!)}
+          >
+            <Icon name="copy" size={16} color="var(--color-primary-label)" />
+            <span>Скопировать</span>
+          </Button>
+        </span>
+        <span data-testid="preview-open-folder-btn">
+          <Button
+            variant="secondary"
+            size="regular"
+            onclick={handleOpenScreenshotsFolder}
+          >
+            <Icon name="folder" size={16} color="var(--color-primary-label)" />
+            <span>Открыть папку</span>
+          </Button>
+        </span>
       </div>
     </div>
   {/if}
@@ -1251,9 +1345,9 @@
     {/if}
 
     {#if backups.length === 0}
-      <div class="empty-modal-state">
+      <div class="empty-modal-state" data-testid="empty-backups">
         <Icon name="info" size={24} color="var(--color-secondary-label)" />
-        <p>Резервных копий для этого мира пока не создано.</p>
+        <p>Резервных копий пока нет. Вы можете создать копию кнопкой «Резервная копия» в списке миров.</p>
       </div>
     {:else}
       <div class="modal-list">
@@ -1266,13 +1360,15 @@
               </span>
             </div>
 
-            <Button
-              variant="secondary"
-              size="small"
-              onclick={() => promptRestore(b)}
-            >
-              Восстановить
-            </Button>
+            <span data-testid="restore-backup-btn-{b.file_name}">
+              <Button
+                variant="secondary"
+                size="small"
+                onclick={() => promptRestore(b)}
+              >
+                Восстановить
+              </Button>
+            </span>
           </div>
         {/each}
       </div>
@@ -1302,6 +1398,20 @@
       Текущее состояние мира будет перезаписано данными из архива.
     </p>
 
+    <div class="backup-confirm-prompt" data-testid="backup-before-restore-prompt">
+      <label class="backup-confirm-checkbox-label">
+        <input
+          type="checkbox"
+          bind:checked={backupBeforeRestore}
+          data-testid="backup-before-restore-checkbox"
+        />
+        <span>Создать резервную копию текущего мира перед восстановлением</span>
+      </label>
+      <p class="backup-confirm-hint">
+        Рекомендуется: сохранит текущие постройки и прогресс в отдельный zip-архив перед откатом.
+      </p>
+    </div>
+
     <div class="dialog-actions">
       <Button
         variant="ghost"
@@ -1312,14 +1422,16 @@
         Отмена
       </Button>
 
-      <Button
-        variant="primary"
-        size="regular"
-        onclick={handleConfirmRestore}
-        loading={isRestoring}
-      >
-        Подтвердить восстановление
-      </Button>
+      <span data-testid="confirm-restore-btn-wrap">
+        <Button
+          variant="primary"
+          size="regular"
+          onclick={handleConfirmRestore}
+          loading={isRestoring}
+        >
+          Подтвердить восстановление
+        </Button>
+      </span>
     </div>
   </div>
 </Sheet>
@@ -1847,6 +1959,43 @@
     line-height: 1.4;
     color: var(--color-secondary-label);
     margin: 0;
+  }
+
+  .backup-confirm-prompt {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 14px 0 6px;
+    padding: 12px 14px;
+    background-color: var(--color-secondary-system-fill);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--glass-border);
+  }
+
+  .backup-confirm-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--text-subheadline);
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+    color: var(--color-label);
+  }
+
+  .backup-confirm-checkbox-label input[type='checkbox'] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--color-system-blue);
+  }
+
+  .backup-confirm-hint {
+    font-size: var(--text-caption-1);
+    color: var(--color-secondary-label);
+    margin: 0;
+    padding-left: 24px;
+    line-height: 1.35;
   }
 
   .dialog-actions {

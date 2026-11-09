@@ -158,6 +158,8 @@ pub fn run() {
             commands::lobby::net_lan_stop_discovery,
             commands::lobby::net_lan_is_discovering,
             commands::lobby::publish_lan_world,
+            commands::lobby::retry_lobby_tunnel,
+            commands::lobby::net_compare_manifests,
             // Wardrobe commands
             commands::wardrobe::extras_validate_skin,
             commands::wardrobe::extras_convert_skin,
@@ -203,6 +205,7 @@ pub fn run() {
             commands::workshop::workshop_list_screenshots,
             commands::workshop::social_list_screenshots,
             commands::workshop::workshop_open_path,
+            commands::workshop::workshop_open_screenshots_folder,
             commands::workshop::workshop_copy_screenshot_image,
             // Workshop packs and shaders commands (SPEC 1.7)
             commands::workshop_packs::workshop_list_resource_packs,
