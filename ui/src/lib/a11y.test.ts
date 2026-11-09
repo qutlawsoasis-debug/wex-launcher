@@ -103,6 +103,7 @@ describe('A11y Automated Axe-Core Audit Across All 8 Sections', () => {
 
   for (const { name, component, props } of screens) {
     for (const appearance of ['dark', 'light'] as const) {
+      // Axe traverses the full screen DOM; allow shared CI CPU contention without skipping checks.
       it(`evaluates ${name} accessibility in ${appearance} theme`, async () => {
         theme.setAppearance(appearance);
         target.setAttribute('data-theme', appearance);
@@ -135,7 +136,7 @@ describe('A11y Automated Axe-Core Audit Across All 8 Sections', () => {
 
         expect(seriousOrCritical).toEqual([]);
         unmount(comp);
-      });
+      }, 15_000);
     }
   }
 
