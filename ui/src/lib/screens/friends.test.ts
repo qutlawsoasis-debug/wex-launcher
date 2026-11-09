@@ -263,7 +263,7 @@ describe('FriendsScreen Component Tests', () => {
   });
 
   // 5. Button Clicks Call Expected IPC Commands With Arguments
-  it('calls social_send_friend_request with trimmed target_friend_code when Add Friend is clicked', async () => {
+  it('calls social_send_friend_request with trimmed targetFriendCode when Add Friend is clicked', async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'social_sync') {
         return Promise.resolve({ friends: [], incoming_requests: [], incoming_invites: [] });
@@ -289,7 +289,7 @@ describe('FriendsScreen Component Tests', () => {
     await new Promise((r) => setTimeout(r, 60));
 
     expect(invokeMock).toHaveBeenCalledWith('social_send_friend_request', {
-      target_friend_code: '#A7X9',
+      targetFriendCode: '#A7X9',
     });
 
     unmount(comp);

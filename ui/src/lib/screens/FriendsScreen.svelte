@@ -180,7 +180,7 @@
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('social_send_friend_request', { target_friend_code: code });
+      await invoke('social_send_friend_request', { targetFriendCode: code });
       friendCodeInput = '';
       addToast('success', 'Заявка отправлена', `Заявка в друзья по коду ${code} успешно передана`);
       socialError = null;

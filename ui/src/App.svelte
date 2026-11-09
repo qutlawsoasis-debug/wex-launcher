@@ -18,6 +18,7 @@
   import Icon from './lib/components/icons/Icon.svelte';
 
   import PlayScreen from './lib/screens/PlayScreen.svelte';
+  import type { LobbyRoom } from './lib/screens/LobbyScreen.svelte';
   import type { CrashDiagnosisDto, DeepLinkActionDto } from './lib/ipc/generated/models';
   import type { DeepLinkAction } from './lib/components/DeepLinkConfirmationModal.svelte';
   import { initIdleManager, setGameRunning, createIdleInterval } from './lib/design/idleManager';
@@ -116,7 +117,7 @@
   let friendsSubtab = $state<'friends' | 'requests' | 'achievements'>('friends');
   let workshopSubtab = $state<'worlds' | 'resourcepacks' | 'shaders' | 'screenshots'>('worlds');
   let isMaximized = $state(false);
-  let initialLobbyRoom = $state<any>(null);
+  let initialLobbyRoom = $state<LobbyRoom | null>(null);
 
   // Crash report modal state
   let crashSheetOpen = $state(false);
@@ -187,13 +188,11 @@
     } catch {}
 
     if (action.kind === 'join') {
-      activeTab = 'lobby';
-      addToast('info', 'Подключение к лобби', `Код: ${action.target}`);
       try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('join_lobby_room', { code: action.target.toUpperCase(), playerName });
-      } catch (e: any) {
-        // Ignored in mock preview
+        await friendsLive.handleJoin(action.target);
+      } catch (error) {
+        const formatted = formatError(error, 'lobby');
+        addToast('error', formatted.title, formatted.description);
       }
     } else if (action.kind === 'server') {
       activeTab = 'play';
@@ -217,7 +216,7 @@
       addToast('info', 'Запрос в друзья', `Отправка запроса: ${action.target}`);
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('social_send_friend_request', { friend_code: action.target });
+        await invoke('social_send_friend_request', { targetFriendCode: action.target });
         addToast('success', 'Запрос отправлен', `Запрос для ${action.target} успешно отправлен`);
       } catch (e: any) {
         addToast('error', 'Не удалось отправить запрос в друзья', String(e));
@@ -714,13 +713,18 @@
     window.addEventListener('hashchange', applyHashRoute);
 
     // Real-time Friends Poller & Notifications
-    friendsLive.start();
     const unlistenLiveNotifs = friendsLive.onNotification((notif) => {
       addToast('info', notif.title, notif.description, notif.action);
     });
-    const unlistenLiveJoin = friendsLive.onJoin(() => {
+    const unlistenLiveJoin = friendsLive.onJoin((_code, room) => {
+      if (room) initialLobbyRoom = room;
       activeTab = 'lobby';
     });
+    const unlistenLiveError = friendsLive.onError((error, context) => {
+      const formatted = formatError(error, context);
+      addToast('error', formatted.title, formatted.description);
+    });
+    friendsLive.start();
 
     // Initial checks: parallelized network, profile, deep link and active running game state
     Promise.allSettled([
@@ -910,6 +914,7 @@
       cleanupNet();
       unlistenLiveNotifs();
       unlistenLiveJoin();
+      unlistenLiveError();
       friendsLive.stop();
       unlistenProgress?.();
       unlistenStatus?.();
@@ -922,6 +927,7 @@
   });
 
   $effect(() => {
+    friendsLive.setSessionContext({ playerName, gameVersion: selectedVersion, lobby: initialLobbyRoom });
     friendsLive.setGameRunning(isGameRunning);
   });
 </script>
@@ -1023,7 +1029,7 @@
           {:else if activeTab === 'lobby'}
             {#if screenComponents.lobby}
               {@const LobbyScreen = screenComponents.lobby}
-              <LobbyScreen {playerName} initialRoom={initialLobbyRoom} />
+              <LobbyScreen {playerName} initialRoom={initialLobbyRoom} onroomchange={(room: LobbyRoom | null) => { initialLobbyRoom = room; }} />
             {/if}
           {:else if activeTab === 'friends'}
             {#if screenComponents.friends}

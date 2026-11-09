@@ -69,11 +69,13 @@
   interface Props {
     playerName?: string;
     initialRoom?: LobbyRoom | null;
+    onroomchange?: (room: LobbyRoom | null) => void;
   }
 
   let {
     playerName = 'Player',
     initialRoom = null,
+    onroomchange,
   }: Props = $props();
 
   let effectivePlayerName = $derived(playerName);
@@ -115,6 +117,7 @@
   $effect(() => {
     activeRoom = initialRoom ?? null;
   });
+  $effect(() => { onroomchange?.(activeRoom); });
 
   function checkHash() {
     if (typeof window !== 'undefined' && window.location.hash) {
