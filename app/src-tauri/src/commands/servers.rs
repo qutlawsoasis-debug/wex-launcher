@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use tauri::State;
 
@@ -12,6 +14,111 @@ use wex_net::servers::{
     load_servers_dat, normalize_address, save_servers_dat, NbtTag, PackServerEntry,
 };
 use wex_net::ServerPinger;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PingFailureReason {
+    Offline,
+    InvalidAddress,
+    NoInternet,
+}
+
+impl PingFailureReason {
+    pub fn user_message(&self) -> &'static str {
+        match self {
+            Self::Offline => "Сервер выключен или недоступен",
+            Self::InvalidAddress => "Неверный адрес сервера",
+            Self::NoInternet => "Отсутствует подключение к интернету",
+        }
+    }
+}
+
+pub fn classify_ping_error(err: &wex_net::PingError) -> (PingFailureReason, &'static str) {
+    match err {
+        wex_net::PingError::Dns(_) => (
+            PingFailureReason::InvalidAddress,
+            PingFailureReason::InvalidAddress.user_message(),
+        ),
+        wex_net::PingError::Timeout => (
+            PingFailureReason::Offline,
+            PingFailureReason::Offline.user_message(),
+        ),
+        wex_net::PingError::Io(io_err) => {
+            use std::io::ErrorKind;
+            match io_err.kind() {
+                ErrorKind::ConnectionRefused | ErrorKind::TimedOut | ErrorKind::ConnectionReset => {
+                    (
+                        PingFailureReason::Offline,
+                        PingFailureReason::Offline.user_message(),
+                    )
+                }
+                ErrorKind::NotFound | ErrorKind::AddrNotAvailable => (
+                    PingFailureReason::InvalidAddress,
+                    PingFailureReason::InvalidAddress.user_message(),
+                ),
+                ErrorKind::NetworkUnreachable | ErrorKind::NotConnected => (
+                    PingFailureReason::NoInternet,
+                    PingFailureReason::NoInternet.user_message(),
+                ),
+                _ => {
+                    let s = io_err.to_string().to_lowercase();
+                    if s.contains("network unreachable")
+                        || s.contains("enetunreach")
+                        || s.contains("enetdown")
+                    {
+                        (
+                            PingFailureReason::NoInternet,
+                            PingFailureReason::NoInternet.user_message(),
+                        )
+                    } else if s.contains("no such host")
+                        || s.contains("failed to lookup")
+                        || s.contains("invalid")
+                        || s.contains("cannot assign")
+                    {
+                        (
+                            PingFailureReason::InvalidAddress,
+                            PingFailureReason::InvalidAddress.user_message(),
+                        )
+                    } else {
+                        (
+                            PingFailureReason::Offline,
+                            PingFailureReason::Offline.user_message(),
+                        )
+                    }
+                }
+            }
+        }
+        wex_net::PingError::Protocol(_) | wex_net::PingError::Json(_) => (
+            PingFailureReason::Offline,
+            PingFailureReason::Offline.user_message(),
+        ),
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ServerPingDetails {
+    pub success: bool,
+    pub latency_ms: Option<u64>,
+    pub online: Option<u32>,
+    pub max_players: Option<u32>,
+    pub motd: Option<String>,
+    pub version: Option<String>,
+    pub favicon: Option<String>,
+    pub failure_reason: Option<PingFailureReason>,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FriendHostedServerModel {
+    pub id: String,
+    pub friend_nick: String,
+    pub friend_id: Option<String>,
+    pub world_name: String,
+    pub address: String,
+    pub lobby_code: Option<String>,
+    pub game_version: Option<String>,
+    pub is_lan: bool,
+}
 
 /// Returns the path to `servers.dat` for the specified version.
 pub fn get_servers_dat_path(paths: &wex_core::config::WexPaths, version: Option<&str>) -> PathBuf {
@@ -306,8 +413,190 @@ pub async fn ping_server(
             version: res.version.name,
             favicon: res.favicon,
         }),
-        Err(e) => Err(e.to_string()),
+        Err(e) => {
+            let (reason, msg) = classify_ping_error(&e);
+            let code = match reason {
+                PingFailureReason::Offline => "offline",
+                PingFailureReason::InvalidAddress => "invalid_address",
+                PingFailureReason::NoInternet => "no_internet",
+            };
+            Err(format!("{}: {}", code, msg))
+        }
     }
+}
+
+/// Ping a Minecraft server returning structured details and categorized failure reason without fake counts.
+#[tauri::command]
+pub async fn ping_server_details(
+    address: String,
+    timeout_ms: Option<u64>,
+) -> Result<ServerPingDetails, String> {
+    let timeout_val = timeout_ms.unwrap_or(2500);
+    let pinger = ServerPinger::new(timeout_val, timeout_val, 763);
+
+    match pinger.ping(&address).await {
+        Ok(res) => Ok(ServerPingDetails {
+            success: true,
+            latency_ms: Some(res.latency_ms),
+            online: Some(res.players.online),
+            max_players: Some(res.players.max),
+            motd: Some(res.description),
+            version: Some(res.version.name),
+            favicon: res.favicon,
+            failure_reason: None,
+            error_message: None,
+        }),
+        Err(e) => {
+            let (reason, msg) = classify_ping_error(&e);
+            Ok(ServerPingDetails {
+                success: false,
+                latency_ms: None,
+                online: None,
+                max_players: None,
+                motd: None,
+                version: None,
+                favicon: None,
+                failure_reason: Some(reason),
+                error_message: Some(msg.to_string()),
+            })
+        }
+    }
+}
+
+/// Helper function to import and merge servers from servers.dat of both versions (1.20.1 and 1.21.1)
+/// without duplicate entries (matching by normalize_address).
+pub fn import_servers_from_instances_internal(
+    paths: &wex_core::config::WexPaths,
+) -> Result<Vec<ServerEntryModel>, String> {
+    let mut combined_servers: Vec<PackServerEntry> = Vec::new();
+    let mut seen_addresses = HashSet::new();
+
+    let paths_to_check = [
+        paths.instance_dir("1.21.1").join("servers.dat"),
+        paths.instance_dir("1.20.1").join("servers.dat"),
+        paths.root.join("servers.dat"),
+    ];
+
+    for s_path in &paths_to_check {
+        if s_path.exists() {
+            if let Ok(root) = load_servers_dat(s_path) {
+                let entries = parse_servers_from_nbt(&root);
+                for entry in entries {
+                    let norm = normalize_address(&entry.address);
+                    if seen_addresses.insert(norm) {
+                        combined_servers.push(PackServerEntry {
+                            id: Some(entry.id),
+                            name: entry.name,
+                            ip: entry.address,
+                            icon: entry.icon,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // If completely empty across all files, seed with default official servers
+    if combined_servers.is_empty() {
+        for s in default_official_servers() {
+            let norm = normalize_address(&s.ip);
+            if seen_addresses.insert(norm) {
+                combined_servers.push(s);
+            }
+        }
+    }
+
+    // Build unified NbtTag compound
+    let mut unified_root = NbtTag::Compound(vec![(
+        "servers".to_string(),
+        NbtTag::List {
+            tag_id: 10,
+            elements: Vec::new(),
+        },
+    )]);
+    wex_net::merge_pack_servers(&mut unified_root, &combined_servers);
+
+    // Save unified deduplicated list back to both 1.20.1 and 1.21.1 instances
+    for ver in &["1.20.1", "1.21.1"] {
+        let p = get_servers_dat_path(paths, Some(ver));
+        let _ = save_servers_dat(&p, &unified_root);
+    }
+
+    Ok(parse_servers_from_nbt(&unified_root))
+}
+
+/// Import servers from servers.dat of both versions (1.20.1 and 1.21.1) without duplicates.
+#[tauri::command]
+pub async fn import_servers_both_versions(
+    state: State<'_, PlayState>,
+) -> Result<Vec<ServerEntryModel>, String> {
+    import_servers_from_instances_internal(&state.paths)
+}
+
+/// Retrieves friend hosted servers from friends presence and lobby rooms.
+#[tauri::command]
+pub async fn get_friend_hosted_servers(
+    state: State<'_, PlayState>,
+) -> Result<Vec<FriendHostedServerModel>, String> {
+    let mut result = Vec::new();
+    let mut seen_ids = HashSet::new();
+
+    // 1. Check friends state file
+    let friends_file = state.paths.root.join("friends.json");
+    if let Ok(content) = std::fs::read_to_string(&friends_file) {
+        if let Ok(friends) = serde_json::from_str::<Vec<serde_json::Value>>(&content) {
+            for f in friends {
+                let nick = f
+                    .get("nick")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let status = f.get("status").and_then(|v| v.as_str()).unwrap_or_default();
+                let world_name = f
+                    .get("world_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let lobby_code = f
+                    .get("lobby_code")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let game_version = f
+                    .get("game_version")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let id = f.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+                if (status == "playing" || status == "in_lobby")
+                    && (world_name.is_some() || lobby_code.is_some())
+                {
+                    let w_name = world_name.unwrap_or_else(|| "Кооперативный мир".to_string());
+                    let addr = if let Some(ref code) = lobby_code {
+                        format!("#{code}")
+                    } else if w_name.contains(':') {
+                        w_name.clone()
+                    } else {
+                        "127.0.0.1:25565".to_string()
+                    };
+
+                    let srv_id = format!("friend-srv-{}", id.as_deref().unwrap_or(&nick));
+                    if seen_ids.insert(srv_id.clone()) {
+                        result.push(FriendHostedServerModel {
+                            id: srv_id,
+                            friend_nick: nick,
+                            friend_id: id,
+                            world_name: w_name,
+                            address: addr,
+                            lobby_code,
+                            game_version,
+                            is_lan: false,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 // ============================================================================
@@ -556,5 +845,148 @@ mod tests {
         let loaded3 = load_servers_dat(&servers_dat).unwrap();
         let servers3 = parse_servers_from_nbt(&loaded3);
         assert_eq!(servers3.len(), 0);
+    }
+
+    #[test]
+    fn test_classify_ping_error_categories() {
+        use std::io;
+
+        // 1. Offline (ConnectionRefused, TimedOut, etc.)
+        let err_timeout = wex_net::PingError::Timeout;
+        let (reason1, msg1) = classify_ping_error(&err_timeout);
+        assert_eq!(reason1, PingFailureReason::Offline);
+        assert_eq!(msg1, "Сервер выключен или недоступен");
+
+        let err_refused = wex_net::PingError::Io(io::Error::new(
+            io::ErrorKind::ConnectionRefused,
+            "connection refused",
+        ));
+        let (reason2, msg2) = classify_ping_error(&err_refused);
+        assert_eq!(reason2, PingFailureReason::Offline);
+        assert_eq!(msg2, "Сервер выключен или недоступен");
+
+        // 2. Invalid address (DNS, NotFound, AddrNotAvailable)
+        let err_dns = wex_net::PingError::Dns("failed to lookup address information".to_string());
+        let (reason3, msg3) = classify_ping_error(&err_dns);
+        assert_eq!(reason3, PingFailureReason::InvalidAddress);
+        assert_eq!(msg3, "Неверный адрес сервера");
+
+        let err_not_found = wex_net::PingError::Io(io::Error::new(
+            io::ErrorKind::NotFound,
+            "No such host is known",
+        ));
+        let (reason4, msg4) = classify_ping_error(&err_not_found);
+        assert_eq!(reason4, PingFailureReason::InvalidAddress);
+        assert_eq!(msg4, "Неверный адрес сервера");
+
+        // 3. No internet (NetworkUnreachable, NotConnected)
+        let err_net = wex_net::PingError::Io(io::Error::new(
+            io::ErrorKind::NetworkUnreachable,
+            "A socket operation was attempted to an unreachable network",
+        ));
+        let (reason5, msg5) = classify_ping_error(&err_net);
+        assert_eq!(reason5, PingFailureReason::NoInternet);
+        assert_eq!(msg5, "Отсутствует подключение к интернету");
+    }
+
+    #[test]
+    fn test_import_servers_both_versions_deduplication() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+
+        // 1. Setup 1.20.1 servers.dat with Server 1 and Duplicate Server
+        let v120_dat = get_servers_dat_path(&paths, Some("1.20.1"));
+        let root120 = NbtTag::Compound(vec![(
+            "servers".to_string(),
+            NbtTag::List {
+                tag_id: 10,
+                elements: vec![
+                    NbtTag::Compound(vec![
+                        ("name".to_string(), NbtTag::String("SMP 1.20".to_string())),
+                        (
+                            "ip".to_string(),
+                            NbtTag::String("smp.auramc.net:25565".to_string()),
+                        ),
+                    ]),
+                    NbtTag::Compound(vec![
+                        ("name".to_string(), NbtTag::String("Aura Hub".to_string())),
+                        (
+                            "ip".to_string(),
+                            NbtTag::String("hub.auramc.net:25565".to_string()),
+                        ),
+                    ]),
+                ],
+            },
+        )]);
+        save_servers_dat(&v120_dat, &root120).unwrap();
+
+        // 2. Setup 1.21.1 servers.dat with Server 2 and Duplicate Server (with normalized alias "hub.auramc.net")
+        let v121_dat = get_servers_dat_path(&paths, Some("1.21.1"));
+        let root121 = NbtTag::Compound(vec![(
+            "servers".to_string(),
+            NbtTag::List {
+                tag_id: 10,
+                elements: vec![
+                    NbtTag::Compound(vec![
+                        (
+                            "name".to_string(),
+                            NbtTag::String("Minigames 1.21".to_string()),
+                        ),
+                        (
+                            "ip".to_string(),
+                            NbtTag::String("mini.auramc.net".to_string()),
+                        ),
+                    ]),
+                    NbtTag::Compound(vec![
+                        ("name".to_string(), NbtTag::String("Hub Lobby".to_string())),
+                        (
+                            "ip".to_string(),
+                            NbtTag::String("hub.auramc.net".to_string()),
+                        ),
+                    ]),
+                ],
+            },
+        )]);
+        save_servers_dat(&v121_dat, &root121).unwrap();
+
+        // 3. Run import_servers_from_instances_internal
+        let merged = import_servers_from_instances_internal(&paths).unwrap();
+
+        // Verify exactly 3 servers are returned (hub.auramc.net deduplicated)
+        assert_eq!(
+            merged.len(),
+            3,
+            "Expected exactly 3 servers after deduplication, got: {:?}",
+            merged
+        );
+
+        let addrs: Vec<String> = merged.iter().map(|s| s.address.clone()).collect();
+        assert!(addrs.contains(&"smp.auramc.net:25565".to_string()));
+        assert!(addrs.contains(&"mini.auramc.net".to_string()));
+        assert!(
+            addrs.contains(&"hub.auramc.net".to_string())
+                || addrs.contains(&"hub.auramc.net:25565".to_string())
+        );
+
+        // Verify both 1.20.1 and 1.21.1 servers.dat files now have all 3 deduplicated servers
+        let loaded_v120 = load_servers_dat(&v120_dat).unwrap();
+        let servers_v120 = parse_servers_from_nbt(&loaded_v120);
+        assert_eq!(servers_v120.len(), 3);
+
+        let loaded_v121 = load_servers_dat(&v121_dat).unwrap();
+        let servers_v121 = parse_servers_from_nbt(&loaded_v121);
+        assert_eq!(servers_v121.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_ping_offline_server_on_loopback_returns_offline_diagnostic() {
+        // Ping unused local port on 127.0.0.1 (server turned off)
+        let pinger = ServerPinger::new(300, 300, 763);
+        let res = pinger.ping("127.0.0.1:49151").await;
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        let (reason, msg) = classify_ping_error(&err);
+        assert_eq!(reason, PingFailureReason::Offline);
+        assert_eq!(msg, "Сервер выключен или недоступен");
     }
 }
