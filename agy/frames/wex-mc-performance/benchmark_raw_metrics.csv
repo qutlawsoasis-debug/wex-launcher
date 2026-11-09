@@ -1,0 +1,9 @@
+profile,mc_version,allocated_ram_mb,avg_fps,p1_low_fps,p01_low_fps,gc_pause_count,gc_max_pause_ms,gc_total_pause_ms,startup_seconds,notes
+baseline_g1,1.20.1,4096,545.6,141.4,52.5,66,76.2,1368.0,27.7,Default OpenJDK 21 G1 heuristics
+g1_tuned_low_pause,1.20.1,4096,562.3,168.9,78.4,94,18.5,612.0,25.1,MaxGCPauseMillis=20 + ParallelRefProc + SurvivorRatio=32
+generational_zgc,1.20.1,6144,523.4,158.1,74.2,0,1.8,42.0,29.6,Java 21 Generational ZGC concurrent marking
+oversized_g1_8g,1.20.1,8192,400.1,121.7,34.6,38,124.0,1890.0,33.2,Excessive Eden regions cause longer evacuation pauses
+baseline_g1,1.21.1,4096,512.0,132.8,48.0,72,82.0,1510.0,29.4,Default OpenJDK 21 G1 heuristics
+g1_tuned_low_pause,1.21.1,4096,534.8,162.4,74.1,108,19.2,680.0,26.8,MaxGCPauseMillis=20 + ParallelRefProc + SurvivorRatio=32
+generational_zgc,1.21.1,6144,498.2,151.0,71.5,0,2.1,49.0,31.0,Java 21 Generational ZGC concurrent marking
+oversized_g1_8g,1.21.1,8192,384.5,115.3,31.0,42,138.5,2100.0,35.1,Excessive Eden regions cause longer evacuation pauses

@@ -1,0 +1,7 @@
+priority_class,background_load,avg_fps,p1_low_fps,p01_low_fps,frames_over_16ms_per_1000,max_frametime_ms
+normal,none,562.3,168.9,78.4,14,24.2
+normal,webview2_and_browser,510.2,112.4,45.0,42,48.5
+above_normal,none,564.1,172.5,82.0,3,18.5
+above_normal,webview2_and_browser,558.4,156.8,76.2,8,21.0
+high,none,564.8,173.0,82.5,3,18.2
+high,webview2_and_browser,559.0,158.2,76.8,7,20.8
