@@ -629,6 +629,48 @@
         handleRawDeepLink(deeplinkParam);
       }
 
+      const subtabParam = params.get('subtab');
+      if (subtabParam === 'friends' || subtabParam === 'requests' || subtabParam === 'achievements') {
+        friendsSubtab = subtabParam;
+      }
+
+      const lobbyState = params.get('lobbyState');
+      if (lobbyState === 'host') {
+        initialLobbyRoom = {
+          code: '#A7X9',
+          host_name: 'Alex',
+          world_name: 'Выживание в тайге',
+          tunnel_address: 'tunnel.playit.gg:25565',
+          tunnel_active: true,
+          tunnel_error: null,
+          is_host: true,
+          players: [
+            { name: 'Alex', is_host: true, ping_ms: 0, mods_synced: true },
+            { name: 'Steve', is_host: false, ping_ms: 24, mods_synced: true },
+            { name: 'Charlie', is_host: false, ping_ms: 42, mods_synced: true },
+          ],
+          mod_mismatch_count: 0,
+          total_mods: 142,
+        };
+      } else if (lobbyState === 'tunnel_error') {
+        initialLobbyRoom = {
+          code: '#FAIL1',
+          host_name: 'Alex',
+          world_name: 'Мир Alex',
+          tunnel_address: null,
+          tunnel_active: false,
+          tunnel_error: 'Не удалось поднять Playit-туннель: служба туннелей временно недоступна',
+          is_host: true,
+          players: [
+            { name: 'Alex', is_host: true, ping_ms: 0, mods_synced: true },
+          ],
+          mod_mismatch_count: 0,
+          total_mods: 142,
+        };
+      } else if (lobbyState === 'none' || lobbyState === 'reset') {
+        initialLobbyRoom = null;
+      }
+
       // Support wex://join and #join=ROOM123 deep links
       const joinCode = parseWexJoinUri(window.location.hash) || parseWexJoinUri(window.location.search);
       if (joinCode) {
