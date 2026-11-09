@@ -179,7 +179,7 @@ pub async fn sync_aura_pack_cancellable(
             m
         }
         Err(e) => {
-            if manifest_cache_file.exists() {
+            if e.is_network_unavailable() && manifest_cache_file.exists() {
                 events.on_event(&Event::Log {
                     level: LogLevel::Warn,
                     message: format!(
@@ -810,9 +810,11 @@ mod tests {
         )
         .unwrap();
 
-        // Offline client (connection will fail immediately)
+        // Deterministically offline, without proxy or real GitHub requests.
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_millis(50))
+            .no_proxy()
+            .resolve_to_addrs("raw.githubusercontent.com", &[])
+            .timeout(std::time::Duration::from_secs(2))
             .build()
             .unwrap();
         let events = crate::event::NoopEventHandler;

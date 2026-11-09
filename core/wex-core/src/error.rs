@@ -60,6 +60,15 @@ pub enum WexError {
     },
 }
 
+impl WexError {
+    /// Only transport unavailability permits cached metadata. HTTP rejection,
+    /// malformed responses, integrity errors and disk failures must remain errors.
+    pub(crate) fn is_network_unavailable(&self) -> bool {
+        matches!(self, Self::Network(e) if !e.is_status() && !e.is_decode()
+            && (e.is_connect() || e.is_timeout()))
+    }
+}
+
 impl From<WexError> for wex_ipc::error::IpcError {
     fn from(err: WexError) -> Self {
         match err {
