@@ -333,6 +333,26 @@ test.describe('Wex UI Smoke Tests', () => {
         await page.keyboard.press('Escape');
         await page.waitForTimeout(200);
       }
+
+      // Modal 5: First Launch Onboarding Modal
+      await page.goto(`/?onboarding=true&theme=${theme}`);
+      await page.waitForTimeout(300);
+      const onboardingCard = page.locator('.onboarding-card');
+      if (await onboardingCard.isVisible()) {
+        await assertViewIntegrity(
+          page,
+          `OnboardingModal (${theme})`,
+          consoleErrors,
+          pageErrors
+        );
+        const skipBtn = page.locator('.skip-action, button:has-text("Пропустить")').first();
+        if (await skipBtn.isVisible()) {
+          await skipBtn.click();
+        } else {
+          await page.keyboard.press('Escape');
+        }
+        await page.waitForTimeout(200);
+      }
     });
   }
 

@@ -12,6 +12,10 @@ export interface MockIpcOptions {
 export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
   const mode = options.mode;
 
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('wex_onboarding_completed', 'true');
+  }
+
   const callbacks = new Map<number, (data: any) => void>();
   let nextId = 1;
   const listeners = new Map<string, number[]>();
@@ -345,6 +349,18 @@ export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
     workshop_delete_pack_file: true,
     workshop_add_pack_file: 'Faithful-64x.zip',
     workshop_copy_screenshot_image: true,
+
+    // Onboarding
+    onboarding_get_specs: {
+      total_memory_mb: 16384,
+      available_memory_mb: 8192,
+      cpu_cores: 8,
+      os_name: 'Windows 11',
+      recommended_memory_mb: 4096,
+    },
+    onboarding_prewarm_game: true,
+    onboarding_complete: true,
+    onboarding_detect_old_launcher: null,
 
     // Import & Crash
     extras_detect_old_launcher: null, // do not auto-open import wizard on every page visit
