@@ -491,6 +491,10 @@ impl DiscordRpcClient {
         let packet = encode_ipc_packet(OP_FRAME, &payload_str);
         self.packet_sent_count += 1;
 
+        // The Discord IPC pipe is only implemented on Windows.
+        #[cfg(not(windows))]
+        let _ = packet;
+
         #[cfg(windows)]
         {
             if let Some(stream) = &mut self.pipe_stream {
@@ -519,6 +523,10 @@ impl DiscordRpcClient {
         let payload_str = payload.to_string();
         let packet = encode_ipc_packet(OP_FRAME, &payload_str);
         self.packet_sent_count += 1;
+
+        // The Discord IPC pipe is only implemented on Windows.
+        #[cfg(not(windows))]
+        let _ = packet;
 
         #[cfg(windows)]
         {
