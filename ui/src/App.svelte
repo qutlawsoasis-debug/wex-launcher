@@ -30,6 +30,7 @@
   import MusicDiskWidget from './lib/components/MusicDiskWidget.svelte';
   import type { CrashDiagnosisDto } from './lib/ipc/generated/models';
   import { initIdleManager, setGameRunning, createIdleInterval } from './lib/design/idleManager';
+  import { friendsLive, parseWexJoinUri } from './lib/services/friendsLive';
 
   // Navigation state
   let activeTab = $state('play');
@@ -104,9 +105,14 @@
   // Toast stack
   let toasts = $state<ToastMessage[]>([]);
 
-  function addToast(type: 'info' | 'success' | 'warning' | 'error', title: string, description?: string) {
+  function addToast(
+    type: 'info' | 'success' | 'warning' | 'error',
+    title: string,
+    description?: string,
+    action?: { label: string; onClick: () => void }
+  ) {
     const id = `toast-${Date.now()}-${Math.random()}`;
-    toasts = [...toasts, { id, type, title, description, duration: 4000 }];
+    toasts = [...toasts, { id, type, title, description, duration: 5000, action }];
   }
 
   function dismissToast(id: string) {
@@ -416,10 +422,25 @@
         };
         crashSheetOpen = true;
       }
+      // Support wex://join and #join=ROOM123 deep links
+      const joinCode = parseWexJoinUri(window.location.hash) || parseWexJoinUri(window.location.search);
+      if (joinCode) {
+        activeTab = 'lobby';
+        void friendsLive.handleJoin(joinCode);
+      }
     }
 
     applyHashRoute();
     window.addEventListener('hashchange', applyHashRoute);
+
+    // Real-time Friends Poller & Notifications
+    friendsLive.start();
+    const unlistenLiveNotifs = friendsLive.onNotification((notif) => {
+      addToast('info', notif.title, notif.description, notif.action);
+    });
+    const unlistenLiveJoin = friendsLive.onJoin(() => {
+      activeTab = 'lobby';
+    });
 
     // Initial checks: parallelized network, profile, and active running game state
     Promise.allSettled([
@@ -549,12 +570,19 @@
         window.removeEventListener('online', checkNetwork);
       }
       cleanupNet();
+      unlistenLiveNotifs();
+      unlistenLiveJoin();
+      friendsLive.stop();
       unlistenProgress?.();
       unlistenStatus?.();
       unlistenAchievement?.();
       unlistenInvite?.();
       unlistenCrash?.();
     };
+  });
+
+  $effect(() => {
+    friendsLive.setGameRunning(isGameRunning);
   });
 </script>
 

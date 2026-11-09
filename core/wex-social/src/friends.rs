@@ -636,4 +636,84 @@ mod tests {
             .unwrap();
         assert_eq!(inv_id, "inv_9988");
     }
+
+    #[tokio::test]
+    async fn test_live_friends_presence_update_and_status_transitions() {
+        let mock_server = MockServer::start().await;
+
+        let auth = UserAuth {
+            user_id: "usr_alice".into(),
+            user_token: "tok_alice".into(),
+            friend_code: "FC-ALICE".into(),
+            nick: "Alice".into(),
+        };
+
+        // First sync: Bob is Online
+        Mock::given(method("POST"))
+            .and(path("/api/user/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "friends": [
+                    {
+                        "id": "usr_bob",
+                        "nick": "Bob",
+                        "status": "online",
+                        "gameVersion": null,
+                        "worldName": null,
+                        "lobbyCode": null
+                    }
+                ],
+                "incomingRequests": [],
+                "incomingInvites": []
+            })))
+            .up_to_n_times(1)
+            .mount(&mock_server)
+            .await;
+
+        // Second sync: Bob transitions to Playing on Survival Server
+        Mock::given(method("POST"))
+            .and(path("/api/user/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "friends": [
+                    {
+                        "id": "usr_bob",
+                        "nick": "Bob",
+                        "status": "playing",
+                        "gameVersion": "1.21.1",
+                        "worldName": "Survival SMP",
+                        "lobbyCode": "SMP123"
+                    }
+                ],
+                "incomingRequests": [],
+                "incomingInvites": [
+                    {
+                        "id": "inv_42",
+                        "lobbyCode": "SMP123",
+                        "fromId": "usr_bob",
+                        "fromNick": "Bob",
+                        "hostName": "Bob",
+                        "createdAt": 1730000100
+                    }
+                ]
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = FriendApiClient::new(mock_server.uri());
+
+        let sync_1 = client.sync(&auth, None).await.unwrap();
+        assert_eq!(sync_1.friends.len(), 1);
+        assert_eq!(sync_1.friends[0].status, OnlineStatus::Online);
+        assert_eq!(sync_1.friends[0].world_name, None);
+
+        let sync_2 = client.sync(&auth, None).await.unwrap();
+        assert_eq!(sync_2.friends.len(), 1);
+        assert_eq!(sync_2.friends[0].status, OnlineStatus::Playing);
+        assert_eq!(
+            sync_2.friends[0].world_name.as_deref(),
+            Some("Survival SMP")
+        );
+        assert_eq!(sync_2.friends[0].game_version.as_deref(), Some("1.21.1"));
+        assert_eq!(sync_2.incoming_invites.len(), 1);
+        assert_eq!(sync_2.incoming_invites[0].lobby_code, "SMP123");
+    }
 }

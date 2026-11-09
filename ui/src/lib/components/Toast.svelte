@@ -16,6 +16,10 @@
     title: string;
     description?: string;
     duration?: number;
+    action?: {
+      label: string;
+      onClick: () => void;
+    };
   }
 
   interface Props {
@@ -91,6 +95,19 @@
     {/if}
   </div>
 
+  {#if toast.action}
+    <button
+      type="button"
+      class="toast-action-btn"
+      onclick={() => {
+        toast.action?.onClick();
+        ondismiss?.(toast.id);
+      }}
+    >
+      {toast.action.label}
+    </button>
+  {/if}
+
   <button
     type="button"
     class="dismiss-btn"
@@ -148,6 +165,29 @@
     font-size: var(--text-footnote);
     color: var(--color-secondary-label);
     line-height: var(--line-footnote);
+  }
+
+  .toast-action-btn {
+    appearance: none;
+    background: var(--color-system-blue);
+    color: #ffffff;
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 4px 10px;
+    font-size: var(--text-footnote);
+    font-weight: 500;
+    cursor: pointer;
+    flex-shrink: 0;
+    white-space: nowrap;
+    transition: opacity var(--motion-duration-fast) ease;
+  }
+
+  .toast-action-btn:hover {
+    opacity: 0.88;
+  }
+
+  .toast-action-btn:active {
+    opacity: 0.75;
   }
 
   .dismiss-btn {
