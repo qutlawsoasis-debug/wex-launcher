@@ -66,13 +66,11 @@
 
   interface Props {
     playerName?: string;
-    mockOnlineFriends?: OnlineFriend[];
     initialRoom?: LobbyRoom | null;
   }
 
   let {
     playerName = 'Player',
-    mockOnlineFriends,
     initialRoom = null,
   }: Props = $props();
 
@@ -116,12 +114,6 @@
     activeRoom = initialRoom ?? null;
   });
 
-  $effect(() => {
-    if (mockOnlineFriends) {
-      onlineFriends = mockOnlineFriends;
-    }
-  });
-
   // Cloud open rooms state
   let cloudRooms = $state<OpenRoom[]>([]);
   let isLoadingCloudRooms = $state(false);
@@ -159,10 +151,6 @@
   let copiedCode = $state(false);
 
   export async function fetchOnlineFriends() {
-    if (mockOnlineFriends) {
-      onlineFriends = mockOnlineFriends;
-      return;
-    }
     isLoadingFriends = true;
     try {
       const { invoke } = await import('@tauri-apps/api/core');

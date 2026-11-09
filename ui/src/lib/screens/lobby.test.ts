@@ -133,6 +133,14 @@ describe('LobbyScreen - Friends Lobby & P2P Multiplayer (wex-lobby-polish)', () 
     let sentInvitePayload: any = null;
 
     invokeMock.mockImplementation(async (cmd: string, args: any) => {
+      if (cmd === 'social_sync') {
+        return {
+          friends: [
+            { id: 'u_charlie', nick: 'Charlie', status: 'online' },
+            { id: 'u_diana', nick: 'Diana', status: 'playing', world_name: 'Hardcore' },
+          ],
+        };
+      }
       if (cmd === 'social_send_lobby_invite') {
         sentInvitePayload = args;
         return null;
@@ -145,7 +153,6 @@ describe('LobbyScreen - Friends Lobby & P2P Multiplayer (wex-lobby-polish)', () 
       props: {
         playerName: 'Alex',
         initialRoom: hostRoom,
-        mockOnlineFriends,
       },
     });
 

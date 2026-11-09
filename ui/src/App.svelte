@@ -37,6 +37,7 @@
   let friendsSubtab = $state<'friends' | 'requests' | 'achievements'>('friends');
   let workshopSubtab = $state<'worlds' | 'resourcepacks' | 'shaders' | 'screenshots'>('worlds');
   let isMaximized = $state(false);
+  let initialLobbyRoom = $state<any>(null);
 
   // Crash report modal state
   let crashSheetOpen = $state(false);
@@ -683,13 +684,22 @@
           {:else if activeTab === 'servers'}
             <ServersScreen />
           {:else if activeTab === 'lobby'}
-            <LobbyScreen {playerName} />
+            <LobbyScreen {playerName} initialRoom={initialLobbyRoom} />
           {:else if activeTab === 'friends'}
             <FriendsScreen tab={friendsSubtab} />
           {:else if activeTab === 'wardrobe'}
             <WardrobeScreen {playerName} ontoast={addToast} />
           {:else if activeTab === 'workshop'}
-            <WorkshopScreen {selectedVersion} initialTab={workshopSubtab} ontoast={addToast} />
+            <WorkshopScreen
+              {selectedVersion}
+              initialTab={workshopSubtab}
+              ontoast={addToast}
+              {playerName}
+              onopenlobby={(room) => {
+                initialLobbyRoom = room;
+                activeTab = 'lobby';
+              }}
+            />
           {:else if activeTab === 'mods'}
             <ModsScreen />
           {:else if activeTab === 'settings'}
