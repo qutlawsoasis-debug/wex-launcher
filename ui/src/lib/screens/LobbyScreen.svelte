@@ -97,9 +97,33 @@
   let lanWorlds = $state<LanWorld[]>([]);
   let isLoadingLan = $state(false);
   let isConnectingLan = $state(false);
+  let isPublishingLan = $state(false);
+  let publishingPort = $state<number | null>(null);
   let lanConnectMessage = $state('');
   let copiedTunnel = $state(false);
   let copiedCode = $state(false);
+
+  export async function handlePublishLanWorld(world: LanWorld) {
+    if (isPublishingLan) return;
+    isPublishingLan = true;
+    publishingPort = world.port;
+    errorMessage = '';
+    lanConnectMessage = '';
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const room = await invoke<LobbyRoom>('publish_lan_world', {
+        motd: world.motd,
+        port: world.port,
+        playerName: 'Player',
+      });
+      activeRoom = room;
+    } catch (e: any) {
+      errorMessage = typeof e === 'string' ? e : e?.message || 'Не удалось опубликовать LAN-мир';
+    } finally {
+      isPublishingLan = false;
+      publishingPort = null;
+    }
+  }
 
   export async function fetchLanWorlds() {
     isLoadingLan = true;
@@ -648,14 +672,26 @@
               {/snippet}
 
               {#snippet trailing()}
-                <Button
-                  variant="primary"
-                  size="small"
-                  onclick={() => handleConnectLanWorld(world.address)}
-                  loading={isConnectingLan}
-                >
-                  <span>Подключиться</span>
-                </Button>
+                <div class="lan-world-actions">
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onclick={() => handlePublishLanWorld(world)}
+                    loading={publishingPort === world.port}
+                    disabled={isPublishingLan || isConnectingLan}
+                  >
+                    <span>Открыть друзьям</span>
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="small"
+                    onclick={() => handleConnectLanWorld(world.address)}
+                    loading={isConnectingLan}
+                    disabled={isPublishingLan}
+                  >
+                    <span>Подключиться</span>
+                  </Button>
+                </div>
               {/snippet}
             </Row>
           {/each}
@@ -1216,5 +1252,11 @@
     background-color: rgba(48, 209, 88, 0.12);
     color: var(--color-system-green);
     border: 1px solid rgba(48, 209, 88, 0.25);
+  }
+
+  .lan-world-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 </style>

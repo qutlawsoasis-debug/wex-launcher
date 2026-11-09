@@ -14,7 +14,8 @@ use wex_ipc::commands::{
     ExtrasConvertSkinRequest, ExtrasConvertSkinResponse, ExtrasGenerateCslConfigRequest,
     ExtrasListSkinHistoryRequest, ExtrasListSkinHistoryResponse, ExtrasSaveSkinRequest,
     ExtrasValidateSkinRequest, WardrobeApplyRequest, WardrobeApplyResponse,
-    WardrobeDeleteHistoryRequest, WardrobeDeleteHistoryResponse,
+    WardrobeDeleteHistoryRequest, WardrobeDeleteHistoryResponse, WardrobeGetSkinRequest,
+    WardrobeGetSkinResponse,
 };
 use wex_ipc::models::{SkinModelDto, SkinValidationResultDto, WardrobeItemDto, WardrobeStateDto};
 
@@ -64,28 +65,68 @@ pub async fn extras_save_skin(request: ExtrasSaveSkinRequest) -> Result<Wardrobe
     Ok(item.into())
 }
 
+pub fn list_skin_history_impl(dir: &Path) -> Result<Vec<WardrobeItemDto>, String> {
+    let mgr = SkinHistoryManager::new(dir);
+    let items = mgr.get_history().map_err(|e| e.to_string())?;
+    Ok(items.into_iter().map(Into::into).collect())
+}
+
+pub fn delete_history_skin_impl(dir: &Path, item_id: &str) -> Result<bool, String> {
+    let mgr = SkinHistoryManager::new(dir);
+    mgr.remove_item(item_id).map_err(|e| e.to_string())
+}
+
+pub fn get_skin_impl(dir: &Path, item_id: &str) -> Result<(WardrobeItemDto, String), String> {
+    let mgr = SkinHistoryManager::new(dir);
+    let (bytes, item) = mgr
+        .get_skin_bytes_by_id(item_id)
+        .map_err(|e| e.to_string())?;
+    Ok((item.into(), BASE64.encode(&bytes)))
+}
+
 #[tauri::command]
 pub async fn extras_list_skin_history(
     request: ExtrasListSkinHistoryRequest,
+    state: State<'_, PlayState>,
 ) -> Result<ExtrasListSkinHistoryResponse, String> {
-    let mgr = SkinHistoryManager::new(&request.history_dir);
-    let items = mgr.get_history().map_err(|e| e.to_string())?;
-
-    Ok(ExtrasListSkinHistoryResponse {
-        items: items.into_iter().map(Into::into).collect(),
-    })
+    let dir = if request.history_dir.is_empty() {
+        state.paths.root.clone()
+    } else {
+        PathBuf::from(request.history_dir)
+    };
+    let items = list_skin_history_impl(&dir)?;
+    Ok(ExtrasListSkinHistoryResponse { items })
 }
 
 #[tauri::command]
 pub async fn wardrobe_delete_history(
     request: WardrobeDeleteHistoryRequest,
+    state: State<'_, PlayState>,
 ) -> Result<WardrobeDeleteHistoryResponse, String> {
-    let mgr = SkinHistoryManager::new(&request.history_dir);
-    let success = mgr
-        .remove_item(&request.item_id)
-        .map_err(|e| e.to_string())?;
-
+    let dir = if request.history_dir.is_empty() {
+        state.paths.root.clone()
+    } else {
+        PathBuf::from(request.history_dir)
+    };
+    let success = delete_history_skin_impl(&dir, &request.item_id)?;
     Ok(WardrobeDeleteHistoryResponse { success })
+}
+
+#[tauri::command]
+pub async fn wardrobe_get_skin(
+    request: WardrobeGetSkinRequest,
+    state: State<'_, PlayState>,
+) -> Result<WardrobeGetSkinResponse, String> {
+    let dir = if request.history_dir.is_empty() {
+        state.paths.root.clone()
+    } else {
+        PathBuf::from(request.history_dir)
+    };
+    let (item, skin_bytes_base64) = get_skin_impl(&dir, &request.item_id)?;
+    Ok(WardrobeGetSkinResponse {
+        item,
+        skin_bytes_base64,
+    })
 }
 
 #[tauri::command]
@@ -279,11 +320,11 @@ mod tests {
     #[tokio::test]
     async fn test_save_and_list_skin_history() {
         let dir = tempdir().unwrap();
-        let history_dir = dir.path().to_string_lossy().to_string();
+        let history_dir = dir.path().to_path_buf();
 
         let (_bytes, b64) = make_test_skin_png(64, 64);
         let saved = extras_save_skin(ExtrasSaveSkinRequest {
-            history_dir: history_dir.clone(),
+            history_dir: history_dir.to_string_lossy().to_string(),
             skin_name: "TestHero".to_string(),
             skin_bytes_base64: b64,
             model: SkinModelDto::Slim,
@@ -294,27 +335,19 @@ mod tests {
         assert_eq!(saved.name, "TestHero");
         assert_eq!(saved.model, "slim");
 
-        let list = extras_list_skin_history(ExtrasListSkinHistoryRequest {
-            history_dir: history_dir.clone(),
-        })
-        .await
-        .unwrap();
+        let items = list_skin_history_impl(&history_dir).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].id, saved.id);
 
-        assert_eq!(list.items.len(), 1);
-        assert_eq!(list.items[0].id, saved.id);
+        let (item, skin_b64) = get_skin_impl(&history_dir, &saved.id).unwrap();
+        assert_eq!(item.name, "TestHero");
+        assert!(!skin_b64.is_empty());
 
-        let del = wardrobe_delete_history(WardrobeDeleteHistoryRequest {
-            history_dir: history_dir.clone(),
-            item_id: saved.id,
-        })
-        .await
-        .unwrap();
-        assert!(del.success);
+        let del = delete_history_skin_impl(&history_dir, &saved.id).unwrap();
+        assert!(del);
 
-        let list_after = extras_list_skin_history(ExtrasListSkinHistoryRequest { history_dir })
-            .await
-            .unwrap();
-        assert_eq!(list_after.items.len(), 0);
+        let items_after = list_skin_history_impl(&history_dir).unwrap();
+        assert_eq!(items_after.len(), 0);
     }
 
     #[test]
