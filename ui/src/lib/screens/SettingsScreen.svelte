@@ -52,7 +52,7 @@
   let isGameActive = $derived(isGameRunning || ipcGameRunning);
 
   // Storage section state (SPEC items 40–41: wex-verify-files)
-  let cacheSizeFormatted = $state('0 Б');
+  let cacheSizeFormatted = $state(t('common.bytes', { count: 0 }));
   let isCheckingIntegrity = $state(false);
   let isCleaningCache = $state(false);
   let integrityStatus = $state<string | null>(null);
@@ -141,7 +141,7 @@
 
   async function handleCheckUpdateSettings() {
     updateChecking = true;
-    updateStatusText = 'Проверка обновлений…';
+    updateStatusText = t('settings.status_checking_updates');
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const res = await invoke<any>('updater_check');
@@ -151,13 +151,16 @@
           res.can_auto_update ?? (res.signature && res.signature.length >= 32)
         );
         updateDownloadUrl = res.download_url || '';
-        updateStatusText = `Доступна версия ${res.latest_version || ''}${!canAutoUpdateSettings ? ' (неподписанная)' : ''}`;
+        updateStatusText = t('settings.update_available_version', {
+          version: res.latest_version || '',
+          unsigned: !canAutoUpdateSettings ? t('settings.unsigned_suffix') : '',
+        });
       } else {
         updateAvailable = false;
-        updateStatusText = 'У вас установлена последняя версия';
+        updateStatusText = t('settings.update_latest_installed');
       }
     } catch {
-      updateStatusText = 'Не удалось проверить обновления';
+      updateStatusText = t('settings.update_check_failed');
     } finally {
       updateChecking = false;
     }
@@ -173,21 +176,21 @@
         if (typeof window !== 'undefined') window.open(updateDownloadUrl, '_blank');
       }
     } else {
-      updateStatusText = 'Перейдите на экран «Играть» для установки';
+      updateStatusText = t('settings.update_go_to_play');
     }
   }
 
-  const gameWindowBehaviorOptions = [
-    { value: 'keep', label: 'Оставить' },
-    { value: 'minimize', label: 'Свернуть' },
-    { value: 'tray', label: 'Скрыть в трей' },
-  ];
+  let gameWindowBehaviorOptions = $derived([
+    { value: 'keep', label: t('settings.window_action_keep') },
+    { value: 'minimize', label: t('settings.window_action_minimize') },
+    { value: 'tray', label: t('settings.window_action_tray') },
+  ]);
 
   let displayOs = $derived.by(() => {
     if (!osName || osName.toLowerCase() === 'windows') {
-      return 'Windows 10/11, 64-бит';
+      return t('settings.os_win_64');
     }
-    return `${osName}, 64-бит`;
+    return t('settings.os_custom_64', { name: osName });
   });
 
   // Updates state
@@ -203,9 +206,9 @@
   ]);
 
   let effectsOptions = $derived([
-    { value: 'full', label: i18n.locale === 'en' ? 'Full' : 'Полные' },
-    { value: 'low', label: i18n.locale === 'en' ? 'Low' : 'Умеренные' },
-    { value: 'off', label: i18n.locale === 'en' ? 'Off' : 'Отключены' },
+    { value: 'full', label: t('settings.effects_full') },
+    { value: 'low', label: t('settings.effects_low') },
+    { value: 'off', label: t('settings.effects_off') },
   ]);
 
   let javaModeOptions = $derived([
@@ -237,8 +240,8 @@
     is_enabled: true,
     is_connected: false,
     title: 'Wex Launcher',
-    details: 'В главном меню',
-    state: 'Выбирает режим игры',
+    details: t('settings.discord_main_menu'),
+    state: t('settings.discord_choosing_mode'),
     small_text: null,
     has_timestamp: false,
   });
@@ -273,44 +276,33 @@
 
   function formatRam(val: number): string {
     const gb = (val / 1024).toFixed(1);
-    const unitGb = i18n.locale === 'en' ? 'GB' : 'ГБ';
-    const unitMb = i18n.locale === 'en' ? 'MB' : 'МБ';
+    const unitGb = t('common.unit_gb');
+    const unitMb = t('common.unit_mb');
     return `${gb} ${unitGb} (${val} ${unitMb})`;
   }
 
   let ramHint = $derived.by(() => {
     const totalGb = Math.round(totalMemoryMb / 1024);
-    if (i18n.locale === 'en') {
-      if (ramMb <= 4096) {
-        return `Recommended for base Minecraft and lightweight mods · System memory: ${totalGb} GB`;
-      } else if (ramMb <= 8192) {
-        return `Optimal for Wex Pack, Iris shaders, and stable frame rates · System memory: ${totalGb} GB`;
-      } else if (ramMb <= totalMemoryMb * 0.75) {
-        return `For high-resolution resource packs and longer render distances · System memory: ${totalGb} GB`;
-      } else {
-        return `Allocating over 75% of RAM may cause system slowdowns · System memory: ${totalGb} GB`;
-      }
-    }
     if (ramMb <= 4096) {
-      return `Рекомендуется для базовой игры и лёгких модов • Всего в системе: ${totalGb} ГБ`;
+      return t('settings.ram_hint_basic', { total: totalGb });
     } else if (ramMb <= 8192) {
-      return `Оптимально для сборки Wex, шейдеров Iris и стабильного FPS • Всего в системе: ${totalGb} ГБ`;
+      return t('settings.ram_hint_optimal', { total: totalGb });
     } else if (ramMb <= totalMemoryMb * 0.75) {
-      return `Для ресурс-паков высокого разрешения и дальней прорисовки • Всего в системе: ${totalGb} ГБ`;
+      return t('settings.ram_hint_heavy', { total: totalGb });
     } else {
-      return `Внимание: выделение более 75% ОЗУ может замедлить систему • Всего в системе: ${totalGb} ГБ`;
+      return t('settings.ram_hint_warning', { total: totalGb });
     }
   });
 
   let activeJavaDisplay = $derived.by(() => {
     if (javaMode === 'custom') {
-      return customJavaPath ? customJavaPath : (i18n.locale === 'en' ? 'Path to javaw.exe not specified' : 'Путь к javaw.exe не указан');
+      return customJavaPath ? customJavaPath : t('settings.java_not_specified');
     }
     const detected = selectedVersion === '1.20.1' ? detectedJava17 : detectedJava21;
     if (detected) {
       return detected;
     }
-    const autoSuffix = i18n.locale === 'en' ? 'Automatic' : 'Автоматически';
+    const autoSuffix = t('settings.auto_suffix');
     return selectedVersion === '1.20.1'
       ? `Mojang JRE 17 • ${autoSuffix}`
       : `Mojang JRE 21 • ${autoSuffix}`;
@@ -565,7 +557,7 @@
         cacheSizeFormatted = res.formatted_size;
       }
     } catch {
-      cacheSizeFormatted = '0 Б';
+      cacheSizeFormatted = t('common.bytes', { count: 0 });
     }
   }
 
@@ -582,8 +574,8 @@
   async function handleVerifyFiles() {
     if (isGameActive || isCheckingIntegrity) return;
     isCheckingIntegrity = true;
-    integrityStatus = 'Проверка...';
-    integrityDetail = 'Проверка файлов по манифесту...';
+    integrityStatus = t('settings.status_checking');
+    integrityDetail = t('settings.status_verifying_files');
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -599,13 +591,13 @@
       }
 
       if (res) {
-        integrityStatus = res.status || 'Проверка завершена';
+        integrityStatus = res.status || t('settings.status_verify_done');
         integrityDetail = res.message || res.status;
       }
     } catch (err: any) {
-      integrityStatus = 'Ошибка проверки';
-      const msg = typeof err === 'string' ? err : (err?.message || 'Не удалось проверить файлы игры');
-      integrityDetail = msg.startsWith('Ошибка проверки: ') ? msg : `Ошибка проверки: ${msg}`;
+      integrityStatus = t('settings.status_verify_error');
+      const msg = typeof err === 'string' ? err : (err?.message || t('settings.err_verify_failed'));
+      integrityDetail = msg.startsWith(t('settings.verify_error_prefix_word')) ? msg : t('settings.verify_error_format', { error: msg });
     } finally {
       isCheckingIntegrity = false;
     }
@@ -614,7 +606,7 @@
   async function handleClearCache() {
     if (isGameActive || isCleaningCache) return;
     isCleaningCache = true;
-    cleanupStatus = 'Очистка кэша и логов...';
+    cleanupStatus = t('settings.status_cleaning_cache');
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -630,12 +622,12 @@
       }
 
       if (res) {
-        cleanupStatus = res.message || res.status_text || 'Кэш очищен';
+        cleanupStatus = res.message || res.status_text || t('settings.cache_cleaned_toast');
         await loadCacheInfo();
       }
     } catch (err: any) {
-      const msg = typeof err === 'string' ? err : (err?.message || 'Ошибка очистки');
-      cleanupStatus = msg.startsWith('Ошибка очистки: ') ? msg : `Ошибка очистки: ${msg}`;
+      const msg = typeof err === 'string' ? err : (err?.message || t('settings.err_cleanup'));
+      cleanupStatus = msg.startsWith(t('settings.cleanup_error_prefix_word')) ? msg : t('settings.cleanup_error_format', { error: msg });
     } finally {
       isCleaningCache = false;
       setTimeout(() => {
@@ -659,7 +651,7 @@
   async function handleCheckUpdates() {
     if (isCheckingUpdates) return;
     isCheckingUpdates = true;
-    updateStatus = i18n.locale === 'en' ? 'Checking for updates…' : 'Проверка обновлений…';
+    updateStatus = t('settings.status_checking_updates');
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const res = await invoke<{
@@ -671,18 +663,16 @@
         request: { current_version: launcherVersion }
       });
       if (res && (res.has_update || res.update_available)) {
-        updateStatus = i18n.locale === 'en'
-          ? `Update available: v${res.version || res.new_version || '1.1.0'}`
-          : `Доступна новая версия: v${res.version || res.new_version || '1.1.0'}`;
+        updateStatus = t('settings.update_new_version', { version: res.version || res.new_version || '1.1.0' });
       } else {
-        updateStatus = i18n.locale === 'en'
-          ? (launcherVersion !== '—' ? `Wex ${launcherVersion} is up to date` : 'Wex is up to date')
-          : (launcherVersion !== '—' ? `Установлена актуальная версия Wex ${launcherVersion}` : 'Установлена актуальная версия Wex');
+        updateStatus = launcherVersion !== '—'
+          ? t('settings.update_up_to_date_ver', { version: launcherVersion })
+          : t('settings.update_up_to_date');
       }
     } catch {
-      updateStatus = i18n.locale === 'en'
-        ? (launcherVersion !== '—' ? `Wex ${launcherVersion} is up to date` : 'Wex is up to date')
-        : (launcherVersion !== '—' ? `Установлена актуальная версия Wex ${launcherVersion}` : 'Установлена актуальная версия Wex');
+      updateStatus = launcherVersion !== '—'
+        ? t('settings.update_up_to_date_ver', { version: launcherVersion })
+        : t('settings.update_up_to_date');
     } finally {
       isCheckingUpdates = false;
     }
@@ -704,42 +694,42 @@
       group: 'game',
       title: t('settings.java_choice_title'),
       subtitle: t('settings.java_choice_subtitle'),
-      keywords: ['java', 'джава', 'рантайм', 'runtime', '17', '21', 'jdk', 'jre', 'путь', 'выбор', 'режим', 'installation'],
+      keywords: t('settings.kw_game_java_mode').split(' '),
     },
     {
       id: 'game_java_path',
       group: 'game',
       title: javaMode === 'auto' ? t('settings.java_used_title') : t('settings.java_path_title'),
       subtitle: activeJavaDisplay,
-      keywords: ['javaw', 'exe', 'путь', 'файл', 'исполняемый', 'версия', 'path', 'executable'],
+      keywords: t('settings.kw_game_java_path').split(' '),
     },
     {
       id: 'game_window_behavior',
       group: 'game',
-      title: 'Поведение окна',
-      subtitle: 'Во время игры: действие с окном лаунчера при запуске Minecraft',
-      keywords: ['окно', 'поведение', 'свернуть', 'трей', 'запуск', 'действие', 'скрыть', 'во время игры'],
+      title: t('settings.window_behavior_title'),
+      subtitle: t('settings.window_behavior_subtitle'),
+      keywords: t('settings.kw_game_window_behavior').split(' '),
     },
     {
       id: 'game_tray',
       group: 'game',
-      title: 'Сворачивать в трей при запуске игры',
-      subtitle: 'Скрывать окно лаунчера во время игры и возвращать его на экран после закрытия',
-      keywords: ['трей', 'окно', 'сворачивать', 'запуск', 'игры', 'tray', 'minimize', 'close', 'hide', 'game'],
+      title: t('settings.minimize_to_tray_title'),
+      subtitle: t('settings.minimize_to_tray_desc'),
+      keywords: t('settings.kw_game_tray').split(' '),
     },
     {
       id: 'game_fast_start',
       group: 'game',
-      title: 'Быстрый запуск игры',
-      subtitle: 'Экспериментальный предварительный прогрев виртуальной машины Java (PrewarmGame)',
-      keywords: ['быстрый', 'запуск', 'прогрев', 'jvm', 'prewarm', 'fast', 'start', 'boost'],
+      title: t('settings.fast_launch_title'),
+      subtitle: t('settings.fast_launch_subtitle'),
+      keywords: t('settings.kw_game_fast_start').split(' '),
     },
     {
       id: 'game_onboarding',
       group: 'game',
-      title: i18n.locale === 'en' ? 'Show welcome screen again' : 'Показать приветствие снова',
-      subtitle: i18n.locale === 'en' ? 'Run initial setup wizard, choose version, nickname, and migrate data' : 'Пройти мастер первого запуска, настройку ника, выбор версии и перенос данных',
-      keywords: ['приветствие', 'мастер', 'импорт', 'первый', 'запуск', 'onboarding', 'welcome', 'wizard', 'setup'],
+      title: t('settings.onboarding_replay_title'),
+      subtitle: t('settings.onboarding_replay_desc'),
+      keywords: t('settings.kw_game_onboarding').split(' '),
     },
 
     // 2. Memory & Performance
@@ -748,28 +738,28 @@
       group: 'perf',
       title: t('settings.ram_title'),
       subtitle: ramHint,
-      keywords: ['озу', 'ram', 'память', 'memory', 'гигабайт', 'гб', 'мб', 'выделение', 'alloc', 'слайдер', 'slider'],
+      keywords: t('settings.kw_perf_ram').split(' '),
     },
     {
       id: 'perf_graphics',
       group: 'perf',
       title: t('settings.graphics_title'),
       subtitle: t('settings.graphics_subtitle'),
-      keywords: ['графика', 'пресет', 'шейдеры', 'iris', 'sodium', 'содиум', 'ирис', 'fps', 'производительность', 'preset', 'graphics'],
+      keywords: t('settings.kw_perf_graphics').split(' '),
     },
     {
       id: 'perf_discord',
       group: 'perf',
       title: t('settings.discord_title'),
       subtitle: t('settings.discord_subtitle'),
-      keywords: ['discord', 'дискорд', 'rpc', 'статус', 'трансляция', 'активность', 'rich', 'presence'],
+      keywords: t('settings.kw_perf_discord').split(' '),
     },
     {
       id: 'perf_discord_preview',
       group: 'perf',
-      title: 'Превью статуса Discord',
-      subtitle: discordRpc ? 'Фактическое состояние активности профиля в Discord' : 'Трансляция активности выключена в настройках',
-      keywords: ['discord', 'дискорд', 'карточка', 'превью', 'никнейм', 'сервер', 'профиль', 'preview', 'card'],
+      title: t('settings.discord_preview_title'),
+      subtitle: discordRpc ? t('settings.discord_preview_desc') : t('settings.discord_disabled_desc'),
+      keywords: t('settings.kw_perf_discord_preview').split(' '),
     },
 
     // 3. Appearance
@@ -778,74 +768,74 @@
       group: 'appearance',
       title: t('settings.theme_title'),
       subtitle: t('settings.theme_subtitle'),
-      keywords: ['тема', 'тёмная', 'светлая', 'авто', 'dark', 'light', 'theme', 'appearance', 'оформление'],
+      keywords: t('settings.kw_app_theme').split(' '),
     },
     {
       id: 'app_accent',
       group: 'appearance',
       title: t('settings.accent_title'),
       subtitle: t('settings.accent_subtitle'),
-      keywords: ['акцент', 'цвет', 'синий', 'фиолетовый', 'зелёный', 'accent', 'color', 'blue', 'tint'],
+      keywords: t('settings.kw_app_accent').split(' '),
     },
     {
       id: 'app_lang',
       group: 'appearance',
       title: t('settings.lang_title'),
       subtitle: t('settings.lang_subtitle'),
-      keywords: ['язык', 'русский', 'английский', 'english', 'russian', 'language', 'locale', 'перевод'],
+      keywords: t('settings.kw_app_lang').split(' '),
     },
     {
       id: 'app_effects',
       group: 'appearance',
-      title: i18n.locale === 'en' ? 'Interface Effects' : 'Эффекты интерфейса',
-      subtitle: i18n.locale === 'en' ? 'Animation fidelity and spring motion' : 'Степень плавности и пружинных анимаций',
-      keywords: ['эффекты', 'анимации', 'пружины', 'плавность', 'effects', 'motion', 'spring'],
+      title: t('settings.effects_title'),
+      subtitle: t('settings.effects_subtitle'),
+      keywords: t('settings.kw_app_effects').split(' '),
     },
     {
       id: 'app_reduce_motion',
       group: 'appearance',
       title: t('settings.reduce_motion_title'),
       subtitle: t('settings.reduce_motion_subtitle'),
-      keywords: ['движение', 'уменьшение', 'motion', 'reduce', 'доступность', 'accessibility', 'a11y'],
+      keywords: t('settings.kw_app_reduce_motion').split(' '),
     },
     {
       id: 'app_reduce_transparency',
       group: 'appearance',
       title: t('settings.reduce_transparency_title'),
       subtitle: t('settings.reduce_transparency_subtitle'),
-      keywords: ['прозрачность', 'размытие', 'блюр', 'transparency', 'blur', 'contrast'],
+      keywords: t('settings.kw_app_reduce_transparency').split(' '),
     },
 
     // 4. Sound & Music
     {
       id: 'sound_music',
       group: 'sound',
-      title: i18n.locale === 'en' ? 'Background Music' : 'Фоновая музыка',
-      subtitle: i18n.locale === 'en' ? 'Play atmospheric soundtracks from Wex/music' : 'Воспроизведение саундтрека из папки Wex/music во время работы лаунчера',
-      keywords: ['музыка', 'звук', 'саундтрек', 'пластинка', 'винил', 'audio', 'music', 'soundtrack', 'background'],
+      title: t('settings.bg_music_title'),
+      subtitle: t('settings.bg_music_desc'),
+      keywords: t('settings.kw_sound_music').split(' '),
     },
     {
       id: 'sound_sfx',
       group: 'sound',
-      title: i18n.locale === 'en' ? 'Interface and Notification Sounds' : 'Звуки интерфейса и уведомлений',
-      subtitle: i18n.locale === 'en' ? 'Play subtle alert sounds for game invites and system events' : 'Звуковой сигнал при получении приглашений в игру и системных событий',
-      keywords: ['звук', 'сигнал', 'эффекты', 'громкость', 'уведомления', 'sfx', 'sound', 'alerts'],
+      title: t('settings.sfx_title'),
+      subtitle: t('settings.sfx_subtitle'),
+      keywords: t('settings.kw_sound_sfx').split(' '),
     },
 
     // 5. Notifications
     {
       id: 'notif_friends',
       group: 'notifications',
-      title: i18n.locale === 'en' ? 'Friend Notifications' : 'Уведомления о друзьях',
-      subtitle: i18n.locale === 'en' ? 'Notify when friends join the game or invite you to a lobby' : 'Оповещать, когда друзья заходят в игру или приглашают в лобби',
-      keywords: ['друзья', 'уведомления', 'приглашения', 'лобби', 'friends', 'notifications', 'invite', 'lobby'],
+      title: t('settings.notify_friends_title'),
+      subtitle: t('settings.notify_friends_desc'),
+      keywords: t('settings.kw_notif_friends').split(' '),
     },
     {
       id: 'notif_tray',
       group: 'notifications',
-      title: i18n.locale === 'en' ? 'Notifications When Minimized' : 'Уведомления при свёрнутом окне',
-      subtitle: i18n.locale === 'en' ? 'Show Windows alerts when the launcher is minimized' : 'Показывать системные уведомления Windows, когда окно лаунчера свёрнуто',
-      keywords: ['трей', 'windows', 'всплывающие', 'оповещения', 'свёрнуто', 'tray', 'banner', 'push'],
+      title: t('settings.notify_minimized_title'),
+      subtitle: t('settings.notify_minimized_desc'),
+      keywords: t('settings.kw_notif_tray').split(' '),
     },
 
     // 6. Storage
@@ -854,28 +844,28 @@
       group: 'storage',
       title: t('settings.gamedir_title'),
       subtitle: gameDir || t('settings.gamedir_undefined'),
-      keywords: ['папка', 'директория', 'файлы', 'данные', 'проводник', 'хранилище', 'storage', 'directory', 'folder', 'explorer'],
+      keywords: t('settings.kw_storage_gamedir').split(' '),
     },
     {
       id: 'storage_verify',
       group: 'storage',
-      title: 'Проверить файлы игры',
-      subtitle: verifyStatus || (i18n.locale === 'en' ? `Verifies game files for version ${selectedVersion} and downloads damaged ones` : `Сверяет файлы игры версии ${selectedVersion} и докачивает повреждённые`),
-      keywords: ['проверить', 'файлы', 'докачать', 'восстановление', 'целостность', 'verify', 'repair', 'integrity'],
+      title: t('settings.verify_files_title'),
+      subtitle: verifyStatus || t('settings.verify_files_desc_ver', { version: selectedVersion }),
+      keywords: t('settings.kw_storage_verify').split(' '),
     },
     {
       id: 'storage_clean',
       group: 'storage',
-      title: 'Очистить кэш',
-      subtitle: cleanCacheStatus || (i18n.locale === 'en' ? 'Removes session logs, crash reports, and temporary download files' : 'Удаление логов сессий, отчётов о вылетах и временных файлов загрузок'),
-      keywords: ['кэш', 'очистка', 'удалить', 'логи', 'вылеты', 'отчеты', 'память', 'диск', 'освободить', 'cache', 'clean', 'trash', 'free'],
+      title: t('settings.clear_cache_title'),
+      subtitle: cleanCacheStatus || t('settings.clear_cache_full_desc'),
+      keywords: t('settings.kw_storage_clean').split(' '),
     },
     {
       id: 'storage_logs',
       group: 'storage',
-      title: 'Журнал событий и краш-дампы',
-      subtitle: 'Просмотр latest.log, crash-reports и hs_err_pid для диагностики сбоев',
-      keywords: ['журнал', 'логи', 'краш', 'дамп', 'ошибки', 'диагностика', 'logs', 'crash', 'reports'],
+      title: t('settings.logs_viewer_title'),
+      subtitle: t('settings.logs_viewer_desc'),
+      keywords: t('settings.kw_storage_logs').split(' '),
     },
 
     // 7. About / System
@@ -884,37 +874,37 @@
       group: 'about',
       title: t('settings.about_title'),
       subtitle: t('settings.about_subtitle', { version: launcherVersion, os: displayOs }),
-      keywords: ['о программе', 'лаунчер', 'wex', 'версия', 'система', 'about', 'version', 'os'],
+      keywords: t('settings.kw_about_program').split(' '),
     },
     {
       id: 'about_hardware',
       group: 'about',
-      title: i18n.locale === 'en' ? 'Hardware & System Info' : 'Оборудование и система',
-      subtitle: i18n.locale === 'en' ? 'Processor, RAM, graphics card, disk space' : 'Процессор, оперативная память, видеокарта, диск',
-      keywords: ['процессор', 'видеокарта', 'память', 'диск', 'железо', 'cpu', 'gpu', 'ram', 'hardware', 'java', 'поддержка', 'support'],
+      title: t('settings.hardware_info_title'),
+      subtitle: t('settings.hardware_info_subtitle'),
+      keywords: t('settings.kw_about_hardware').split(' '),
     },
     {
       id: 'about_reset',
       group: 'about',
-      title: 'Сброс настроек',
+      title: t('settings.reset_settings_title'),
       subtitle: t('settings.reset_defaults'),
-      keywords: ['сброс', 'по умолчанию', 'вернуть', 'заводские', 'reset', 'default'],
+      keywords: t('settings.kw_about_reset').split(' '),
     },
 
     // 8. Updates
     {
       id: 'updates_check',
       group: 'updates',
-      title: i18n.locale === 'en' ? 'Launcher Updates' : 'Самообновление лаунчера',
-      subtitle: updateStatus || (i18n.locale === 'en' ? (launcherVersion !== '—' ? `Wex ${launcherVersion} is up to date` : 'Wex is up to date') : (launcherVersion !== '—' ? `Установлена актуальная версия Wex ${launcherVersion}` : 'Установлена актуальная версия Wex')),
-      keywords: ['обновление', 'самообновление', 'проверить', 'версия', 'апдейт', 'update', 'upgrade', 'new', 'version', 'patch'],
+      title: t('settings.updates_check_title'),
+      subtitle: updateStatus || (launcherVersion !== '—' ? t('settings.update_up_to_date_ver', { version: launcherVersion }) : t('settings.update_up_to_date')),
+      keywords: t('settings.kw_updates_check').split(' '),
     },
     {
       id: 'updates_auto',
       group: 'updates',
-      title: i18n.locale === 'en' ? 'Automatic Updates' : 'Автоматическая проверка',
-      subtitle: i18n.locale === 'en' ? 'Check for newer launcher versions at startup' : 'Проверять наличие свежей версии лаунчера при каждом запуске',
-      keywords: ['автоматически', 'авто', 'проверка', 'старт', 'запуск', 'auto', 'check', 'startup'],
+      title: t('settings.updates_auto_title'),
+      subtitle: t('settings.updates_auto_desc'),
+      keywords: t('settings.kw_updates_auto').split(' '),
     },
   ]);
 
@@ -956,7 +946,11 @@
             if (p.stage) {
               integrityStatus = p.stage;
             } else if (p.downloaded !== undefined && p.total !== undefined) {
-              integrityStatus = `Проверка ${p.downloaded}/${p.total} (${Math.round(p.percentage || 0)}%)`;
+              integrityStatus = t('settings.verify_progress_format', {
+                downloaded: p.downloaded,
+                total: p.total,
+                percent: Math.round(p.percentage || 0),
+              });
             }
           }
         ).then((fn) => {
@@ -971,7 +965,7 @@
   });
 </script>
 
-<div class="settings-screen" aria-label="Экран «Настройки»">
+<div class="settings-screen" aria-label={t('settings.screen_aria')}>
   <div class="settings-content">
     <!-- Honest Offline State Banner -->
     {#if !network.isOnline}
@@ -981,7 +975,7 @@
           <div class="offline-banner-text">
             <span class="offline-banner-title">{t('offline.title')}</span>
             <span class="offline-banner-desc">
-              {i18n.locale === 'en' ? 'Local launcher settings are active. Network sync will resume when online.' : 'Локальные параметры сохранены. Сетевая синхронизация возобновится при подключении.'}
+              {t('settings.offline_banner_desc')}
             </span>
           </div>
         </div>
@@ -989,7 +983,7 @@
           variant="secondary"
           size="small"
           onclick={() => network.check()}
-          title="Проверить подключение к сети"
+          title={t('settings.offline_retry_title')}
         >
           <Icon name="refresh" size={12} color="var(--color-secondary-label)" />
           <span>{t('offline.retry')}</span>
@@ -1004,16 +998,16 @@
         <input
           type="search"
           class="search-input"
-          placeholder={i18n.locale === 'en' ? 'Search settings…' : 'Поиск настроек…'}
+          placeholder={t('settings.search_placeholder')}
           bind:value={searchQuery}
-          aria-label={i18n.locale === 'en' ? 'Search settings' : 'Поиск настроек'}
+          aria-label={t('settings.search_placeholder')}
         />
         {#if searchQuery.trim()}
           <button
             type="button"
             class="clear-search-btn"
             onclick={() => (searchQuery = '')}
-            aria-label={i18n.locale === 'en' ? 'Clear search' : 'Сбросить поиск'}
+            aria-label={t('settings.search_clear')}
           >
             <Icon name="close" size={13} color="var(--color-secondary-label)" />
           </button>
@@ -1027,21 +1021,19 @@
         <div class="empty-search-icon">
           <Icon name="search" size={26} color="var(--color-tertiary-label)" />
         </div>
-        <div class="empty-search-title">{i18n.locale === 'en' ? 'No Results Found' : 'Ничего не найдено'}</div>
+        <div class="empty-search-title">{t('settings.search_empty_title')}</div>
         <div class="empty-search-desc">
-          {i18n.locale === 'en'
-            ? `No settings match “${searchQuery}”. Check spelling or clear search.`
-            : `По запросу «${searchQuery}» подходящих настроек не найдено. Проверьте правильность написания или сбросьте поиск.`}
+          {t('settings.search_empty_desc', { query: searchQuery })}
         </div>
         <Button variant="secondary" size="small" onclick={() => (searchQuery = '')}>
-          {i18n.locale === 'en' ? 'Clear Search' : 'Сбросить поиск'}
+          {t('settings.search_clear')}
         </Button>
       </div>
     {/if}
 
     <!-- 1. Игра (Game) -->
     {#if isGroupVisible('game')}
-      <List header={i18n.locale === 'en' ? 'Game' : 'Игра'}>
+      <List header={t('settings.group_game')}>
         {#if isItemVisible('game_java_mode')}
           <Row
             title={t('settings.java_choice_title')}
@@ -1081,15 +1073,15 @@
 
         {#if isItemVisible('game_window_behavior')}
           <Row
-            title="Поведение окна"
-            subtitle="Во время игры: действие с окном лаунчера при запуске Minecraft"
+            title={t('settings.window_behavior_title')}
+            subtitle={t('settings.window_behavior_subtitle')}
           >
             {#snippet trailing()}
               <div class="segmented-control-fixed" style="width: 350px;">
                 <SegmentedControl
                   options={gameWindowBehaviorOptions}
                   value={gameWindowBehavior}
-                  ariaLabel="Поведение окна"
+                  ariaLabel={t('settings.window_behavior_title')}
                   onchange={(val) => {
                     gameWindowBehavior = val;
                     saveConfig();
@@ -1102,12 +1094,12 @@
 
         {#if isItemVisible('game_tray')}
           <Row
-            title="Сворачивать в трей при запуске игры"
-            subtitle="Скрывать окно лаунчера во время игры и возвращать его на экран после закрытия"
+            title={t('settings.minimize_to_tray_title')}
+            subtitle={t('settings.minimize_to_tray_desc')}
           >
             {#snippet trailing()}
               <Toggle
-                ariaLabel="Сворачивать в трей при запуске игры"
+                ariaLabel={t('settings.minimize_to_tray_title')}
                 checked={minimizeToTray}
                 onchange={(checked) => {
                   minimizeToTray = checked;
@@ -1120,12 +1112,12 @@
 
         {#if isItemVisible('game_fast_start')}
           <Row
-            title="Быстрый запуск игры"
-            subtitle="Экспериментальный предварительный прогрев виртуальной машины Java (PrewarmGame)"
+            title={t('settings.fast_launch_title')}
+            subtitle={t('settings.fast_launch_subtitle')}
           >
             {#snippet trailing()}
               <Toggle
-                ariaLabel="Быстрый запуск игры"
+                ariaLabel={t('settings.fast_launch_title')}
                 checked={fastStartJvm}
                 onchange={(checked) => {
                   fastStartJvm = checked;
@@ -1138,8 +1130,8 @@
 
         {#if isItemVisible('game_onboarding')}
           <Row
-            title={i18n.locale === 'en' ? 'Show welcome screen again' : 'Показать приветствие снова'}
-            subtitle={i18n.locale === 'en' ? 'Run initial setup wizard, choose version, nickname, and migrate data' : 'Пройти мастер первого запуска, настройку ника, выбор версии и перенос данных'}
+            title={t('settings.onboarding_replay_title')}
+            subtitle={t('settings.onboarding_replay_desc')}
           >
             {#snippet trailing()}
               <Button
@@ -1156,7 +1148,7 @@
                 }}
               >
                 <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
-                <span>{i18n.locale === 'en' ? 'Start' : 'Показать'}</span>
+                <span>{t('settings.onboarding_replay_btn')}</span>
               </Button>
             {/snippet}
           </Row>
@@ -1224,14 +1216,14 @@
 
         {#if isItemVisible('perf_discord_preview')}
           <Row
-            title="Превью статуса Discord"
-            subtitle={discordRpc ? "Фактическое состояние активности профиля в Discord" : "Трансляция активности выключена в настройках"}
+            title={t('settings.discord_preview_title')}
+            subtitle={discordRpc ? t('settings.discord_preview_desc') : t('settings.discord_disabled_desc')}
           >
             <div class="discord-preview-wrap">
               {#if discordRpc}
                 <div class="discord-card">
                   <div class="discord-card-header">
-                    <span class="discord-card-tag">Активность в Discord</span>
+                    <span class="discord-card-tag">{t('settings.discord_activity_header')}</span>
                   </div>
                   <div class="discord-card-body">
                     <div class="discord-avatar-wrap">
@@ -1241,7 +1233,7 @@
                       <span
                         class="discord-status-dot"
                         class:online={discordPreview.is_connected}
-                        title={discordPreview.is_connected ? "Подключено к Discord" : "Ожидание подключения"}
+                        title={discordPreview.is_connected ? t('settings.discord_connected') : t('settings.discord_waiting')}
                       ></span>
                     </div>
                     <div class="discord-content">
@@ -1252,7 +1244,7 @@
                         <div class="discord-meta-text">{discordPreview.small_text}</div>
                       {/if}
                       {#if !discordPreview.is_connected}
-                        <div class="discord-offline-hint">Discord не запущен или ожидается подключение</div>
+                        <div class="discord-offline-hint">{t('settings.discord_not_running')}</div>
                       {/if}
                     </div>
                   </div>
@@ -1263,9 +1255,9 @@
                     <Icon name="close" size={14} color="var(--color-secondary-label)" />
                   </div>
                   <div class="discord-disabled-info">
-                    <div class="disabled-title">Статус отключён</div>
+                    <div class="disabled-title">{t('settings.discord_disabled_title')}</div>
                     <div class="disabled-desc">
-                      Лаунчер не передаёт статус в Discord и не использует сокет Rich Presence.
+                      {t('settings.discord_disabled_desc')}
                     </div>
                   </div>
                 </div>
@@ -1278,7 +1270,7 @@
 
     <!-- 3. Внешний вид (Appearance) -->
     {#if isGroupVisible('appearance')}
-      <List header={i18n.locale === 'en' ? 'Appearance' : 'Внешний вид'}>
+      <List header={t('settings.group_appearance')}>
         {#if isItemVisible('app_theme')}
           <Row title={t('settings.theme_title')} subtitle={t('settings.theme_subtitle')}>
             {#snippet trailing()}
@@ -1286,7 +1278,7 @@
                 <SegmentedControl
                   options={appearanceOptions}
                   value={theme.appearance}
-                  ariaLabel="Тема оформления"
+                  ariaLabel={t('settings.theme_title')}
                   onchange={(v) => {
                     theme.setAppearance(v as 'dark' | 'light' | 'auto');
                     saveConfig();
@@ -1300,7 +1292,7 @@
         {#if isItemVisible('app_accent')}
           <Row title={t('settings.accent_title')} subtitle={t('settings.accent_subtitle')}>
             {#snippet trailing()}
-              <div class="accent-picker" role="radiogroup" aria-label="Цветовой акцент">
+              <div class="accent-picker" role="radiogroup" aria-label={t('settings.accent_title')}>
                 {#each accents as acc (acc.key)}
                   <button
                     type="button"
@@ -1336,7 +1328,7 @@
                 <SegmentedControl
                   options={languageOptions}
                   value={language}
-                  ariaLabel="Язык интерфейса"
+                  ariaLabel={t('settings.lang_title')}
                   onchange={handleLanguageChange}
                 />
               </div>
@@ -1346,8 +1338,8 @@
 
         {#if isItemVisible('app_effects')}
           <Row
-            title={i18n.locale === 'en' ? 'Interface Effects' : 'Эффекты интерфейса'}
-            subtitle={i18n.locale === 'en' ? 'Animation fidelity and spring motion' : 'Степень плавности и пружинных анимаций'}
+            title={t('settings.effects_title')}
+            subtitle={t('settings.effects_subtitle')}
           >
             {#snippet trailing()}
               <div class="segmented-control-fixed" style="width: 280px;">
@@ -1371,7 +1363,7 @@
           >
             {#snippet trailing()}
               <Toggle
-                ariaLabel="Уменьшение движения"
+                ariaLabel={t('settings.reduce_motion_title')}
                 checked={theme.reduceMotion}
                 onchange={(checked) => {
                   theme.setReduceMotion(checked);
@@ -1389,7 +1381,7 @@
           >
             {#snippet trailing()}
               <Toggle
-                ariaLabel="Уменьшение прозрачности"
+                ariaLabel={t('settings.reduce_transparency_title')}
                 checked={theme.reduceTransparency}
                 onchange={(checked) => {
                   theme.setReduceTransparency(checked);
@@ -1404,15 +1396,15 @@
 
     <!-- 4. Звук и музыка (Sound & Music) -->
     {#if isGroupVisible('sound')}
-      <List header={i18n.locale === 'en' ? 'Sound & Music' : 'Звук и музыка'}>
+      <List header={t('settings.group_sound')}>
         {#if isItemVisible('sound_music')}
           <Row
-            title={i18n.locale === 'en' ? 'Background Music' : 'Фоновая музыка'}
-            subtitle={i18n.locale === 'en' ? 'Play atmospheric soundtracks from Wex/music' : 'Воспроизведение саундтрека из папки Wex/music во время работы лаунчера'}
+            title={t('settings.bg_music_title')}
+            subtitle={t('settings.bg_music_desc')}
           >
             {#snippet trailing()}
               <Toggle
-                ariaLabel={i18n.locale === 'en' ? 'Background music' : 'Фоновая музыка'}
+                ariaLabel={t('settings.bg_music_title')}
                 checked={backgroundMusic}
                 onchange={(checked) => {
                   backgroundMusic = checked;
@@ -1425,12 +1417,12 @@
 
         {#if isItemVisible('sound_sfx')}
           <Row
-            title={i18n.locale === 'en' ? 'Interface and Notification Sounds' : 'Звуки интерфейса и уведомлений'}
-            subtitle={i18n.locale === 'en' ? 'Play subtle alert sounds for game invites and system events' : 'Звуковой сигнал при получении приглашений в игру и системных событий'}
+            title={t('settings.sfx_title')}
+            subtitle={t('settings.sfx_subtitle')}
           >
             {#snippet trailing()}
               <Toggle
-                ariaLabel={i18n.locale === 'en' ? 'Interface and notification sounds' : 'Звуки интерфейса и уведомлений'}
+                ariaLabel={t('settings.sfx_title')}
                 checked={notificationSounds}
                 onchange={(checked) => {
                   notificationSounds = checked;
@@ -1445,15 +1437,15 @@
 
     <!-- 5. Уведомления (Notifications) -->
     {#if isGroupVisible('notifications')}
-      <List header={i18n.locale === 'en' ? 'Notifications' : 'Уведомления'}>
+      <List header={t('settings.group_notifications')}>
         {#if isItemVisible('notif_friends')}
           <Row
-            title={i18n.locale === 'en' ? 'Friend Notifications' : 'Уведомления о друзьях'}
-            subtitle={i18n.locale === 'en' ? 'Notify when friends join the game or invite you to a lobby' : 'Оповещать, когда друзья заходят в игру или приглашают в лобби'}
+            title={t('settings.notify_friends_title')}
+            subtitle={t('settings.notify_friends_desc')}
           >
             {#snippet trailing()}
               <Toggle
-                ariaLabel={i18n.locale === 'en' ? 'Friend notifications' : 'Уведомления о друзьях'}
+                ariaLabel={t('settings.notify_friends_title')}
                 checked={friendNotifications}
                 onchange={(checked) => {
                   friendNotifications = checked;
@@ -1467,12 +1459,12 @@
 
         {#if isItemVisible('notif_tray')}
           <Row
-            title={i18n.locale === 'en' ? 'Notifications When Minimized' : 'Уведомления при свёрнутом окне'}
-            subtitle={i18n.locale === 'en' ? 'Show Windows alerts when the launcher is minimized' : 'Показывать системные уведомления Windows, когда окно лаунчера свёрнуто'}
+            title={t('settings.notify_minimized_title')}
+            subtitle={t('settings.notify_minimized_desc')}
           >
             {#snippet trailing()}
               <Toggle
-                ariaLabel={i18n.locale === 'en' ? 'Notifications when minimized' : 'Уведомления при свёрнутом окне'}
+                ariaLabel={t('settings.notify_minimized_title')}
                 checked={trayNotifications}
                 onchange={(checked) => {
                   trayNotifications = checked;
@@ -1487,7 +1479,7 @@
 
     <!-- 6. Хранилище (Storage) -->
     {#if isGroupVisible('storage')}
-      <List header={i18n.locale === 'en' ? 'Storage' : 'Хранилище'}>
+      <List header={t('settings.group_storage')}>
         {#if isItemVisible('storage_gamedir')}
           <Row
             title={t('settings.gamedir_title')}
@@ -1511,8 +1503,8 @@
 
         {#if isItemVisible('storage_verify')}
           <Row
-            title="Проверить файлы игры"
-            subtitle={verifyStatus || (i18n.locale === 'en' ? `Verifies game files for version ${selectedVersion} and downloads damaged ones` : `Сверяет файлы игры версии ${selectedVersion} и докачивает повреждённые`)}
+            title={t('settings.verify_files_title')}
+            subtitle={verifyStatus || t('settings.verify_files_desc_ver', { version: selectedVersion })}
           >
             {#snippet trailing()}
               <Button
@@ -1520,14 +1512,14 @@
                 size="small"
                 disabled={isGameActive || isVerifyingFiles}
                 onclick={handleVerifyFiles}
-                title="Проверить целостность файлов инстанса"
+                title={t('settings.verify_files_tooltip')}
               >
                 {#if isVerifyingFiles}
                   <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
-                  <span>Проверка...</span>
+                  <span>{t('settings.status_checking')}</span>
                 {:else}
                   <Icon name="check" size={13} color="var(--color-secondary-label)" />
-                  <span>Проверить</span>
+                  <span>{t('settings.verify_files_btn')}</span>
                 {/if}
               </Button>
             {/snippet}
@@ -1536,8 +1528,8 @@
 
         {#if isItemVisible('storage_clean')}
           <Row
-            title="Очистить кэш"
-            subtitle={cleanCacheStatus || (i18n.locale === 'en' ? 'Removes session logs, crash reports, and temporary download files' : 'Удаление логов сессий, отчётов о вылетах и временных файлов загрузок')}
+            title={t('settings.clear_cache_title')}
+            subtitle={cleanCacheStatus || t('settings.clear_cache_full_desc')}
           >
             {#snippet trailing()}
               <Button
@@ -1545,14 +1537,14 @@
                 size="small"
                 disabled={isGameActive || isCleaningCache}
                 onclick={handleCleanCache}
-                title="Очистить кэш и освободить дисковое пространство"
+                title={t('settings.clear_cache_desc')}
               >
                 {#if isCleaningCache}
                   <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
-                  <span>Очистка...</span>
+                  <span>{t('settings.btn_cleaning')}</span>
                 {:else}
                   <Icon name="trash" size={13} color="var(--color-secondary-label)" />
-                  <span>Очистить</span>
+                  <span>{t('settings.clear_cache_btn')}</span>
                 {/if}
               </Button>
             {/snippet}
@@ -1561,8 +1553,8 @@
 
         {#if isItemVisible('storage_logs')}
           <Row
-            title="Журнал событий и краш-дампы"
-            subtitle="Просмотр latest.log, crash-reports и hs_err_pid для диагностики сбоев"
+            title={t('settings.logs_viewer_title')}
+            subtitle={t('settings.logs_viewer_desc')}
           >
             {#snippet trailing()}
               <div class="dir-actions">
@@ -1570,10 +1562,10 @@
                   variant="secondary"
                   size="small"
                   onclick={() => (logsSheetOpen = true)}
-                  title="Открыть лист журнала"
+                  title={t('settings.logs_open_sheet_title')}
                 >
                   <Icon name="info" size={13} color="var(--color-secondary-label)" />
-                  <span data-testid="btn-open-logs-sheet">Журнал</span>
+                  <span data-testid="btn-open-logs-sheet">{t('settings.logs_sheet_btn')}</span>
                 </Button>
               </div>
             {/snippet}
@@ -1584,7 +1576,7 @@
 
     <!-- 7. О системе (About / System) -->
     {#if isGroupVisible('about')}
-      <List header={i18n.locale === 'en' ? 'About' : 'О системе'}>
+      <List header={t('settings.group_about')}>
         {#if isItemVisible('about_program')}
           <Row
             title={t('settings.about_title')}
@@ -1605,33 +1597,33 @@
             {/if}
 
             <Row
-              title={i18n.locale === 'en' ? 'Processor' : 'Процессор'}
-              subtitle={systemInfo.cpu_name ? `${systemInfo.cpu_name} (${systemInfo.cpu_cores} ${i18n.locale === 'en' ? 'cores' : 'ядер'})` : (i18n.locale === 'en' ? 'Could not determine' : 'не удалось определить')}
+              title={t('settings.hw_cpu_title')}
+              subtitle={systemInfo.cpu_name ? `${systemInfo.cpu_name} (${systemInfo.cpu_cores} ${t('settings.hw_cores_label')})` : t('settings.hw_unknown')}
             />
             <Row
-              title={i18n.locale === 'en' ? 'RAM' : 'Оперативная память'}
-              subtitle={systemInfo.memory_display || (i18n.locale === 'en' ? 'Could not determine' : 'не удалось определить')}
+              title={t('settings.hw_ram_title')}
+              subtitle={systemInfo.memory_display || t('settings.hw_unknown')}
             />
             <Row
-              title={i18n.locale === 'en' ? 'Graphics Card' : 'Видеокарта'}
-              subtitle={systemInfo.gpu_name ? `${systemInfo.gpu_name} (драйвер ${systemInfo.gpu_driver})` : (i18n.locale === 'en' ? 'Could not determine' : 'не удалось определить')}
-              trailingText={systemInfo.is_integrated_gpu ? (i18n.locale === 'en' ? 'Integrated' : 'Встроенная') : (i18n.locale === 'en' ? 'Discrete' : 'Дискретная')}
+              title={t('settings.hw_gpu_title')}
+              subtitle={systemInfo.gpu_name ? `${systemInfo.gpu_name} (${t('settings.hw_driver_label')} ${systemInfo.gpu_driver})` : t('settings.hw_unknown')}
+              trailingText={systemInfo.is_integrated_gpu ? t('settings.hw_gpu_integrated') : t('settings.hw_gpu_discrete')}
             />
             <Row
-              title={i18n.locale === 'en' ? 'Operating System' : 'Версия Windows'}
-              subtitle={systemInfo.os_version || (i18n.locale === 'en' ? 'Could not determine' : 'не удалось определить')}
+              title={t('settings.hw_os_title')}
+              subtitle={systemInfo.os_version || t('settings.hw_unknown')}
             />
             <Row
-              title={i18n.locale === 'en' ? 'Disk Space (Wex)' : 'Свободное место на диске'}
-              subtitle={systemInfo.disk_display || (i18n.locale === 'en' ? 'Could not determine' : 'не удалось определить')}
+              title={t('settings.hw_disk_title')}
+              subtitle={systemInfo.disk_display || t('settings.hw_unknown')}
             />
             <Row
-              title="Java (1.20.1)"
-              subtitle={systemInfo.java_17 || (i18n.locale === 'en' ? 'Could not determine' : 'не удалось определить')}
+              title={t('settings.hw_java_120')}
+              subtitle={systemInfo.java_17 || t('settings.hw_unknown')}
             />
             <Row
-              title="Java (1.21.1)"
-              subtitle={systemInfo.java_21 || (i18n.locale === 'en' ? 'Could not determine' : 'не удалось определить')}
+              title={t('settings.hw_java_121')}
+              subtitle={systemInfo.java_21 || t('settings.hw_unknown')}
             />
 
             <div class="system-actions">
@@ -1641,22 +1633,22 @@
               >
                 <span class="btn-content">
                   <Icon name="copy" size={16} />
-                  <span>{copiedSupport ? (i18n.locale === 'en' ? 'Скопировано в буфер' : 'Скопировано в буфер') : (i18n.locale === 'en' ? 'Copy for Support' : 'Скопировать для поддержки')}</span>
+                  <span>{copiedSupport ? t('settings.hw_copied_specs') : t('settings.hw_copy_specs')}</span>
                 </span>
               </Button>
             </div>
           {:else}
             <Row
-              title={i18n.locale === 'en' ? 'Loading system info...' : 'Загрузка данных о системе...'}
-              subtitle={i18n.locale === 'en' ? 'Reading hardware sensors' : 'Опрос оборудования ПК'}
+              title={t('settings.hw_loading_title')}
+              subtitle={t('settings.hw_loading_subtitle')}
             />
           {/if}
         {/if}
 
         {#if isItemVisible('about_reset')}
           <Row
-            title="Сброс настроек"
-            subtitle="Восстановление стандартных параметров лаунчера и графики"
+            title={t('settings.reset_settings_title')}
+            subtitle={t('settings.reset_settings_desc')}
           >
             {#snippet trailing()}
               <Button
@@ -1674,11 +1666,11 @@
 
     <!-- 8. Обновления (Updates) -->
     {#if isGroupVisible('updates')}
-      <List header={i18n.locale === 'en' ? 'Updates' : 'Обновления'}>
+      <List header={t('settings.group_updates')}>
         {#if isItemVisible('updates_check')}
           <Row
-            title={i18n.locale === 'en' ? 'Launcher Updates' : 'Самообновление лаунчера'}
-            subtitle={updateStatus || (i18n.locale === 'en' ? (launcherVersion !== '—' ? `Wex ${launcherVersion} is up to date` : 'Wex is up to date') : (launcherVersion !== '—' ? `Установлена актуальная версия Wex ${launcherVersion}` : 'Установлена актуальная версия Wex'))}
+            title={t('settings.updates_check_title')}
+            subtitle={updateStatus || (launcherVersion !== '—' ? t('settings.update_up_to_date_ver', { version: launcherVersion }) : t('settings.update_up_to_date'))}
           >
             {#snippet trailing()}
               <Button
@@ -1688,7 +1680,7 @@
                 onclick={handleCheckUpdates}
               >
                 <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
-                <span>{isCheckingUpdates ? (i18n.locale === 'en' ? 'Checking…' : 'Проверка…') : (i18n.locale === 'en' ? 'Check Now' : 'Проверить сейчас')}</span>
+                <span>{isCheckingUpdates ? t('settings.status_checking_updates') : t('settings.updates_check_btn')}</span>
               </Button>
             {/snippet}
           </Row>
@@ -1696,12 +1688,12 @@
 
         {#if isItemVisible('updates_auto')}
           <Row
-            title={i18n.locale === 'en' ? 'Automatic Updates' : 'Автоматическая проверка'}
-            subtitle={i18n.locale === 'en' ? 'Check for newer launcher versions at startup' : 'Проверять наличие свежей версии лаунчера при каждом запуске'}
+            title={t('settings.updates_auto_title')}
+            subtitle={t('settings.updates_auto_desc')}
           >
             {#snippet trailing()}
               <Toggle
-                ariaLabel={i18n.locale === 'en' ? 'Automatic updates' : 'Автоматическая проверка обновлений'}
+                ariaLabel={t('settings.updates_auto_title')}
                 checked={autoCheckUpdates}
                 onchange={(checked) => {
                   autoCheckUpdates = checked;

@@ -17,6 +17,7 @@
   import Sheet from './Sheet.svelte';
   import Button from './Button.svelte';
   import Icon from './icons/Icon.svelte';
+  import { t } from '../i18n';
   import ReportSheet from './ReportSheet.svelte';
   import type { CrashDiagnosisDto, CrashKindDto } from '../ipc/generated/models';
 
@@ -54,7 +55,7 @@
   function parseKind(kind: CrashKindDto | undefined): ParsedCategory {
     if (!kind) {
       return {
-        badge: 'Причина не определена',
+        badge: t('crash.badge_unknown'),
         badgeType: 'unknown',
         actionType: 'none',
       };
@@ -62,7 +63,7 @@
 
     if (kind === 'OutOfMemory') {
       return {
-        badge: 'Оперативная память',
+        badge: t('crash.badge_oom'),
         badgeType: 'oom',
         actionType: 'ram',
       };
@@ -71,7 +72,7 @@
     if (typeof kind === 'object') {
       if ('MissingFabricDependency' in kind) {
         return {
-          badge: 'Зависимость мода',
+          badge: t('crash.badge_mod_dep'),
           badgeType: 'mod',
           actionType: 'mod',
           modName: kind.MissingFabricDependency.mod_name,
@@ -79,7 +80,7 @@
       }
       if ('IncompatibleMod' in kind) {
         return {
-          badge: 'Несовместимый мод',
+          badge: t('crash.badge_mod_incompat'),
           badgeType: 'mod',
           actionType: 'mod',
           modName: kind.IncompatibleMod.mod_name,
@@ -88,7 +89,7 @@
       if ('MixinConflict' in kind) {
         const firstMod = kind.MixinConflict.mod_names[0];
         return {
-          badge: 'Конфликт Mixin',
+          badge: t('crash.badge_mixin'),
           badgeType: 'mod',
           actionType: 'mod',
           modName: firstMod,
@@ -96,28 +97,28 @@
       }
       if ('InvalidJavaVersion' in kind) {
         return {
-          badge: 'Среда Java',
+          badge: t('crash.badge_java'),
           badgeType: 'java',
           actionType: 'java',
         };
       }
       if ('GraphicsDriverOrShader' in kind) {
         return {
-          badge: 'Видеодрайвер / Шейдеры',
+          badge: t('crash.badge_gpu'),
           badgeType: 'gpu',
           actionType: 'shader',
         };
       }
       if ('CorruptedFile' in kind) {
         return {
-          badge: 'Файлы игры',
+          badge: t('crash.badge_files'),
           badgeType: 'corruption',
           actionType: 'world',
         };
       }
       if ('Unknown' in kind) {
         return {
-          badge: 'Причина не определена',
+          badge: t('crash.badge_unknown'),
           badgeType: 'unknown',
           actionType: 'none',
         };
@@ -125,7 +126,7 @@
     }
 
     return {
-      badge: 'Причина не определена',
+      badge: t('crash.badge_unknown'),
       badgeType: 'unknown',
       actionType: 'none',
     };
@@ -134,27 +135,27 @@
   let category = $derived(parseKind(diagnosis?.kind));
 
   let displayTitle = $derived.by(() => {
-    if (!diagnosis) return 'Игра завершилась с ошибкой';
+    if (!diagnosis) return t('crash.default_title');
     if (category.badgeType === 'unknown') {
-      return diagnosis.title || 'Причина не определена';
+      return diagnosis.title || t('crash.badge_unknown');
     }
     return diagnosis.title;
   });
 
   let displayAdvice = $derived.by(() => {
     if (modDisabledSuccess) {
-      return `Мод успешно отключён (.disabled). Теперь вы можете повторно запустить игру.`;
+      return t('crash.mod_disabled_msg');
     }
     if (!diagnosis) {
-      return 'Причина сбоя не определена. Анализатор не нашёл известных сигнатур ошибок в журналах игры. Вы можете скопировать технический отчёт или открыть лог для ручной диагностики.';
+      return t('crash.unknown_advice');
     }
     if (category.badgeType === 'unknown') {
-      return 'Причина не определена. Анализатор не нашёл известных сигнатур сбоя в логах игры. Проверьте лог или обратитесь за технической поддержкой.';
+      return t('crash.unknown_advice');
     }
     return diagnosis.user_advice;
   });
 
-  let technicalSnippet = $derived(diagnosis?.technical_summary || '(технический лог пуст)');
+  let technicalSnippet = $derived(diagnosis?.technical_summary || t('crash.empty_technical_log'));
 
   function notify(type: 'info' | 'success' | 'warning' | 'error', title: string, desc?: string) {
     if (ontoast) {
@@ -164,12 +165,12 @@
 
   async function handleCopyReport() {
     const reportText = [
-      `=== Отчёт о сбое Minecraft (${version}) ===`,
-      `Диагноз: ${displayTitle}`,
-      `Категория: ${category.badge}`,
-      `Рекомендация: ${displayAdvice}`,
+      t('crash.report_header', { version }),
+      t('crash.diagnosis_label', { title: displayTitle }),
+      t('crash.category_label', { badge: category.badge }),
+      t('crash.recommendation_label', { advice: displayAdvice }),
       '',
-      '--- Технический журнал ---',
+      t('crash.tech_log_separator'),
       technicalSnippet,
     ].join('\n');
 
@@ -178,12 +179,12 @@
         await navigator.clipboard.writeText(reportText);
       }
       copyFeedback = true;
-      notify('success', 'Отчёт скопирован в буфер обмена');
+      notify('success', t('crash.report_copied'));
       setTimeout(() => {
         copyFeedback = false;
       }, 2500);
     } catch {
-      notify('info', 'Не удалось скопировать отчёт автоматически');
+      notify('info', t('crash.report_copy_failed'));
     }
   }
 
@@ -192,9 +193,9 @@
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const openedPath = await invoke<string>('crash_open_log_file', { version });
-      notify('info', 'Файл журнала открыт в проводнике', openedPath);
+      notify('info', t('crash.log_opened'), openedPath);
     } catch {
-      notify('info', 'Открытие папки журналов', `Инстанс Minecraft ${version}`);
+      notify('info', t('crash.opening_logs_folder'), t('crash.instance_logs_desc', { version }));
     } finally {
       isOpeningLog = false;
     }
@@ -210,9 +211,9 @@
         version,
       });
       modDisabledSuccess = true;
-      notify('success', `Мод «${category.modName}» отключён`, disabledFile);
+      notify('success', t('crash.mod_disabled_toast', { name: category.modName }), disabledFile);
     } catch (e: any) {
-      notify('error', 'Не удалось отключить мод', e?.message || String(e));
+      notify('error', t('crash.mod_disable_failed'), e?.message || String(e));
     } finally {
       isDisablingMod = false;
     }
@@ -250,7 +251,7 @@
 
 <Sheet
   bind:open
-  title="Сбой игры"
+  title={t('crash.sheet_title')}
   maxWidth="560px"
   showCancel={false}
   showDone={false}
@@ -268,7 +269,7 @@
           <span class="category-badge {category.badgeType}" data-testid="crash-badge">
             {category.badge}
           </span>
-          <span class="version-tag">Версия {version}</span>
+          <span class="version-tag">{t('crash.version_tag', { version })}</span>
         </div>
         <h2 class="crash-title" data-testid="crash-title">{displayTitle}</h2>
       </div>
@@ -282,9 +283,9 @@
     <!-- Technical Log Snippet -->
     <div class="log-section">
       <div class="log-header">
-        <span class="log-label">Технический журнал сбоя</span>
+        <span class="log-label">{t('crash.log_label')}</span>
         <button type="button" class="copy-link" onclick={handleCopyReport}>
-          {copyFeedback ? 'Скопировано!' : 'Копировать'}
+          {copyFeedback ? t('crash.copied') : t('crash.copy')}
         </button>
       </div>
 
@@ -301,7 +302,7 @@
               size="regular"
               onclick={handleGoToSettingsRam}
             >
-              <span data-testid="btn-increase-ram">Увеличить память</span>
+              <span data-testid="btn-increase-ram">{t('crash.btn_increase_ram')}</span>
             </Button>
           {:else if category.actionType === 'mod' && category.modName}
             <Button
@@ -310,7 +311,7 @@
               onclick={handleDisableMod}
               loading={isDisablingMod}
             >
-              <span data-testid="btn-disable-mod">Отключить мод</span>
+              <span data-testid="btn-disable-mod">{t('crash.btn_disable_mod')}</span>
             </Button>
           {:else if category.actionType === 'java'}
             <Button
@@ -318,7 +319,7 @@
               size="regular"
               onclick={handleGoToSettingsJava}
             >
-              <span data-testid="btn-select-java">Выбрать Java</span>
+              <span data-testid="btn-select-java">{t('crash.btn_select_java')}</span>
             </Button>
           {:else if category.actionType === 'shader'}
             <Button
@@ -326,7 +327,7 @@
               size="regular"
               onclick={handleGoToWorkshopShaders}
             >
-              <span data-testid="btn-open-shaders">Мастерская шейдеров</span>
+              <span data-testid="btn-open-shaders">{t('crash.btn_open_shaders')}</span>
             </Button>
           {/if}
         {/if}
@@ -336,7 +337,7 @@
           size="regular"
           onclick={handleCopyReport}
         >
-          <span data-testid="btn-copy-report">{copyFeedback ? 'Отчёт скопирован' : 'Скопировать отчёт'}</span>
+          <span data-testid="btn-copy-report">{copyFeedback ? t('crash.btn_report_copied') : t('crash.btn_copy_report')}</span>
         </Button>
 
         <Button
@@ -345,7 +346,7 @@
           onclick={handleOpenLog}
           loading={isOpeningLog}
         >
-          <span data-testid="btn-open-log">Открыть лог</span>
+          <span data-testid="btn-open-log">{t('crash.btn_open_log')}</span>
         </Button>
 
         <Button
@@ -353,13 +354,13 @@
           size="regular"
           onclick={() => (isReportSheetOpen = true)}
         >
-          <span data-testid="btn-open-report">Отправить отчёт</span>
+          <span data-testid="btn-open-report">{t('crash.btn_send_report')}</span>
         </Button>
       </div>
 
       <div class="actions-right">
         <Button variant="ghost" size="regular" onclick={handleClose}>
-          <span data-testid="btn-close-crash">Закрыть</span>
+          <span data-testid="btn-close-crash">{t('crash.btn_close')}</span>
         </Button>
       </div>
     </div>

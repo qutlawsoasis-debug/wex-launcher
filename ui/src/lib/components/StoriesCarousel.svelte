@@ -17,6 +17,7 @@
   import Button from './Button.svelte';
   import ProgressBar from './ProgressBar.svelte';
   import { theme } from '../design/theme.svelte';
+  import { t } from '../i18n';
 
   export interface NewsSlideItem {
     badgeText: string;
@@ -241,7 +242,7 @@
   // Copy changelog for friends action
   async function copyChangelogForFriends(slide: NewsSlideData) {
     const titleLine = `Wex Launcher — ${slide.version}${slide.dateText ? ` (${slide.dateText})` : ''}`;
-    const headerLine = slide.shortTitle ? `Заголовок: ${slide.shortTitle}` : '';
+    const headerLine = slide.shortTitle ? t('stories.title_line', { title: slide.shortTitle }) : '';
     const itemsText = slide.items.map((i) => `• [${i.badgeText}] ${i.text}`).join('\n');
     const fullText = [titleLine, headerLine, '', itemsText].filter(Boolean).join('\n');
 
@@ -256,8 +257,8 @@
 
       ontoast?.({
         type: 'info',
-        title: 'Скопировано',
-        message: `Список изменений ${slide.version} скопирован для друзей`,
+        title: t('stories.copied_title'),
+        message: t('stories.copied_changelog_msg', { version: slide.version }),
       });
     } catch {
       copyFeedback = true;
@@ -283,7 +284,7 @@
   <div
     class="stories-card"
     role="region"
-    aria-label="Истории и активность"
+    aria-label={t('stories.aria_label')}
     onkeydown={handleKeyDown}
     onmouseenter={() => (isPaused = true)}
     onmouseleave={() => (isPaused = false)}
@@ -303,7 +304,7 @@
             class="indicator-segment-btn"
             role="tab"
             aria-selected={isActive}
-            aria-label={`История ${idx + 1}`}
+            aria-label={t('stories.bar_aria', { current: idx + 1, total: slides.length })}
             onclick={(e) => {
               e.stopPropagation();
               goToSlide(idx);
@@ -333,7 +334,7 @@
           <div class="story-header">
             <div class="header-left">
               <Icon name="play" size={15} color="var(--color-system-blue)" />
-              <span class="story-title">Журнал изменений</span>
+              <span class="story-title">{t('stories.header_changelog')}</span>
               <span class="version-pill">{currentSlide.version}</span>
             </div>
             {#if currentSlide.dateText}
@@ -355,10 +356,10 @@
               variant="secondary"
               size="small"
               onclick={() => copyChangelogForFriends(currentSlide as NewsSlideData)}
-              title="Скопировать форматированный чейнджлог для Discord/Telegram"
+              title={t('stories.copy_changelog_title')}
             >
               <Icon name={copyFeedback ? 'check' : 'copy'} size={14} color="var(--color-secondary-label)" />
-              <span>{copyFeedback ? 'Скопировано!' : 'Скопировать для друзей'}</span>
+              <span>{copyFeedback ? t('stories.copied_title') : t('whats_new.copy_for_friends')}</span>
             </Button>
           </div>
         </div>
@@ -369,7 +370,7 @@
           <div class="story-header">
             <div class="header-left">
               <Icon name="camera" size={15} color="var(--color-system-green)" />
-              <span class="story-title">Последний скриншот</span>
+              <span class="story-title">{t('stories.latest_screenshot')}</span>
             </div>
             {#if currentSlide.createdAt}
               <span class="story-date">{currentSlide.createdAt}</span>
@@ -381,7 +382,7 @@
             type="button"
             class="screenshot-preview-wrap"
             onclick={() => onnavigatescreen?.('workshop')}
-            title="Нажмите для перехода в Мастерскую"
+            title={t('stories.open_workshop_title')}
           >
             {#if currentSlide.previewUrl}
               <img
@@ -397,7 +398,7 @@
             {/if}
             <div class="screenshot-hover-badge">
               <Icon name="workshop" size={13} color="#ffffff" />
-              <span>Перейти в Мастерскую</span>
+              <span>{t('stories.go_to_workshop')}</span>
             </div>
           </button>
 
@@ -408,7 +409,7 @@
               onclick={() => onnavigatescreen?.('workshop')}
             >
               <Icon name="workshop" size={14} color="var(--color-secondary-label)" />
-              <span>Все скриншоты</span>
+              <span>{t('stories.all_screenshots')}</span>
             </Button>
           </div>
         </div>
@@ -419,10 +420,10 @@
           <div class="story-header">
             <div class="header-left">
               <Icon name="trophy" size={15} color="var(--color-system-orange)" />
-              <span class="story-title">Достижения</span>
+              <span class="story-title">{t('stories.achievements_header')}</span>
             </div>
             <span class="story-date">
-              {currentSlide.unlockedCount} из {currentSlide.totalCount}
+              {currentSlide.unlockedCount} {t('stories.of')} {currentSlide.totalCount}
             </span>
           </div>
 
@@ -430,7 +431,7 @@
             <div class="achievements-progress-row">
               <ProgressBar
                 percentage={Math.round((currentSlide.unlockedCount / Math.max(1, currentSlide.totalCount)) * 100)}
-                label="Прогресс достижений"
+                label={t('stories.achievements_progress_label')}
                 height={6}
               />
             </div>
@@ -447,7 +448,7 @@
               </div>
             {:else}
               <div class="empty-achievement-text">
-                Играйте, чтобы открывать достижения лаунчера
+                {t('stories.play_to_unlock')}
               </div>
             {/if}
           </div>
@@ -459,7 +460,7 @@
               onclick={() => onnavigatescreen?.('friends')}
             >
               <Icon name="friends" size={14} color="var(--color-secondary-label)" />
-              <span>Все достижения</span>
+              <span>{t('stories.all_achievements')}</span>
             </Button>
           </div>
         </div>
@@ -470,10 +471,10 @@
           <div class="story-header">
             <div class="header-left">
               <Icon name="clock" size={15} color="var(--color-system-purple)" />
-              <span class="story-title">Время в игре</span>
+              <span class="story-title">{t('stories.playtime_header')}</span>
             </div>
             {#if currentSlide.totalLaunches > 0}
-              <span class="story-date">Запусков: {currentSlide.totalLaunches}</span>
+              <span class="story-date">{t('stories.launches_label')} {currentSlide.totalLaunches}</span>
             {/if}
           </div>
 
@@ -481,13 +482,13 @@
             <div class="playtime-hero-stat">
               <span class="playtime-value">{currentSlide.formattedPlayTime}</span>
               <span class="playtime-caption">
-                Суммарное время, проведённое в Minecraft
+                {t('stories.total_playtime_desc')}
               </span>
             </div>
 
             {#if currentSlide.lastPlayed}
               <div class="playtime-subtext">
-                Последний запуск: <span class="last-played-val">{currentSlide.lastPlayed}</span>
+                {t('stories.last_launch_label')} <span class="last-played-val">{currentSlide.lastPlayed}</span>
               </div>
             {/if}
           </div>
@@ -495,7 +496,7 @@
           <div class="story-footer">
             <div class="local-stats-hint">
               <Icon name="info" size={13} color="var(--color-tertiary-label)" />
-              <span>Статистика учитывается автоматически</span>
+              <span>{t('stories.stats_auto_tracked')}</span>
             </div>
           </div>
         </div>
@@ -511,7 +512,7 @@
           e.stopPropagation();
           prevSlide();
         }}
-        aria-label="Предыдущая история"
+        aria-label={t('stories.prev_story_aria')}
       >
         <Icon name="chevron-left" size={14} color="var(--color-label)" />
       </button>
@@ -523,7 +524,7 @@
           e.stopPropagation();
           nextSlide();
         }}
-        aria-label="Следующая история"
+        aria-label={t('stories.next_story_aria')}
       >
         <Icon name="chevron-right" size={14} color="var(--color-label)" />
       </button>
