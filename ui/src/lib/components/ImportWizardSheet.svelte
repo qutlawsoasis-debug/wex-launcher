@@ -252,7 +252,7 @@
             <span class="option-title">{t('import.servers')}</span>
             <span class="option-subtitle">
               {oldData.servers?.length
-                ? (i18n.locale === 'en' ? `Servers found: ${oldData.servers.length}` : `${oldData.servers.length} сервер(-ов) найдено`)
+                ? (i18n.locale === 'en' ? `Servers found: ${oldData.servers.length}` : `Найдено серверов: ${oldData.servers.length}`)
                 : (i18n.locale === 'en' ? 'No servers found' : 'Серверы не найдены')}
             </span>
           </div>
@@ -271,7 +271,7 @@
             <span class="option-title">{t('import.skins')}</span>
             <span class="option-subtitle">
               {oldData.skins?.length
-                ? (i18n.locale === 'en' ? `Skins found: ${oldData.skins.length}` : `${oldData.skins.length} скин(-ов) найдено`)
+                ? (i18n.locale === 'en' ? `Skins found: ${oldData.skins.length}` : `Найдено скинов: ${oldData.skins.length}`)
                 : (i18n.locale === 'en' ? 'No skins found' : 'Скины не найдены')}
             </span>
           </div>
@@ -290,7 +290,7 @@
             <span class="option-title">Локальные миры</span>
             <span class="option-subtitle">
               {oldData.worlds?.length
-                ? `${oldData.worlds.length} мир(-ов) найдено`
+                ? `Найдено миров: ${oldData.worlds.length}`
                 : 'Миры не найдены'}
             </span>
           </div>
@@ -307,7 +307,7 @@
         <Icon name="folder" size={32} color="var(--color-tertiary-label)" />
         <h3 class="empty-title">{t('import.not_found')}</h3>
         <p class="empty-subtitle">
-          {errorMessage || (i18n.locale === 'en' ? 'No previous launcher settings found. You can continue with the defaults.' : 'Wex не обнаружил каталог .aura в стандартной папке AppData. Вы можете продолжить со стандартными настройками.')}
+          {errorMessage || (i18n.locale === 'en' ? 'No previous launcher settings found. You can continue with the defaults.' : 'Данные старого лаунчера не найдены. Вы можете продолжить со стандартными настройками.')}
         </p>
         <div class="empty-actions">
           <Button variant="secondary" size="regular" onclick={() => scanLauncher()}>

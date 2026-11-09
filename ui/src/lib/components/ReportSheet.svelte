@@ -218,7 +218,7 @@
         data-testid="btn-toggle-preview"
       >
         <Icon name={showFullPreview ? 'chevron-down' : 'chevron-right'} size={12} />
-        <span>{showFullPreview ? 'Скрыть структуру данных' : 'Показать структуру данных (JSON)'}</span>
+        <span>{showFullPreview ? 'Скрыть структуру данных' : 'Показать структуру данных (.json)'}</span>
       </button>
 
       {#if showFullPreview}
@@ -228,7 +228,7 @@
 
     <!-- Offline note -->
     <div class="service-notice">
-      Сервер автоматической отправки старого лаунчера недоступен. Сохраните ZIP-архив на рабочий стол или скопируйте текст отчёта.
+      Сервер автоматической отправки старого лаунчера недоступен. Сохраните архив на рабочий стол или скопируйте текст отчёта.
     </div>
 
     <!-- Action Bar -->

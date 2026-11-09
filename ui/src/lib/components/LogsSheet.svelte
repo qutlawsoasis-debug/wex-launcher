@@ -368,7 +368,7 @@
           loading={isCopying}
         >
           <span data-testid="btn-copy-log">
-            {copyFeedback ? 'Скопировано!' : 'Скопировать лог'}
+            {copyFeedback ? 'Скопировано!' : 'Скопировать журнал'}
           </span>
         </Button>
 
@@ -388,7 +388,7 @@
           onclick={() => handleOpenFolder('logs')}
         >
           <Icon name="folder" size={14} color="var(--color-secondary-label)" />
-          <span data-testid="btn-open-logs-folder">Папка логов</span>
+          <span data-testid="btn-open-logs-folder">Папка журналов</span>
         </Button>
 
         <Button
@@ -397,7 +397,7 @@
           onclick={() => handleOpenFolder('crash_reports')}
         >
           <Icon name="warning" size={14} color="var(--color-secondary-label)" />
-          <span data-testid="btn-open-crashes-folder">Папка крашей</span>
+          <span data-testid="btn-open-crashes-folder">Папка отчётов о сбоях</span>
         </Button>
       </div>
 

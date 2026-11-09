@@ -89,13 +89,13 @@
     if (val <= 2048) {
       ramExplanation = `Выделено ${chosenGb} ГБ из ${totalGb} ГБ. Минимальный расход ресурсов, подходит для стандартной игры без тяжёлых текстур.`;
     } else if (val <= 4096) {
-      ramExplanation = `Выделено ${chosenGb} ГБ из ${totalGb} ГБ. Сбалансированный режим: комфортный FPS в сборке Wex, остаётся ${freeGb} ГБ операционной системе.`;
+      ramExplanation = `Выделено ${chosenGb} ГБ из ${totalGb} ГБ. Сбалансированный режим: комфортная игра в паке Wex, остаётся ${freeGb} ГБ операционной системе.`;
     } else if (val <= 6144) {
       ramExplanation = `Выделено ${chosenGb} ГБ из ${totalGb} ГБ. Оптимально для шейдеров Iris, модов на оптимизацию и высоких настроек графики.`;
     } else if (val <= totalMemoryMb * 0.75) {
       ramExplanation = `Выделено ${chosenGb} ГБ из ${totalGb} ГБ. Для ресурс-паков высокого разрешения и максимальной дальности прорисовки.`;
     } else {
-      ramExplanation = `Внимание: выделение более 75% всей памяти ПК (${chosenGb} ГБ) может замедлить работу Windows и фоновых программ.`;
+      ramExplanation = `Выделение более 75% всей памяти компьютера (${chosenGb} ГБ) может замедлить работу Windows и фоновых программ.`;
     }
   }
 
@@ -127,7 +127,7 @@
         if (prewarmProgress > 30 && prewarmProgress < 60) {
           prewarmStage = `Синхронизация библиотек Fabric и Java для ${selectedVersion}`;
         } else if (prewarmProgress >= 60 && prewarmProgress < 90) {
-          prewarmStage = `Загрузка и проверка ассетов Minecraft ${selectedVersion}`;
+          prewarmStage = `Загрузка и проверка ресурсов Minecraft ${selectedVersion}`;
         } else if (prewarmProgress >= 90) {
           prewarmStage = `Клиент ${selectedVersion} подготовлен к первому запуску`;
         }

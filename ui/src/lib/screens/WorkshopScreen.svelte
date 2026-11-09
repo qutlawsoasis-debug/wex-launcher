@@ -341,7 +341,7 @@
         worldName: world.display_name || world.folder_name,
         playerName: playerName || 'Player',
       });
-      notify('success', 'Комната лобби создана', `Мир «${world.display_name}» открыт для друзей`);
+      notify('success', 'Лобби создано', `Мир «${world.display_name}» открыт для друзей`);
       if (onopenlobby) {
         onopenlobby(room);
       }
@@ -487,7 +487,7 @@
       notify(
         'success',
         shader ? 'Шейдер-пак выбран' : 'Шейдеры отключены',
-        shader ? shader.name : 'Используется стандартный рендеринг'
+        shader ? shader.name : 'Используется стандартная графика'
       );
       await loadShaderPacks();
     } catch (err) {
@@ -510,7 +510,7 @@
 
   function promptDeletePack(pack: { name: string; file_name: string; is_from_pack: boolean }, type: 'resourcepack' | 'shaderpack') {
     if (pack.is_from_pack) {
-      notify('warning', 'Защита файлов Aura-Pack', 'Файлы, входящие в официальную сборку, нельзя удалить.');
+      notify('warning', 'Защита файлов пака Wex', 'Файлы, входящие в официальный пак, нельзя удалить.');
       return;
     }
     packToDelete = {
@@ -635,7 +635,7 @@
           variant="secondary"
           size="small"
           onclick={() => triggerAddPack('resourcepack')}
-          title={i18n.locale === 'en' ? 'Add a resource pack ZIP file' : 'Добавить ZIP файл ресурс-пака'}
+          title={i18n.locale === 'en' ? 'Add a resource pack ZIP file' : 'Добавить архив с ресурс-паком'}
         >
           <Icon name="folder" size={14} color="var(--color-label)" />
           <span>{t('workshop.add_pack')}</span>
@@ -653,7 +653,7 @@
           variant="secondary"
           size="small"
           onclick={() => triggerAddPack('shaderpack')}
-          title={i18n.locale === 'en' ? 'Add a shader pack ZIP file' : 'Добавить ZIP файл шейдеров'}
+          title={i18n.locale === 'en' ? 'Add a shader pack ZIP file' : 'Добавить архив с шейдерами'}
         >
           <Icon name="folder" size={14} color="var(--color-label)" />
           <span>{t('workshop.add_pack')}</span>
@@ -786,7 +786,7 @@
                     size="small"
                     onclick={() => handleOpenInLobby(world)}
                     loading={isOpeningInLobby[world.folder_name]}
-                    title="Создать комнату в лобби для совместной игры с друзьями"
+                    title="Открыть мир в лобби для игры с друзьями"
                   >
                     <Icon name="friends" size={14} color="#ffffff" />
                     <span>Открыть в лобби</span>
@@ -880,7 +880,7 @@
                 <div class="pack-title-row">
                   <span class="pack-title">{pack.name}</span>
                   {#if pack.is_from_pack}
-                    <span class="pack-badge from-pack">В сборке</span>
+                    <span class="pack-badge from-pack">В паке</span>
                   {/if}
                   {#if pack.is_enabled}
                     <span class="pack-badge active-badge">Включён</span>
@@ -1009,7 +1009,7 @@
                   <div class="shader-title-row">
                     <span class="shader-title">{shader.name}</span>
                     {#if shader.is_from_pack}
-                      <span class="pack-badge from-pack">В сборке</span>
+                      <span class="pack-badge from-pack">В паке</span>
                     {/if}
                     {#if shader.is_active}
                       <span class="pack-badge active-badge">Активен</span>

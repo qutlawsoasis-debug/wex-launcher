@@ -39,7 +39,7 @@ describe('ModsScreen Component Tests', () => {
     await new Promise((r) => setTimeout(r, 60));
 
     expect(target.textContent).toContain('Моды не найдены');
-    expect(target.textContent).toContain('В папке инстанса пока нет модов');
+    expect(target.textContent).toContain('В папке игры пока нет модов');
 
     unmount(comp);
   });

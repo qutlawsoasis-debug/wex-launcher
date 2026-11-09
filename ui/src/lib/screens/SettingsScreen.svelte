@@ -294,11 +294,11 @@
     if (ramMb <= 4096) {
       return `Рекомендуется для базовой игры и лёгких модов • Всего в системе: ${totalGb} ГБ`;
     } else if (ramMb <= 8192) {
-      return `Оптимально для сборки Wex, шейдеров Iris и стабильного FPS • Всего в системе: ${totalGb} ГБ`;
+      return `Оптимально для пака Wex, шейдеров Iris и плавной игры • Всего в системе: ${totalGb} ГБ`;
     } else if (ramMb <= totalMemoryMb * 0.75) {
       return `Для ресурс-паков высокого разрешения и дальней прорисовки • Всего в системе: ${totalGb} ГБ`;
     } else {
-      return `Внимание: выделение более 75% ОЗУ может замедлить систему • Всего в системе: ${totalGb} ГБ`;
+      return `Выделение более 75% памяти может замедлить работу системы • Всего в системе: ${totalGb} ГБ`;
     }
   });
 
@@ -731,7 +731,7 @@
       id: 'game_fast_start',
       group: 'game',
       title: 'Быстрый запуск игры',
-      subtitle: 'Экспериментальный предварительный прогрев виртуальной машины Java (PrewarmGame)',
+      subtitle: 'Предварительная подготовка игры в фоне для быстрого старта',
       keywords: ['быстрый', 'запуск', 'прогрев', 'jvm', 'prewarm', 'fast', 'start', 'boost'],
     },
     {
@@ -767,7 +767,7 @@
     {
       id: 'perf_discord_preview',
       group: 'perf',
-      title: 'Превью статуса Discord',
+      title: 'Просмотр статуса в Discord',
       subtitle: discordRpc ? 'Фактическое состояние активности профиля в Discord' : 'Трансляция активности выключена в настройках',
       keywords: ['discord', 'дискорд', 'карточка', 'превью', 'никнейм', 'сервер', 'профиль', 'preview', 'card'],
     },
@@ -873,8 +873,8 @@
     {
       id: 'storage_logs',
       group: 'storage',
-      title: 'Журнал событий и краш-дампы',
-      subtitle: 'Просмотр latest.log, crash-reports и hs_err_pid для диагностики сбоев',
+      title: 'Журнал событий и отчёты об ошибках',
+      subtitle: 'Просмотр записей игры и отчётов для диагностики неполадок',
       keywords: ['журнал', 'логи', 'краш', 'дамп', 'ошибки', 'диагностика', 'logs', 'crash', 'reports'],
     },
 
@@ -905,7 +905,7 @@
     {
       id: 'updates_check',
       group: 'updates',
-      title: i18n.locale === 'en' ? 'Launcher Updates' : 'Самообновление лаунчера',
+      title: i18n.locale === 'en' ? 'Launcher Updates' : 'Обновление лаунчера',
       subtitle: updateStatus || (i18n.locale === 'en' ? (launcherVersion !== '—' ? `Wex ${launcherVersion} is up to date` : 'Wex is up to date') : (launcherVersion !== '—' ? `Установлена актуальная версия Wex ${launcherVersion}` : 'Установлена актуальная версия Wex')),
       keywords: ['обновление', 'самообновление', 'проверить', 'версия', 'апдейт', 'update', 'upgrade', 'new', 'version', 'patch'],
     },
@@ -1122,7 +1122,7 @@
         {#if isItemVisible('game_fast_start')}
           <Row
             title="Быстрый запуск игры"
-            subtitle="Экспериментальный предварительный прогрев виртуальной машины Java (PrewarmGame)"
+            subtitle="Предварительная подготовка игры в фоне для быстрого старта"
           >
             {#snippet trailing()}
               <Toggle
@@ -1226,7 +1226,7 @@
 
         {#if isItemVisible('perf_discord_preview')}
           <Row
-            title="Превью статуса Discord"
+            title="Просмотр статуса в Discord"
             subtitle={discordRpc ? "Фактическое состояние активности профиля в Discord" : "Трансляция активности выключена в настройках"}
           >
             <div class="discord-preview-wrap">
@@ -1525,7 +1525,7 @@
                 size="small"
                 disabled={isGameActive || isVerifyingFiles}
                 onclick={handleVerifyFiles}
-                title="Проверить целостность файлов инстанса"
+                title="Проверить целостность файлов игры"
               >
                 {#if isVerifyingFiles}
                   <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
@@ -1566,8 +1566,8 @@
 
         {#if isItemVisible('storage_logs')}
           <Row
-            title="Журнал событий и краш-дампы"
-            subtitle="Просмотр latest.log, crash-reports и hs_err_pid для диагностики сбоев"
+            title="Журнал событий и отчёты об ошибках"
+            subtitle="Просмотр записей игры и отчётов для диагностики неполадок"
           >
             {#snippet trailing()}
               <div class="dir-actions">
@@ -1653,7 +1653,7 @@
           {:else}
             <Row
               title={i18n.locale === 'en' ? 'Loading system info...' : 'Загрузка данных о системе...'}
-              subtitle={i18n.locale === 'en' ? 'Reading hardware sensors' : 'Опрос оборудования ПК'}
+              subtitle={i18n.locale === 'en' ? 'Reading hardware sensors' : 'Опрос оборудования компьютера'}
             />
           {/if}
         {/if}
@@ -1682,7 +1682,7 @@
       <List header={i18n.locale === 'en' ? 'Updates' : 'Обновления'}>
         {#if isItemVisible('updates_check')}
           <Row
-            title={i18n.locale === 'en' ? 'Launcher Updates' : 'Самообновление лаунчера'}
+            title={i18n.locale === 'en' ? 'Launcher Updates' : 'Обновление лаунчера'}
             subtitle={updateStatus || (i18n.locale === 'en' ? (launcherVersion !== '—' ? `Wex ${launcherVersion} is up to date` : 'Wex is up to date') : (launcherVersion !== '—' ? `Установлена актуальная версия Wex ${launcherVersion}` : 'Установлена актуальная версия Wex'))}
           >
             {#snippet trailing()}

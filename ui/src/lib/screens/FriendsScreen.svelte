@@ -83,10 +83,10 @@
     { id: 'reconnected', title: 'Вернулся', description: 'Нажал «Переподключиться»', target: 1, current: 0, unlocked: false },
     { id: 'first_friend', title: 'Свой человек', description: 'Первый друг в списке', target: 1, current: 0, unlocked: false },
     { id: 'five_friends', title: 'Компания', description: '5 друзей в списке', target: 5, current: 0, unlocked: false },
-    { id: 'first_backup', title: 'Страховка', description: 'Первый созданный бэкап мира', target: 1, current: 0, unlocked: false },
-    { id: 'ten_backups', title: 'Параноик', description: '10 бэкапов миров', target: 10, current: 0, unlocked: false },
+    { id: 'first_backup', title: 'Страховка', description: 'Первая резервная копия мира', target: 1, current: 0, unlocked: false },
+    { id: 'ten_backups', title: 'Параноик', description: '10 резервных копий миров', target: 10, current: 0, unlocked: false },
     { id: 'photographer', title: 'Фотограф', description: '10 скриншотов в галерее', target: 10, current: 0, unlocked: false },
-    { id: 'own_style', title: 'Свой стиль', description: 'Установлен кастомный скин', target: 1, current: 0, unlocked: false },
+    { id: 'own_style', title: 'Свой стиль', description: 'Установлен собственный скин', target: 1, current: 0, unlocked: false },
   ]);
 
   // Local Toast notifications

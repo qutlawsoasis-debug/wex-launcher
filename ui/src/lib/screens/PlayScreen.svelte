@@ -972,7 +972,7 @@ $effect(() => {
           <!-- Java Environment & Core Status -->
           <div class="dock-block tech-block">
             <span class="dock-caption">
-              {isRunning ? (i18n.locale === 'en' ? 'Session Status' : 'Статус сессии') : (i18n.locale === 'en' ? 'Java Runtime' : 'Среда выполнения')}
+              {isRunning ? (i18n.locale === 'en' ? 'Session Status' : 'Состояние игры') : (i18n.locale === 'en' ? 'Java Runtime' : 'Среда выполнения')}
             </span>
             <div class="tech-runtime-box">
               <span class="tech-runtime-text">{javaRuntime}</span>
@@ -1001,7 +1001,7 @@ $effect(() => {
                 variant="secondary"
                 size="large"
                 onclick={onstop}
-                title={i18n.locale === 'en' ? 'Stop Minecraft' : 'Остановить процесс Minecraft'}
+                title={i18n.locale === 'en' ? 'Stop Minecraft' : 'Остановить игру Minecraft'}
               >
                 <span>{i18n.locale === 'en' ? 'Stop Minecraft' : 'В игре • Остановить'}</span>
               </Button>

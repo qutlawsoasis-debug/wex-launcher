@@ -520,7 +520,7 @@
     </div>
 
     <div class="toolbar-controls">
-      <div class="version-picker" title="Выбор инстанса servers.dat">
+      <div class="version-picker" title="Выбор версии для списка серверов">
         <SegmentedControl
           options={versionOptions}
           value={activeVersion}

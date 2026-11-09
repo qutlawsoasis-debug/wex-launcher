@@ -74,7 +74,7 @@
   const kindLabel = $derived.by(() => {
     switch (action?.kind) {
       case 'join':
-        return 'Лобби P2P';
+        return 'Лобби';
       case 'server':
         return 'Игровой сервер';
       case 'friend':
@@ -136,7 +136,7 @@
         <div class="deeplink-target-row">
           <span class="target-label">
             {#if action.kind === 'join'}
-              Код комнаты:
+              Код лобби:
             {:else if action.kind === 'server'}
               Адрес подключения:
             {:else}

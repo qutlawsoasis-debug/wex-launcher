@@ -355,7 +355,7 @@
               variant="secondary"
               size="small"
               onclick={() => copyChangelogForFriends(currentSlide as NewsSlideData)}
-              title="Скопировать форматированный чейнджлог для Discord/Telegram"
+              title="Скопировать список изменений для друзей (Discord)"
             >
               <Icon name={copyFeedback ? 'check' : 'copy'} size={14} color="var(--color-secondary-label)" />
               <span>{copyFeedback ? 'Скопировано!' : 'Скопировать для друзей'}</span>

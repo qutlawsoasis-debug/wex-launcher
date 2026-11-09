@@ -440,7 +440,7 @@
     errorMessage = null;
 
     if (!file.name.toLowerCase().endsWith('.png')) {
-      errorMessage = 'Файл не в формате PNG. Скин должен быть в формате .png';
+      errorMessage = 'Файл должен быть в формате .png';
       ontoast?.('error', 'Ошибка формата', errorMessage);
       return;
     }
@@ -462,7 +462,7 @@
           // Client-side quick validation of image resolution
           const testImg = new Image();
           testImg.onerror = () => {
-            errorMessage = 'Файл повреждён или не является изображением PNG';
+            errorMessage = 'Файл повреждён или не является изображением .png';
             ontoast?.('error', 'Ошибка файла', errorMessage);
             isValidating = false;
           };
@@ -499,7 +499,7 @@
                     { request: { skin_bytes_base64: base64Data } }
                   );
                   finalBase64 = conv.converted_bytes_base64;
-                  ontoast?.('info', 'Формат обновлён', 'Старый скин 64×32 сконвертирован в 64×64');
+                  ontoast?.('info', 'Формат обновлён', 'Старый формат скина 64×32 преобразован в 64×64');
                 } catch {
                   // Keep original if conversion fails
                 }
