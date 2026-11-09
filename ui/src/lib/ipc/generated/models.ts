@@ -106,4 +106,3 @@ export type OnboardingSpecsDto = { total_memory_mb: number, recommended_memory_m
 
 export type OnboardingCompleteRequest = { nickname: string, version: string, ram_mb: number, };;
 
-
