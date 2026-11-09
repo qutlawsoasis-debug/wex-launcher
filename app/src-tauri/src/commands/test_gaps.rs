@@ -369,7 +369,10 @@ async fn get_system_info_success_has_real_shape() {
     let f = Fixture::new().await;
     let info = settings::get_system_info(f.play()).await.unwrap();
     assert!(info.total_memory_mb > 0);
-    assert_eq!(info.data_dir, f.paths.root.to_string_lossy());
+    assert_eq!(
+        info.data_dir,
+        wex_core::sanitize_user_path(&f.paths.root.to_string_lossy())
+    );
 }
 
 #[tokio::test]

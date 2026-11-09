@@ -61,13 +61,7 @@ fn default_game_dir() -> String {
 }
 
 /// System telemetry and memory limits.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SystemInfo {
-    pub total_memory_mb: u32,
-    pub os_name: String,
-    pub launcher_version: String,
-    pub data_dir: String,
-}
+pub use wex_core::SystemInfo;
 
 /// Version description for UI selectors.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -390,13 +390,13 @@ pub fn get_data_dir(state: State<'_, PlayState>) -> String {
 
 #[tauri::command]
 pub async fn get_system_info(state: State<'_, PlayState>) -> Result<SystemInfo, String> {
-    Ok(SystemInfo {
-        total_memory_mb: get_total_ram_mb(),
-        os_name: std::env::consts::OS.to_string(),
-        launcher_version: "1.0.0".to_string(),
-        data_dir: state.paths.root.to_string_lossy().to_string(),
-    })
+    Ok(wex_core::collect_system_info(&state.paths.root, "1.0.0"))
 }
+
+pub use wex_core::{
+    collect_system_info, evaluate_system_warnings, format_support_text, is_integrated_graphics,
+    sanitize_user_path, NOT_DETERMINED,
+};
 
 // ---------------------------------------------------------------------------
 // Backward-compatibility aliases for UI
