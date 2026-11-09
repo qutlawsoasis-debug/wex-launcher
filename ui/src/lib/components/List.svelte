@@ -22,11 +22,23 @@
   function handleKeyDown(e: KeyboardEvent) {
     if (!listEl) return;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.closest('input, textarea, select, [role="slider"], [role="tablist"], [role="switch"]') ||
+          target.matches('input, textarea, select, [role="slider"], [role="tablist"], [role="switch"]'))
+      ) {
+        return;
+      }
+
       const focusables = Array.from(
         listEl.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [tabindex="0"]:not([disabled]), input:not([disabled]), a[href]'
+          'button:not([disabled]), [tabindex="0"]:not([disabled]), input:not([disabled]):not([type="hidden"]), a[href]'
         )
       ).filter((el) => {
+        if (el.getAttribute('aria-hidden') === 'true' || el.getAttribute('tabindex') === '-1') {
+          return false;
+        }
         // In real browser check visibility; in tests/jsdom allow all non-hidden elements
         if (typeof window !== 'undefined' && (window.navigator?.userAgent?.includes('jsdom') || (window as any).__VITEST__)) {
           return true;

@@ -375,7 +375,7 @@
       <input
         type="text"
         class="friend-code-input"
-        placeholder={i18n.locale === 'en' ? 'Friend code (for example, #A7X9)' : 'Код друга (#A7X9)...'}
+        placeholder={t('friends.add_friend_placeholder')}
         bind:value={friendCodeInput}
         onkeydown={(e) => e.key === 'Enter' && handleSendRequest()}
         aria-label={t('friends.add_friend_placeholder')}
@@ -588,7 +588,7 @@
 
               {#if !ach.unlocked}
                 <div class="ach-progress-bar">
-                  <ProgressBar percentage={pct} label={ach.title} height={4} />
+                  <ProgressBar percentage={pct} label={ach.title} hideInfo={true} height={4} />
                 </div>
               {/if}
             </div>

@@ -15,6 +15,7 @@
     detail?: string;
     height?: number;
     color?: string;
+    hideInfo?: boolean;
   }
 
   let {
@@ -24,13 +25,14 @@
     detail,
     height = 6,
     color = 'var(--color-system-blue)',
+    hideInfo = false,
   }: Props = $props();
 
   let clampedPct = $derived(Math.max(0, Math.min(100, percentage)));
 </script>
 
 <div class="apple-progress-container" aria-label={label || 'Прогресс'}>
-  {#if label || detail || !indeterminate}
+  {#if !hideInfo && (label || detail || !indeterminate)}
     <div class="progress-info">
       <span class="progress-label">{label || (indeterminate ? 'Выполнение...' : 'Прогресс')}</span>
       <span class="progress-detail">
