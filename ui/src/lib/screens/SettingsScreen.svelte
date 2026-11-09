@@ -23,6 +23,7 @@
   import Button from '../components/Button.svelte';
   import Icon from '../components/icons/Icon.svelte';
   import { theme } from '../design/theme.svelte';
+  import { network } from '../design/network.svelte';
   import { AccentPresets, type AccentColor } from '../design/colors';
   import { i18n, t, type SupportedLocale } from '../i18n';
   import { friendsLive } from '../services/friendsLive';
@@ -439,6 +440,15 @@
     }
   }
 
+  let prevOnline = network.isOnline;
+  $effect(() => {
+    const currentOnline = network.isOnline;
+    if (currentOnline && !prevOnline) {
+      loadConfig();
+    }
+    prevOnline = currentOnline;
+  });
+
   onMount(() => {
     loadConfig();
   });
@@ -446,6 +456,30 @@
 
 <div class="settings-screen">
   <div class="settings-content">
+    <!-- Honest Offline State Banner -->
+    {#if !network.isOnline}
+      <div class="settings-offline-banner" role="status" aria-live="polite">
+        <div class="offline-banner-left">
+          <Icon name="wifi-off" size={16} color="var(--color-system-orange)" />
+          <div class="offline-banner-text">
+            <span class="offline-banner-title">{t('offline.title')}</span>
+            <span class="offline-banner-desc">
+              {i18n.locale === 'en' ? 'Local launcher settings are active. Network sync will resume when online.' : 'Локальные параметры сохранены. Сетевая синхронизация возобновится при подключении.'}
+            </span>
+          </div>
+        </div>
+        <Button
+          variant="secondary"
+          size="small"
+          onclick={() => network.check()}
+          title="Проверить подключение к сети"
+        >
+          <Icon name="refresh" size={12} color="var(--color-secondary-label)" />
+          <span>{t('offline.retry')}</span>
+        </Button>
+      </div>
+    {/if}
+
     <!-- Performance & Memory -->
     <List header={t('settings.header_perf')}>
       <Row
@@ -536,6 +570,20 @@
 
     <!-- Data Directory & Network -->
     <List header={t('settings.header_dirs')}>
+      <Row
+        title="Подключение к сети"
+        subtitle={network.isOnline
+          ? (i18n.locale === 'en' ? 'Online • Connected to network services' : 'В сети • Подключение к сетевым сервисам активно')
+          : (i18n.locale === 'en' ? 'Offline • Working in offline mode' : 'Нет подключения • Работа в офлайн-режиме')}
+      >
+        {#snippet trailing()}
+          <div class="network-status-badge" class:online={network.isOnline} class:offline={!network.isOnline}>
+            <span class="status-dot"></span>
+            <span>{network.isOnline ? (i18n.locale === 'en' ? 'Online' : 'В сети') : t('offline.title')}</span>
+          </div>
+        {/snippet}
+      </Row>
+
       <Row
         title={t('settings.gamedir_title')}
         subtitle={gameDir || t('settings.gamedir_undefined')}
@@ -909,6 +957,49 @@
     max-width: 860px;
     width: 100%;
     gap: 8px;
+  }
+
+  .settings-offline-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--color-material-regular, rgba(30, 30, 35, 0.75));
+    border: 1px solid rgba(255, 159, 10, 0.3);
+    border-radius: var(--radius-large, 14px);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    animation: fadeIn var(--motion-duration-modal-enter) var(--motion-curve-spring-system);
+    margin-bottom: 8px;
+  }
+
+  .network-status-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: var(--text-caption-1, 11px);
+    font-weight: 500;
+  }
+
+  .network-status-badge.online {
+    background: rgba(48, 209, 88, 0.12);
+    color: var(--color-system-green);
+  }
+
+  .network-status-badge.offline {
+    background: rgba(255, 159, 10, 0.12);
+    color: var(--color-system-orange);
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
   }
 
   .slider-wrapper {

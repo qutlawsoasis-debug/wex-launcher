@@ -176,6 +176,17 @@
     }
   }
 
+  let prevOnline = network.isOnline;
+  $effect(() => {
+    const currentOnline = network.isOnline;
+    if (currentOnline && !prevOnline) {
+      if (mode === 'cloud') {
+        fetchCloudRooms();
+      }
+    }
+    prevOnline = currentOnline;
+  });
+
   $effect(() => {
     if (mode === 'cloud') {
       fetchCloudRooms();
