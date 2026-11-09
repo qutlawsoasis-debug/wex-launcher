@@ -142,6 +142,7 @@ pub fn record_playtime_internal(
         "last_played_utc": current.last_played_utc,
     });
     if let Ok(json_str) = serde_json::to_string_pretty(&val) {
+        let _ = fs::create_dir_all(&paths.root);
         let _ = fs::write(&stats_file, json_str);
     }
     current
