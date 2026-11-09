@@ -774,7 +774,7 @@
           <div class="modsync-text">
             <span class="modsync-title">
               {activeRoom.mod_mismatch_count === 0
-                ? (activeRoom.players.find(p => p.name === effectivePlayerName)?.mods_synced ? t('lobby.your_mods_verified') : t('lobby.mods_check_unconfirmed'))
+                ? ((activeRoom.players || []).find(p => p.name === effectivePlayerName)?.mods_synced ? t('lobby.your_mods_verified') : t('lobby.mods_check_unconfirmed'))
                 : t('lobby.mods_mismatch', { count: activeRoom.mod_mismatch_count })}
             </span>
             <span class="modsync-desc">
@@ -794,8 +794,8 @@
 
       <!-- Players in Room List -->
       <div class="players-list-wrap">
-        <List header={t('lobby.players_in_room', { count: activeRoom.players.length })}>
-          {#each activeRoom.players as p (p.name)}
+        <List header={t('lobby.players_in_room', { count: (activeRoom.players || []).length })}>
+          {#each (activeRoom.players || []) as p (p.name)}
             <Row
               title={p.name}
               subtitle={p.is_host ? t('lobby.player_role_host') : t('lobby.player_role_guest')}
