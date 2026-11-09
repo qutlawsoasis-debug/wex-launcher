@@ -44,6 +44,8 @@
     current_version: string;
     latest_version?: string;
     notes?: string;
+    download_url?: string | null;
+    signature?: string | null;
   }
 
   interface PlaytimeSummary {
@@ -201,10 +203,25 @@
 
   // Unobtrusive update notification banner state
   let fetchedUpdateInfo = $state<UpdateInfo | null>(null);
+  let updateError = $state<string | null>(null);
   let updateInfo = $derived(initialUpdateInfo !== null ? initialUpdateInfo : fetchedUpdateInfo);
   let updateBannerDismissed = $state(false);
   let isClosingBanner = $state(false);
   let showUpdateBanner = $derived(Boolean(updateInfo?.update_available) && !updateBannerDismissed);
+  let isSigned = $derived(Boolean(updateInfo?.signature && updateInfo.signature.trim().length >= 32));
+
+  async function openUpdateDownloadUrl() {
+    const url = updateInfo?.download_url;
+    if (!url) return;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('workshop_open_path', { path: url });
+    } catch {
+      if (typeof window !== 'undefined') {
+        window.open(url, '_blank');
+      }
+    }
+  }
 
   function dismissUpdateBanner() {
     if (theme.reduceMotion || import.meta.env?.MODE === 'test') {
@@ -402,9 +419,24 @@
             .then((res) => {
               if (res && res.update_available) {
                 fetchedUpdateInfo = res;
+                updateError = null;
               }
             })
-            .catch(() => {})
+            .catch((err: any) => {
+              const errStr = typeof err === 'string' ? err : err?.message || '';
+              // Scenario 3: Invalid signature or tampered manifest -> refusal with clear message
+              if (
+                errStr.includes('UPDATE_SIGNATURE_FAILED') ||
+                errStr.includes('подпись') ||
+                errStr.includes('signature') ||
+                errStr.includes('подменён')
+              ) {
+                updateError = 'Цифровая подпись обновления не подтверждена. Загрузка отменена в целях безопасности.';
+              } else {
+                // Scenario 4: Server offline / network unreachable -> silence, zero errors to player!
+                updateError = null;
+              }
+            })
         : Promise.resolve();
 
       const checkOldLauncher = (typeof localStorage !== 'undefined' && !localStorage.getItem('wex_import_checked'))
@@ -569,18 +601,62 @@
           <Icon name="info" size={16} color="var(--color-system-blue)" />
         </div>
         <div class="update-banner-body">
-          <span class="update-banner-headline">
-            Доступна новая версия Wex {updateInfo.latest_version || ''}
-          </span>
+          <div class="update-banner-headline-row">
+            <span class="update-banner-headline">
+              Доступно обновление • Доступна новая версия Wex {updateInfo.latest_version || ''}
+            </span>
+            {#if !isSigned}
+              <span class="badge badge-general">только ссылка</span>
+            {/if}
+          </div>
           {#if updateInfo.notes}
             <span class="update-banner-subtext">{updateInfo.notes}</span>
+          {:else if !isSigned}
+            <span class="update-banner-subtext">
+              Автоматическая установка недоступна без цифровой подписи. Доступна только ссылка на внешнюю загрузку.
+            </span>
           {/if}
+        </div>
+        <div class="update-banner-actions">
+          {#if !isSigned && updateInfo.download_url}
+            <Button
+              variant="secondary"
+              size="small"
+              onclick={openUpdateDownloadUrl}
+              title="Открыть ссылку на загрузку в браузере"
+            >
+              <Icon name="link" size={14} color="var(--color-label)" />
+              <span>Ссылка</span>
+            </Button>
+          {/if}
+          <div class="update-banner-close">
+            <Button
+              variant="ghost"
+              size="small"
+              onclick={dismissUpdateBanner}
+              title="Закрыть уведомление"
+            >
+              <Icon name="close" size={14} color="var(--color-secondary-label)" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    {:else if updateError && !updateBannerDismissed}
+      <div class="update-banner update-banner-error" role="alert" aria-live="polite">
+        <div class="update-banner-icon update-banner-icon-error">
+          <Icon name="error" size={16} color="var(--color-system-red)" />
+        </div>
+        <div class="update-banner-body">
+          <span class="update-banner-headline update-banner-headline-error">
+            Отказ обновления
+          </span>
+          <span class="update-banner-subtext">{updateError}</span>
         </div>
         <div class="update-banner-close">
           <Button
             variant="ghost"
             size="small"
-            onclick={dismissUpdateBanner}
+            onclick={() => (updateBannerDismissed = true)}
             title="Закрыть уведомление"
           >
             <Icon name="close" size={14} color="var(--color-secondary-label)" />
@@ -1034,6 +1110,32 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+  }
+
+  .update-banner-headline-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .update-banner-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .update-banner-error {
+    border-color: rgba(255, 69, 58, 0.35);
+  }
+
+  .update-banner-icon-error {
+    background: rgba(255, 69, 58, 0.15);
+  }
+
+  .update-banner-headline-error {
+    color: var(--color-system-red);
   }
 
   .update-banner-headline {

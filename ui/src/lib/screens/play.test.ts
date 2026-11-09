@@ -187,4 +187,121 @@ describe('PlayScreen Component Tests', () => {
 
     unmount(comp);
   });
+
+  // 6. Update Flow Scenarios (wex-update-flow)
+  describe('Launcher Update Flow Scenarios', () => {
+    it('Scenario 1: displays «Доступно обновление» banner for signed update', async () => {
+      const comp = mount(PlayScreen, {
+        target,
+        props: {
+          selectedVersion: '1.21.1',
+          playerName: 'Steve',
+          initialUpdateInfo: {
+            update_available: true,
+            current_version: '0.1.0',
+            latest_version: '1.2.0',
+            notes: 'Большое обновление графики и производительности',
+            download_url: 'http://127.0.0.1:45678/wex-setup.exe',
+            signature: 'untrusted comment: signature from tauri secret key\nRWSomeValidMinisignSignatureContent1234567890==',
+          },
+        },
+      });
+
+      await tick();
+      const banner = target.querySelector('.update-banner');
+      expect(banner).not.toBeNull();
+      expect(banner?.textContent).toContain('Доступно обновление');
+      expect(banner?.textContent).toContain('Доступна новая версия Wex 1.2.0');
+      expect(banner?.textContent).toContain('Большое обновление графики и производительности');
+      expect(banner?.querySelector('.badge-general')).toBeNull(); // No "только ссылка" badge for signed
+
+      unmount(comp);
+    });
+
+    it('Scenario 2: enters «только ссылка» link-only mode without signing key', async () => {
+      const comp = mount(PlayScreen, {
+        target,
+        props: {
+          selectedVersion: '1.21.1',
+          playerName: 'Steve',
+          initialUpdateInfo: {
+            update_available: true,
+            current_version: '0.1.0',
+            latest_version: '1.2.0',
+            notes: 'Неподписанный тестовый релиз',
+            download_url: 'http://127.0.0.1:45678/wex-setup.exe',
+            signature: '', // Empty signature -> link-only mode
+          },
+        },
+      });
+
+      await tick();
+      const banner = target.querySelector('.update-banner');
+      expect(banner).not.toBeNull();
+      expect(banner?.textContent).toContain('Доступно обновление');
+      expect(banner?.textContent).toContain('только ссылка');
+      
+      // Link button is present
+      const linkBtn = banner?.querySelector('.update-banner-actions button') as HTMLButtonElement;
+      expect(linkBtn).not.toBeNull();
+      expect(linkBtn.textContent).toContain('Ссылка');
+
+      unmount(comp);
+    });
+
+    it('Scenario 3: invalid signature / tampered file causes rejection with human-readable error', async () => {
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === 'overview_check_update') {
+          return Promise.reject('UPDATE_SIGNATURE_FAILED: Цифровая подпись обновления не подтверждена. Загрузка отменена в целях безопасности.');
+        }
+        return Promise.resolve(null);
+      });
+
+      const comp = mount(PlayScreen, {
+        target,
+        props: {
+          selectedVersion: '1.21.1',
+          playerName: 'Steve',
+          initialUpdateInfo: null, // triggers overview_check_update invocation
+        },
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+      await tick();
+
+      const errorBanner = target.querySelector('.update-banner-error');
+      expect(errorBanner).not.toBeNull();
+      expect(errorBanner?.textContent).toContain('Отказ обновления');
+      expect(errorBanner?.textContent).toContain('Цифровая подпись обновления не подтверждена');
+
+      unmount(comp);
+    });
+
+    it('Scenario 4: server offline / unreachable results in silence with zero errors to player', async () => {
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === 'overview_check_update') {
+          return Promise.reject('UPDATE_NETWORK_ERROR: error sending request for url: connection refused');
+        }
+        return Promise.resolve(null);
+      });
+
+      const comp = mount(PlayScreen, {
+        target,
+        props: {
+          selectedVersion: '1.21.1',
+          playerName: 'Steve',
+          initialUpdateInfo: null, // triggers overview_check_update invocation
+        },
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+      await tick();
+
+      // Zero banners displayed to player
+      expect(target.querySelector('.update-banner')).toBeNull();
+      expect(target.querySelector('.update-banner-error')).toBeNull();
+
+      unmount(comp);
+    });
+  });
 });

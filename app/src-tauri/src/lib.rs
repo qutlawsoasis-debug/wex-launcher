@@ -60,6 +60,26 @@ pub fn run() {
             );
             app.manage(lobby_state);
             let _ = commands::window::setup_tray(app);
+
+            let paths_bg = paths.clone();
+            tauri::async_runtime::spawn(async move {
+                let cur_v = std::env::var("WEX_CURRENT_VERSION")
+                    .unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string());
+                let effective_url = std::env::var("WEX_UPDATE_URL")
+                    .ok()
+                    .or_else(|| std::env::var("WEX_MANIFEST_URL").ok());
+
+                if let Some(url) = effective_url {
+                    let _ = commands::overview::check_update_internal_with_paths(
+                        Some(&paths_bg),
+                        &cur_v,
+                        Some(&url),
+                        Some(wex_social::launcher_update::DEFAULT_TARGET_PLATFORM),
+                    )
+                    .await;
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

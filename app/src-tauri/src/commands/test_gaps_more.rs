@@ -303,7 +303,7 @@ async fn social_get_news_corrupt_cache_falls_back_to_bundled_news() {
         .is_empty());
 }
 fn update_manifest() -> Value {
-    json!({"version":"2.0.0","notes":"fixture","platforms":{"windows-x86_64":{"signature":"fixture-signature-at-least-thirty-two-chars","url":"https://fixture.invalid/wex.exe"}}})
+    json!({"version":"2.0.0","notes":"fixture","platforms":{"windows-x86_64":{"signature":"RWValidSignatureFixtureMinisign1234567890abcdef==","url":"https://fixture.invalid/wex.exe"}}})
 }
 #[tokio::test]
 async fn overview_check_update_success_uses_mock_manifest() {
@@ -356,6 +356,73 @@ async fn social_check_launcher_update_error_http_failure() {
         overview::social_check_launcher_update(f.play(), Some(request))
             .await
             .is_err()
+    );
+}
+#[tokio::test]
+async fn test_update_flow_scenario_2_unsigned_link_only_mode() {
+    let f = Fixture::new().await;
+    let unsigned_manifest = json!({
+        "version": "2.0.0",
+        "notes": "Unsigned release",
+        "platforms": {
+            "windows-x86_64": {
+                "signature": "",
+                "url": "http://127.0.0.1:45678/wex-setup.exe"
+            }
+        }
+    });
+    f.respond("/latest.json", 200, unsigned_manifest).await;
+    let result =
+        overview::overview_check_update(f.play(), Some(format!("{}/latest.json", f.server.uri())))
+            .await
+            .unwrap();
+    assert!(result.update_available);
+    assert_eq!(result.latest_version.as_deref(), Some("2.0.0"));
+    assert!(
+        result.signature.is_none(),
+        "Unsigned manifest must have None signature in link-only mode"
+    );
+}
+#[tokio::test]
+async fn test_update_flow_scenario_3_invalid_signature_rejection() {
+    let f = Fixture::new().await;
+    let invalid_manifest = json!({
+        "version": "2.0.0",
+        "notes": "Corrupted signature release",
+        "platforms": {
+            "windows-x86_64": {
+                "signature": "corrupted_signature_123",
+                "url": "http://127.0.0.1:45678/wex-setup.exe"
+            }
+        }
+    });
+    f.respond("/latest.json", 200, invalid_manifest).await;
+    let err =
+        overview::overview_check_update(f.play(), Some(format!("{}/latest.json", f.server.uri())))
+            .await
+            .unwrap_err();
+    assert!(
+        err.contains("UPDATE_SIGNATURE_FAILED"),
+        "Error must contain UPDATE_SIGNATURE_FAILED code: {err}"
+    );
+    assert!(
+        err.contains("Цифровая подпись обновления"),
+        "Error must contain clear Russian message: {err}"
+    );
+}
+#[tokio::test]
+async fn test_update_flow_scenario_4_server_offline_network_error() {
+    let f = Fixture::new().await;
+    // Port 59998 has no server running -> connection refused
+    let err = overview::overview_check_update(
+        f.play(),
+        Some("http://127.0.0.1:59998/latest.json".into()),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        err.contains("UPDATE_NETWORK_ERROR"),
+        "Offline server must report network error: {err}"
     );
 }
 #[tokio::test]
