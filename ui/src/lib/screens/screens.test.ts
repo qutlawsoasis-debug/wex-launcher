@@ -161,6 +161,29 @@ const defaultInvoke = vi.fn(async (cmd: string, args?: Record<string, any>, opti
       has_timestamp: false,
     };
   }
+  if (cmd === 'get_system_info') {
+    return {
+      total_memory_mb: 16384,
+      free_memory_mb: 8192,
+      memory_display: '16.0 ГБ (свободно 8.0 ГБ)',
+      os_name: 'windows',
+      os_version: 'Windows 11 Pro 23H2 (сборка 22631.3593)',
+      launcher_version: '1.0.0',
+      data_dir: 'C:\\Users\\<user>\\AppData\\Roaming\\Wex',
+      cpu_name: 'AMD Ryzen 5 3600 6-Core Processor',
+      cpu_cores: 12,
+      gpu_name: 'NVIDIA GeForce GTX 1660 SUPER',
+      gpu_driver: '32.0.16.1742',
+      is_integrated_gpu: false,
+      disk_free_gb: 12.5,
+      disk_total_gb: 460.0,
+      disk_display: '12.5 ГБ свободно из 460.0 ГБ',
+      java_17: 'Mojang JRE 17 (17.0.8)',
+      java_21: 'Microsoft JDK 21 (21.0.12)',
+      warnings: ['Мало свободного места на диске (12.5 ГБ).'],
+      support_text: '=== О системе (Wex Support) ===\nОС: Windows 11\nCPU: AMD Ryzen 5\nGPU: GTX 1660 SUPER\n',
+    };
+  }
   if (cmd === 'updater_install') {
     if (args?.downloadUrl?.includes('fail')) {
       throw new Error('Ошибка загрузки обновления');
@@ -908,6 +931,26 @@ describe('Wex Launcher Screens', () => {
     expect(clearBtn).not.toBeNull();
     expect((verifyBtn as HTMLButtonElement).disabled).toBe(true);
     expect((clearBtn as HTMLButtonElement).disabled).toBe(true);
+    unmount(comp);
+  });
+
+  it('renders SettingsScreen with authentic System Info section, warnings, and support copy button', async () => {
+    const comp = mount(SettingsScreen, { target });
+    await new Promise((r) => setTimeout(r, 50));
+    await tick();
+
+    expect(target.textContent).toContain('О системе');
+    expect(target.textContent).toContain('Java (1.21.1)');
+    expect(target.textContent).toContain('Мало свободного места на диске');
+
+    const copyBtn = Array.from(target.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Скопировать для поддержки')
+    );
+    expect(copyBtn).toBeDefined();
+
+    copyBtn?.click();
+    await tick();
+
     unmount(comp);
   });
 
