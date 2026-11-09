@@ -261,10 +261,8 @@ pub struct NetComputeManifestHashResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
-pub struct NetTunnelStartRequest {
-    pub binary_path: String,
-    pub secret_key: String,
-}
+#[serde(deny_unknown_fields)]
+pub struct NetTunnelStartRequest {}
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct NetTunnelStartResponse {
@@ -272,9 +270,8 @@ pub struct NetTunnelStartResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
-pub struct NetTunnelEnsureBinaryRequest {
-    pub destination_path: String,
-}
+#[serde(deny_unknown_fields)]
+pub struct NetTunnelEnsureBinaryRequest {}
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct NetTunnelEnsureBinaryResponse {
@@ -723,4 +720,32 @@ pub struct ParseDeepLinkRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct ParseDeepLinkResponse {
     pub action: DeepLinkActionDto,
+}
+
+#[cfg(test)]
+mod tunnel_security_tests {
+    use super::*;
+
+    #[test]
+    fn tunnel_requests_use_only_backend_paths() {
+        assert!(serde_json::from_value::<NetTunnelStartRequest>(serde_json::json!({})).is_ok());
+        assert!(
+            serde_json::from_value::<NetTunnelEnsureBinaryRequest>(serde_json::json!({})).is_ok()
+        );
+        assert!(
+            serde_json::from_value::<NetTunnelEnsureBinaryRequest>(serde_json::json!({
+                "destination_path": "../outside"
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn security_regression_tunnel_rejects_executable_from_ipc() {
+        let request = serde_json::json!({
+            "binary_path": "C:\\attacker\\payload.exe",
+            "secret_key": "C:\\attacker\\secret.toml"
+        });
+        assert!(serde_json::from_value::<NetTunnelStartRequest>(request).is_err());
+    }
 }

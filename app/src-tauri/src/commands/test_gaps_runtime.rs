@@ -195,23 +195,18 @@ async fn close_lobby_room_remote_error_is_currently_suppressed() {
 }
 
 #[tokio::test]
-async fn net_tunnel_start_success_uses_disposable_test_process_and_stop_releases_it() {
+async fn security_regression_net_tunnel_start_rejects_tampered_fixed_binary() {
     let f = Fixture::new().await;
-    // libtest rejects --secret_path before running tests. This exercises child
-    // supervision without a tunnel executable, network, or a game process.
-    let response = lobby::net_tunnel_start(
-        NetTunnelStartRequest {
-            binary_path: std::env::current_exe().unwrap().to_string_lossy().into(),
-            secret_key: f.paths.root.join("fixture-secret").to_string_lossy().into(),
-        },
-        f.room(),
-    )
-    .await
-    .unwrap();
-    assert_eq!(response.pid, 0);
-    assert!(f.room().supervisor.lock().await.is_some());
-    lobby::net_tunnel_stop(f.room()).await.unwrap();
+    let tools = f.room().tools_dir.clone();
+    fs::create_dir_all(&tools).unwrap();
+    let binary = wex_net::tunnel::playit_binary_path(&tools);
+    fs::write(&binary, b"tampered executable").unwrap();
+    let error = lobby::net_tunnel_start(NetTunnelStartRequest {}, f.room())
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "INTERNAL_ERROR");
     assert!(f.room().supervisor.lock().await.is_none());
+    assert_eq!(fs::read(binary).unwrap(), b"tampered executable");
 }
 
 // Commands that use APPDATA run in a separate copy of this test executable.
@@ -616,14 +611,13 @@ async fn close_lobby_room_success_without_session_is_idempotent() {
     assert!(f.server.received_requests().await.unwrap().is_empty());
 }
 #[tokio::test]
-async fn net_tunnel_ensure_binary_error_when_destination_is_file_avoids_download() {
+async fn net_tunnel_ensure_binary_error_when_backend_tools_is_file_avoids_download() {
     let f = Fixture::new().await;
-    let destination = f.paths.root.join("blocked-tools");
+    let destination = f.room().tools_dir.clone();
     fs::write(&destination, b"keep").unwrap();
-    let error =
-        lobby::net_tunnel_ensure_binary(dto(json!({"destination_path":destination})), f.room())
-            .await
-            .unwrap_err();
+    let error = lobby::net_tunnel_ensure_binary(NetTunnelEnsureBinaryRequest {}, f.room())
+        .await
+        .unwrap_err();
     assert_eq!(error.code, "INTERNAL_ERROR");
     assert_eq!(fs::read(&destination).unwrap(), b"keep");
 }

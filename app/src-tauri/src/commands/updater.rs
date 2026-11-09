@@ -644,27 +644,30 @@ pub fn updater_restart(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// Injecting the OS opener keeps tests from opening the user's browser.
+fn open_download_url_with<F>(url: &str, opener: F) -> Result<(), String>
+where
+    F: FnOnce(&str) -> Result<(), String>,
+{
+    if url.chars().any(|c| c.is_control() || c.is_whitespace()) || url.contains('\\') {
+        return Err("Недопустимые символы в URL".to_string());
+    }
+    let parsed = reqwest::Url::parse(url).map_err(|_| "Некорректный URL".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || !parsed.has_host()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
+        return Err("Разрешены только HTTP и HTTPS ссылки без учётных данных".to_string());
+    }
+    opener(parsed.as_str())
+}
+
 #[tauri::command]
 pub fn updater_open_download_url(url: String) -> Result<(), String> {
-    if url.starts_with("http://") || url.starts_with("https://") {
-        #[cfg(target_os = "windows")]
-        {
-            let _ = std::process::Command::new("cmd")
-                .args(["/c", "start", "", &url])
-                .spawn()
-                .map_err(|e| e.to_string())?;
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let _ = std::process::Command::new("xdg-open")
-                .arg(&url)
-                .spawn()
-                .map_err(|e| e.to_string())?;
-        }
-        Ok(())
-    } else {
-        Err("Некорректный протокол URL".to_string())
-    }
+    open_download_url_with(&url, |url| {
+        tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string())
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -677,6 +680,73 @@ mod tests {
     use std::io::Write;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn security_regression_url_controls_never_reach_opener() {
+        for url in [
+            "https://example.invalid/\n&echo.WEX_TEST",
+            "http://example.invalid/\rtest",
+            "https://example.invalid/\0test",
+            "https://example.invalid/\ttest",
+        ] {
+            let mut called = false;
+            let result = open_download_url_with(url, |_| {
+                called = true;
+                Ok(())
+            });
+            assert!(
+                result.is_err() && !called,
+                "unsafe URL reached opener: {url:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn download_url_opener_treats_metacharacters_as_url_data() {
+        for url in [
+            "https://example.invalid/&echo.WEX_TEST",
+            "http://example.invalid/a?x=1&y=2",
+        ] {
+            let mut received = None;
+            open_download_url_with(url, |value| {
+                received = Some(value.to_string());
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(received.as_deref(), Some(url));
+        }
+    }
+
+    #[test]
+    fn download_url_opener_rejects_other_schemes_and_credentials() {
+        for url in [
+            "file:///C:/payload.exe",
+            "javascript:alert(1)",
+            "wex://join/ABC123",
+            "aura://join/ABC123",
+            "mailto:example@example.invalid",
+            "https://",
+            "https://user:password@example.invalid",
+            "https://example.invalid\\payload",
+        ] {
+            assert!(
+                open_download_url_with(url, |_| panic!("rejected URL reached opener")).is_err()
+            );
+        }
+        let mut opened = String::new();
+        open_download_url_with("HTTPS://EXAMPLE.INVALID/path", |value| {
+            opened = value.into();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(opened, "https://example.invalid/path");
+        assert_eq!(
+            open_download_url_with("https://example.invalid/", |_| Err(
+                "mock opener failed".into()
+            )),
+            Err("mock opener failed".into())
+        );
+    }
 
     // Valid Minisign keypair and signature for data b"test"
     const TEST_PUBKEY: &str = "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3";

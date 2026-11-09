@@ -533,6 +533,34 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  it.each(['1.20.1', '1.21.1'])('security regression: rejected update URL never falls back to window.open (%s)', async (version) => {
+    const ipc = await import('@tauri-apps/api/core');
+    const invokeSpy = vi.spyOn(ipc, 'invoke').mockImplementation(((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === 'updater_open_download_url') return Promise.reject(new Error('URL rejected by backend'));
+      return defaultInvoke(cmd, args);
+    }) as typeof ipc.invoke);
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    const url = 'javascript:alert(1)';
+    const comp = mount(PlayScreen, { target, props: {
+      selectedVersion: version, playerName: 'Steve', initialNews: [],
+      initialUpdateInfo: { update_available: true, current_version: '0.1.0', latest_version: '0.2.0',
+        download_url: url, signature: null, is_signed: false, can_auto_update: false },
+    } });
+    try {
+      const button = target.querySelector('.update-banner-actions button') as HTMLButtonElement;
+      expect(button).not.toBeNull();
+      button.click();
+      await vi.waitFor(() => expect(invokeSpy).toHaveBeenCalledWith('updater_open_download_url', { url }));
+      await tick();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(openSpy).not.toHaveBeenCalled();
+    } finally {
+      await unmount(comp);
+      openSpy.mockRestore();
+      invokeSpy.mockRestore();
+    }
+  });
+
   it('renders unsigned release mode: only notify with download link button', async () => {
     const comp = mount(PlayScreen, {
       target,
