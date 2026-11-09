@@ -6,10 +6,13 @@ import {
   buildBoxVertices,
   buildCharacterModelBuffer,
   buildCapeModelBuffer,
+  buildCharacterLimbGeometries,
   isWebGLSupported,
   createDefaultSkinCanvas,
+  Skin3DRenderer,
   Mat4,
 } from './skin3d';
+import { setGameRunning } from './idleManager';
 
 describe('Skin 3D UV Layout & Geometry Parser (SPEC 1.2)', () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
@@ -210,5 +213,201 @@ describe('3D Matrix Math (Mat4)', () => {
     const rotY = Mat4.rotateY(ident, Math.PI / 2);
     const combined = Mat4.multiply(translated, rotY);
     expect(combined).toBeInstanceOf(Float32Array);
+  });
+
+  it('rotates around Z axis and around pivot point', () => {
+    const ident = Mat4.identity();
+    const rotZ = Mat4.rotateZ(ident, Math.PI / 4);
+    expect(rotZ).toBeInstanceOf(Float32Array);
+
+    const pivoted = Mat4.rotateAroundPivot(ident, [0, 12, 0], Math.PI / 6, 0, 0);
+    expect(pivoted).toBeInstanceOf(Float32Array);
+    // When rx = ry = rz = 0, should return original matrix
+    expect(Mat4.rotateAroundPivot(ident, [0, 12, 0], 0, 0, 0)).toBe(ident);
+  });
+});
+
+describe('Character Limb Geometries & Hierarchical Animation', () => {
+  it('builds 6 separate limb groups with correct joint pivots for default model', () => {
+    const limbs = buildCharacterLimbGeometries('default');
+    expect(limbs.length).toBe(6);
+
+    const names = limbs.map((l) => l.name);
+    expect(names).toEqual(['head', 'torso', 'rightArm', 'leftArm', 'rightLeg', 'leftLeg']);
+
+    const head = limbs.find((l) => l.name === 'head')!;
+    expect(head.pivot).toEqual([0, 12, 0]); // neck
+    expect(head.vertexCount).toBe(72); // head (36) + hat (36)
+
+    const rightArm = limbs.find((l) => l.name === 'rightArm')!;
+    expect(rightArm.pivot).toEqual([-6, 12, 0]); // classic shoulder
+
+    const leftArm = limbs.find((l) => l.name === 'leftArm')!;
+    expect(leftArm.pivot).toEqual([6, 12, 0]);
+
+    const rightLeg = limbs.find((l) => l.name === 'rightLeg')!;
+    expect(rightLeg.pivot).toEqual([-2, 0, 0]); // hip
+  });
+
+  it('adjusts shoulder pivots for slim (Alex) model', () => {
+    const limbs = buildCharacterLimbGeometries('slim');
+    const rightArm = limbs.find((l) => l.name === 'rightArm')!;
+    const leftArm = limbs.find((l) => l.name === 'leftArm')!;
+
+    expect(rightArm.pivot).toEqual([-5.5, 12, 0]);
+    expect(leftArm.pivot).toEqual([5.5, 12, 0]);
+  });
+});
+
+describe('Skin3DRenderer Animation Lifecycle & Pause Tests', () => {
+  function createMockWebGLCanvas() {
+    const mockGL = {
+      createShader: vi.fn(() => ({})),
+      shaderSource: vi.fn(),
+      compileShader: vi.fn(),
+      getShaderParameter: vi.fn(() => true),
+      createProgram: vi.fn(() => ({})),
+      attachShader: vi.fn(),
+      linkProgram: vi.fn(),
+      getProgramParameter: vi.fn(() => true),
+      enable: vi.fn(),
+      depthFunc: vi.fn(),
+      blendFunc: vi.fn(),
+      createBuffer: vi.fn(() => ({})),
+      bindBuffer: vi.fn(),
+      bufferData: vi.fn(),
+      createTexture: vi.fn(() => ({})),
+      bindTexture: vi.fn(),
+      pixelStorei: vi.fn(),
+      texImage2D: vi.fn(),
+      texParameteri: vi.fn(),
+      clearColor: vi.fn(),
+      clear: vi.fn(),
+      useProgram: vi.fn(),
+      getUniformLocation: vi.fn(() => ({})),
+      uniform3f: vi.fn(),
+      uniform1i: vi.fn(),
+      uniform1f: vi.fn(),
+      uniformMatrix4fv: vi.fn(),
+      getAttribLocation: vi.fn(() => 0),
+      enableVertexAttribArray: vi.fn(),
+      vertexAttribPointer: vi.fn(),
+      drawArrays: vi.fn(),
+      viewport: vi.fn(),
+      deleteBuffer: vi.fn(),
+      deleteTexture: vi.fn(),
+      deleteProgram: vi.fn(),
+      activeTexture: vi.fn(),
+      DEPTH_TEST: 0x0b71,
+      LEQUAL: 0x0203,
+      BLEND: 0x0be2,
+      SRC_ALPHA: 0x0302,
+      ONE_MINUS_SRC_ALPHA: 0x0303,
+      ARRAY_BUFFER: 0x8892,
+      STATIC_DRAW: 0x88e4,
+      TEXTURE_2D: 0x0de1,
+      COLOR_BUFFER_BIT: 0x4000,
+      DEPTH_BUFFER_BIT: 0x0100,
+      FLOAT: 0x1406,
+      TRIANGLES: 0x0004,
+      TEXTURE0: 0x84c0,
+      TEXTURE1: 0x84c1,
+      TEXTURE_MAG_FILTER: 0x2800,
+      TEXTURE_MIN_FILTER: 0x2801,
+      TEXTURE_WRAP_S: 0x2802,
+      TEXTURE_WRAP_T: 0x2803,
+      NEAREST: 0x2600,
+      CLAMP_TO_EDGE: 0x812f,
+      UNPACK_PREMULTIPLY_ALPHA_WEBGL: 0x9241,
+      RGBA: 0x1908,
+      UNSIGNED_BYTE: 0x1401,
+      VERTEX_SHADER: 0x8b31,
+      FRAGMENT_SHADER: 0x8b30,
+      LINK_STATUS: 0x8b82,
+      COMPILE_STATUS: 0x8b81,
+    };
+
+    const canvas = {
+      getContext: vi.fn((type: string) => {
+        if (type === 'webgl' || type === 'webgl2') return mockGL;
+        return null;
+      }),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      width: 280,
+      height: 320,
+      clientWidth: 280,
+      clientHeight: 320,
+    } as unknown as HTMLCanvasElement;
+
+    return { canvas, mockGL };
+  }
+
+  it('tracks frame count and pauses when pause() is invoked', () => {
+    const { canvas } = createMockWebGLCanvas();
+    const renderer = new Skin3DRenderer({ canvas });
+
+    expect(renderer.getFrameCount()).toBe(0);
+    expect(renderer.frameCount).toBe(0);
+    expect(renderer.isRenderPaused()).toBe(false);
+
+    // Render 3 explicit frames
+    renderer.render();
+    renderer.render();
+    renderer.render();
+
+    expect(renderer.getFrameCount()).toBe(3);
+    expect(renderer.frameCount).toBe(3);
+
+    // Pause rendering
+    renderer.pause();
+    expect(renderer.isRenderPaused()).toBe(true);
+    expect(renderer.isPaused).toBe(true);
+
+    const frameCountAtPause = renderer.getFrameCount();
+
+    // While paused, resume sets it back to active
+    renderer.resume();
+    expect(renderer.isRenderPaused()).toBe(false);
+
+    renderer.render();
+    expect(renderer.getFrameCount()).toBe(frameCountAtPause + 1);
+
+    renderer.destroy();
+    expect(renderer.isRenderPaused()).toBe(true);
+  });
+
+  it('toggles between idle and walking animation modes', () => {
+    const { canvas } = createMockWebGLCanvas();
+    const renderer = new Skin3DRenderer({ canvas, animation: 'idle' });
+
+    expect(renderer.animation).toBe('idle');
+    expect(renderer.getAnimation()).toBe('idle');
+
+    renderer.setAnimation('walking');
+    expect(renderer.animation).toBe('walking');
+    expect(renderer.getAnimation()).toBe('walking');
+
+    renderer.render(); // Should render walking poses without throwing
+    expect(renderer.getFrameCount()).toBe(1);
+
+    renderer.destroy();
+  });
+
+  it('automatically pauses rendering when game is active or window suspended', () => {
+    const { canvas } = createMockWebGLCanvas();
+    const renderer = new Skin3DRenderer({ canvas });
+
+    expect(renderer.isRenderPaused()).toBe(false);
+
+    // Simulate Minecraft game launch
+    setGameRunning(true);
+    expect(renderer.isRenderPaused()).toBe(true);
+
+    // Simulate Minecraft game exit
+    setGameRunning(false);
+    expect(renderer.isRenderPaused()).toBe(false);
+
+    renderer.destroy();
   });
 });
