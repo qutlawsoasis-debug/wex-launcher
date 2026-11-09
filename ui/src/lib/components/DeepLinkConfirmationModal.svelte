@@ -19,7 +19,7 @@
   import { t } from '../i18n';
 
   export interface DeepLinkAction {
-    kind: 'join' | 'server' | 'friend' | 'custom';
+    kind: 'join' | 'server' | 'friend' | 'custom' | (string & {});
     title: string;
     subtitle: string;
     target: string;

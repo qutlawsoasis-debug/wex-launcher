@@ -60,25 +60,38 @@ pub struct LauncherSettingsDto {
     pub reduce_motion: bool,
     pub reduce_transparency: bool,
     pub fast_start_jvm: bool,
+    #[serde(default = "default_fast_launch_dto")]
+    pub fast_launch: bool,
     #[serde(default = "default_true")]
     pub minimize_to_tray: bool,
     #[serde(default = "default_true")]
     pub friend_notifications: bool,
+    #[serde(default = "default_window_behavior")]
+    pub game_window_behavior: String, // "keep" | "minimize" | "tray"
+}
+
+pub fn default_fast_launch_dto() -> bool {
+    get_total_ram_mb() >= 15360
 }
 
 fn default_true() -> bool {
     true
 }
 
+fn default_window_behavior() -> String {
+    "minimize".to_string()
+}
+
 impl Default for LauncherSettingsDto {
     fn default() -> Self {
+        let def_core = CoreConfig::default();
         Self {
             selected_version: "1.21.1".to_string(),
             player_name: "Player".to_string(),
-            ram_mb: 4096,
+            ram_mb: def_core.max_memory_mb,
             total_memory_mb: get_total_ram_mb(),
             game_dir: String::new(),
-            graphics_preset: "High".to_string(),
+            graphics_preset: def_core.graphics_preset,
             java_mode: "auto".to_string(),
             custom_java_path: None,
             detected_java_17: None,
@@ -90,8 +103,10 @@ impl Default for LauncherSettingsDto {
             reduce_motion: false,
             reduce_transparency: false,
             fast_start_jvm: false,
+            fast_launch: default_fast_launch_dto(),
             minimize_to_tray: true,
             friend_notifications: true,
+            game_window_behavior: "minimize".to_string(),
         }
     }
 }
@@ -183,8 +198,10 @@ pub fn get_launcher_settings_impl(paths: &WexPaths) -> LauncherSettingsDto {
         reduce_motion: cfg.reduce_motion,
         reduce_transparency: cfg.reduce_transparency,
         fast_start_jvm: cfg.fast_start_jvm,
+        fast_launch: cfg.fast_launch,
         minimize_to_tray: cfg.minimize_to_tray,
         friend_notifications: cfg.friend_notifications,
+        game_window_behavior: cfg.game_window_behavior,
     }
 }
 
@@ -223,8 +240,10 @@ pub async fn save_launcher_settings_impl(
     cfg.reduce_motion = new_settings.reduce_motion;
     cfg.reduce_transparency = new_settings.reduce_transparency;
     cfg.fast_start_jvm = new_settings.fast_start_jvm;
+    cfg.fast_launch = new_settings.fast_launch;
     cfg.minimize_to_tray = new_settings.minimize_to_tray;
     cfg.friend_notifications = new_settings.friend_notifications;
+    cfg.game_window_behavior = new_settings.game_window_behavior;
 
     cfg.save(&paths.config_file)
         .map_err(|e| format!("Не удалось сохранить конфигурацию: {}", e))?;
@@ -266,22 +285,52 @@ pub async fn save_launcher_settings(
     new_settings: LauncherSettingsDto,
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
+    let old_cfg = CoreConfig::load_or_default(&state.paths.config_file);
     let discord_rpc = new_settings.discord_rpc;
-    save_launcher_settings_impl(new_settings, &state.paths, state.core.as_ref()).await?;
+    save_launcher_settings_impl(new_settings.clone(), &state.paths, state.core.as_ref()).await?;
 
     let mut lock = state.discord.lock().await;
     if let Some(client) = lock.as_mut() {
         client.set_enabled(discord_rpc).await;
     }
+
+    let need_restart = old_cfg.selected_version != new_settings.selected_version
+        || old_cfg.nickname != new_settings.player_name
+        || old_cfg.max_memory_mb != new_settings.ram_mb
+        || old_cfg.fast_launch != new_settings.fast_launch;
+
+    if need_restart {
+        state.cleanup_prewarm().await;
+        if new_settings.fast_launch {
+            state
+                .trigger_prewarm(
+                    new_settings.selected_version,
+                    new_settings.player_name,
+                    new_settings.ram_mb,
+                )
+                .await;
+        }
+    }
+
     Ok(())
 }
 
 #[tauri::command]
 pub async fn reset_settings(state: State<'_, PlayState>) -> Result<LauncherSettingsDto, String> {
+    state.cleanup_prewarm().await;
     let res = reset_settings_impl(&state.paths, state.core.as_ref()).await?;
     let mut lock = state.discord.lock().await;
     if let Some(client) = lock.as_mut() {
         client.set_enabled(true).await;
+    }
+    if res.fast_launch {
+        state
+            .trigger_prewarm(
+                res.selected_version.clone(),
+                res.player_name.clone(),
+                res.ram_mb,
+            )
+            .await;
     }
     Ok(res)
 }
@@ -341,13 +390,13 @@ pub fn get_data_dir(state: State<'_, PlayState>) -> String {
 
 #[tauri::command]
 pub async fn get_system_info(state: State<'_, PlayState>) -> Result<SystemInfo, String> {
-    Ok(SystemInfo {
-        total_memory_mb: get_total_ram_mb(),
-        os_name: std::env::consts::OS.to_string(),
-        launcher_version: "1.0.0".to_string(),
-        data_dir: state.paths.root.to_string_lossy().to_string(),
-    })
+    Ok(wex_core::collect_system_info(&state.paths.root, "1.0.0"))
 }
+
+pub use wex_core::{
+    collect_system_info, evaluate_system_warnings, format_support_text, is_integrated_graphics,
+    sanitize_user_path, NOT_DETERMINED,
+};
 
 // ---------------------------------------------------------------------------
 // Backward-compatibility aliases for UI
@@ -673,9 +722,10 @@ mod tests {
 
         // 1. Initial settings
         let settings = get_launcher_settings_impl(&paths);
+        let default_core = CoreConfig::default();
         assert_eq!(settings.player_name, "Player");
-        assert_eq!(settings.ram_mb, 4096);
-        assert_eq!(settings.graphics_preset, "High");
+        assert_eq!(settings.ram_mb, default_core.max_memory_mb);
+        assert_eq!(settings.graphics_preset, default_core.graphics_preset);
         assert_eq!(settings.java_mode, "auto");
         assert!(settings.discord_rpc);
         assert_eq!(settings.language, "ru");
@@ -693,6 +743,7 @@ mod tests {
         updated.language = "en".to_string();
         updated.fast_start_jvm = true;
         updated.minimize_to_tray = false;
+        updated.game_window_behavior = "tray".to_string();
 
         save_launcher_settings_impl(updated, &paths, &mock_core)
             .await
@@ -712,6 +763,7 @@ mod tests {
         assert_eq!(reloaded.language, "en");
         assert!(reloaded.fast_start_jvm);
         assert!(!reloaded.minimize_to_tray);
+        assert_eq!(reloaded.game_window_behavior, "tray");
     }
 
     #[tokio::test]
@@ -733,9 +785,10 @@ mod tests {
 
         // Reset
         let reset = reset_settings_impl(&paths, &mock_core).await.unwrap();
+        let default_core = CoreConfig::default();
         assert_eq!(reset.player_name, "Player");
-        assert_eq!(reset.ram_mb, 4096);
-        assert_eq!(reset.graphics_preset, "High");
+        assert_eq!(reset.ram_mb, default_core.max_memory_mb);
+        assert_eq!(reset.graphics_preset, default_core.graphics_preset);
         assert_eq!(reset.java_mode, "auto");
         assert!(reset.discord_rpc);
         assert!(reset.minimize_to_tray);

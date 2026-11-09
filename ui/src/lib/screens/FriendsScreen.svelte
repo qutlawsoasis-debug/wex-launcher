@@ -69,6 +69,7 @@
   let invites = $state<LobbyInviteItem[]>([]);
   let isSubmitting = $state(false);
   let socialError = $state<unknown>(null);
+  let failedAvatarNicks = $state<Set<string>>(new Set());
 
   // Achievements state
   let achievements = $state<AchievementItem[]>([
@@ -302,6 +303,9 @@
   });
 
   onMount(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__triggerFriendsReload = loadSocialData;
+    }
     loadSocialData();
     loadAchievements();
 
@@ -436,11 +440,19 @@
               >
                 {#snippet leading()}
                   <div class="avatar-capsule">
-                    <span class="avatar-letter">{friend.nick.charAt(0).toUpperCase()}</span>
-                    <span
-                      class="status-indicator {friend.status}"
-                      title={friend.status}
-                    ></span>
+                    {#if !failedAvatarNicks.has(friend.nick)}
+                      <img
+                        src="https://mc-heads.net/avatar/{encodeURIComponent(friend.nick)}/32"
+                        alt="Скин {friend.nick}"
+                        class="friend-head-img"
+                        onerror={() => {
+                          failedAvatarNicks = new Set([...failedAvatarNicks, friend.nick]);
+                        }}
+                        loading="lazy"
+                      />
+                    {:else}
+                      <span class="avatar-letter">{friend.nick.charAt(0).toUpperCase()}</span>
+                    {/if}
                   </div>
                 {/snippet}
 
@@ -487,7 +499,19 @@
               >
                 {#snippet leading()}
                   <div class="avatar-capsule">
-                    <span class="avatar-letter">{req.from_nick.charAt(0).toUpperCase()}</span>
+                    {#if !failedAvatarNicks.has(req.from_nick)}
+                      <img
+                        src="https://mc-heads.net/avatar/{encodeURIComponent(req.from_nick)}/32"
+                        alt="Скин {req.from_nick}"
+                        class="friend-head-img"
+                        onerror={() => {
+                          failedAvatarNicks = new Set([...failedAvatarNicks, req.from_nick]);
+                        }}
+                        loading="lazy"
+                      />
+                    {:else}
+                      <span class="avatar-letter">{req.from_nick.charAt(0).toUpperCase()}</span>
+                    {/if}
                   </div>
                 {/snippet}
 
@@ -655,46 +679,35 @@
 
   .avatar-capsule {
     position: relative;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm, 6px);
     background-color: var(--color-quaternary-system-fill);
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 600;
-    font-size: var(--text-subheadline);
+    font-size: 13px;
     color: var(--color-label);
+    overflow: hidden;
+    flex-shrink: 0;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  }
+
+  .friend-head-img {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm, 6px);
+    image-rendering: pixelated;
+    object-fit: cover;
+    display: block;
   }
 
   .avatar-letter {
     line-height: 1;
-  }
-
-  .status-indicator {
-    position: absolute;
-    bottom: -1px;
-    right: -1px;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    border: 2px solid var(--card-bg, #ffffff);
-  }
-
-  .status-indicator.online {
-    background-color: var(--color-system-green);
-  }
-
-  .status-indicator.playing {
-    background-color: var(--color-system-blue);
-  }
-
-  .status-indicator.in_lobby {
-    background-color: var(--color-system-orange);
-  }
-
-  .status-indicator.offline {
-    background-color: var(--color-system-gray);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0;
   }
 
   .request-actions {
@@ -811,46 +824,6 @@
     margin-top: 6px;
     width: 100%;
     max-width: 320px;
-  }
-
-  /* Clean Empty State */
-  .empty-state-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 64px 24px;
-    gap: 12px;
-    text-align: center;
-    background-color: var(--card-bg);
-    border: 1px dashed var(--glass-border);
-    border-radius: var(--radius-lg);
-    margin-top: 12px;
-  }
-
-  .empty-icon-wrap {
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
-    background-color: var(--color-quaternary-system-fill);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .empty-title {
-    font-size: var(--text-headline);
-    font-weight: 600;
-    color: var(--color-label);
-    margin: 0;
-  }
-
-  .empty-desc {
-    font-size: var(--text-subheadline);
-    color: var(--color-secondary-label);
-    max-width: 420px;
-    line-height: 1.4;
-    margin: 0;
   }
 
   /* Toast stack */

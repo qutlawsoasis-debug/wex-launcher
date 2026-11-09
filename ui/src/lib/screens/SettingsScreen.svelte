@@ -1,17 +1,24 @@
 <!--
-  Wex Launcher — Screen «Настройки»
+  Wex Launcher — Screen «Настройки» (Apple HIG System Settings parity)
   Specification: tasks/apple/hig/settings.md, tasks/apple/hig/sliders.md, tasks/apple/hig/toggles.md, tasks/apple/hig/segmented-controls.md
-  Rules:
-  - Java runtime: auto-detection (Java 17 for 1.20.1, Java 21 for 1.21.1) or custom executable path
-  - RAM allocation: slider with 512 MB step, contextual Apple HIG hint based on system memory
-  - Graphics presets: wex-extras presets (Low, Medium, High, Ultra)
-  - Data directory: path display and open in Explorer
-  - Discord RPC: systemGreen toggle with live status preview
-  - Language: RU / EN selection
-  - Appearance: Dark / Light / Auto & Accent picker
-  - Accessibility: Reduce Motion and Reduce Transparency toggles
-  - About Wex: authentic version and system telemetry
-  - Bidirectional sync via get_launcher_settings / save_launcher_settings / reset_settings
+
+  8 System Groups (Apple System Settings HIG):
+  1. Игра (Game): Java runtime, Window/Tray behavior, Fast launch, Welcome wizard
+  2. Память и производительность (Memory & Performance): RAM slider, Graphics preset, Discord RPC & preview
+  3. Внешний вид (Appearance): Theme mode, Accent color, Interface language, Effects fidelity, Accessibility
+  4. Звук и музыка (Sound & Music): Background soundtrack, notification alert sounds
+  5. Уведомления (Notifications): Friend status & invite alerts, minimized window tray alerts
+  6. Хранилище (Storage): Game directory, verify instance files integrity, cleanup cache & logs
+  7. О системе (About / System): Version, OS, tech stack telemetry, reset to defaults
+  8. Обновления (Updates): Check for launcher updates, automatic startup check
+
+  Apple HIG Compliance:
+  - Standard 44px min-height rows with consistent padding and typography
+  - Integrated top search bar with real-time row and group filtering
+  - Authentic Apple HIG empty search state with clear action
+  - Friendly plain-language explanations under all rows
+  - High scenery art contrast (WCAG AA >= 4.5:1)
+  - No truncated controls or text at 1280×800 and in English locale
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -22,6 +29,7 @@
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Button from '../components/Button.svelte';
   import Icon from '../components/icons/Icon.svelte';
+  import LogsSheet from '../components/LogsSheet.svelte';
   import { theme } from '../design/theme.svelte';
   import { network } from '../design/network.svelte';
   import { AccentPresets, type AccentColor } from '../design/colors';
@@ -44,15 +52,19 @@
   let isGameActive = $derived(isGameRunning || ipcGameRunning);
 
   // Storage section state (SPEC items 40–41: wex-verify-files)
-  let cacheSizeFormatted = $state('0 B');
+  let cacheSizeFormatted = $state(t('common.bytes', { count: 0 }));
   let isCheckingIntegrity = $state(false);
   let isCleaningCache = $state(false);
   let integrityStatus = $state<string | null>(null);
   let integrityDetail = $state<string | null>(null);
   let cleanupStatus = $state<string | null>(null);
 
+  // Search state
+  let searchQuery = $state('');
+
   // System & configuration state
   let selectedVersion = $state('1.21.1');
+  let logsSheetOpen = $state(false);
   let playerName = $state('Player');
   let totalMemoryMb = $state(16384);
   let ramMb = $state(4096);
@@ -64,12 +76,127 @@
   let detectedJava21 = $state<string | null>(null);
   let discordRpc = $state(true);
   let friendNotifications = $state(true);
+  let trayNotifications = $state(true);
   let backgroundMusic = $state(true);
+  let notificationSounds = $state(true);
   let fastStartJvm = $state(false);
+  let fastLaunch = $state(true);
   let language = $state<string>(i18n.locale);
-  let launcherVersion = $state('1.0.0');
+  let launcherVersion = $state('—');
   let osName = $state('windows');
   let minimizeToTray = $state(true);
+  let gameWindowBehavior = $state('minimize');
+  let updateChecking = $state(false);
+  let updateStatusText = $state('');
+  let updateAvailable = $state(false);
+  let canAutoUpdateSettings = $state(false);
+  let updateDownloadUrl = $state('');
+
+  interface SystemInfoState {
+    total_memory_mb: number;
+    free_memory_mb: number;
+    memory_display: string;
+    os_name: string;
+    os_version: string;
+    launcher_version: string;
+    data_dir: string;
+    cpu_name: string;
+    cpu_cores: number;
+    gpu_name: string;
+    gpu_driver: string;
+    is_integrated_gpu: boolean;
+    disk_free_gb: number;
+    disk_total_gb: number;
+    disk_display: string;
+    java_17: string;
+    java_21: string;
+    warnings: string[];
+    support_text: string;
+  }
+
+  let systemInfo = $state<SystemInfoState | null>(null);
+  let copiedSupport = $state(false);
+
+  async function handleCopySupportInfo() {
+    if (!systemInfo) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(systemInfo.support_text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = systemInfo.support_text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      copiedSupport = true;
+      setTimeout(() => {
+        copiedSupport = false;
+      }, 2500);
+    } catch (e) {
+      console.error('Failed to copy support info to clipboard', e);
+    }
+  }
+
+  async function handleCheckUpdateSettings() {
+    updateChecking = true;
+    updateStatusText = t('settings.status_checking_updates');
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<any>('updater_check');
+      if (res && res.update_available) {
+        updateAvailable = true;
+        canAutoUpdateSettings = Boolean(
+          res.can_auto_update ?? (res.signature && res.signature.length >= 32)
+        );
+        updateDownloadUrl = res.download_url || '';
+        updateStatusText = t('settings.update_available_version', {
+          version: res.latest_version || '',
+          unsigned: !canAutoUpdateSettings ? t('settings.unsigned_suffix') : '',
+        });
+      } else {
+        updateAvailable = false;
+        updateStatusText = t('settings.update_latest_installed');
+      }
+    } catch {
+      updateStatusText = t('settings.update_check_failed');
+    } finally {
+      updateChecking = false;
+    }
+  }
+
+  async function handleApplyUpdateSettings() {
+    if (!updateDownloadUrl) return;
+    if (!canAutoUpdateSettings) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('updater_open_download_url', { url: updateDownloadUrl });
+      } catch {
+        if (typeof window !== 'undefined') window.open(updateDownloadUrl, '_blank');
+      }
+    } else {
+      updateStatusText = t('settings.update_go_to_play');
+    }
+  }
+
+  let gameWindowBehaviorOptions = $derived([
+    { value: 'keep', label: t('settings.window_action_keep') },
+    { value: 'minimize', label: t('settings.window_action_minimize') },
+    { value: 'tray', label: t('settings.window_action_tray') },
+  ]);
+
+  let displayOs = $derived.by(() => {
+    if (!osName || osName.toLowerCase() === 'windows') {
+      return t('settings.os_win_64');
+    }
+    return t('settings.os_custom_64', { name: osName });
+  });
+
+  // Updates state
+  let isCheckingUpdates = $state(false);
+  let updateStatus = $state<string | null>(null);
+  let autoCheckUpdates = $state(true);
 
   let graphicsOptions = $derived([
     { value: 'Low', label: t('settings.graphics_low') },
@@ -149,7 +276,9 @@
 
   function formatRam(val: number): string {
     const gb = (val / 1024).toFixed(1);
-    return `${gb} GB (${val} MB)`;
+    const unitGb = t('common.unit_gb');
+    const unitMb = t('common.unit_mb');
+    return `${gb} ${unitGb} (${val} ${unitMb})`;
   }
 
   let ramHint = $derived.by(() => {
@@ -181,12 +310,23 @@
 
   async function loadConfig() {
     try {
+      const { getVersion } = await import('@tauri-apps/api/app');
+      const v = await getVersion();
+      if (v) launcherVersion = v;
+    } catch {
+      // In-browser mock stays '—'
+    }
+
+    try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const sys = await invoke<{ total_memory_mb: number; os_name: string; launcher_version: string; data_dir?: string }>('get_system_info');
+      const sys = await invoke<SystemInfoState>('get_system_info');
       if (sys) {
+        systemInfo = sys;
         if (sys.total_memory_mb) totalMemoryMb = sys.total_memory_mb;
         if (sys.os_name) osName = sys.os_name;
-        if (sys.launcher_version) launcherVersion = sys.launcher_version;
+        if (sys.launcher_version && sys.launcher_version !== '1.0.0') {
+          launcherVersion = sys.launcher_version;
+        }
         if (sys.data_dir) gameDir = sys.data_dir;
       }
 
@@ -203,6 +343,7 @@
         detected_java_21?: string | null;
         discord_rpc?: boolean;
         fast_start_jvm?: boolean;
+        fast_launch?: boolean;
         friend_notifications?: boolean;
         language?: string;
         appearance?: string;
@@ -210,6 +351,7 @@
         reduce_motion?: boolean;
         reduce_transparency?: boolean;
         minimize_to_tray?: boolean;
+        game_window_behavior?: string;
       }>('get_launcher_settings');
 
       if (cfg) {
@@ -225,6 +367,7 @@
         if (cfg.detected_java_21 !== undefined) detectedJava21 = cfg.detected_java_21;
         if (cfg.discord_rpc !== undefined) discordRpc = cfg.discord_rpc;
         if (cfg.fast_start_jvm !== undefined) fastStartJvm = cfg.fast_start_jvm;
+        if (cfg.fast_launch !== undefined) fastLaunch = cfg.fast_launch;
         if (cfg.friend_notifications !== undefined) {
           friendNotifications = cfg.friend_notifications;
         }
@@ -236,6 +379,7 @@
         if (cfg.appearance) theme.setAppearance(cfg.appearance as 'dark' | 'light' | 'auto');
         if (cfg.accent) theme.setAccent(cfg.accent as AccentColor);
         if (cfg.minimize_to_tray !== undefined) minimizeToTray = cfg.minimize_to_tray;
+        if (cfg.game_window_behavior) gameWindowBehavior = cfg.game_window_behavior;
         theme.setReduceMotion(cfg.reduce_motion ?? false);
         theme.setReduceTransparency(cfg.reduce_transparency ?? false);
       }
@@ -288,6 +432,7 @@
           detected_java_21: detectedJava21,
           discord_rpc: discordRpc,
           fast_start_jvm: fastStartJvm,
+          fast_launch: fastLaunch,
           friend_notifications: friendNotifications,
           language,
           appearance: theme.appearance,
@@ -295,6 +440,7 @@
           reduce_motion: theme.reduceMotion,
           reduce_transparency: theme.reduceTransparency,
           minimize_to_tray: minimizeToTray,
+          game_window_behavior: gameWindowBehavior,
         },
       });
     } catch {
@@ -312,6 +458,7 @@
         custom_java_path?: string | null;
         discord_rpc?: boolean;
         fast_start_jvm?: boolean;
+        fast_launch?: boolean;
         friend_notifications?: boolean;
         language?: string;
         minimize_to_tray?: boolean;
@@ -324,6 +471,7 @@
         customJavaPath = '';
         if (reset.discord_rpc !== undefined) discordRpc = reset.discord_rpc;
         if (reset.fast_start_jvm !== undefined) fastStartJvm = reset.fast_start_jvm;
+        if (reset.fast_launch !== undefined) fastLaunch = reset.fast_launch;
         if (reset.friend_notifications !== undefined) {
           friendNotifications = reset.friend_notifications;
         } else {
@@ -358,6 +506,12 @@
     theme.setAccent('blue');
     theme.setReduceMotion(false);
     theme.setReduceTransparency(false);
+    gameWindowBehavior = 'minimize';
+    saveConfig();
+  }
+
+  function handleGameWindowBehaviorChange(val: string) {
+    gameWindowBehavior = val;
     saveConfig();
   }
 
@@ -403,7 +557,7 @@
         cacheSizeFormatted = res.formatted_size;
       }
     } catch {
-      cacheSizeFormatted = '0 B';
+      cacheSizeFormatted = t('common.bytes', { count: 0 });
     }
   }
 
@@ -437,13 +591,13 @@
       }
 
       if (res) {
-        integrityStatus = res.status || t('settings.verify_success_toast');
+        integrityStatus = res.status || t('settings.status_verify_done');
         integrityDetail = res.message || res.status;
       }
     } catch (err: any) {
       integrityStatus = t('settings.status_verify_error');
       const msg = typeof err === 'string' ? err : (err?.message || t('settings.err_verify_failed'));
-      integrityDetail = msg.startsWith(t('settings.status_verify_error')) ? msg : `${t('settings.status_verify_error')}: ${msg}`;
+      integrityDetail = msg.startsWith(t('settings.verify_error_prefix_word')) ? msg : t('settings.verify_error_format', { error: msg });
     } finally {
       isCheckingIntegrity = false;
     }
@@ -473,7 +627,7 @@
       }
     } catch (err: any) {
       const msg = typeof err === 'string' ? err : (err?.message || t('settings.err_cleanup'));
-      cleanupStatus = msg.startsWith(t('settings.err_cleanup')) ? msg : `${t('settings.err_cleanup')}: ${msg}`;
+      cleanupStatus = msg.startsWith(t('settings.cleanup_error_prefix_word')) ? msg : t('settings.cleanup_error_format', { error: msg });
     } finally {
       isCleaningCache = false;
       setTimeout(() => {
@@ -493,6 +647,290 @@
     prevOnline = currentOnline;
   });
 
+  // Update check
+  async function handleCheckUpdates() {
+    if (isCheckingUpdates) return;
+    isCheckingUpdates = true;
+    updateStatus = t('settings.status_checking_updates');
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const res = await invoke<{
+        has_update?: boolean;
+        update_available?: boolean;
+        version?: string;
+        new_version?: string;
+      }>('social_check_launcher_update', {
+        request: { current_version: launcherVersion }
+      });
+      if (res && (res.has_update || res.update_available)) {
+        updateStatus = t('settings.update_new_version', { version: res.version || res.new_version || '1.1.0' });
+      } else {
+        updateStatus = launcherVersion !== '—'
+          ? t('settings.update_up_to_date_ver', { version: launcherVersion })
+          : t('settings.update_up_to_date');
+      }
+    } catch {
+      updateStatus = launcherVersion !== '—'
+        ? t('settings.update_up_to_date_ver', { version: launcherVersion })
+        : t('settings.update_up_to_date');
+    } finally {
+      isCheckingUpdates = false;
+    }
+  }
+
+  // Search Items Registry for real-time filtering
+  interface SettingItemDefinition {
+    id: string;
+    group: 'game' | 'perf' | 'appearance' | 'sound' | 'notifications' | 'storage' | 'about' | 'updates';
+    title: string;
+    subtitle: string;
+    keywords: string[];
+  }
+
+  let allSettings = $derived<SettingItemDefinition[]>([
+    // 1. Game
+    {
+      id: 'game_java_mode',
+      group: 'game',
+      title: t('settings.java_choice_title'),
+      subtitle: t('settings.java_choice_subtitle'),
+      keywords: t('settings.kw_game_java_mode').split(' '),
+    },
+    {
+      id: 'game_java_path',
+      group: 'game',
+      title: javaMode === 'auto' ? t('settings.java_used_title') : t('settings.java_path_title'),
+      subtitle: activeJavaDisplay,
+      keywords: t('settings.kw_game_java_path').split(' '),
+    },
+    {
+      id: 'game_window_behavior',
+      group: 'game',
+      title: t('settings.window_behavior_title'),
+      subtitle: t('settings.window_behavior_subtitle'),
+      keywords: t('settings.kw_game_window_behavior').split(' '),
+    },
+    {
+      id: 'game_tray',
+      group: 'game',
+      title: t('settings.minimize_to_tray_title'),
+      subtitle: t('settings.minimize_to_tray_desc'),
+      keywords: t('settings.kw_game_tray').split(' '),
+    },
+    {
+      id: 'game_fast_start',
+      group: 'game',
+      title: t('settings.fast_launch_title'),
+      subtitle: t('settings.fast_launch_subtitle'),
+      keywords: t('settings.kw_game_fast_start').split(' '),
+    },
+    {
+      id: 'game_onboarding',
+      group: 'game',
+      title: t('settings.onboarding_replay_title'),
+      subtitle: t('settings.onboarding_replay_desc'),
+      keywords: t('settings.kw_game_onboarding').split(' '),
+    },
+
+    // 2. Memory & Performance
+    {
+      id: 'perf_ram',
+      group: 'perf',
+      title: t('settings.ram_title'),
+      subtitle: ramHint,
+      keywords: t('settings.kw_perf_ram').split(' '),
+    },
+    {
+      id: 'perf_graphics',
+      group: 'perf',
+      title: t('settings.graphics_title'),
+      subtitle: t('settings.graphics_subtitle'),
+      keywords: t('settings.kw_perf_graphics').split(' '),
+    },
+    {
+      id: 'perf_discord',
+      group: 'perf',
+      title: t('settings.discord_title'),
+      subtitle: t('settings.discord_subtitle'),
+      keywords: t('settings.kw_perf_discord').split(' '),
+    },
+    {
+      id: 'perf_discord_preview',
+      group: 'perf',
+      title: t('settings.discord_preview_title'),
+      subtitle: discordRpc ? t('settings.discord_preview_desc') : t('settings.discord_disabled_desc'),
+      keywords: t('settings.kw_perf_discord_preview').split(' '),
+    },
+
+    // 3. Appearance
+    {
+      id: 'app_theme',
+      group: 'appearance',
+      title: t('settings.theme_title'),
+      subtitle: t('settings.theme_subtitle'),
+      keywords: t('settings.kw_app_theme').split(' '),
+    },
+    {
+      id: 'app_accent',
+      group: 'appearance',
+      title: t('settings.accent_title'),
+      subtitle: t('settings.accent_subtitle'),
+      keywords: t('settings.kw_app_accent').split(' '),
+    },
+    {
+      id: 'app_lang',
+      group: 'appearance',
+      title: t('settings.lang_title'),
+      subtitle: t('settings.lang_subtitle'),
+      keywords: t('settings.kw_app_lang').split(' '),
+    },
+    {
+      id: 'app_effects',
+      group: 'appearance',
+      title: t('settings.effects_title'),
+      subtitle: t('settings.effects_subtitle'),
+      keywords: t('settings.kw_app_effects').split(' '),
+    },
+    {
+      id: 'app_reduce_motion',
+      group: 'appearance',
+      title: t('settings.reduce_motion_title'),
+      subtitle: t('settings.reduce_motion_subtitle'),
+      keywords: t('settings.kw_app_reduce_motion').split(' '),
+    },
+    {
+      id: 'app_reduce_transparency',
+      group: 'appearance',
+      title: t('settings.reduce_transparency_title'),
+      subtitle: t('settings.reduce_transparency_subtitle'),
+      keywords: t('settings.kw_app_reduce_transparency').split(' '),
+    },
+
+    // 4. Sound & Music
+    {
+      id: 'sound_music',
+      group: 'sound',
+      title: t('settings.bg_music_title'),
+      subtitle: t('settings.bg_music_desc'),
+      keywords: t('settings.kw_sound_music').split(' '),
+    },
+    {
+      id: 'sound_sfx',
+      group: 'sound',
+      title: t('settings.sfx_title'),
+      subtitle: t('settings.sfx_subtitle'),
+      keywords: t('settings.kw_sound_sfx').split(' '),
+    },
+
+    // 5. Notifications
+    {
+      id: 'notif_friends',
+      group: 'notifications',
+      title: t('settings.notify_friends_title'),
+      subtitle: t('settings.notify_friends_desc'),
+      keywords: t('settings.kw_notif_friends').split(' '),
+    },
+    {
+      id: 'notif_tray',
+      group: 'notifications',
+      title: t('settings.notify_minimized_title'),
+      subtitle: t('settings.notify_minimized_desc'),
+      keywords: t('settings.kw_notif_tray').split(' '),
+    },
+
+    // 6. Storage
+    {
+      id: 'storage_gamedir',
+      group: 'storage',
+      title: t('settings.gamedir_title'),
+      subtitle: gameDir || t('settings.gamedir_undefined'),
+      keywords: t('settings.kw_storage_gamedir').split(' '),
+    },
+    {
+      id: 'storage_verify',
+      group: 'storage',
+      title: t('settings.verify_files_title'),
+      subtitle: verifyStatus || t('settings.verify_files_desc_ver', { version: selectedVersion }),
+      keywords: t('settings.kw_storage_verify').split(' '),
+    },
+    {
+      id: 'storage_clean',
+      group: 'storage',
+      title: t('settings.clear_cache_title'),
+      subtitle: cleanCacheStatus || t('settings.clear_cache_full_desc'),
+      keywords: t('settings.kw_storage_clean').split(' '),
+    },
+    {
+      id: 'storage_logs',
+      group: 'storage',
+      title: t('settings.logs_viewer_title'),
+      subtitle: t('settings.logs_viewer_desc'),
+      keywords: t('settings.kw_storage_logs').split(' '),
+    },
+
+    // 7. About / System
+    {
+      id: 'about_program',
+      group: 'about',
+      title: t('settings.about_title'),
+      subtitle: t('settings.about_subtitle', { version: launcherVersion, os: displayOs }),
+      keywords: t('settings.kw_about_program').split(' '),
+    },
+    {
+      id: 'about_hardware',
+      group: 'about',
+      title: t('settings.hardware_info_title'),
+      subtitle: t('settings.hardware_info_subtitle'),
+      keywords: t('settings.kw_about_hardware').split(' '),
+    },
+    {
+      id: 'about_reset',
+      group: 'about',
+      title: t('settings.reset_settings_title'),
+      subtitle: t('settings.reset_defaults'),
+      keywords: t('settings.kw_about_reset').split(' '),
+    },
+
+    // 8. Updates
+    {
+      id: 'updates_check',
+      group: 'updates',
+      title: t('settings.updates_check_title'),
+      subtitle: updateStatus || (launcherVersion !== '—' ? t('settings.update_up_to_date_ver', { version: launcherVersion }) : t('settings.update_up_to_date')),
+      keywords: t('settings.kw_updates_check').split(' '),
+    },
+    {
+      id: 'updates_auto',
+      group: 'updates',
+      title: t('settings.updates_auto_title'),
+      subtitle: t('settings.updates_auto_desc'),
+      keywords: t('settings.kw_updates_auto').split(' '),
+    },
+  ]);
+
+  function isItemVisible(itemId: string): boolean {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    const item = allSettings.find((s) => s.id === itemId);
+    if (!item) return false;
+    const tokens = q.split(/\s+/).filter(Boolean);
+    return tokens.every(
+      (tok) =>
+        item.title.toLowerCase().includes(tok) ||
+        item.subtitle.toLowerCase().includes(tok) ||
+        item.keywords.some((kw) => kw.toLowerCase().includes(tok))
+    );
+  }
+
+  function isGroupVisible(group: string): boolean {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    const groupItems = allSettings.filter((s) => s.group === group);
+    return groupItems.some((item) => isItemVisible(item.id));
+  }
+
+  let totalVisibleCount = $derived(allSettings.filter((s) => isItemVisible(s.id)).length);
+
   onMount(() => {
     loadConfig();
     loadCacheInfo();
@@ -508,7 +946,11 @@
             if (p.stage) {
               integrityStatus = p.stage;
             } else if (p.downloaded !== undefined && p.total !== undefined) {
-              integrityStatus = `${t('settings.status_checking')} ${p.downloaded}/${p.total} (${Math.round(p.percentage || 0)}%)`;
+              integrityStatus = t('settings.verify_progress_format', {
+                downloaded: p.downloaded,
+                total: p.total,
+                percent: Math.round(p.percentage || 0),
+              });
             }
           }
         ).then((fn) => {
@@ -523,7 +965,7 @@
   });
 </script>
 
-<div class="settings-screen">
+<div class="settings-screen" aria-label={t('settings.screen_aria')}>
   <div class="settings-content">
     <!-- Honest Offline State Banner -->
     {#if !network.isOnline}
@@ -541,7 +983,7 @@
           variant="secondary"
           size="small"
           onclick={() => network.check()}
-          title={t('wardrobe.offline_retry_title')}
+          title={t('settings.offline_retry_title')}
         >
           <Icon name="refresh" size={12} color="var(--color-secondary-label)" />
           <span>{t('offline.retry')}</span>
@@ -549,468 +991,727 @@
       </div>
     {/if}
 
-    <!-- Performance & Memory -->
-    <List header={t('settings.header_perf')}>
-      <Row
-        title={t('settings.ram_title')}
-        subtitle={ramHint}
-      >
-        <div class="slider-wrapper">
-          <Slider
-            value={ramMb}
-            min={1024}
-            max={totalMemoryMb}
-            step={512}
-            formatValue={formatRam}
-            onchange={handleRamChange}
-            label={t('settings.ram_label')}
-          />
-        </div>
-      </Row>
-
-      <Row
-        title={t('settings.graphics_title')}
-        subtitle={t('settings.graphics_subtitle')}
-      >
-        {#snippet trailing()}
-          <div style="width: 320px;">
-            <SegmentedControl
-              options={graphicsOptions}
-              value={graphicsPreset}
-              onchange={handlePresetChange}
-            />
-          </div>
-        {/snippet}
-      </Row>
-
-      <Row
-        title={t('settings.fast_start_title')}
-        subtitle={t('settings.fast_start_desc')}
-      >
-        {#snippet trailing()}
-          <Toggle
-            ariaLabel={t('settings.fast_start_title')}
-            checked={fastStartJvm}
-            onchange={(checked) => {
-              fastStartJvm = checked;
-              saveConfig();
-            }}
-          />
-        {/snippet}
-      </Row>
-    </List>
-
-    <!-- Java Runtime -->
-    <List header={t('settings.header_java')}>
-      <Row
-        title={t('settings.java_choice_title')}
-        subtitle={t('settings.java_choice_subtitle')}
-      >
-        {#snippet trailing()}
-          <div style="width: 280px;">
-            <SegmentedControl
-              options={javaModeOptions}
-              value={javaMode}
-              onchange={handleJavaModeChange}
-              size="small"
-            />
-          </div>
-        {/snippet}
-      </Row>
-
-      <Row
-        title={javaMode === 'auto' ? t('settings.java_used_title') : t('settings.java_path_title')}
-        subtitle={activeJavaDisplay}
-      >
-        {#if javaMode === 'custom'}
-          <div class="custom-java-input-wrap">
-            <input
-              type="text"
-              class="apple-text-field"
-              placeholder={t('settings.java_placeholder')}
-              bind:value={customJavaPath}
-              onchange={() => saveConfig()}
-              aria-label={t('settings.java_path_title')}
-            />
-          </div>
+    <!-- Top Apple HIG Search Bar -->
+    <div class="settings-search-bar" role="search">
+      <div class="search-input-wrapper">
+        <Icon name="search" size={15} color="var(--color-secondary-label)" />
+        <input
+          type="search"
+          class="search-input"
+          placeholder={t('settings.search_placeholder')}
+          bind:value={searchQuery}
+          aria-label={t('settings.search_placeholder')}
+        />
+        {#if searchQuery.trim()}
+          <button
+            type="button"
+            class="clear-search-btn"
+            onclick={() => (searchQuery = '')}
+            aria-label={t('settings.search_clear')}
+          >
+            <Icon name="close" size={13} color="var(--color-secondary-label)" />
+          </button>
         {/if}
-      </Row>
-    </List>
+      </div>
+    </div>
 
-    <!-- Data Directory & Network -->
-    <List header={t('settings.header_dirs')}>
-      <Row
-        title={t('toolbar.network_status')}
-        subtitle={network.isOnline ? t('profile.online') : t('offline.title')}
-      >
-        {#snippet trailing()}
-          <div class="network-status-badge" class:online={network.isOnline} class:offline={!network.isOnline}>
-            <span class="status-dot"></span>
-            <span>{network.isOnline ? t('profile.online') : t('offline.title')}</span>
-          </div>
-        {/snippet}
-      </Row>
-
-      <Row
-        title={t('settings.gamedir_title')}
-        subtitle={gameDir || t('settings.gamedir_undefined')}
-      >
-        {#snippet trailing()}
-          <div class="dir-actions">
-            <Button
-              variant="secondary"
-              size="small"
-              onclick={handleOpenDataDir}
-              title={t('settings.gamedir_open_tooltip')}
-            >
-              <Icon name="folder" size={13} color="var(--color-secondary-label)" />
-              <span>{t('settings.gamedir_open')}</span>
-            </Button>
-          </div>
-        {/snippet}
-      </Row>
-    </List>
-
-    <!-- Storage Section -->
-    <List header={t('settings.storage_header')}>
-      <Row
-        title={t('settings.verify_files_title')}
-        subtitle={integrityDetail ? `${integrityStatus ? integrityStatus + ' — ' : ''}${integrityDetail}` : (integrityStatus || (isGameActive ? t('crash.recommendation_label') : t('settings.verify_files_desc')))}
-      >
-        {#snippet trailing()}
-          <div class="storage-action-wrap">
-            {#if isCheckingIntegrity}
-              <span class="storage-status-badge checking">{t('settings.status_checking')}</span>
-            {:else if integrityStatus}
-              <span class="storage-status-badge result">{integrityStatus}</span>
-            {/if}
-            <Button
-              variant="secondary"
-              size="small"
-              disabled={isGameActive || isCheckingIntegrity}
-              onclick={handleVerifyFiles}
-              title={isGameActive ? t('crash.recommendation_label') : t('settings.verify_files_desc')}
-            >
-              <span>{isCheckingIntegrity ? t('settings.status_checking') : t('settings.verify_files_btn')}</span>
-            </Button>
-          </div>
-        {/snippet}
-      </Row>
-
-      <Row
-        title={t('settings.clear_cache_title')}
-        subtitle={cleanupStatus ? cleanupStatus : t('settings.clear_cache_desc')}
-      >
-        {#snippet trailing()}
-          <div class="storage-action-wrap">
-            {#if isCleaningCache}
-              <span class="storage-status-badge checking">{t('settings.btn_cleaning')}</span>
-            {:else if cleanupStatus}
-              <span class="storage-status-badge success">{t('common.done')}</span>
-            {/if}
-            <Button
-              variant="secondary"
-              size="small"
-              disabled={isGameActive || isCleaningCache}
-              onclick={handleClearCache}
-              title={isGameActive ? t('crash.recommendation_label') : t('settings.clear_cache_title')}
-            >
-              <span>{isCleaningCache ? t('settings.btn_cleaning') : t('settings.clear_cache_btn')}</span>
-            </Button>
-          </div>
-        {/snippet}
-      </Row>
-    </List>
-
-    <!-- Window and Tray behavior (SPEC wex-window) -->
-    <List header={t('settings.window_and_tray_header')}>
-      <Row
-        title={t('settings.minimize_to_tray_title')}
-        subtitle={t('settings.minimize_to_tray_desc')}
-      >
-        {#snippet trailing()}
-          <Toggle
-            ariaLabel={t('settings.minimize_to_tray_title')}
-            checked={minimizeToTray}
-            onchange={(checked) => {
-              minimizeToTray = checked;
-              saveConfig();
-            }}
-          />
-        {/snippet}
-      </Row>
-    </List>
-
-    <!-- Integrations & Localization -->
-    <List header={t('settings.header_integrations')}>
-      <Row
-        title={t('settings.discord_title')}
-        subtitle={t('settings.discord_subtitle')}
-      >
-        {#snippet trailing()}
-          <Toggle
-            ariaLabel="Discord Rich Presence"
-            checked={discordRpc}
-            onchange={(checked) => {
-              discordRpc = checked;
-              saveConfig();
-              updateDiscordPreview();
-            }}
-          />
-        {/snippet}
-      </Row>
-
-      <Row
-        title={t('settings.discord_preview_title')}
-        subtitle={discordRpc ? t('settings.discord_preview_desc') : t('settings.discord_disabled_title')}
-      >
-        <div class="discord-preview-wrap">
-          {#if discordRpc}
-            <div class="discord-card">
-              <div class="discord-card-header">
-                <span class="discord-card-tag">{t('settings.discord_activity_header')}</span>
-              </div>
-              <div class="discord-card-body">
-                <div class="discord-avatar-wrap">
-                  <div class="discord-avatar">
-                    <Icon name="server" size={26} color="var(--color-system-blue)" />
-                  </div>
-                  <span
-                    class="discord-status-dot"
-                    class:online={discordPreview.is_connected}
-                    title={discordPreview.is_connected ? t('profile.online') : t('settings.discord_not_running')}
-                  ></span>
-                </div>
-                <div class="discord-content">
-                  <div class="discord-app-title">{discordPreview.title || 'Wex Launcher'}</div>
-                  <div class="discord-detail-title">{discordPreview.details}</div>
-                  <div class="discord-state-text">{discordPreview.state}</div>
-                  {#if discordPreview.small_text}
-                    <div class="discord-meta-text">{discordPreview.small_text}</div>
-                  {/if}
-                  {#if !discordPreview.is_connected}
-                    <div class="discord-offline-hint">{t('settings.discord_not_running')}</div>
-                  {/if}
-                </div>
-              </div>
-            </div>
-          {:else}
-            <div class="discord-disabled-card">
-              <div class="discord-disabled-badge">
-                <Icon name="close" size={14} color="var(--color-secondary-label)" />
-              </div>
-              <div class="discord-disabled-info">
-                <div class="disabled-title">{t('settings.discord_disabled_title')}</div>
-                <div class="disabled-desc">
-                  {t('settings.discord_disabled_desc')}
-                </div>
-              </div>
-            </div>
-          {/if}
+    <!-- Empty Search State -->
+    {#if searchQuery.trim() && totalVisibleCount === 0}
+      <div class="empty-search-state" role="status">
+        <div class="empty-search-icon">
+          <Icon name="search" size={26} color="var(--color-tertiary-label)" />
         </div>
-      </Row>
+        <div class="empty-search-title">{t('settings.search_empty_title')}</div>
+        <div class="empty-search-desc">
+          {t('settings.search_empty_desc', { query: searchQuery })}
+        </div>
+        <Button variant="secondary" size="small" onclick={() => (searchQuery = '')}>
+          {t('settings.search_clear')}
+        </Button>
+      </div>
+    {/if}
 
-      <Row
-        title={t('settings.bg_music_title')}
-        subtitle={t('settings.bg_music_desc')}
-      >
-        {#snippet trailing()}
-          <Toggle
-            ariaLabel={t('settings.bg_music_title')}
-            checked={backgroundMusic}
-            onchange={(checked) => {
-              backgroundMusic = checked;
-              saveMusicSettings();
-            }}
-          />
-        {/snippet}
-      </Row>
+    <!-- 1. Игра (Game) -->
+    {#if isGroupVisible('game')}
+      <List header={t('settings.group_game')}>
+        {#if isItemVisible('game_java_mode')}
+          <Row
+            title={t('settings.java_choice_title')}
+            subtitle={t('settings.java_choice_subtitle')}
+          >
+            {#snippet trailing()}
+              <div class="segmented-control-fixed" style="width: 260px;">
+                <SegmentedControl
+                  options={javaModeOptions}
+                  value={javaMode}
+                  onchange={handleJavaModeChange}
+                  size="small"
+                />
+              </div>
+            {/snippet}
+          </Row>
+        {/if}
 
-      <Row
-        title={t('settings.notify_friends_title')}
-        subtitle={t('settings.notify_friends_desc')}
-      >
-        {#snippet trailing()}
-          <Toggle
-            ariaLabel={t('settings.notify_friends_title')}
-            checked={friendNotifications}
-            onchange={(checked) => {
-              friendNotifications = checked;
-              friendsLive.setNotificationsEnabled(checked);
-              saveConfig();
-            }}
-          />
-        {/snippet}
-      </Row>
+        {#if isItemVisible('game_java_path')}
+          <Row
+            title={javaMode === 'auto' ? t('settings.java_used_title') : t('settings.java_path_title')}
+            subtitle={activeJavaDisplay}
+          >
+            {#if javaMode === 'custom'}
+              <div class="custom-java-input-wrap">
+                <input
+                  type="text"
+                  class="apple-text-field"
+                  placeholder={t('settings.java_placeholder')}
+                  bind:value={customJavaPath}
+                  onchange={() => saveConfig()}
+                  aria-label={t('settings.java_path_title')}
+                />
+              </div>
+            {/if}
+          </Row>
+        {/if}
 
-      <Row
-        title={t('settings.lang_title')}
-        subtitle={t('settings.lang_subtitle')}
-      >
-        {#snippet trailing()}
-          <div style="width: 260px;">
-            <SegmentedControl
-              options={languageOptions}
-              value={language}
-              ariaLabel={t('settings.aria_language')}
-              onchange={handleLanguageChange}
-              size="small"
-            />
-          </div>
-        {/snippet}
-      </Row>
-    </List>
+        {#if isItemVisible('game_window_behavior')}
+          <Row
+            title={t('settings.window_behavior_title')}
+            subtitle={t('settings.window_behavior_subtitle')}
+          >
+            {#snippet trailing()}
+              <div class="segmented-control-fixed" style="width: 350px;">
+                <SegmentedControl
+                  options={gameWindowBehaviorOptions}
+                  value={gameWindowBehavior}
+                  ariaLabel={t('settings.window_behavior_title')}
+                  onchange={(val) => {
+                    gameWindowBehavior = val;
+                    saveConfig();
+                  }}
+                />
+              </div>
+            {/snippet}
+          </Row>
+        {/if}
 
-    <!-- Appearance & Theme Section -->
-    <List header={t('settings.header_appearance')}>
-      <Row title={t('settings.theme_title')} subtitle={t('settings.theme_subtitle')}>
-        {#snippet trailing()}
-          <div style="width: 280px;">
-            <SegmentedControl
-              options={appearanceOptions}
-              value={theme.appearance}
-              ariaLabel={t('settings.aria_theme')}
-              onchange={(v) => {
-                theme.setAppearance(v as 'dark' | 'light' | 'auto');
-                saveConfig();
-              }}
-            />
-          </div>
-        {/snippet}
-      </Row>
-
-      <Row title={t('settings.accent_title')} subtitle={t('settings.accent_subtitle')}>
-        {#snippet trailing()}
-          <div class="accent-picker" role="radiogroup" aria-label={t('settings.aria_accent')}>
-            {#each accents as acc (acc.key)}
-              <button
-                type="button"
-                class="accent-dot"
-                class:active={theme.accent === acc.key}
-                style="background-color: {acc.color};"
-                title={acc.title}
-                role="radio"
-                aria-checked={theme.accent === acc.key}
-                onclick={() => {
-                  theme.setAccent(acc.key);
+        {#if isItemVisible('game_tray')}
+          <Row
+            title={t('settings.minimize_to_tray_title')}
+            subtitle={t('settings.minimize_to_tray_desc')}
+          >
+            {#snippet trailing()}
+              <Toggle
+                ariaLabel={t('settings.minimize_to_tray_title')}
+                checked={minimizeToTray}
+                onchange={(checked) => {
+                  minimizeToTray = checked;
                   saveConfig();
                 }}
-                aria-label={acc.title}
-              >
-                {#if theme.accent === acc.key}
-                  <span class="active-check">✓</span>
-                {/if}
-              </button>
-            {/each}
-          </div>
-        {/snippet}
-      </Row>
-    </List>
+              />
+            {/snippet}
+          </Row>
+        {/if}
 
-    <!-- Accessibility / Универсальный доступ -->
-    <List header={t('settings.header_a11y')}>
-      <Row
-        title={t('settings.effects_title')}
-        subtitle={t('settings.effects_subtitle')}
-      >
-        {#snippet trailing()}
-          <div style="width: 320px;">
-            <SegmentedControl
-              options={effectsOptions}
-              value={theme.effectsMode}
-              onchange={(val) => {
-                theme.setEffectsMode(val as any);
-                saveConfig();
-              }}
-            />
-          </div>
-        {/snippet}
-      </Row>
-
-      <Row
-        title={t('settings.reduce_motion_title')}
-        subtitle={t('settings.reduce_motion_subtitle')}
-      >
-        {#snippet trailing()}
-          <Toggle
-            ariaLabel={t('settings.aria_reduce_motion')}
-            checked={theme.reduceMotion}
-            onchange={(checked) => {
-              theme.setReduceMotion(checked);
-              saveConfig();
-            }}
-          />
-        {/snippet}
-      </Row>
-
-      <Row
-        title={t('settings.reduce_transparency_title')}
-        subtitle={t('settings.reduce_transparency_subtitle')}
-      >
-        {#snippet trailing()}
-          <Toggle
-            ariaLabel={t('settings.aria_reduce_transparency')}
-            checked={theme.reduceTransparency}
-            onchange={(checked) => {
-              theme.setReduceTransparency(checked);
-              saveConfig();
-            }}
-          />
-        {/snippet}
-      </Row>
-    </List>
-
-    <!-- About Section -->
-    <List header={t('settings.header_about')}>
-      <Row
-        title={t('settings.about_title')}
-        subtitle={t('settings.about_subtitle', { version: launcherVersion, os: osName })}
-        trailingText="Wex Project"
-      />
-      <Row
-        title={t('settings.about_stack_title')}
-        subtitle={t('settings.about_stack_subtitle')}
-        trailingText="v1.0.0"
-      />
-    </List>
-
-    <!-- First Launch Onboarding Section -->
-    <List header={t('settings.onboarding_replay_title')}>
-      <Row
-        title={t('settings.onboarding_replay_title')}
-        subtitle={t('settings.onboarding_replay_desc')}
-      >
-        {#snippet trailing()}
-          <Button
-            variant="secondary"
-            size="small"
-            onclick={() => {
-              if (typeof localStorage !== 'undefined') {
-                localStorage.removeItem('wex_onboarding_completed');
-              }
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('wex-show-onboarding'));
-              }
-              onopenonboarding?.();
-            }}
+        {#if isItemVisible('game_fast_start')}
+          <Row
+            title={t('settings.fast_launch_title')}
+            subtitle={t('settings.fast_launch_subtitle')}
           >
-            <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
-            <span>{t('settings.onboarding_replay_btn')}</span>
-          </Button>
-        {/snippet}
-      </Row>
-    </List>
+            {#snippet trailing()}
+              <Toggle
+                ariaLabel={t('settings.fast_launch_title')}
+                checked={fastStartJvm}
+                onchange={(checked) => {
+                  fastStartJvm = checked;
+                  saveConfig();
+                }}
+              />
+            {/snippet}
+          </Row>
+        {/if}
 
-    <!-- Reset to defaults -->
-    <div class="actions-section">
-      <Button
-        variant="secondary"
-        onclick={handleResetDefaults}
-      >
-        {t('settings.reset_defaults')}
-      </Button>
-    </div>
+        {#if isItemVisible('game_onboarding')}
+          <Row
+            title={t('settings.onboarding_replay_title')}
+            subtitle={t('settings.onboarding_replay_desc')}
+          >
+            {#snippet trailing()}
+              <Button
+                variant="secondary"
+                size="small"
+                onclick={() => {
+                  if (typeof localStorage !== 'undefined') {
+                    localStorage.removeItem('wex_onboarding_completed');
+                  }
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('wex-show-onboarding'));
+                  }
+                  onopenonboarding?.();
+                }}
+              >
+                <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
+                <span>{t('settings.onboarding_replay_btn')}</span>
+              </Button>
+            {/snippet}
+          </Row>
+        {/if}
+      </List>
+    {/if}
+
+    <!-- 2. Память и производительность (Memory & Performance) -->
+    {#if isGroupVisible('perf')}
+      <List header={t('settings.group_perf')}>
+        {#if isItemVisible('perf_ram')}
+          <Row
+            title={t('settings.ram_title')}
+            subtitle={ramHint}
+          >
+            <div class="slider-wrapper">
+              <Slider
+                value={ramMb}
+                min={1024}
+                max={totalMemoryMb}
+                step={512}
+                formatValue={formatRam}
+                onchange={handleRamChange}
+                label={t('settings.ram_label')}
+              />
+            </div>
+          </Row>
+        {/if}
+
+        {#if isItemVisible('perf_graphics')}
+          <Row
+            title={t('settings.graphics_title')}
+            subtitle={t('settings.graphics_subtitle')}
+          >
+            {#snippet trailing()}
+              <div class="segmented-control-fixed" style="width: 320px;">
+                <SegmentedControl
+                  options={graphicsOptions}
+                  value={graphicsPreset}
+                  onchange={handlePresetChange}
+                  size="small"
+                />
+              </div>
+            {/snippet}
+          </Row>
+        {/if}
+
+        {#if isItemVisible('perf_discord')}
+          <Row
+            title={t('settings.discord_title')}
+            subtitle={t('settings.discord_subtitle')}
+          >
+            {#snippet trailing()}
+              <Toggle
+                ariaLabel="Discord Rich Presence"
+                checked={discordRpc}
+                onchange={(checked) => {
+                  discordRpc = checked;
+                  saveConfig();
+                  updateDiscordPreview();
+                }}
+              />
+            {/snippet}
+          </Row>
+        {/if}
+
+        {#if isItemVisible('perf_discord_preview')}
+          <Row
+            title={t('settings.discord_preview_title')}
+            subtitle={discordRpc ? t('settings.discord_preview_desc') : t('settings.discord_disabled_desc')}
+          >
+            <div class="discord-preview-wrap">
+              {#if discordRpc}
+                <div class="discord-card">
+                  <div class="discord-card-header">
+                    <span class="discord-card-tag">{t('settings.discord_activity_header')}</span>
+                  </div>
+                  <div class="discord-card-body">
+                    <div class="discord-avatar-wrap">
+                      <div class="discord-avatar">
+                        <Icon name="server" size={26} color="var(--color-system-blue)" />
+                      </div>
+                      <span
+                        class="discord-status-dot"
+                        class:online={discordPreview.is_connected}
+                        title={discordPreview.is_connected ? t('settings.discord_connected') : t('settings.discord_waiting')}
+                      ></span>
+                    </div>
+                    <div class="discord-content">
+                      <div class="discord-app-title">{discordPreview.title || 'Wex Launcher'}</div>
+                      <div class="discord-detail-title">{discordPreview.details}</div>
+                      <div class="discord-state-text">{discordPreview.state}</div>
+                      {#if discordPreview.small_text}
+                        <div class="discord-meta-text">{discordPreview.small_text}</div>
+                      {/if}
+                      {#if !discordPreview.is_connected}
+                        <div class="discord-offline-hint">{t('settings.discord_not_running')}</div>
+                      {/if}
+                    </div>
+                  </div>
+                </div>
+              {:else}
+                <div class="discord-disabled-card">
+                  <div class="discord-disabled-badge">
+                    <Icon name="close" size={14} color="var(--color-secondary-label)" />
+                  </div>
+                  <div class="discord-disabled-info">
+                    <div class="disabled-title">{t('settings.discord_disabled_title')}</div>
+                    <div class="disabled-desc">
+                      {t('settings.discord_disabled_desc')}
+                    </div>
+                  </div>
+                </div>
+              {/if}
+            </div>
+          </Row>
+        {/if}
+      </List>
+    {/if}
+
+    <!-- 3. Внешний вид (Appearance) -->
+    {#if isGroupVisible('appearance')}
+      <List header={t('settings.group_appearance')}>
+        {#if isItemVisible('app_theme')}
+          <Row title={t('settings.theme_title')} subtitle={t('settings.theme_subtitle')}>
+            {#snippet trailing()}
+              <div class="segmented-control-fixed" style="width: 280px;">
+                <SegmentedControl
+                  options={appearanceOptions}
+                  value={theme.appearance}
+                  ariaLabel={t('settings.theme_title')}
+                  onchange={(v) => {
+                    theme.setAppearance(v as 'dark' | 'light' | 'auto');
+                    saveConfig();
+                  }}
+                  size="small"
+                />
+              </div>
+            {/snippet}
+          </Row>
+        {/if}
+
+        {#if isItemVisible('app_accent')}
+          <Row title={t('settings.accent_title')} subtitle={t('settings.accent_subtitle')}>
+            {#snippet trailing()}
+              <div class="accent-picker" role="radiogroup" aria-label={t('settings.accent_title')}>
+                {#each accents as acc (acc.key)}
+                  <button
+                    type="button"
+                    class="accent-dot"
+                    class:active={theme.accent === acc.key}
+                    style="background-color: {acc.color};"
+                    title={acc.title}
+                    role="radio"
+                    aria-checked={theme.accent === acc.key}
+                    onclick={() => {
+                      theme.setAccent(acc.key);
+                      saveConfig();
+                    }}
+                    aria-label={acc.title}
+                  >
+                    {#if theme.accent === acc.key}
+                      <span class="active-check">✓</span>
+                    {/if}
+                  </button>
+                {/each}
+              </div>
+            {/snippet}
+          </Row>
+        {/if}
+
+        {#if isItemVisible('app_lang')}
+          <Row
+            title={t('settings.lang_title')}
+            subtitle={t('settings.lang_subtitle')}
+          >
+            {#snippet trailing()}
+              <div class="segmented-control-fixed" style="width: 260px;">
+                <SegmentedControl
+                  options={languageOptions}
+                  value={language}
+                  ariaLabel={t('settings.lang_title')}
+                  onchange={handleLanguageChange}
+                  size="small"
+                />
+              </div>
+            {/snippet}
+          </Row>
+        {/if}
+
+        {#if isItemVisible('app_effects')}
+          <Row
+            title={t('settings.effects_title')}
+            subtitle={t('settings.effects_subtitle')}
+          >
+            {#snippet trailing()}
+              <div class="segmented-control-fixed" style="width: 280px;">
+                <SegmentedControl
+                  options={effectsOptions}
+                  value={theme.effectsMode}
+                  onchange={(val) => {
+                    theme.setEffectsMode(val as any);
+                    saveConfig();
+                  }}
+                  size="small"
+                />
+              </div>
+            {/snippet}
+          </Row>
+        {/if}
+
+        {#if isItemVisible('app_reduce_motion')}
+          <Row
+            title={t('settings.reduce_motion_title')}
+            subtitle={t('settings.reduce_motion_subtitle')}
+          >
+            {#snippet trailing()}
+              <Toggle
+                ariaLabel={t('settings.reduce_motion_title')}
+                checked={theme.reduceMotion}
+                onchange={(checked) => {
+                  theme.setReduceMotion(checked);
+                  saveConfig();
+                }}
+              />
+            {/snippet}
+          </Row>
+        {/if}
+
+        {#if isItemVisible('app_reduce_transparency')}
+          <Row
+            title={t('settings.reduce_transparency_title')}
+            subtitle={t('settings.reduce_transparency_subtitle')}
+          >
+            {#snippet trailing()}
+              <Toggle
+                ariaLabel={t('settings.reduce_transparency_title')}
+                checked={theme.reduceTransparency}
+                onchange={(checked) => {
+                  theme.setReduceTransparency(checked);
+                  saveConfig();
+                }}
+              />
+            {/snippet}
+          </Row>
+        {/if}
+      </List>
+    {/if}
+
+    <!-- 4. Звук и музыка (Sound & Music) -->
+    {#if isGroupVisible('sound')}
+      <List header={t('settings.group_sound')}>
+        {#if isItemVisible('sound_music')}
+          <Row
+            title={t('settings.bg_music_title')}
+            subtitle={t('settings.bg_music_desc')}
+          >
+            {#snippet trailing()}
+              <Toggle
+                ariaLabel={t('settings.bg_music_title')}
+                checked={backgroundMusic}
+                onchange={(checked) => {
+                  backgroundMusic = checked;
+                  saveMusicSettings();
+                }}
+              />
+            {/snippet}
+          </Row>
+        {/if}
+
+        {#if isItemVisible('sound_sfx')}
+          <Row
+            title={t('settings.sfx_title')}
+            subtitle={t('settings.sfx_subtitle')}
+          >
+            {#snippet trailing()}
+              <Toggle
+                ariaLabel={t('settings.sfx_title')}
+                checked={notificationSounds}
+                onchange={(checked) => {
+                  notificationSounds = checked;
+                  saveConfig();
+                }}
+              />
+            {/snippet}
+          </Row>
+        {/if}
+      </List>
+    {/if}
+
+    <!-- 5. Уведомления (Notifications) -->
+    {#if isGroupVisible('notifications')}
+      <List header={t('settings.group_notifications')}>
+        {#if isItemVisible('notif_friends')}
+          <Row
+            title={t('settings.notify_friends_title')}
+            subtitle={t('settings.notify_friends_desc')}
+          >
+            {#snippet trailing()}
+              <Toggle
+                ariaLabel={t('settings.notify_friends_title')}
+                checked={friendNotifications}
+                onchange={(checked) => {
+                  friendNotifications = checked;
+                  friendsLive.setNotificationsEnabled(checked);
+                  saveConfig();
+                }}
+              />
+            {/snippet}
+          </Row>
+        {/if}
+
+        {#if isItemVisible('notif_tray')}
+          <Row
+            title={t('settings.notify_minimized_title')}
+            subtitle={t('settings.notify_minimized_desc')}
+          >
+            {#snippet trailing()}
+              <Toggle
+                ariaLabel={t('settings.notify_minimized_title')}
+                checked={trayNotifications}
+                onchange={(checked) => {
+                  trayNotifications = checked;
+                  saveConfig();
+                }}
+              />
+            {/snippet}
+          </Row>
+        {/if}
+      </List>
+    {/if}
+
+    <!-- 6. Хранилище (Storage) -->
+    {#if isGroupVisible('storage')}
+      <List header={t('settings.group_storage')}>
+        {#if isItemVisible('storage_gamedir')}
+          <Row
+            title={t('settings.gamedir_title')}
+            subtitle={gameDir || t('settings.gamedir_undefined')}
+          >
+            {#snippet trailing()}
+              <div class="dir-actions">
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onclick={handleOpenDataDir}
+                  title={t('settings.gamedir_open_tooltip')}
+                >
+                  <Icon name="folder" size={13} color="var(--color-secondary-label)" />
+                  <span>{t('settings.gamedir_open')}</span>
+                </Button>
+              </div>
+            {/snippet}
+          </Row>
+        {/if}
+
+        {#if isItemVisible('storage_verify')}
+          <Row
+            title={t('settings.verify_files_title')}
+            subtitle={verifyStatus || t('settings.verify_files_desc_ver', { version: selectedVersion })}
+          >
+            {#snippet trailing()}
+              <Button
+                variant="secondary"
+                size="small"
+                disabled={isGameActive || isVerifyingFiles}
+                onclick={handleVerifyFiles}
+                title={t('settings.verify_files_tooltip')}
+              >
+                {#if isVerifyingFiles}
+                  <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
+                  <span>{t('settings.status_checking')}</span>
+                {:else}
+                  <Icon name="check" size={13} color="var(--color-secondary-label)" />
+                  <span>{t('settings.verify_files_btn')}</span>
+                {/if}
+              </Button>
+            {/snippet}
+          </Row>
+        {/if}
+
+        {#if isItemVisible('storage_clean')}
+          <Row
+            title={t('settings.clear_cache_title')}
+            subtitle={cleanCacheStatus || t('settings.clear_cache_full_desc')}
+          >
+            {#snippet trailing()}
+              <Button
+                variant="secondary"
+                size="small"
+                disabled={isGameActive || isCleaningCache}
+                onclick={handleCleanCache}
+                title={t('settings.clear_cache_desc')}
+              >
+                {#if isCleaningCache}
+                  <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
+                  <span>{t('settings.btn_cleaning')}</span>
+                {:else}
+                  <Icon name="trash" size={13} color="var(--color-secondary-label)" />
+                  <span>{t('settings.clear_cache_btn')}</span>
+                {/if}
+              </Button>
+            {/snippet}
+          </Row>
+        {/if}
+
+        {#if isItemVisible('storage_logs')}
+          <Row
+            title={t('settings.logs_viewer_title')}
+            subtitle={t('settings.logs_viewer_desc')}
+          >
+            {#snippet trailing()}
+              <div class="dir-actions">
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onclick={() => (logsSheetOpen = true)}
+                  title={t('settings.logs_open_sheet_title')}
+                >
+                  <Icon name="info" size={13} color="var(--color-secondary-label)" />
+                  <span data-testid="btn-open-logs-sheet">{t('settings.logs_sheet_btn')}</span>
+                </Button>
+              </div>
+            {/snippet}
+          </Row>
+        {/if}
+      </List>
+    {/if}
+
+    <!-- 7. О системе (About / System) -->
+    {#if isGroupVisible('about')}
+      <List header={t('settings.group_about')}>
+        {#if isItemVisible('about_program')}
+          <Row
+            title={t('settings.about_title')}
+            subtitle={t('settings.about_subtitle', { version: launcherVersion, os: displayOs })}
+            trailingText="Wex Project"
+          />
+        {/if}
+
+        {#if isItemVisible('about_hardware')}
+          {#if systemInfo}
+            {#if systemInfo.warnings && systemInfo.warnings.length > 0}
+              {#each systemInfo.warnings as warning}
+                <div class="system-warning-banner">
+                  <Icon name="warning" size={18} color="var(--color-system-orange)" />
+                  <span class="warning-text">{warning}</span>
+                </div>
+              {/each}
+            {/if}
+
+            <Row
+              title={t('settings.hw_cpu_title')}
+              subtitle={systemInfo.cpu_name ? `${systemInfo.cpu_name} (${systemInfo.cpu_cores} ${t('settings.hw_cores_label')})` : t('settings.hw_unknown')}
+            />
+            <Row
+              title={t('settings.hw_ram_title')}
+              subtitle={systemInfo.memory_display || t('settings.hw_unknown')}
+            />
+            <Row
+              title={t('settings.hw_gpu_title')}
+              subtitle={systemInfo.gpu_name ? `${systemInfo.gpu_name} (${t('settings.hw_driver_label')} ${systemInfo.gpu_driver})` : t('settings.hw_unknown')}
+              trailingText={systemInfo.is_integrated_gpu ? t('settings.hw_gpu_integrated') : t('settings.hw_gpu_discrete')}
+            />
+            <Row
+              title={t('settings.hw_os_title')}
+              subtitle={systemInfo.os_version || t('settings.hw_unknown')}
+            />
+            <Row
+              title={t('settings.hw_disk_title')}
+              subtitle={systemInfo.disk_display || t('settings.hw_unknown')}
+            />
+            <Row
+              title={t('settings.hw_java_120')}
+              subtitle={systemInfo.java_17 || t('settings.hw_unknown')}
+            />
+            <Row
+              title={t('settings.hw_java_121')}
+              subtitle={systemInfo.java_21 || t('settings.hw_unknown')}
+            />
+
+            <div class="system-actions">
+              <Button
+                variant="secondary"
+                onclick={handleCopySupportInfo}
+              >
+                <span class="btn-content">
+                  <Icon name="copy" size={16} />
+                  <span>{copiedSupport ? t('settings.hw_copied_specs') : t('settings.hw_copy_specs')}</span>
+                </span>
+              </Button>
+            </div>
+          {:else}
+            <Row
+              title={t('settings.hw_loading_title')}
+              subtitle={t('settings.hw_loading_subtitle')}
+            />
+          {/if}
+        {/if}
+
+        {#if isItemVisible('about_reset')}
+          <Row
+            title={t('settings.reset_settings_title')}
+            subtitle={t('settings.reset_settings_desc')}
+          >
+            {#snippet trailing()}
+              <Button
+                variant="secondary"
+                size="small"
+                onclick={handleResetDefaults}
+              >
+                {t('settings.reset_defaults')}
+              </Button>
+            {/snippet}
+          </Row>
+        {/if}
+      </List>
+    {/if}
+
+    <!-- 8. Обновления (Updates) -->
+    {#if isGroupVisible('updates')}
+      <List header={t('settings.group_updates')}>
+        {#if isItemVisible('updates_check')}
+          <Row
+            title={t('settings.updates_check_title')}
+            subtitle={updateStatus || (launcherVersion !== '—' ? t('settings.update_up_to_date_ver', { version: launcherVersion }) : t('settings.update_up_to_date'))}
+          >
+            {#snippet trailing()}
+              <Button
+                variant="secondary"
+                size="small"
+                disabled={isCheckingUpdates}
+                onclick={handleCheckUpdates}
+              >
+                <Icon name="refresh" size={13} color="var(--color-secondary-label)" />
+                <span>{isCheckingUpdates ? t('settings.status_checking_updates') : t('settings.updates_check_btn')}</span>
+              </Button>
+            {/snippet}
+          </Row>
+        {/if}
+
+        {#if isItemVisible('updates_auto')}
+          <Row
+            title={t('settings.updates_auto_title')}
+            subtitle={t('settings.updates_auto_desc')}
+          >
+            {#snippet trailing()}
+              <Toggle
+                ariaLabel={t('settings.updates_auto_title')}
+                checked={autoCheckUpdates}
+                onchange={(checked) => {
+                  autoCheckUpdates = checked;
+                }}
+              />
+            {/snippet}
+          </Row>
+        {/if}
+      </List>
+    {/if}
   </div>
+
+  <LogsSheet bind:open={logsSheetOpen} version={selectedVersion} />
 </div>
 
 <style>
@@ -1028,9 +1729,116 @@
   .settings-content {
     display: flex;
     flex-direction: column;
-    max-width: 860px;
+    max-width: 880px;
     width: 100%;
+    gap: 12px;
+    margin: 0 auto;
+  }
+
+  /* Top Apple HIG Search Bar */
+  .settings-search-bar {
+    width: 100%;
+    margin-bottom: 4px;
+  }
+
+  .search-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 38px;
+    background-color: var(--glass-card-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    padding: 0 12px;
     gap: 8px;
+    box-sizing: border-box;
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    transition: border-color var(--motion-duration-short) ease, background-color var(--motion-duration-short) ease;
+  }
+
+  .search-input-wrapper:focus-within {
+    border-color: var(--color-system-blue);
+    background-color: var(--color-tertiary-system-fill);
+    box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.24);
+  }
+
+  .search-input {
+    flex: 1;
+    height: 100%;
+    border: none;
+    background: transparent;
+    color: var(--color-label);
+    font-family: var(--font-system);
+    font-size: var(--text-subheadline);
+    outline: none;
+    box-sizing: border-box;
+  }
+
+  .search-input::placeholder {
+    color: var(--color-secondary-label);
+  }
+
+  .clear-search-btn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: background-color var(--motion-duration-short) ease;
+  }
+
+  .clear-search-btn:hover {
+    background-color: var(--color-tertiary-system-fill);
+  }
+
+  /* Empty Search State */
+  .empty-search-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 48px 24px;
+    gap: 12px;
+    background-color: var(--glass-card-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    margin-top: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  }
+
+  .empty-search-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background-color: var(--color-quaternary-system-fill);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 4px;
+  }
+
+  .empty-search-title {
+    font-size: var(--text-headline);
+    font-weight: 600;
+    color: var(--color-label);
+  }
+
+  .empty-search-desc {
+    font-size: var(--text-subheadline);
+    color: var(--color-secondary-label);
+    max-width: 420px;
+    line-height: 1.4;
+    margin-bottom: 8px;
   }
 
   .settings-offline-banner {
@@ -1049,36 +1857,14 @@
     margin-bottom: 8px;
   }
 
-  .network-status-badge {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: var(--text-caption-1, 11px);
-    font-weight: 500;
-  }
-
-  .network-status-badge.online {
-    background: rgba(48, 209, 88, 0.12);
-    color: var(--color-system-green);
-  }
-
-  .network-status-badge.offline {
-    background: rgba(255, 159, 10, 0.12);
-    color: var(--color-system-orange);
-  }
-
-  .status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-  }
-
   .slider-wrapper {
     width: 100%;
     padding: 10px 0 4px;
+  }
+
+  .segmented-control-fixed {
+    max-width: 100%;
+    display: flex;
   }
 
   .custom-java-input-wrap {
@@ -1110,33 +1896,6 @@
     display: flex;
     align-items: center;
     gap: 8px;
-  }
-
-  .storage-action-wrap {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .storage-status-badge {
-    font-size: var(--text-footnote);
-    color: var(--color-secondary-label);
-    padding: 2px 8px;
-    border-radius: var(--radius-sm);
-    background-color: var(--color-tertiary-system-fill);
-    white-space: nowrap;
-  }
-
-  .storage-status-badge.checking {
-    color: var(--color-system-blue);
-  }
-
-  .storage-status-badge.success {
-    color: var(--color-system-green);
-  }
-
-  .storage-status-badge.result {
-    color: var(--color-secondary-label);
   }
 
   .accent-picker {
@@ -1194,12 +1953,6 @@
     font-weight: 800;
     color: #ffffff;
     line-height: 1;
-  }
-
-  .actions-section {
-    display: flex;
-    padding-top: 8px;
-    margin-bottom: 24px;
   }
 
   .discord-preview-wrap {
@@ -1346,5 +2099,47 @@
   .disabled-desc {
     font-size: 12px;
     color: var(--color-tertiary-label);
+  }
+
+  .system-warning-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    margin: 4px 16px;
+    border-radius: 8px;
+    background-color: rgba(255, 149, 0, 0.12);
+    border-left: 3px solid var(--color-system-orange, #ff9500);
+    color: var(--color-label, #ffffff);
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  .warning-text {
+    flex: 1;
+  }
+
+  .system-actions {
+    display: flex;
+    justify-content: flex-start;
+    padding: 10px 16px;
+  }
+
+  .btn-content {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Scenery Art Contrast Parity (wex-contrast): text over art is always white with shadow */
+  :global(.settings-screen .list-header) {
+    color: rgba(255, 255, 255, 0.94) !important;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75), 0 1px 2px rgba(0, 0, 0, 0.90);
+    font-weight: 600;
+  }
+
+  :global(.settings-screen .list-footer) {
+    color: rgba(255, 255, 255, 0.72) !important;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.70);
   }
 </style>

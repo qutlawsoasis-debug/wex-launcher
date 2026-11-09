@@ -23,6 +23,8 @@ pub struct LauncherConfig {
         alias = "prewarmGame"
     )]
     pub fast_start_jvm: bool,
+    #[serde(default, alias = "fastLaunch", alias = "fast_launch")]
+    pub fast_launch: bool,
 }
 
 impl Default for LauncherConfig {
@@ -36,6 +38,7 @@ impl Default for LauncherConfig {
             appearance: "dark".to_string(),
             accent: "blue".to_string(),
             fast_start_jvm: false,
+            fast_launch: false,
         }
     }
 }
@@ -1311,4 +1314,14 @@ pub struct ClearStorageCacheResultDto {
     pub formatted_freed: String,
     pub files_deleted: u32,
     pub status_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct DeepLinkActionDto {
+    pub kind: String,
+    pub target: String,
+    pub raw_uri: String,
+    pub title: String,
+    pub subtitle: String,
+    pub confirm_text: String,
 }

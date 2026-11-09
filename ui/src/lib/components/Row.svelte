@@ -25,6 +25,7 @@
     ariaPressed?: boolean;
     ariaLabel?: string;
     onclick?: () => void;
+    onkeydown?: (e: KeyboardEvent) => void;
     leading?: Snippet;
     trailing?: Snippet;
     children?: Snippet;
@@ -43,6 +44,7 @@
     ariaPressed,
     ariaLabel,
     onclick,
+    onkeydown,
     leading,
     trailing,
     children,
@@ -51,6 +53,15 @@
   const isInteractive = $derived(clickable || !!onclick);
   const cascadeDelayMs = $derived(index !== undefined ? Math.min(index, 7) * 25 : 0);
   const isCascade = $derived(index !== undefined);
+
+  function handleKeyDown(e: KeyboardEvent) {
+    if (disabled) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      if (e.key === ' ') e.preventDefault();
+      onclick?.();
+    }
+    onkeydown?.(e);
+  }
 </script>
 
 {#if isInteractive}
@@ -62,6 +73,7 @@
     style:--cascade-delay="{cascadeDelayMs}ms"
     disabled={disabled}
     onclick={onclick}
+    onkeydown={handleKeyDown}
     {role}
     aria-checked={ariaChecked}
     aria-pressed={ariaPressed}

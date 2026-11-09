@@ -1096,6 +1096,7 @@
                   }
                 }}
                 title={t('workshop.screenshot_fullscreen_title')}
+                aria-label={t('workshop.screenshot_aria', { name: shot.file_name })}
               >
                 <div class="screenshot-thumb-wrap">
                   <img

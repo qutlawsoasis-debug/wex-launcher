@@ -89,6 +89,7 @@ const defaultInvoke = vi.fn(async (cmd: string, args?: Record<string, any>, opti
       custom_java_path: null,
       discord_rpc: true,
       language: 'ru',
+      game_window_behavior: 'minimize',
     };
   }
   if (cmd === 'get_playtime_summary') {
@@ -160,6 +161,58 @@ const defaultInvoke = vi.fn(async (cmd: string, args?: Record<string, any>, opti
       has_timestamp: false,
     };
   }
+  if (cmd === 'get_system_info') {
+    return {
+      total_memory_mb: 16384,
+      free_memory_mb: 8192,
+      memory_display: '16.0 ГБ (свободно 8.0 ГБ)',
+      os_name: 'windows',
+      os_version: 'Windows 11 Pro 23H2 (сборка 22631.3593)',
+      launcher_version: '1.0.0',
+      data_dir: 'C:\\Users\\<user>\\AppData\\Roaming\\Wex',
+      cpu_name: 'AMD Ryzen 5 3600 6-Core Processor',
+      cpu_cores: 12,
+      gpu_name: 'NVIDIA GeForce GTX 1660 SUPER',
+      gpu_driver: '32.0.16.1742',
+      is_integrated_gpu: false,
+      disk_free_gb: 12.5,
+      disk_total_gb: 460.0,
+      disk_display: '12.5 ГБ свободно из 460.0 ГБ',
+      java_17: 'Mojang JRE 17 (17.0.8)',
+      java_21: 'Microsoft JDK 21 (21.0.12)',
+      warnings: ['Мало свободного места на диске (12.5 ГБ).'],
+      support_text: '=== О системе (Wex Support) ===\nОС: Windows 11\nCPU: AMD Ryzen 5\nGPU: GTX 1660 SUPER\n',
+    };
+  }
+  if (cmd === 'updater_install') {
+    if (args?.downloadUrl?.includes('fail')) {
+      throw new Error('Ошибка загрузки обновления');
+    }
+    return {
+      status: 'ready_to_restart',
+      message: 'Обновление успешно загружено',
+      version: args?.version || '1.1.0',
+    };
+  }
+  if (cmd === 'updater_restart') {
+    return null;
+  }
+  if (cmd === 'updater_open_download_url') {
+    return null;
+  }
+  if (cmd === 'updater_check') {
+    return {
+      update_available: false,
+      current_version: '1.0.0',
+      latest_version: '1.0.0',
+      notes: null,
+      download_url: null,
+      signature: null,
+      pub_date: null,
+      is_signed: false,
+      can_auto_update: false,
+    };
+  }
   return [];
 });
 
@@ -169,10 +222,18 @@ vi.mock('@tauri-apps/api/core', () => {
   };
 });
 
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(() => Promise.resolve(() => {})),
+  emit: vi.fn(() => Promise.resolve()),
+}));
+
 if (typeof window !== 'undefined') {
   (window as any).__TAURI_INTERNALS__ = {
     invoke: (cmd: string, args: any, options: any) => defaultInvoke(cmd, args, options),
     transformCallback: () => 1,
+  };
+  (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+    unregisterListener: () => {},
   };
 }
 
@@ -185,6 +246,9 @@ describe('Wex Launcher Screens', () => {
     (window as any).__TAURI_INTERNALS__ = {
       invoke: (cmd: string, args: any, options: any) => defaultInvoke(cmd, args, options),
       transformCallback: () => 1,
+    };
+    (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+      unregisterListener: () => {},
     };
   });
 
@@ -420,6 +484,136 @@ describe('Wex Launcher Screens', () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(target.querySelector('.update-banner')).toBeNull();
+
+    unmount(comp);
+  });
+
+  it('renders auto-update flow: "Обновить" button for signed release and transitions to "Перезапуск"', async () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        initialNews: [],
+        initialUpdateInfo: {
+          update_available: true,
+          current_version: '0.1.0',
+          latest_version: '0.2.0',
+          notes: 'Релиз с новыми возможностями',
+          download_url: 'https://example.com/wex-update.exe',
+          signature: 'untrusted comment: signature\nRWSomeBase64SignatureString1234567890==',
+          is_signed: true,
+          can_auto_update: true,
+        },
+      },
+    });
+
+    const banner = target.querySelector('.update-banner');
+    expect(banner).not.toBeNull();
+    expect(banner?.textContent).toContain('Доступна новая версия Wex 0.2.0');
+
+    // Signed release must display primary "Обновить" button
+    const updateBtn = Array.from(banner?.querySelectorAll('button') || []).find((b) =>
+      b.textContent?.includes('Обновить')
+    );
+    expect(updateBtn).not.toBeUndefined();
+
+    // Click "Обновить" to trigger download & install
+    updateBtn?.click();
+    await tick();
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Must transition to "ready_to_restart" state with "Перезапуск" button
+    expect(banner?.textContent).toContain('Обновление готово к установке');
+    const restartBtn = Array.from(banner?.querySelectorAll('button') || []).find((b) =>
+      b.textContent?.includes('Перезапуск')
+    );
+    expect(restartBtn).not.toBeUndefined();
+
+    unmount(comp);
+  });
+
+  it('renders unsigned release mode: only notify with download link button', async () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        initialNews: [],
+        initialUpdateInfo: {
+          update_available: true,
+          current_version: '0.1.0',
+          latest_version: '0.2.0',
+          notes: 'Неподписанный билд',
+          download_url: 'https://example.com/wex-unsigned.exe',
+          signature: null,
+          is_signed: false,
+          can_auto_update: false,
+        },
+      },
+    });
+
+    const banner = target.querySelector('.update-banner');
+    expect(banner).not.toBeNull();
+    expect(banner?.textContent).toContain('Неподписанная сборка');
+
+    // Must show "Перейти к загрузке", not "Обновить"
+    expect(banner?.textContent).toContain('Перейти к загрузке');
+    expect(banner?.textContent).not.toContain('Обновить');
+
+    unmount(comp);
+  });
+
+  it('renders rollback error state when update installation fails and allows retry', async () => {
+    const comp = mount(PlayScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+        playerName: 'Steve',
+        initialNews: [],
+        initialUpdateInfo: {
+          update_available: true,
+          current_version: '0.1.0',
+          latest_version: '0.2.0',
+          notes: 'Тест ошибки',
+          download_url: 'https://example.com/fail-download.exe',
+          signature: 'untrusted comment: signature\nRWSomeBase64SignatureString1234567890==',
+          is_signed: true,
+          can_auto_update: true,
+        },
+      },
+    });
+
+    const banner = target.querySelector('.update-banner');
+    expect(banner).not.toBeNull();
+
+    const updateBtn = Array.from(banner?.querySelectorAll('button') || []).find((b) =>
+      b.textContent?.includes('Обновить')
+    );
+    updateBtn?.click();
+    await tick();
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Error state after failed download
+    expect(banner?.textContent).toContain('Не удалось обновить лаунчер');
+    expect(banner?.textContent).toContain('Прежняя версия сохранена');
+    const retryBtn = Array.from(banner?.querySelectorAll('button') || []).find((b) =>
+      b.textContent?.includes('Повторить')
+    );
+    expect(retryBtn).not.toBeUndefined();
+
+    unmount(comp);
+  });
+
+  it('renders SettingsScreen with launcher update check row', async () => {
+    const comp = mount(SettingsScreen, { target });
+    await tick();
+
+    expect(target.textContent).toContain('Самообновление лаунчера');
+    const checkBtn = Array.from(target.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Проверить')
+    );
+    expect(checkBtn).not.toBeUndefined();
 
     unmount(comp);
   });
@@ -682,7 +876,7 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders SettingsScreen with RAM slider, Java options, Discord RPC, graphics presets, and About Wex', () => {
+  it('renders SettingsScreen with RAM slider, Java options, Discord RPC, graphics presets, and About Wex', async () => {
     const comp = mount(SettingsScreen, { target });
     expect(target.textContent).toContain('Тема оформления');
     expect(target.textContent).toContain('Цветовой акцент');
@@ -690,16 +884,29 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Уменьшение прозрачности');
     expect(target.textContent).toContain('Выделение оперативной памяти');
     expect(target.textContent).toContain('Графический пресет');
+    expect(target.textContent).toContain('Поведение окна');
+    expect(target.textContent).toContain('Во время игры');
+    expect(target.textContent).toContain('Оставить');
+    expect(target.textContent).toContain('Свернуть');
+    expect(target.textContent).toContain('Скрыть в трей');
     expect(target.textContent).toContain('Выбор исполняемого файла Java');
     expect(target.textContent).toContain('Discord Rich Presence');
     expect(target.textContent).toContain('Сворачивать в трей при запуске игры');
     expect(target.textContent).toContain('Язык интерфейса');
     expect(target.textContent).toContain('О программе');
-    expect(target.textContent).toContain('Tauri 2');
+    expect(target.textContent).toContain('Windows 10/11, 64-бит');
     expect(target.textContent).toContain('Проверить файлы игры');
     expect(target.textContent).toContain('Очистить кэш');
     expect(target.textContent).not.toContain('.minecraft');
     expect(target.textContent).toContain('Wex');
+    expect(target.textContent).toContain('Журнал событий и краш-дампы');
+
+    const openLogsBtn = target.querySelector('[data-testid="btn-open-logs-sheet"]') as HTMLElement;
+    expect(openLogsBtn).not.toBeNull();
+    openLogsBtn.click();
+    await tick();
+    expect(target.textContent).toContain('latest.log');
+
     // Storage section (SPEC items 40–41: wex-verify-files)
     expect(target.textContent).toContain('Хранилище');
     expect(target.textContent).toContain('Проверить файлы игры');
@@ -724,6 +931,26 @@ describe('Wex Launcher Screens', () => {
     expect(clearBtn).not.toBeNull();
     expect((verifyBtn as HTMLButtonElement).disabled).toBe(true);
     expect((clearBtn as HTMLButtonElement).disabled).toBe(true);
+    unmount(comp);
+  });
+
+  it('renders SettingsScreen with authentic System Info section, warnings, and support copy button', async () => {
+    const comp = mount(SettingsScreen, { target });
+    await new Promise((r) => setTimeout(r, 50));
+    await tick();
+
+    expect(target.textContent).toContain('О системе');
+    expect(target.textContent).toContain('Java (1.21.1)');
+    expect(target.textContent).toContain('Мало свободного места на диске');
+
+    const copyBtn = Array.from(target.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Скопировать для поддержки')
+    );
+    expect(copyBtn).toBeDefined();
+
+    copyBtn?.click();
+    await tick();
+
     unmount(comp);
   });
 
@@ -779,7 +1006,6 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).not.toContain('ИГРАЕТ В ИГРУ');
     expect(target.textContent).not.toContain('Модов: 142');
     expect(target.textContent).not.toContain('auramc');
-
     unmount(comp);
   });
 
@@ -1450,5 +1676,83 @@ describe('Wex Launcher Screens', () => {
     expect(escaped).toBe(true);
 
     window.removeEventListener('wex-escape', onEscape);
+  });
+
+  describe('SettingsScreen Search Filtering Tests', () => {
+    it('renders Apple HIG search bar with placeholder', () => {
+      const comp = mount(SettingsScreen, { target });
+      const searchInput = target.querySelector('.search-input') as HTMLInputElement | null;
+      expect(searchInput).not.toBeNull();
+      expect(searchInput?.placeholder).toContain('Поиск настроек');
+      unmount(comp);
+    });
+
+    it('filters settings by keyword "память", displaying Memory group and hiding unrelated groups', async () => {
+      const comp = mount(SettingsScreen, { target });
+      await tick();
+
+      const searchInput = target.querySelector('.search-input') as HTMLInputElement;
+      expect(searchInput).not.toBeNull();
+
+      searchInput.value = 'память';
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+      await tick();
+
+      expect(target.textContent).toContain('Память и производительность');
+      expect(target.textContent).toContain('Выделение оперативной памяти');
+      // Unrelated groups should be hidden
+      expect(target.textContent).not.toContain('Звук и музыка');
+      expect(target.textContent).not.toContain('Уведомления о друзьях');
+
+      unmount(comp);
+    });
+
+    it('filters settings by keyword "музыка", showing Sound & Music group', async () => {
+      const comp = mount(SettingsScreen, { target });
+      await tick();
+
+      const searchInput = target.querySelector('.search-input') as HTMLInputElement;
+      expect(searchInput).not.toBeNull();
+
+      searchInput.value = 'музыка';
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+      await tick();
+
+      expect(target.textContent).toContain('Звук и музыка');
+      expect(target.textContent).toContain('Фоновая музыка');
+      expect(target.textContent).not.toContain('Выделение оперативной памяти');
+
+      unmount(comp);
+    });
+
+    it('displays empty state when search matches nothing and allows clearing search', async () => {
+      const comp = mount(SettingsScreen, { target });
+      await tick();
+
+      const searchInput = target.querySelector('.search-input') as HTMLInputElement;
+      expect(searchInput).not.toBeNull();
+
+      searchInput.value = 'xyz_nonexistent_setting_12345';
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+      await tick();
+
+      const emptyState = target.querySelector('.empty-search-state');
+      expect(emptyState).not.toBeNull();
+      expect(emptyState?.textContent).toContain('Ничего не найдено');
+      expect(emptyState?.textContent).toContain('xyz_nonexistent_setting_12345');
+
+      // Clear search via clear button
+      const clearBtn = emptyState?.querySelector('button');
+      expect(clearBtn).not.toBeNull();
+      clearBtn?.click();
+      await tick();
+
+      // Empty state should disappear and groups should be restored
+      expect(target.querySelector('.empty-search-state')).toBeNull();
+      expect(target.textContent).toContain('Память и производительность');
+      expect(target.textContent).toContain('Внешний вид');
+
+      unmount(comp);
+    });
   });
 });

@@ -53,6 +53,7 @@
 </script>
 
 <script lang="ts">
+  import { onMount } from 'svelte';
   import List from '../components/List.svelte';
   import Row from '../components/Row.svelte';
   import Button from '../components/Button.svelte';
@@ -60,6 +61,7 @@
   import Icon from '../components/icons/Icon.svelte';
   import OfflineState from '../components/OfflineState.svelte';
   import ErrorState from '../components/ErrorState.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
   import { network } from '../design/network.svelte';
   import { createIdleInterval } from '../design/idleManager';
   import { t, i18n } from '../i18n';
@@ -90,6 +92,17 @@
   let modsDownloadedCount = $state(0);
   let joinProgress = $state(0);
 
+  function getDownloadingModsLabel(count: number, current: number): string {
+    if (count <= 0) return t('lobby.step_download_mods_many', { count: 0 });
+    const key = count % 10 === 1 && count % 100 !== 11
+      ? 'lobby.step_download_mods_one'
+      : (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20)
+          ? 'lobby.step_download_mods_few'
+          : 'lobby.step_download_mods_many');
+    const base = t(key, { count });
+    return current > 0 ? `${base}${t('lobby.step_download_mods_progress', { current, total: count })}` : base;
+  }
+
   // Tunnel retry state
   let isRetryingTunnel = $state(false);
 
@@ -112,6 +125,59 @@
   let activeRoom = $state<LobbyRoom | null>(null);
   $effect(() => {
     activeRoom = initialRoom ?? null;
+  });
+
+  function checkHash() {
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const p = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const step = p.get('step');
+      if (step === 'downloading' || step === 'downloading_mods') {
+        isConnecting = true;
+        joinStep = 'downloading_mods';
+        modsToDownloadCount = 3;
+        modsDownloadedCount = 1;
+        joinProgress = 50;
+        joinStepMessage = t('lobby.step_msg_downloading_mod', { current: modsDownloadedCount, total: modsToDownloadCount, mod: 'sodium-extra-0.5.4.jar', downloaded: '1.2', size: '2.4' });
+      } else if (step === 'checking' || step === 'checking_mods') {
+        isConnecting = true;
+        joinStep = 'checking_mods';
+        joinProgress = 20;
+        joinStepMessage = t('lobby.step_msg_checking_manifest');
+      } else if (step === 'connecting') {
+        isConnecting = true;
+        joinStep = 'connecting';
+        joinProgress = 90;
+        joinStepMessage = t('lobby.step_msg_connecting_tunnel');
+      } else if (step === 'reset' || step === 'idle') {
+        isConnecting = false;
+        joinStep = 'idle';
+        modsToDownloadCount = 0;
+        modsDownloadedCount = 0;
+        joinProgress = 0;
+        joinStepMessage = '';
+      }
+    }
+  }
+
+  onMount(() => {
+    checkHash();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('hashchange', checkHash);
+      (window as any).__setLobbyJoinState = (step: JoinStep, progress = 50, count = 3, downloaded = 1, msg = '') => {
+        isConnecting = true;
+        joinStep = step;
+        joinProgress = progress;
+        modsToDownloadCount = count;
+        modsDownloadedCount = downloaded;
+        joinStepMessage = msg || t('lobby.step_msg_downloading_mod', { current: downloaded, total: count, mod: 'sodium-extra-0.5.4.jar', downloaded: '1.2', size: '2.4' });
+      };
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('hashchange', checkHash);
+        delete (window as any).__setLobbyJoinState;
+      }
+    };
   });
 
   // Cloud open rooms state
@@ -561,19 +627,14 @@
           />
         </div>
       {:else if cloudRooms.length === 0}
-        <div class="cloud-status-card empty">
-          <div class="status-icon-circle neutral">
-            <Icon name="server" size={24} color="var(--color-secondary-label)" />
-          </div>
-          <h2 class="status-title">{t('lobby.no_open_rooms')}</h2>
-          <p class="status-desc">
-            {t('lobby.no_cloud_rooms_desc')}
-          </p>
-          <div class="status-actions">
-            <Button variant="secondary" size="regular" onclick={fetchCloudRooms} loading={isLoadingCloudRooms}>
-              {t('lobby.refresh')}
-            </Button>
-          </div>
+        <div class="cloud-empty-wrap">
+          <EmptyState
+            icon="server"
+            title={t('lobby.no_open_rooms')}
+            description={t('lobby.no_cloud_rooms_desc')}
+            actionText={t('lobby.refresh')}
+            onaction={fetchCloudRooms}
+          />
         </div>
       {:else}
         <List header={t('lobby.open_rooms_header', { count: cloudRooms.length })}>
@@ -873,17 +934,17 @@
               >
                 <div class="step-icon">
                   {#if joinStep === 'downloading_mods' || joinStep === 'connecting'}
-                    <Icon name="check" size={12} color="var(--color-system-green)" />
+                    <Icon name="check" size={13} color="var(--color-system-green)" />
                   {:else if joinStep === 'checking_mods'}
                     <div class="step-spinner"></div>
                   {:else}
                     <span class="step-dot"></span>
                   {/if}
                 </div>
-                <span class="step-label">{t('lobby.step_check_mods')}</span>
+                <div class="step-text-wrap">
+                  <span class="step-label">{t('lobby.step_check_mods')}</span>
+                </div>
               </div>
-
-              <span class="step-arrow">→</span>
 
               <!-- Step 2: Докачиваем N модов -->
               <div
@@ -894,19 +955,19 @@
               >
                 <div class="step-icon">
                   {#if joinStep === 'connecting'}
-                    <Icon name="check" size={12} color="var(--color-system-green)" />
+                    <Icon name="check" size={13} color="var(--color-system-green)" />
                   {:else if joinStep === 'downloading_mods'}
                     <div class="step-spinner"></div>
                   {:else}
                     <span class="step-dot"></span>
                   {/if}
                 </div>
-                <span class="step-label" data-testid="download-mods-label">
-                  {t('lobby.step_download_mods', { count: modsToDownloadCount })}
-                </span>
+                <div class="step-text-wrap">
+                  <span class="step-label" data-testid="download-mods-label">
+                    {getDownloadingModsLabel(modsToDownloadCount, modsDownloadedCount)}
+                  </span>
+                </div>
               </div>
-
-              <span class="step-arrow">→</span>
 
               <!-- Step 3: Подключаемся -->
               <div
@@ -921,7 +982,9 @@
                     <span class="step-dot"></span>
                   {/if}
                 </div>
-                <span class="step-label">{t('lobby.step_connecting')}</span>
+                <div class="step-text-wrap">
+                  <span class="step-label">{t('lobby.step_connecting')}</span>
+                </div>
               </div>
             </div>
 
@@ -990,10 +1053,13 @@
 
         <div class="world-picker">
           <label class="picker-label" for="world-select">{t('lobby.select_world')}</label>
-          <div class="world-options" id="world-select" data-testid="world-select">
+          <div class="world-options" id="world-select" data-testid="world-select" role="radiogroup" aria-label={t('lobby.select_world')}>
             {#each localWorlds as w (w.id || w.name)}
               <button
                 type="button"
+                role="radio"
+                aria-checked={selectedWorldId === w.id}
+                aria-label="{w.name}, {w.version}"
                 class="world-opt-btn"
                 class:selected={selectedWorldId === w.id}
                 onclick={() => (selectedWorldId = w.id)}
@@ -1083,19 +1149,14 @@
           {/each}
         </List>
       {:else}
-        <div class="cloud-status-card empty lan-empty">
-          <div class="status-icon-circle neutral">
-            <Icon name="server" size={24} color="var(--color-secondary-label)" />
-          </div>
-          <h3 class="status-title">{t('lobby.no_lan_worlds_title')}</h3>
-          <p class="status-desc">
-            {t('lobby.no_lan_worlds_desc')}
-          </p>
-          <div class="status-actions">
-            <Button variant="secondary" size="regular" onclick={fetchLanWorlds} loading={isLoadingLan}>
-              {t('lobby.refresh_btn')}
-            </Button>
-          </div>
+        <div class="lan-empty-wrap">
+          <EmptyState
+            icon="server"
+            title={t('lobby.no_lan_worlds_title')}
+            description={t('lobby.no_lan_worlds_desc')}
+            actionText={t('lobby.refresh_btn')}
+            onaction={fetchLanWorlds}
+          />
         </div>
       {/if}
     </div>
@@ -1187,40 +1248,6 @@
     text-align: center;
     gap: 12px;
     box-sizing: border-box;
-  }
-
-  .status-icon-circle {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 4px;
-  }
-
-  .status-icon-circle.neutral {
-    background-color: var(--color-quaternary-system-fill);
-  }
-
-  .status-title {
-    font-size: var(--text-title-3);
-    font-weight: 600;
-    color: var(--color-label);
-    margin: 0;
-  }
-
-  .status-desc {
-    font-size: var(--text-subheadline);
-    color: var(--color-secondary-label);
-    font-weight: 500;
-    margin: 0;
-    max-width: 420px;
-    line-height: 1.4;
-  }
-
-  .status-actions {
-    margin-top: 8px;
   }
 
   .loading-spinner {
@@ -1328,15 +1355,16 @@
     margin: 0;
   }
 
-  /* Guest Join Steps Pipeline */
+  /* Guest Join Steps Pipeline (Apple HIG Vertical Stepper) */
   .join-steps-card {
     display: flex;
     flex-direction: column;
     gap: 12px;
     padding: 16px;
-    border-radius: var(--radius-md);
-    background-color: var(--color-tertiary-system-fill);
+    border-radius: var(--radius-lg, 12px);
+    background-color: var(--color-secondary-system-fill);
     border: 1px solid var(--glass-border);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   }
 
   .join-steps-header {
@@ -1346,14 +1374,14 @@
   }
 
   .join-steps-title {
-    font-size: var(--text-footnote);
+    font-size: var(--text-footnote, 13px);
     font-weight: 600;
     color: var(--color-label);
     margin: 0;
   }
 
   .join-steps-pct {
-    font-size: var(--text-caption-1);
+    font-size: var(--text-caption-1, 12px);
     font-weight: 700;
     color: var(--color-system-blue);
     font-variant-numeric: tabular-nums;
@@ -1361,7 +1389,7 @@
 
   .join-progress-bar-track {
     width: 100%;
-    height: 6px;
+    height: 4px;
     border-radius: var(--radius-pill);
     background-color: var(--color-quaternary-system-fill);
     overflow: hidden;
@@ -1371,46 +1399,64 @@
     height: 100%;
     background-color: var(--color-system-blue);
     border-radius: var(--radius-pill);
-    transition: width 0.25s ease;
+    transition: width var(--motion-duration-short, 160ms) ease;
   }
 
   .join-steps-list {
     display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: 8px;
-    flex-wrap: wrap;
+    margin-top: 4px;
+    position: relative;
   }
 
   .join-step-item {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: var(--text-caption-1);
+    gap: 12px;
+    font-size: var(--text-callout, 14px);
+    color: var(--color-secondary-label);
+    font-weight: 500;
+    padding: 8px 12px;
+    border-radius: var(--radius-md, 10px);
+    background-color: var(--color-quaternary-system-fill);
+    border: 1px solid transparent;
+    transition: background-color var(--motion-duration-short, 160ms) ease,
+                border-color var(--motion-duration-short, 160ms) ease,
+                color var(--motion-duration-short, 160ms) ease;
+  }
+
+  .join-step-item.active {
+    color: var(--color-label);
+    font-weight: 600;
+    background-color: var(--color-tertiary-system-fill);
+    border-color: rgba(0, 122, 255, 0.25);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  }
+
+  .join-step-item.done {
     color: var(--color-secondary-label);
     font-weight: 500;
   }
 
-  .join-step-item.active {
-    color: var(--color-system-blue);
-    font-weight: 600;
-  }
-
-  .join-step-item.done {
-    color: var(--color-system-green);
-    font-weight: 600;
-  }
-
-  .step-arrow {
-    color: var(--color-tertiary-label);
-    font-size: 11px;
-  }
-
   .step-icon {
-    width: 14px;
-    height: 14px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
+    background-color: var(--color-tertiary-system-fill);
+    flex-shrink: 0;
+    transition: background-color var(--motion-duration-short, 160ms) ease;
+  }
+
+  .join-step-item.active .step-icon {
+    background-color: rgba(0, 122, 255, 0.15);
+  }
+
+  .join-step-item.done .step-icon {
+    background-color: rgba(48, 209, 88, 0.15);
   }
 
   .step-dot {
@@ -1421,17 +1467,34 @@
   }
 
   .step-spinner {
-    width: 10px;
-    height: 10px;
-    border: 2px solid var(--color-quaternary-system-fill);
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(0, 122, 255, 0.25);
     border-top-color: var(--color-system-blue);
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
   }
 
+  .step-text-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .step-label {
+    line-height: 1.3;
+  }
+
+
   .step-details-message {
-    font-size: var(--text-caption-2);
+    font-size: var(--text-caption-1, 12px);
     color: var(--color-secondary-label);
+    padding: 8px 12px;
+    margin-top: 2px;
+    border-radius: var(--radius-sm, 6px);
+    background-color: var(--color-quaternary-system-fill);
+    font-weight: 500;
+    line-height: 1.3;
   }
 
   .join-form {
@@ -1561,27 +1624,31 @@
   .code-box {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding: 8px 16px;
-    border-radius: var(--radius-md);
-    background-color: rgba(0, 122, 255, 0.12);
-    border: 1px solid rgba(0, 122, 255, 0.25);
+    gap: 4px;
+    padding: 12px 18px;
+    border-radius: var(--radius-lg, 12px);
+    background-color: var(--color-secondary-system-fill);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    min-width: 140px;
   }
 
   .code-label {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-system-blue);
+    font-size: var(--text-caption-2, 11px);
+    font-weight: 600;
+    color: var(--color-secondary-label);
+    line-height: 1.2;
+    letter-spacing: 0;
   }
 
   .code-value-large {
-    font-family: var(--font-mono);
-    font-size: 28px;
-    font-weight: 800;
-    letter-spacing: 0.15em;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1.1;
     color: var(--color-label);
+    user-select: all;
   }
 
   .code-actions {
@@ -1749,26 +1816,32 @@
   }
 
   .tunnel-error-card {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 4px 10px;
-    border-radius: var(--radius-md);
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: var(--radius-md, 10px);
     background-color: rgba(255, 69, 58, 0.08);
-    border: 1px solid rgba(255, 69, 58, 0.2);
+    border: 1px solid rgba(255, 69, 58, 0.22);
     flex-wrap: wrap;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .tunnel-error-info {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+    flex-wrap: wrap;
+    flex: 1;
   }
 
   .tunnel-error-text {
-    font-size: var(--text-caption-1);
+    font-size: var(--text-caption-1, 12px);
     color: var(--color-system-red);
     font-weight: 500;
+    line-height: 1.3;
   }
 
   .modsync-banner {

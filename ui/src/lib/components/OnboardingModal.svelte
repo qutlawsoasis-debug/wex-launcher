@@ -469,7 +469,7 @@
 
               <div class="feature-item">
                 <div class="feature-icon">
-                  <Icon name="folder" size={18} color="var(--color-system-indigo)" />
+                  <Icon name="folder" size={18} color="var(--color-system-indigo, #5e5ce6)" />
                 </div>
                 <div class="feature-text">
                   <span class="feature-headline">{t('onboarding.feat_order_title')}</span>

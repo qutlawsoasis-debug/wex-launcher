@@ -79,7 +79,9 @@ describe('WardrobeScreen Component Tests', () => {
     });
 
     const comp = mount(WardrobeScreen, { target });
-    await new Promise((r) => setTimeout(r, 60));
+    for (let i = 0; i < 20 && !target.textContent?.includes('Cool Knight'); i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
 
     expect(target.textContent).toContain('Cool Knight');
     expect(target.textContent).toContain('Классическая');
@@ -116,7 +118,9 @@ describe('WardrobeScreen Component Tests', () => {
     });
 
     const comp = mount(WardrobeScreen, { target });
-    await new Promise((r) => setTimeout(r, 60));
+    for (let i = 0; i < 20 && !target.textContent?.includes('Wizard Blue'); i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
 
     // Find select button «Выбрать» in history list
     const selectBtn = Array.from(target.querySelectorAll<HTMLButtonElement>('.history-actions button')).find((el) =>
@@ -160,7 +164,9 @@ describe('WardrobeScreen Component Tests', () => {
     });
 
     const comp = mount(WardrobeScreen, { target });
-    await new Promise((r) => setTimeout(r, 60));
+    for (let i = 0; i < 20 && !target.textContent?.includes('Wizard Blue'); i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
 
     const delBtn = target.querySelector('.history-actions button[aria-label="Удалить из истории"]') as HTMLButtonElement;
     expect(delBtn).not.toBeNull();
