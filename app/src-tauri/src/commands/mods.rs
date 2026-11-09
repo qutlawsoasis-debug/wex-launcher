@@ -231,7 +231,7 @@ pub fn toggle_mod_impl(
     let current_path = mods_dir.join(file_name);
 
     if !current_path.exists() {
-        return Err(format!("Файл мода не найден: {}", file_name));
+        return Err("Файл мода не найден. Обновите список модов.".to_string());
     }
 
     let target_name = if enabled {
@@ -241,7 +241,7 @@ pub fn toggle_mod_impl(
             .to_string()
     } else {
         if file_name.ends_with(".disabled") {
-            return Err("Мод уже выключен".to_string());
+            return Err("Мод уже выключен. Вы можете включить его переключателем.".to_string());
         }
         format!("{}.disabled", file_name)
     };
@@ -282,7 +282,7 @@ pub fn add_custom_mod_impl(
 ) -> Result<ModEntry, String> {
     let src = PathBuf::from(source_path);
     if !src.is_file() {
-        return Err(format!("Исходный файл не найден: {}", source_path));
+        return Err("Исходный файл мода не найден. Выберите файл заново.".to_string());
     }
 
     let file_name = src
@@ -291,7 +291,7 @@ pub fn add_custom_mod_impl(
         .ok_or_else(|| "Недопустимое имя файла".to_string())?;
 
     if !file_name.ends_with(".jar") {
-        return Err("Поддерживаются только файлы модов с расширением .jar".to_string());
+        return Err("Поддерживаются только файлы модификаций с расширением .jar.".to_string());
     }
 
     let mods_dir = paths.instance_dir(version).join("mods");
@@ -321,7 +321,7 @@ pub fn delete_custom_mod_impl(
 ) -> Result<(), String> {
     // Prevent directory traversal
     if file_name.contains("..") || file_name.contains('/') || file_name.contains('\\') {
-        return Err("Недопустимое имя файла мода".to_string());
+        return Err("Недопустимое имя файла мода. Проверьте имя файла.".to_string());
     }
 
     let inst_dir = paths.instance_dir(version);
@@ -329,7 +329,7 @@ pub fn delete_custom_mod_impl(
     let target_path = mods_dir.join(file_name);
 
     if !target_path.exists() {
-        return Err(format!("Файл мода не найден: {}", file_name));
+        return Err("Файл мода не найден. Обновите список модов.".to_string());
     }
 
     let pack_mods = get_pack_mod_names(&inst_dir, paths, version);
@@ -345,7 +345,7 @@ pub fn delete_custom_mod_impl(
             .any(|p| base_file_name.contains(p) || id.to_lowercase().contains(p));
 
     if is_pack_mod {
-        return Err("Моды из официального пака Wex защищены от удаления".to_string());
+        return Err("Моды из официального пака защищены от удаления. Вы можете отключить их переключателем.".to_string());
     }
 
     fs::remove_file(&target_path).map_err(|e| format!("Не удалось удалить файл мода: {}", e))?;

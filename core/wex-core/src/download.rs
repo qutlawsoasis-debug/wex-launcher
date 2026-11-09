@@ -831,7 +831,10 @@ mod tests {
         // 2. Verify conversion to clear IpcError
         let ipc_err: wex_ipc::error::IpcError = wex_err.into();
         assert_eq!(ipc_err.code, "IO_DISK_FULL");
-        assert_eq!(ipc_err.message, "Недостаточно свободного места на диске");
+        assert_eq!(
+            ipc_err.message,
+            "На диске закончилось свободное место. Освободите место на диске и повторите попытку."
+        );
 
         // 3. Verify installed file was never touched
         assert_eq!(fs::read(&target).unwrap(), original_data);

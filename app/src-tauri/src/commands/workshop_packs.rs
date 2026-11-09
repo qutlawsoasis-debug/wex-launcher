@@ -588,7 +588,7 @@ pub fn add_pack_file_impl(
 ) -> Result<String, String> {
     let src = PathBuf::from(source_path);
     if !src.is_file() {
-        return Err(format!("Файл не найден: {}", source_path));
+        return Err("Выбранный файл не найден на диске. Выберите файл заново.".to_string());
     }
 
     let file_name = src
@@ -636,12 +636,12 @@ pub fn delete_pack_file_impl(
     };
 
     if is_file_from_pack(file_name, folder_name, &game_dir) {
-        return Err("Нельзя удалить файл, входящий в официальную сборку Aura-Pack".to_string());
+        return Err("Файлы из официальной сборки защищены от удаления. Вы можете отключить их в настройках.".to_string());
     }
 
     let target = game_dir.join(folder_name).join(file_name);
     if !target.exists() {
-        return Err(format!("Файл не найден: {}", file_name));
+        return Err("Файл не найден. Обновите список файлов.".to_string());
     }
 
     if target.is_dir() {

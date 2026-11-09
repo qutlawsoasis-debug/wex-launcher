@@ -236,7 +236,9 @@ pub async fn social_list_screenshots(
 pub async fn workshop_open_path(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
     if !p.exists() {
-        return Err(format!("Путь не существует: {}", path));
+        return Err(
+            "Указанный путь не существует на диске. Проверьте правильность папки.".to_string(),
+        );
     }
 
     #[cfg(target_os = "windows")]
@@ -291,7 +293,7 @@ where
 {
     let p = PathBuf::from(path);
     if !p.exists() || !p.is_file() {
-        return Err(format!("Файл скриншота не найден: {}", path));
+        return Err("Файл скриншота не найден на диске. Обновите список скриншотов.".to_string());
     }
     set_clipboard(&p)
 }
@@ -308,7 +310,10 @@ fn system_set_clipboard_image(path: &Path) -> Result<(), String> {
             .status()
             .map_err(|e| format!("Ошибка копирования изображения: {}", e))?;
         if !status.success() {
-            return Err("Не удалось скопировать изображение в буфер обмена".to_string());
+            return Err(
+                "Не удалось скопировать изображение в буфер обмена. Попробуйте ещё раз."
+                    .to_string(),
+            );
         }
     }
     #[cfg(not(target_os = "windows"))]
