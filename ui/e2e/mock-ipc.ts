@@ -12,10 +12,6 @@ export interface MockIpcOptions {
 export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
   const mode = options.mode;
 
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('wex_onboarding_completed', 'true');
-  }
-
   const callbacks = new Map<number, (data: any) => void>();
   let nextId = 1;
   const listeners = new Map<string, number[]>();

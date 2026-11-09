@@ -15,9 +15,15 @@ const SECTIONS = [
 const THEMES = ['dark', 'light'] as const;
 const BACKGROUNDS = ['day', 'morning', 'night', 'sunset'] as const;
 
-async function setupPageListeners(page: Page) {
+async function setupPageListeners(page: Page, markOnboardingCompleted = true) {
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
+
+  if (markOnboardingCompleted) {
+    await page.addInitScript(() => {
+      localStorage.setItem('wex_onboarding_completed', 'true');
+    });
+  }
 
   await page.route('**', (route) => {
     const url = route.request().url();
@@ -560,4 +566,49 @@ test.describe('Wex UI Smoke Tests', () => {
       });
     }
   }
+
+  // Test 6: Dedicated First Launch Onboarding Scenario
+  test('first launch shows onboarding modal, skip dismisses it and sets completed', async ({
+    page,
+  }) => {
+    const { consoleErrors, pageErrors } = await setupPageListeners(page, false);
+    await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
+
+    await page.goto('/?theme=dark');
+    await page.waitForTimeout(300);
+
+    // 1. Verify OnboardingModal is visible on clean launch
+    const onboardingCard = page.locator('.onboarding-card');
+    await expect(onboardingCard).toBeVisible({ timeout: 4000 });
+    await assertViewIntegrity(
+      page,
+      'First Launch Onboarding Modal',
+      consoleErrors,
+      pageErrors
+    );
+
+    // 2. Click "Пропустить"
+    const skipBtn = page.locator('.skip-action, button:has-text("Пропустить")').first();
+    await expect(skipBtn).toBeVisible();
+    await skipBtn.click();
+    await page.waitForTimeout(300);
+
+    // 3. Verify modal is closed
+    await expect(onboardingCard).not.toBeVisible();
+
+    // 4. Verify completed flag in localStorage
+    const isCompleted = await page.evaluate(() => localStorage.getItem('wex_onboarding_completed'));
+    expect(isCompleted).toBe('true');
+
+    // 5. Reload page and verify modal is NOT shown again
+    await page.reload();
+    await page.waitForTimeout(300);
+    await expect(onboardingCard).not.toBeVisible();
+    await assertViewIntegrity(
+      page,
+      'Post-Onboarding Play Screen',
+      consoleErrors,
+      pageErrors
+    );
+  });
 });

@@ -443,8 +443,6 @@
       }
       if (screen === 'onboarding' || params.get('onboarding') === 'true') {
         showOnboarding = true;
-      } else if (params.get('onboarding') === 'false' || screen) {
-        showOnboarding = false;
       }
       if (t === 'light' || t === 'dark') {
         theme.setAppearance(t);
@@ -530,14 +528,7 @@
     }
 
     // Check first-launch onboarding state
-    const initialParams = new URLSearchParams(window.location.hash.replace(/^#/, '') || window.location.search.replace(/^\?/, ''));
-    const isTargetedScreen = initialParams.has('screen') || initialParams.has('tab');
-    if (
-      !isTargetedScreen &&
-      initialParams.get('onboarding') !== 'false' &&
-      typeof localStorage !== 'undefined' &&
-      localStorage.getItem('wex_onboarding_completed') !== 'true'
-    ) {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('wex_onboarding_completed') !== 'true') {
       showOnboarding = true;
     }
 
