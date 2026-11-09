@@ -30,6 +30,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/icon.ico"
     ],
@@ -51,7 +52,7 @@
     "updater": {
       "pubkey": "",
       "endpoints": [
-        "https://raw.githubusercontent.com/qutlawsoasis-debug/wex-launcher/main/latest.json"
+        "https://github.com/qutlawsoasis-debug/wex-launcher/releases/latest/download/latest.json"
       ]
     }
   }

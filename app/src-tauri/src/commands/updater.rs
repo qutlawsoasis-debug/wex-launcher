@@ -15,7 +15,7 @@ use wex_social::launcher_update::{
 use super::launch::PlayState;
 
 pub const DEFAULT_UPDATE_MANIFEST_URL: &str =
-    "https://raw.githubusercontent.com/qutlawsoasis-debug/wex-launcher/main/latest.json";
+    "https://github.com/qutlawsoasis-debug/wex-launcher/releases/latest/download/latest.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LauncherUpdateInfoDto {
