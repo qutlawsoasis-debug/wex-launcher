@@ -39,6 +39,7 @@ pub fn run() {
                 }
             }
         }))
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();

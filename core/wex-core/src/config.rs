@@ -165,6 +165,7 @@ pub struct LauncherConfig {
     pub accent: String,
 
     #[serde(
+    #[serde(
         default,
         alias = "fastStartJvm",
         alias = "fast_start_jvm",
@@ -182,6 +183,13 @@ pub struct LauncherConfig {
         alias = "minimize_to_tray_on_game_start"
     )]
     pub minimize_to_tray: bool,
+
+    #[serde(
+        default = "default_true",
+        alias = "friendNotifications",
+        alias = "friend_notifications"
+    )]
+    pub friend_notifications: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -270,6 +278,10 @@ fn default_java_mode() -> String {
     "auto".to_string()
 }
 
+fn default_true() -> bool {
+    true
+}
+
 impl Default for LauncherConfig {
     fn default() -> Self {
         Self {
@@ -290,6 +302,7 @@ impl Default for LauncherConfig {
             fast_start_jvm: false,
             window_state: WindowStateConfig::default(),
             minimize_to_tray: default_minimize_to_tray(),
+            friend_notifications: true,
         }
     }
 }
@@ -318,6 +331,7 @@ impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
             fast_start_jvm: ipc.fast_start_jvm,
             window_state: WindowStateConfig::default(),
             minimize_to_tray: default_minimize_to_tray(),
+            friend_notifications: default_true(),
         }
     }
 }

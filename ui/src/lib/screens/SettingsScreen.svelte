@@ -25,6 +25,7 @@
   import { theme } from '../design/theme.svelte';
   import { AccentPresets, type AccentColor } from '../design/colors';
   import { i18n, t, type SupportedLocale } from '../i18n';
+  import { friendsLive } from '../services/friendsLive';
 
   // System & configuration state
   let selectedVersion = $state('1.21.1');
@@ -38,6 +39,7 @@
   let detectedJava17 = $state<string | null>(null);
   let detectedJava21 = $state<string | null>(null);
   let discordRpc = $state(true);
+  let friendNotifications = $state(true);
   let backgroundMusic = $state(true);
   let fastStartJvm = $state(false);
   let language = $state<string>(i18n.locale);
@@ -190,6 +192,7 @@
         detected_java_21?: string | null;
         discord_rpc?: boolean;
         fast_start_jvm?: boolean;
+        friend_notifications?: boolean;
         language?: string;
         appearance?: string;
         accent?: string;
@@ -211,6 +214,10 @@
         if (cfg.detected_java_21 !== undefined) detectedJava21 = cfg.detected_java_21;
         if (cfg.discord_rpc !== undefined) discordRpc = cfg.discord_rpc;
         if (cfg.fast_start_jvm !== undefined) fastStartJvm = cfg.fast_start_jvm;
+        if (cfg.friend_notifications !== undefined) {
+          friendNotifications = cfg.friend_notifications;
+        }
+        friendsLive.setNotificationsEnabled(friendNotifications);
         if (cfg.language === 'ru' || cfg.language === 'en') {
           language = cfg.language;
           i18n.setLocale(cfg.language);
@@ -270,6 +277,7 @@
           detected_java_21: detectedJava21,
           discord_rpc: discordRpc,
           fast_start_jvm: fastStartJvm,
+          friend_notifications: friendNotifications,
           language,
           appearance: theme.appearance,
           accent: theme.accent,
@@ -293,6 +301,7 @@
         custom_java_path?: string | null;
         discord_rpc?: boolean;
         fast_start_jvm?: boolean;
+        friend_notifications?: boolean;
         language?: string;
         minimize_to_tray?: boolean;
       }>('reset_settings');
@@ -304,6 +313,12 @@
         customJavaPath = '';
         if (reset.discord_rpc !== undefined) discordRpc = reset.discord_rpc;
         if (reset.fast_start_jvm !== undefined) fastStartJvm = reset.fast_start_jvm;
+        if (reset.friend_notifications !== undefined) {
+          friendNotifications = reset.friend_notifications;
+        } else {
+          friendNotifications = true;
+        }
+        friendsLive.setNotificationsEnabled(friendNotifications);
         if (reset.language === 'ru' || reset.language === 'en') {
           language = reset.language;
           i18n.setLocale(reset.language);
@@ -321,6 +336,8 @@
       customJavaPath = '';
       discordRpc = true;
       fastStartJvm = false;
+      friendNotifications = true;
+      friendsLive.setNotificationsEnabled(true);
       language = 'ru';
       minimizeToTray = true;
       i18n.setLocale('ru');
@@ -678,6 +695,23 @@
             onchange={(checked) => {
               backgroundMusic = checked;
               saveMusicSettings();
+            }}
+          />
+        {/snippet}
+      </Row>
+
+      <Row
+        title={i18n.locale === 'en' ? 'Friend Notifications' : 'Уведомления о друзьях'}
+        subtitle={i18n.locale === 'en' ? 'Notify when friends join the game or invite you to a lobby' : 'Оповещать, когда друзья заходят в игру или приглашают в лобби'}
+      >
+        {#snippet trailing()}
+          <Toggle
+            ariaLabel={i18n.locale === 'en' ? 'Friend notifications' : 'Уведомления о друзьях'}
+            checked={friendNotifications}
+            onchange={(checked) => {
+              friendNotifications = checked;
+              friendsLive.setNotificationsEnabled(checked);
+              saveConfig();
             }}
           />
         {/snippet}
