@@ -25,7 +25,7 @@
     options: Option[] | string[];
     value?: string;
     disabled?: boolean;
-    size?: 'small' | 'regular';
+    size?: string;
     ariaLabel?: string;
     onchange?: (val: string) => void;
   }
@@ -34,7 +34,7 @@
     options,
     value = $bindable(''),
     disabled = false,
-    size = 'regular',
+    size: _size,
     ariaLabel,
     onchange,
   }: Props = $props();
@@ -64,7 +64,7 @@
   let v = 0;
   let target = P;
   let goal = P;
-  let pressed = false;
+  let pressed = $state(false);
   let moved = false;
   let downX = 0;
   let raf: number | null = null;
@@ -311,7 +311,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   bind:this={trackEl}
-  class="apple-segmented-control liquid-glass {size}"
+  class="apple-segmented-control liquid-glass"
   class:disabled
   role="tablist"
   tabindex={disabled ? -1 : 0}
@@ -333,7 +333,7 @@
   </div>
 
   <!-- Morphing / Stretching Liquid Drop -->
-  <div bind:this={dropEl} class="drop" aria-hidden="true">
+  <div bind:this={dropEl} class="drop" class:on={pressed} aria-hidden="true">
     <div bind:this={lensEl} class="lens-in">
       <i></i>
       {#each normalizedOptions as opt, i (opt.value)}
@@ -391,11 +391,6 @@
     display: block;
   }
 
-  .apple-segmented-control.liquid-glass.small {
-    height: 32px;
-    border-radius: 16px;
-  }
-
   .apple-segmented-control.liquid-glass.disabled {
     opacity: 0.45;
     pointer-events: none;
@@ -424,12 +419,6 @@
     line-height: 1;
     pointer-events: none;
     box-sizing: border-box;
-  }
-
-  .apple-segmented-control.liquid-glass.small .labels,
-  .apple-segmented-control.liquid-glass.small .lens-in {
-    height: 32px;
-    font-size: 13px;
   }
 
   .labels span {
@@ -461,11 +450,6 @@
       inset 0 -1px 1px rgba(255, 255, 255, 0.1);
     transition: background-color 200ms ease;
     box-sizing: border-box;
-  }
-
-  .apple-segmented-control.liquid-glass.small .drop {
-    height: 26px;
-    border-radius: 13px;
   }
 
   .drop.on {
@@ -543,10 +527,6 @@
     outline: 2px solid var(--color-system-blue, #007aff);
     outline-offset: -2px;
     border-radius: 17px;
-  }
-
-  .apple-segmented-control.liquid-glass.small .segment-button:focus-visible {
-    border-radius: 13px;
   }
 
   .sr-only {

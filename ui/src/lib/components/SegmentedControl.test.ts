@@ -193,18 +193,18 @@ describe('SegmentedControl Component - Liquid Glass', () => {
     expect(drop?.style.transition).toContain('150ms');
   });
 
-  it('renders small size variant with 32px track height classes', async () => {
+  it('renders standard uniform 40px Liquid Glass track without small variant', async () => {
     comp = mount(SegmentedControl, {
       target,
       props: {
         options: defaultOptions,
         value: 'opt1',
-        size: 'small',
       },
     });
     await tick();
 
-    const control = target.querySelector('.apple-segmented-control.liquid-glass.small');
+    const control = target.querySelector('.apple-segmented-control.liquid-glass');
     expect(control).toBeTruthy();
+    expect(control?.classList.contains('small')).toBe(false);
   });
 });

@@ -1053,7 +1053,6 @@
                   options={javaModeOptions}
                   value={javaMode}
                   onchange={handleJavaModeChange}
-                  size="small"
                 />
               </div>
             {/snippet}
@@ -1198,7 +1197,6 @@
                   options={graphicsOptions}
                   value={graphicsPreset}
                   onchange={handlePresetChange}
-                  size="small"
                 />
               </div>
             {/snippet}
@@ -1293,7 +1291,6 @@
                     theme.setAppearance(v as 'dark' | 'light' | 'auto');
                     saveConfig();
                   }}
-                  size="small"
                 />
               </div>
             {/snippet}
@@ -1341,7 +1338,6 @@
                   value={language}
                   ariaLabel="Язык интерфейса"
                   onchange={handleLanguageChange}
-                  size="small"
                 />
               </div>
             {/snippet}
@@ -1362,7 +1358,6 @@
                     theme.setEffectsMode(val as any);
                     saveConfig();
                   }}
-                  size="small"
                 />
               </div>
             {/snippet}

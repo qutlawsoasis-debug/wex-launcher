@@ -706,7 +706,6 @@
               <SegmentedControl
                 options={displayModeOptions}
                 bind:value={displayMode}
-                size="small"
               />
             </div>
           {/if}
@@ -717,7 +716,6 @@
                 <SegmentedControl
                   options={animationOptions}
                   bind:value={selectedAnimation}
-                  size="small"
                 />
               </div>
               <button
@@ -735,7 +733,6 @@
               <SegmentedControl
                 options={viewOptions}
                 bind:value={selectedView}
-                size="small"
               />
             </div>
           {/if}

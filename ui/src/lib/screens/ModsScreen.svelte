@@ -344,7 +344,7 @@
       <SearchField placeholder={t('mods.search_placeholder')} bind:value={searchQuery} />
     </div>
     <div class="tabs-wrap">
-      <SegmentedControl options={filterTabs} bind:value={filterTab} size="small" />
+      <SegmentedControl options={filterTabs} bind:value={filterTab} />
     </div>
   </div>
 
