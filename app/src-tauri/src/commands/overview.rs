@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use tauri::State;
 
 use wex_core::config::WexPaths;
+use wex_core::playtime::PlaytimeStore;
 use wex_ipc::commands::{
     ExtrasImportOldLauncherRequest, SocialCheckLauncherUpdateRequest, SocialGetNewsRequest,
     SocialGetNewsResponse,
@@ -81,40 +82,47 @@ pub fn format_play_time(total_seconds: u64) -> String {
 }
 
 pub fn get_playtime_internal(paths: &WexPaths) -> PlayTimeDto {
-    let stats_file = paths.root.join("stats.json");
-    if let Ok(bytes) = fs::read(&stats_file) {
-        if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-            let total_seconds = val
-                .get("total_play_time_seconds")
-                .or_else(|| val.get("total_seconds"))
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let total_launches = val
-                .get("total_game_launches")
-                .or_else(|| val.get("total_launches"))
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0) as u32;
-            let last_played_utc = val
-                .get("last_played_utc")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let formatted = format_play_time(total_seconds);
-            let summary = format!("В игре: {formatted}  •  Запусков: {total_launches}");
-            return PlayTimeDto {
-                total_seconds,
-                total_launches,
-                last_played_utc,
-                formatted_play_time: formatted,
-                summary_text: summary,
-            };
+    let mut store = PlaytimeStore::load_or_default(&paths.playtime_file);
+
+    // Legacy migration: if playtime_file is empty/missing, but stats.json exists, migrate it
+    if store.total_seconds == 0 && store.total_launches == 0 {
+        let stats_file = paths.root.join("stats.json");
+        if stats_file.is_file() {
+            if let Ok(bytes) = fs::read(&stats_file) {
+                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                    let total_seconds = val
+                        .get("total_play_time_seconds")
+                        .or_else(|| val.get("total_seconds"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let total_launches = val
+                        .get("total_game_launches")
+                        .or_else(|| val.get("total_launches"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let last_played_utc = val
+                        .get("last_played_utc")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+
+                    if total_seconds > 0 || total_launches > 0 {
+                        store.total_seconds = total_seconds;
+                        store.total_launches = total_launches;
+                        store.last_played_utc = last_played_utc;
+                        let _ = store.save(&paths.playtime_file);
+                    }
+                }
+            }
         }
     }
+
+    let summary = store.get_summary(None);
     PlayTimeDto {
-        total_seconds: 0,
-        total_launches: 0,
-        last_played_utc: None,
-        formatted_play_time: "0 мин.".to_string(),
-        summary_text: "Время в игре: 0 мин. • 0 запусков".to_string(),
+        total_seconds: summary.total_seconds,
+        total_launches: summary.total_launches as u32,
+        last_played_utc: summary.last_played_utc,
+        formatted_play_time: summary.total_formatted,
+        summary_text: summary.summary_text,
     }
 }
 
@@ -123,34 +131,32 @@ pub fn record_playtime_internal(
     added_seconds: u64,
     inc_launch: bool,
 ) -> PlayTimeDto {
-    let stats_file = paths.root.join("stats.json");
-    let mut current = get_playtime_internal(paths);
-    current.total_seconds += added_seconds;
+    let mut store = PlaytimeStore::load_or_default(&paths.playtime_file);
+    if added_seconds > 0 {
+        store.total_seconds = store.total_seconds.saturating_add(added_seconds);
+    }
     if inc_launch {
-        current.total_launches += 1;
+        store.total_launches = store.total_launches.saturating_add(1);
     }
-    current.last_played_utc = Some(chrono::Utc::now().to_rfc3339());
-    current.formatted_play_time = format_play_time(current.total_seconds);
-    current.summary_text = format!(
-        "В игре: {}  •  Запусков: {}",
-        current.formatted_play_time, current.total_launches
-    );
+    if added_seconds > 0 || inc_launch {
+        store.last_played_utc = Some(chrono::Utc::now().to_rfc3339());
+    }
+    let _ = store.save(&paths.playtime_file);
 
-    let val = serde_json::json!({
-        "total_play_time_seconds": current.total_seconds,
-        "total_game_launches": current.total_launches,
-        "last_played_utc": current.last_played_utc,
-    });
-    if let Some(parent) = stats_file.parent() {
-        let _ = fs::create_dir_all(parent);
+    // Remove legacy stats.json if present to prevent split-brain state
+    let stats_file = paths.root.join("stats.json");
+    if stats_file.exists() {
+        let _ = fs::remove_file(stats_file);
     }
-    if let Ok(json_str) = serde_json::to_string_pretty(&val) {
-        if let Some(parent) = stats_file.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        let _ = fs::write(&stats_file, json_str);
+
+    let summary = store.get_summary(None);
+    PlayTimeDto {
+        total_seconds: summary.total_seconds,
+        total_launches: summary.total_launches as u32,
+        last_played_utc: summary.last_played_utc,
+        formatted_play_time: summary.total_formatted,
+        summary_text: summary.summary_text,
     }
-    current
 }
 
 // ---------------------------------------------------------------------------
@@ -447,22 +453,48 @@ pub async fn apply_import_internal(
             .collect();
 
         for s_path in [&root_servers_dat, &v120_servers_dat, &v121_servers_dat] {
-            if let Some(parent) = s_path.parent() {
-                let _ = fs::create_dir_all(parent);
-            }
-
-            let mut root = wex_net::load_servers_dat(s_path).unwrap_or_else(|_| {
-                wex_net::NbtTag::Compound(vec![(
+            if s_path.exists() {
+                match wex_net::load_servers_dat(s_path) {
+                    Ok(mut root) => {
+                        wex_net::merge_pack_servers(&mut root, &pack_entries);
+                        if let Err(e) = wex_net::save_servers_dat(s_path, &root) {
+                            errors.push(format!(
+                                "Не удалось сохранить серверы в '{}': {}",
+                                s_path.display(),
+                                e
+                            ));
+                        }
+                    }
+                    Err(e) => {
+                        // Safe non-destructive behavior: never overwrite or clobber an unreadable/corrupted servers.dat!
+                        // Preserve the player's file as-is and report an explicit error.
+                        errors.push(format!(
+                            "Не удалось прочитать существующий файл серверов '{}': {}. Файл сохранён без перезаписи.",
+                            s_path.display(),
+                            e
+                        ));
+                    }
+                }
+            } else {
+                if let Some(parent) = s_path.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                let mut root = wex_net::NbtTag::Compound(vec![(
                     "servers".to_string(),
                     wex_net::NbtTag::List {
                         tag_id: 10,
                         elements: Vec::new(),
                     },
-                )])
-            });
-
-            wex_net::merge_pack_servers(&mut root, &pack_entries);
-            let _ = wex_net::save_servers_dat(s_path, &root);
+                )]);
+                wex_net::merge_pack_servers(&mut root, &pack_entries);
+                if let Err(e) = wex_net::save_servers_dat(s_path, &root) {
+                    errors.push(format!(
+                        "Не удалось сохранить серверы в '{}': {}",
+                        s_path.display(),
+                        e
+                    ));
+                }
+            }
         }
         imported_servers_count = req.servers.len();
     }
@@ -571,29 +603,25 @@ pub async fn apply_import_internal(
         }
     }
 
-    // 3c. Import playtime statistics if present in old launcher
+    // 3c. Import playtime statistics if present in old launcher directly into unified playtime store
     if let Ok(old_data) = import_old_launcher_internal(&req.old_launcher_dir) {
         if old_data.total_play_time_seconds > 0 || old_data.total_game_launches > 0 {
+            let mut store = PlaytimeStore::load_or_default(&paths.playtime_file);
+            if store.total_seconds == 0 {
+                store.total_seconds = old_data.total_play_time_seconds;
+            }
+            if store.total_launches == 0 {
+                store.total_launches = old_data.total_game_launches as u64;
+            }
+            if store.last_played_utc.is_none() {
+                store.last_played_utc = Some(chrono::Utc::now().to_rfc3339());
+            }
+            let _ = store.save(&paths.playtime_file);
+
+            // Clean up legacy stats.json if present
             let stats_file = paths.root.join("stats.json");
-            let mut current = get_playtime_internal(paths);
-            if current.total_seconds == 0 {
-                current.total_seconds = old_data.total_play_time_seconds;
-            }
-            if current.total_launches == 0 {
-                current.total_launches = old_data.total_game_launches;
-            }
-            current.formatted_play_time = format_play_time(current.total_seconds);
-            current.summary_text = format!(
-                "В игре: {}  •  Запусков: {}",
-                current.formatted_play_time, current.total_launches
-            );
-            let val = serde_json::json!({
-                "total_play_time_seconds": current.total_seconds,
-                "total_game_launches": current.total_launches,
-                "last_played_utc": current.last_played_utc,
-            });
-            if let Ok(json_str) = serde_json::to_string_pretty(&val) {
-                let _ = fs::write(&stats_file, json_str);
+            if stats_file.exists() {
+                let _ = fs::remove_file(stats_file);
             }
         }
     }
@@ -1362,7 +1390,7 @@ mod tests {
         assert_eq!(rec.total_seconds, 3700);
         assert_eq!(rec.total_launches, 1);
         assert_eq!(rec.formatted_play_time, "1 ч. 1 мин.");
-        assert_eq!(rec.summary_text, "В игре: 1 ч. 1 мин.  •  Запусков: 1");
+        assert_eq!(rec.summary_text, "В игре: 1 ч. 1 мин. • Запусков: 1");
 
         // 3. Persistent across reloads
         let loaded = get_playtime_internal(&paths);
@@ -1378,5 +1406,91 @@ mod tests {
         assert_eq!(format_play_time(3600), "1 ч. 0 мин.");
         assert_eq!(format_play_time(3665), "1 ч. 1 мин.");
         assert_eq!(format_play_time(7500), "2 ч. 5 мин.");
+    }
+
+    #[test]
+    fn test_playtime_unified_store_and_sync() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+
+        // 1. Record via overview record_playtime_internal
+        record_playtime_internal(&paths, 5000, true);
+
+        // 2. PlaytimeStore used by launch.rs and shell.rs must reflect the exact same data
+        let store = wex_core::playtime::PlaytimeStore::load_or_default(&paths.playtime_file);
+        assert_eq!(
+            store.total_seconds, 5000,
+            "PlaytimeStore must see playtime recorded via overview"
+        );
+        assert_eq!(store.total_launches, 1);
+
+        // 3. Record session via core PlaytimeStore
+        let mut store2 = store;
+        store2.record_session("1.20.1", 1200);
+        store2.save(&paths.playtime_file).unwrap();
+
+        // 4. overview get_playtime_internal must reflect updated time
+        let overview = get_playtime_internal(&paths);
+        assert_eq!(
+            overview.total_seconds, 6200,
+            "overview must see session recorded via PlaytimeStore"
+        );
+        assert_eq!(overview.total_launches, 2);
+    }
+
+    #[tokio::test]
+    async fn test_apply_import_servers_corrupted_file_preservation_and_error() {
+        let tmp = tempdir().unwrap();
+        let wex_root = tmp.path().join("Wex");
+        let paths = WexPaths::new(Some(wex_root.clone()));
+        let core = MockLauncherCore::new();
+
+        // Create an unreadable / corrupted servers.dat in root
+        let root_servers_dat = paths.root.join("servers.dat");
+        fs::create_dir_all(&paths.root).unwrap();
+        let corrupted_content = b"INVALID_CORRUPTED_NBT_BINARY_DATA_XYZ_123";
+        fs::write(&root_servers_dat, corrupted_content).unwrap();
+
+        let req = ApplyImportRequest {
+            old_launcher_dir: tmp.path().to_string_lossy().to_string(),
+            import_nickname: false,
+            nickname: None,
+            import_ram: false,
+            ram_mb: None,
+            import_version: false,
+            selected_version: Some("1.20.1".to_string()),
+            graphics_preset: None,
+            import_servers: true,
+            servers: vec![ImportedServerDto {
+                name: "New Imported Server".to_string(),
+                ip: "play.newserver.net".to_string(),
+                icon: None,
+            }],
+            import_skins: false,
+            skins: Vec::new(),
+            capes: Vec::new(),
+            import_worlds: false,
+            worlds: Vec::new(),
+        };
+
+        let res = apply_import_internal(&paths, &core, req).await.unwrap();
+
+        // 1. Must report an error about corrupted servers.dat
+        assert!(
+            !res.success,
+            "Must report success=false when servers.dat is corrupted"
+        );
+        assert!(
+            res.errors.iter().any(|e| e.contains("servers.dat")),
+            "Errors must include details about corrupted servers.dat: {:?}",
+            res.errors
+        );
+
+        // 2. Corrupted file must NOT be destroyed/overwritten
+        let current_bytes = fs::read(&root_servers_dat).unwrap();
+        assert_eq!(
+            current_bytes, corrupted_content,
+            "Corrupted servers.dat must not be silently clobbered or wiped"
+        );
     }
 }
