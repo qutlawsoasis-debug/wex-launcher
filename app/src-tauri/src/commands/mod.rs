@@ -5,6 +5,7 @@ pub mod lobby;
 pub mod mods;
 pub mod music;
 pub mod network;
+pub mod onboarding;
 pub mod overview;
 pub mod report;
 pub mod servers;

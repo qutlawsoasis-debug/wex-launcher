@@ -941,7 +941,7 @@
     border-radius: var(--radius-md);
   }
 
-  .screenshot-glance-img {
+  .glance-img {
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -1179,16 +1179,6 @@
   .header-playtime-meta {
     color: var(--color-secondary-label);
     font-weight: var(--font-weight-regular);
-  }
-
-  .running-indicator-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background-color: var(--color-system-green);
-    margin-right: 6px;
-    box-shadow: 0 0 6px rgba(48, 209, 88, 0.6);
   }
 
   .dock-primary-action {

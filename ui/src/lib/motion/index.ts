@@ -14,6 +14,8 @@
  *   or when window is minimized.
  */
 
+export * from '../design/motion';
+
 import type { TransitionConfig } from 'svelte/transition';
 import { motionState, type EffectsMode } from './state.svelte';
 

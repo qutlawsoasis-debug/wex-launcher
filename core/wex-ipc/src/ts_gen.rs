@@ -134,6 +134,8 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ReleaseNoteItemDto::decl(),
         ReleaseNoteVersionDto::decl(),
         UpdateCheckResultDto::decl(),
+        OnboardingSpecsDto::decl(),
+        OnboardingCompleteRequest::decl(),
     ];
     for decl in models_decls {
         models_ts.push_str(&format!("export {};\n\n", decl));

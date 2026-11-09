@@ -229,6 +229,10 @@ pub fn run() {
             commands::window::window_on_game_launch,
             commands::window::window_on_game_exit,
             commands::window::window_raise_and_focus,
+            // Onboarding commands (SPEC 1.1 / Apple HIG Onboarding)
+            commands::onboarding::onboarding_get_specs,
+            commands::onboarding::onboarding_complete,
+            commands::onboarding::onboarding_prewarm_game,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

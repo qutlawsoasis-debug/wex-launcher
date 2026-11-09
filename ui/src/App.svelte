@@ -28,6 +28,7 @@
   import ShowcaseScreen from './lib/screens/ShowcaseScreen.svelte';
   import CrashSheet from './lib/components/CrashSheet.svelte';
   import MusicDiskWidget from './lib/components/MusicDiskWidget.svelte';
+  import OnboardingModal from './lib/components/OnboardingModal.svelte';
   import type { CrashDiagnosisDto } from './lib/ipc/generated/models';
   import { initIdleManager, setGameRunning, createIdleInterval } from './lib/design/idleManager';
   import { friendsLive, parseWexJoinUri } from './lib/services/friendsLive';
@@ -81,6 +82,7 @@
   let progressSpeed = $state('');
   let launchError = $state<unknown>(null);
   let showImportWizard = $state(false);
+  let showOnboarding = $state(false);
 
   $effect(() => {
     motionState.setGameRunning(isGameRunning);
@@ -353,6 +355,9 @@
       } else {
         showImportWizard = false;
       }
+      if (screen === 'onboarding' || params.get('onboarding') === 'true') {
+        showOnboarding = true;
+      }
       if (t === 'light' || t === 'dark') {
         theme.setAppearance(t);
       }
@@ -428,6 +433,18 @@
         activeTab = 'lobby';
         void friendsLive.handleJoin(joinCode);
       }
+    }
+
+    // Check first-launch onboarding state
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('wex_onboarding_completed') !== 'true') {
+      showOnboarding = true;
+    }
+
+    function handleShowOnboardingEvent() {
+      showOnboarding = true;
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('wex-show-onboarding', handleShowOnboardingEvent);
     }
 
     applyHashRoute();
@@ -577,6 +594,7 @@
       window.removeEventListener('hashchange', applyHashRoute);
       if (typeof window !== 'undefined') {
         window.removeEventListener('online', checkNetwork);
+        window.removeEventListener('wex-show-onboarding', handleShowOnboardingEvent);
       }
       cleanupNet();
       unlistenLiveNotifs();
@@ -693,7 +711,7 @@
           {:else if activeTab === 'mods'}
             <ModsScreen />
           {:else if activeTab === 'settings'}
-            <SettingsScreen />
+            <SettingsScreen onopenonboarding={() => { showOnboarding = true; }} />
           {:else if activeTab === 'showcase'}
             <ShowcaseScreen />
           {/if}
@@ -720,6 +738,20 @@
       activeTab = tab;
     }}
     ontoast={addToast}
+  />
+
+  <!-- First Launch Onboarding Modal (SPEC 1.1 / Apple HIG) -->
+  <OnboardingModal
+    bind:open={showOnboarding}
+    oncomplete={(data) => {
+      playerName = data.nickname;
+      selectedVersion = data.version;
+      loadProfile();
+      addToast('success', 'Настройка завершена', `Добро пожаловать в Wex, ${data.nickname}!`);
+      if (data.launchImmediately) {
+        handleLaunch();
+      }
+    }}
   />
 </div>
 
