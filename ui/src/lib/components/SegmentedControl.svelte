@@ -2,10 +2,10 @@
   Apple HIG Liquid Glass Segmented Control Component
   Reference benchmark: C:\Users\Public\agy-multiuser\status\segmented-liquid-glass.html
   Specifications:
-  - Track: 40px height (small: 32px), border-radius 20px (small: 16px)
+  - Track: 40px height, border-radius 20px
   - Dark: background rgba(120,120,128,.22), border 0.5px rgba(255,255,255,.16), blur 20px saturate(180%)
   - Light: background rgba(118,118,128,.14), border 0.5px rgba(0,0,0,.08)
-  - Drop: 34px height (small: 26px), border-radius 17px (small: 13px), 3px padding from track edges
+  - Drop: 34px height, border-radius 17px, 3px padding from track edges
   - Dark drop: rgba(255,255,255,.13), on-press .20, inset highlight & top gradient
   - Light drop: #ffffff, shadow 0 1px 3px rgba(0,0,0,.12), on-press #f5f5f7
   - Physics: spring v += (goal - x) * 0.05; v *= 0.8; stretch = min(|v|*1.2, 14) px
@@ -69,6 +69,16 @@
   let downX = 0;
   let raf: number | null = null;
   let resizeObserver: ResizeObserver | null = null;
+  let prevOptionsLength = $state(0);
+
+  let rmStartTime = 0;
+  let rmStartX = 0;
+  let rmDeltaX = 0;
+  const RM_DURATION = 150; // 150ms per Apple HIG
+
+  function easeOutCubic(t: number): number {
+    return 1 - Math.pow(1 - t, 3);
+  }
 
   function isReducedMotion(): boolean {
     if (typeof window === 'undefined') return false;
@@ -109,16 +119,28 @@
     });
   }
 
-  function frame() {
-    if (isReducedMotion()) {
+  function reducedMotionFrame(timestamp: number) {
+    if (!rmStartTime) rmStartTime = timestamp;
+    const elapsed = timestamp - rmStartTime;
+    const progress = Math.min(1, elapsed / RM_DURATION);
+    const eased = easeOutCubic(progress);
+
+    x = rmStartX + rmDeltaX * eased;
+    goal = x;
+    v = 0;
+    applyFrame(x, 0);
+
+    if (progress < 1) {
+      raf = requestAnimationFrame(reducedMotionFrame);
+    } else {
       x = target;
       goal = target;
-      v = 0;
       applyFrame(target, 0);
       raf = null;
-      return;
     }
+  }
 
+  function frame() {
     goal += (target - goal) * (pressed ? 0.2 : 1);
     v += (goal - x) * 0.05;
     v *= 0.8;
@@ -138,23 +160,62 @@
   }
 
   function kick() {
-    if (isReducedMotion()) {
-      if (dropEl && lensEl) {
-        dropEl.style.transition = 'transform 150ms cubic-bezier(0.2, 0.9, 0.3, 1), width 150ms ease';
-        lensEl.style.transition = 'transform 150ms cubic-bezier(0.2, 0.9, 0.3, 1)';
-      }
-      applyFrame(target, 0);
-      return;
-    }
-
     if (dropEl && lensEl) {
       dropEl.style.transition = 'background-color 200ms ease';
       lensEl.style.transition = 'none';
     }
 
-    if (!raf) {
-      raf = requestAnimationFrame(frame);
+    if (raf !== null) {
+      cancelAnimationFrame(raf);
+      raf = null;
     }
+
+    if (isReducedMotion()) {
+      if (Math.abs(x - target) < 0.5) {
+        x = target;
+        goal = target;
+        applyFrame(target, 0);
+        return;
+      }
+      rmStartTime = 0;
+      rmStartX = x;
+      rmDeltaX = target - rmStartX;
+      raf = requestAnimationFrame(reducedMotionFrame);
+      return;
+    }
+
+    raf = requestAnimationFrame(frame);
+  }
+
+  function stopAnimation() {
+    if (raf !== null) {
+      cancelAnimationFrame(raf);
+      raf = null;
+    }
+    pressed = false;
+    dropEl?.classList.remove('on');
+    x = target;
+    goal = target;
+    v = 0;
+    applyFrame(target, 0);
+  }
+
+  function handleVisibilityChange() {
+    if (typeof document !== 'undefined' && document.hidden) {
+      stopAnimation();
+    }
+  }
+
+  function handleBlur() {
+    stopAnimation();
+  }
+
+  function handleLostPointerCapture() {
+    stopAnimation();
+  }
+
+  function handlePointerCancel() {
+    stopAnimation();
   }
 
   function measure() {
@@ -249,14 +310,6 @@
     }
   }
 
-  function handlePointerCancel() {
-    if (!pressed) return;
-    pressed = false;
-    dropEl?.classList.remove('on');
-    target = P + activeIndex * S;
-    kick();
-  }
-
   function handleKeyDown(event: KeyboardEvent) {
     if (disabled) return;
     const n = normalizedOptions.length;
@@ -283,9 +336,13 @@
   }
 
   $effect(() => {
-    // React to external value or options array changes
+    const currentLen = normalizedOptions.length;
     const curIdx = activeIndex;
-    if (S > 0) {
+
+    if (currentLen !== prevOptionsLength) {
+      prevOptionsLength = currentLen;
+      measure();
+    } else if (S > 0) {
       target = P + curIdx * S;
       kick();
     }
@@ -299,29 +356,42 @@
       });
       resizeObserver.observe(trackEl);
     }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('blur', handleBlur);
+    }
   });
 
   onDestroy(() => {
-    if (raf) cancelAnimationFrame(raf);
+    stopAnimation();
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('blur', handleBlur);
+    }
     resizeObserver?.disconnect();
   });
 </script>
 
 <!-- Outer Liquid Glass Track -->
+<!-- svelte-ignore a11y_interactive_supports_focus -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   bind:this={trackEl}
   class="apple-segmented-control liquid-glass"
   class:disabled
-  role="tablist"
-  tabindex={disabled ? -1 : 0}
+  role="radiogroup"
   aria-label={ariaLabel}
-  aria-orientation="horizontal"
+  aria-disabled={disabled ? 'true' : undefined}
   data-n={normalizedOptions.length}
   onpointerdown={handlePointerDown}
   onpointermove={handlePointerMove}
   onpointerup={handlePointerUp}
   onpointercancel={handlePointerCancel}
+  onlostpointercapture={handleLostPointerCapture}
 >
   <!-- Base Labels Layer (under drop) -->
   <div bind:this={labelsEl} class="labels" aria-hidden="true">
@@ -343,7 +413,7 @@
     </div>
   </div>
 
-  <!-- Interactive / Accessible Tab Buttons Layer -->
+  <!-- Interactive / Accessible Radio Buttons Layer -->
   <div
     class="buttons-layer"
     style:grid-template-columns="{P}px repeat({normalizedOptions.length}, {S > 0 ? S : 80}px) {P}px"
@@ -353,11 +423,13 @@
       {@const isSelected = i === activeIndex}
       <button
         type="button"
-        role="tab"
+        role="radio"
         class="segment-button"
         class:selected={isSelected}
-        aria-selected={isSelected}
-        tabindex={isSelected ? 0 : -1}
+        aria-checked={isSelected}
+        aria-disabled={disabled ? 'true' : undefined}
+        disabled={disabled}
+        tabindex={disabled ? -1 : (isSelected ? 0 : -1)}
         bind:this={buttonEls[i]}
         onclick={(e) => {
           e.stopPropagation();
@@ -501,7 +573,7 @@
     color: #000000;
   }
 
-  /* Accessible Interactive Tab Buttons Layer */
+  /* Accessible Interactive Radio Buttons Layer */
   .buttons-layer {
     position: absolute;
     inset: 0;
@@ -541,16 +613,91 @@
     border: 0;
   }
 
-  /* Reduced Motion */
-  @media (prefers-reduced-motion: reduce) {
-    .drop,
-    .lens-in {
-      transition: transform 150ms cubic-bezier(0.2, 0.9, 0.3, 1), width 150ms ease !important;
+  /* Reduce Transparency & High Contrast (L9) */
+  @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    .apple-segmented-control.liquid-glass {
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+      background: #1c1c1e !important;
+      border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    }
+    :global([data-theme="light"]) .apple-segmented-control.liquid-glass {
+      background: #e5e5ea !important;
+      border: 1px solid rgba(0, 0, 0, 0.25) !important;
+    }
+    .drop {
+      background: #3a3a3c !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+    }
+    .drop::after {
+      display: none !important;
+    }
+    :global([data-theme="light"]) .drop {
+      background: #ffffff !important;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2) !important;
+    }
+    .labels span {
+      color: #aeaeb2 !important;
+    }
+    :global([data-theme="light"]) .labels span {
+      color: #48484a !important;
+    }
+    .lens-in span {
+      color: #ffffff !important;
+    }
+    :global([data-theme="light"]) .lens-in span {
+      color: #000000 !important;
     }
   }
 
-  :global([data-reduce-motion="true"]) .drop,
-  :global([data-reduce-motion="true"]) .lens-in {
-    transition: transform 150ms cubic-bezier(0.2, 0.9, 0.3, 1), width 150ms ease !important;
+  :global([data-reduce-transparency="true"]) .apple-segmented-control.liquid-glass,
+  :global([data-high-contrast="true"]) .apple-segmented-control.liquid-glass {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: #1c1c1e !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  }
+
+  :global([data-theme="light"][data-reduce-transparency="true"]) .apple-segmented-control.liquid-glass,
+  :global([data-theme="light"][data-high-contrast="true"]) .apple-segmented-control.liquid-glass {
+    background: #e5e5ea !important;
+    border: 1px solid rgba(0, 0, 0, 0.25) !important;
+  }
+
+  :global([data-reduce-transparency="true"]) .drop,
+  :global([data-high-contrast="true"]) .drop {
+    background: #3a3a3c !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  :global([data-reduce-transparency="true"]) .drop::after,
+  :global([data-high-contrast="true"]) .drop::after {
+    display: none !important;
+  }
+
+  :global([data-theme="light"][data-reduce-transparency="true"]) .drop,
+  :global([data-theme="light"][data-high-contrast="true"]) .drop {
+    background: #ffffff !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2) !important;
+  }
+
+  :global([data-reduce-transparency="true"]) .labels span,
+  :global([data-high-contrast="true"]) .labels span {
+    color: #aeaeb2 !important;
+  }
+
+  :global([data-theme="light"][data-reduce-transparency="true"]) .labels span,
+  :global([data-theme="light"][data-high-contrast="true"]) .labels span {
+    color: #48484a !important;
+  }
+
+  :global([data-reduce-transparency="true"]) .lens-in span,
+  :global([data-high-contrast="true"]) .lens-in span {
+    color: #ffffff !important;
+  }
+
+  :global([data-theme="light"][data-reduce-transparency="true"]) .lens-in span,
+  :global([data-theme="light"][data-high-contrast="true"]) .lens-in span {
+    color: #000000 !important;
   }
 </style>
