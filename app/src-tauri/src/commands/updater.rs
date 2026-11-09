@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use wex_social::launcher_update::{
     check_update_from_manifest, check_update_from_url, validate_signature_format,
@@ -327,10 +327,31 @@ where
     handler(&plan.executable, &plan.args)
 }
 
+pub fn check_update_restart_allowed(is_running: bool, is_launching: bool) -> Result<(), String> {
+    if is_running || is_launching {
+        Err("Нельзя применить обновление: игра запущена или запускается. Закройте игру перед перезапуском лаунчера.".to_string())
+    } else {
+        Ok(())
+    }
+}
+
 pub fn apply_staged_update_and_restart(
     app: Option<&AppHandle>,
 ) -> Result<InstallerExecutionPlan, String> {
     let _operation = UpdateOperation::begin()?;
+
+    // Reject update restart if user game is currently running or launching
+    if let Some(h) = app {
+        if let Some(play_state) = h.try_state::<PlayState>() {
+            check_update_restart_allowed(
+                play_state.is_running.load(Ordering::SeqCst),
+                play_state.is_launching.load(Ordering::SeqCst),
+            )?;
+            // Safely stop background prewarm before restarting into the installer
+            tauri::async_runtime::block_on(play_state.cleanup_prewarm());
+        }
+    }
+
     // Take once: two restart requests cannot execute the same staged package.
     let staged = STAGED_UPDATE
         .lock()
@@ -655,7 +676,12 @@ pub async fn updater_install(
 }
 
 #[tauri::command]
-pub fn updater_restart(app: AppHandle) -> Result<(), String> {
+pub async fn updater_restart(app: AppHandle, state: State<'_, PlayState>) -> Result<(), String> {
+    check_update_restart_allowed(
+        state.is_running.load(Ordering::SeqCst),
+        state.is_launching.load(Ordering::SeqCst),
+    )?;
+    state.cleanup_prewarm().await;
     let _ = apply_staged_update_and_restart(Some(&app))?;
     Ok(())
 }
@@ -894,6 +920,20 @@ mod tests {
         assert!(err.contains("Игра сейчас запущена"));
     }
 
+    #[test]
+    fn test_updater_restart_blocked_when_game_running_or_launching() {
+        let running_err = check_update_restart_allowed(true, false).unwrap_err();
+        assert!(running_err.contains("игра запущена"));
+
+        let launching_err = check_update_restart_allowed(false, true).unwrap_err();
+        assert!(launching_err.contains("игра запущена"));
+
+        let both_err = check_update_restart_allowed(true, true).unwrap_err();
+        assert!(both_err.contains("игра запущена"));
+
+        assert!(check_update_restart_allowed(false, false).is_ok());
+    }
+
     #[tokio::test]
     async fn test_download_and_install_blocked_when_no_trusted_pubkey() {
         let client = Client::new();
@@ -1121,5 +1161,36 @@ mod tests {
         );
 
         std::env::remove_var("WEX_UPDATER_PUBKEY");
+    }
+
+    #[test]
+    fn test_installer_hooks_nsis_script_safety_and_marker_verification() {
+        let nsh_content = include_str!("../../installer-hooks.nsh");
+
+        // Must display actual target directory ($2) in MessageBox prompt rather than hardcoded %APPDATA%\Wex
+        assert!(
+            nsh_content.contains(r#"MessageBox MB_YESNO|MB_DEFBUTTON2|MB_ICONQUESTION "Удалить пользовательские данные и настройки Wex ($2)?" IDNO skip_data_cleanup"#),
+            "NSIS prompt must display the actual resolved target path ($2)"
+        );
+
+        // Must verify Wex ownership marker (config.json or instances directory) for custom paths
+        assert!(
+            nsh_content.contains(r#"IfFileExists "$1\config.json""#),
+            "NSIS script must check for config.json marker in custom WEX_DATA_DIR"
+        );
+        assert!(
+            nsh_content.contains(r#"IfFileExists "$1\instances\*.*""#),
+            "NSIS script must check for instances marker in custom WEX_DATA_DIR"
+        );
+
+        // Must delete target $2 rather than arbitrary unverified $1
+        assert!(
+            nsh_content.contains("RMDir /r \"$2\""),
+            "RMDir must only delete verified target $2"
+        );
+        assert!(
+            !nsh_content.contains("RMDir /r \"$1\""),
+            "RMDir must NEVER delete unverified raw WEX_DATA_DIR $1"
+        );
     }
 }
