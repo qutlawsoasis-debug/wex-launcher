@@ -1260,4 +1260,6 @@ export const en = {
   'play.update_btn_later_title': 'Install update on next launch',
   'play.update_btn_retry': 'Retry',
   'play.update_btn_retry_title': 'Try downloading update again',
+  'play.update_link_error': 'Failed to open download link. Please try again later.',
+  'settings.update_link_error': 'Failed to open download link. Please try again later.',
 } as const;

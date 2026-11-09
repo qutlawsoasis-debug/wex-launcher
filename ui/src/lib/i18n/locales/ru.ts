@@ -1260,6 +1260,8 @@ export const ru = {
   'play.update_btn_later_title': 'Установить обновление при следующем запуске',
   'play.update_btn_retry': 'Повторить',
   'play.update_btn_retry_title': 'Попробовать загрузить обновление снова',
+  'play.update_link_error': 'Не удалось открыть ссылку загрузки. Повторите попытку позже.',
+  'settings.update_link_error': 'Не удалось открыть ссылку загрузки. Повторите попытку позже.',
 } as const;
 
 export type TranslationKey = keyof typeof ru;

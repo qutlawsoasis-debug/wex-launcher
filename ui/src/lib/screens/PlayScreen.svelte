@@ -348,7 +348,7 @@
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('updater_open_download_url', { url });
     } catch {
-      clientStatus = 'Не удалось открыть ссылку загрузки. Повторите попытку позже.';
+      clientStatus = t('play.update_link_error');
     }
   }
 
