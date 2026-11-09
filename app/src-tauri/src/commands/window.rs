@@ -112,13 +112,15 @@ pub fn save_window_state(paths: &WexPaths, state: WindowStateDto) -> Result<(), 
 /// Check if launcher is configured to minimize/hide to tray when game starts.
 pub fn is_minimize_to_tray_enabled(paths: &WexPaths) -> bool {
     let cfg = CoreConfig::load_or_default(&paths.config_file);
-    cfg.minimize_to_tray
+    super::tray::GameWindowBehavior::from_str_loose(&cfg.game_window_behavior)
+        == super::tray::GameWindowBehavior::HideToTray
 }
 
 /// Set minimize to tray preference in config.
 pub fn set_minimize_to_tray_preference(paths: &WexPaths, enabled: bool) -> Result<(), String> {
     let mut cfg = CoreConfig::load_or_default(&paths.config_file);
     cfg.minimize_to_tray = enabled;
+    cfg.game_window_behavior = if enabled { "tray" } else { "keep" }.into();
     cfg.save(&paths.config_file)
         .map_err(|e| format!("Failed to save minimize_to_tray: {}", e))
 }
@@ -442,8 +444,8 @@ mod tests {
         let paths = WexPaths::new(Some(tmp.path().to_path_buf()));
         paths.ensure_dirs().unwrap();
 
-        // Default is true per specification
-        assert!(is_minimize_to_tray_enabled(&paths));
+        // The authoritative default is minimize, not hide-to-tray.
+        assert!(!is_minimize_to_tray_enabled(&paths));
 
         // Toggle to false
         set_minimize_to_tray_preference(&paths, false).unwrap();
@@ -475,5 +477,4 @@ mod tests {
         cfg.save(&paths.config_file).unwrap();
         assert!(!is_minimize_to_tray_enabled(&paths));
     }
-
 }

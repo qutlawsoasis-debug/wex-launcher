@@ -198,6 +198,7 @@ pub struct PlayState {
     pub prewarmed: Arc<Mutex<Option<PrewarmedInstance>>>,
     pub is_prewarming: Arc<AtomicBool>,
     pub active_process: Arc<Mutex<Option<wex_core::GameProcess>>>,
+    prewarm_processes_enabled: bool,
 }
 
 impl PlayState {
@@ -238,6 +239,7 @@ impl PlayState {
             prewarmed: Arc::new(Mutex::new(None)),
             is_prewarming: Arc::new(AtomicBool::new(false)),
             active_process: Arc::new(Mutex::new(None)),
+            prewarm_processes_enabled: true,
         };
 
         // Trigger background verification & prewarm if enabled and enough RAM is present
@@ -284,6 +286,7 @@ impl PlayState {
             prewarmed: Arc::new(Mutex::new(None)),
             is_prewarming: Arc::new(AtomicBool::new(false)),
             active_process: Arc::new(Mutex::new(None)),
+            prewarm_processes_enabled: false,
         }
     }
 
@@ -304,6 +307,7 @@ impl PlayState {
             prewarmed: Arc::new(Mutex::new(None)),
             is_prewarming: Arc::new(AtomicBool::new(false)),
             active_process: Arc::new(Mutex::new(None)),
+            prewarm_processes_enabled: false,
         }
     }
 
@@ -374,6 +378,12 @@ impl PlayState {
     }
 
     pub async fn trigger_prewarm(&self, version: String, nickname: String, ram_mb: u32) {
+        // Constructors with an injected core must not escape that boundary by
+        // launching a real JVM (including from settings/reset command tests).
+        if !self.prewarm_processes_enabled {
+            return;
+        }
+
         if self.is_running.load(Ordering::SeqCst) || self.is_launching.load(Ordering::SeqCst) {
             return;
         }
@@ -508,7 +518,12 @@ pub async fn start_game<R: tauri::Runtime>(
     state: State<'_, PlayState>,
 ) -> Result<LaunchGameResponse, String> {
     // 1. Guard against duplicate starts
-    if state.is_launching.swap(true, Ordering::SeqCst) || state.is_running.load(Ordering::SeqCst) {
+    if state.is_running.load(Ordering::SeqCst)
+        || state
+            .is_launching
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+    {
         return Err("Игра уже запущена или выполняется запуск".to_string());
     }
 
@@ -599,8 +614,13 @@ pub async fn start_game<R: tauri::Runtime>(
         }
     }
 
+    // Server requests need their own JVM command line. Background preparation is
+    // coordinated separately; never activate a menu-only prewarm for multiplayer.
+    if server.is_some() {
+        state.cleanup_prewarm().await;
+    }
     // 3.5. Fast-launch: check prewarm status
-    if cfg.fast_launch {
+    if cfg.fast_launch && server.is_none() {
         let activated_proc = if let Some(ready) = state
             .activate_prewarm(&version, &nickname, cfg.max_memory_mb)
             .await
@@ -678,11 +698,7 @@ pub async fn start_game<R: tauri::Runtime>(
                 },
             );
 
-            // Apply window minimize-to-tray behavior per wex-window specification
-            if let Some(w) = app.get_webview_window("main") {
-                let minimize = crate::commands::window::is_minimize_to_tray_enabled(&state.paths);
-                crate::commands::window::apply_launch_window_behavior(&w, minimize);
-            }
+            super::tray::apply_launch_window_behavior(&app, &cfg.game_window_behavior);
 
             // Spawn background supervisor to monitor running prewarmed process
             let app_clone = app.clone();
@@ -864,12 +880,6 @@ pub async fn start_game<R: tauri::Runtime>(
                     exit_code: None,
                 },
             );
-
-            // Apply window minimize-to-tray behavior per wex-window specification
-            if let Some(w) = app.get_webview_window("main") {
-                let minimize = crate::commands::window::is_minimize_to_tray_enabled(&state.paths);
-                crate::commands::window::apply_launch_window_behavior(&w, minimize);
-            }
 
             // Throttle launcher priority to minimize CPU usage while the game is running
             wex_core::set_current_process_priority_low();

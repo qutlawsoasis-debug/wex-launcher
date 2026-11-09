@@ -53,10 +53,10 @@
 </script>
 
 <script lang="ts">
-  import { onMount } from 'svelte';
   import List from '../components/List.svelte';
   import Row from '../components/Row.svelte';
   import Button from '../components/Button.svelte';
+  import ProgressBar from '../components/ProgressBar.svelte';
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Icon from '../components/icons/Icon.svelte';
   import OfflineState from '../components/OfflineState.svelte';
@@ -69,11 +69,13 @@
   interface Props {
     playerName?: string;
     initialRoom?: LobbyRoom | null;
+    version?: string;
   }
 
   let {
     playerName = 'Player',
     initialRoom = null,
+    version = '1.21.1',
   }: Props = $props();
 
   let effectivePlayerName = $derived(playerName);
@@ -88,9 +90,8 @@
   // Step-by-step guest connection pipeline state
   let joinStep = $state<JoinStep>('idle');
   let joinStepMessage = $state('');
-  let modsToDownloadCount = $state(0);
-  let modsDownloadedCount = $state(0);
-  let joinProgress = $state(0);
+  let joinProgress = $state<number | null>(null);
+  let pendingModSync = $state(false);
 
   // Tunnel retry state
   let isRetryingTunnel = $state(false);
@@ -102,71 +103,17 @@
   let isLoadingFriends = $state(false);
 
   // Local worlds available for hosting
-  const localWorlds = [
-    { id: 'world-1', name: 'Выживание в тайге', version: '1.21.1', size: '142 МБ', lastPlayed: 'Сегодня' },
-    { id: 'world-2', name: 'Творческий полигон', version: '1.21.1', size: '86 МБ', lastPlayed: 'Вчера' },
-    { id: 'world-3', name: 'Redstone Experiments', version: '1.20.1', size: '45 МБ', lastPlayed: '3 дня назад' },
-  ];
+  const localWorlds = $derived(lanWorlds.map(world => ({
+    id: world.address, name: world.clean_motd || world.motd, port: world.port,
+    address: world.address,
+  })));
+  let selectedWorldId = $state('');
 
-  let selectedWorldId = $state('world-1');
 
   // Active room state (null when not in room)
   let activeRoom = $state<LobbyRoom | null>(null);
   $effect(() => {
     activeRoom = initialRoom ?? null;
-  });
-
-  function checkHash() {
-    if (typeof window !== 'undefined' && window.location.hash) {
-      const p = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-      const step = p.get('step');
-      if (step === 'downloading' || step === 'downloading_mods') {
-        isConnecting = true;
-        joinStep = 'downloading_mods';
-        modsToDownloadCount = 3;
-        modsDownloadedCount = 1;
-        joinProgress = 50;
-        joinStepMessage = `Загрузка мода (${modsDownloadedCount}/${modsToDownloadCount}): sodium-extra-0.5.4.jar (1.2 МБ / 2.4 МБ)`;
-      } else if (step === 'checking' || step === 'checking_mods') {
-        isConnecting = true;
-        joinStep = 'checking_mods';
-        joinProgress = 20;
-        joinStepMessage = 'Сверка манифеста установленных модов...';
-      } else if (step === 'connecting') {
-        isConnecting = true;
-        joinStep = 'connecting';
-        joinProgress = 90;
-        joinStepMessage = 'Подключение к серверу Playit-туннеля...';
-      } else if (step === 'reset' || step === 'idle') {
-        isConnecting = false;
-        joinStep = 'idle';
-        modsToDownloadCount = 0;
-        modsDownloadedCount = 0;
-        joinProgress = 0;
-        joinStepMessage = '';
-      }
-    }
-  }
-
-  onMount(() => {
-    checkHash();
-    if (typeof window !== 'undefined') {
-      window.addEventListener('hashchange', checkHash);
-      (window as any).__setLobbyJoinState = (step: JoinStep, progress = 50, count = 3, downloaded = 1, msg = '') => {
-        isConnecting = true;
-        joinStep = step;
-        joinProgress = progress;
-        modsToDownloadCount = count;
-        modsDownloadedCount = downloaded;
-        joinStepMessage = msg || `Загрузка мода (${downloaded}/${count}): sodium-extra-0.5.4.jar (1.2 МБ / 2.4 МБ)`;
-      };
-    }
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('hashchange', checkHash);
-        delete (window as any).__setLobbyJoinState;
-      }
-    };
   });
 
   // Cloud open rooms state
@@ -272,6 +219,7 @@
       const { invoke } = await import('@tauri-apps/api/core');
       const list = await invoke<LanWorld[]>('list_lan_worlds');
       lanWorlds = list || [];
+      if (!selectedWorldId && lanWorlds[0]) selectedWorldId = lanWorlds[0].address;
     } catch {
       lanWorlds = [];
     } finally {
@@ -285,7 +233,7 @@
     lanConnectMessage = '';
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const msg = await invoke<string>('connect_lan_world', { address });
+      const msg = await invoke<string>('connect_lan_world', { address, version, nickname: effectivePlayerName });
       lanConnectMessage = msg || 'Подключение запущено...';
     } catch (e: any) {
       errorMessage = typeof e === 'string' ? e : e?.message || 'Не удалось подключиться к LAN-миру';
@@ -335,7 +283,9 @@
         try {
           const { invoke } = await import('@tauri-apps/api/core');
           await invoke('net_lan_start_discovery');
-        } catch {}
+        } catch (e: unknown) {
+          errorMessage = typeof e === 'string' ? e : 'Не удалось начать поиск LAN-миров';
+        }
       };
 
       const stopLan = async () => {
@@ -418,9 +368,9 @@
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const room = await invoke<LobbyRoom>('create_lobby_room', {
-        worldName,
-        playerName: effectivePlayerName,
+      if (!world) throw new Error('Откройте свой мир для сети в Minecraft и выберите его в списке.');
+      const room = await invoke<LobbyRoom>('publish_lan_world', {
+        motd: worldName, port: world.port, playerName: effectivePlayerName, version,
       });
       activeRoom = room;
       if (room.is_host) {
@@ -435,72 +385,58 @@
     }
   }
 
-  export async function handleJoinRoom() {
-    const codeToJoin = guestCode.trim();
-    if (!codeToJoin) {
-      errorMessage = 'Введите 4-значный код комнаты';
-      return;
-    }
+  export async function handleJoinRoom(autoFix: boolean | MouseEvent = false) {
+    const codeToJoin = guestCode.trim().replace(/^#/, '').toUpperCase();
+    if (!codeToJoin || isConnecting) return;
     isConnecting = true;
     errorMessage = '';
     roomClosedMessage = '';
-    joinStep = 'checking_mods';
-    joinStepMessage = 'Сверяем моды с организатором...';
-    joinProgress = 25;
-
+    joinStep = 'idle';
+    joinProgress = null;
+    joinStepMessage = 'Ожидаем ответ комнаты…';
+    const unlisten: Array<() => void> = [];
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-
-      // Step 1: Join room and query manifest
-      const room = await invoke<LobbyRoom>('join_lobby_room', {
-        code: codeToJoin.toUpperCase(),
-        playerName: effectivePlayerName,
+      if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+        const { listen } = await import('@tauri-apps/api/event');
+        unlisten.push(await listen<{ code: string; stage: JoinStep; message: string }>('lobby-join-progress', ({ payload }) => {
+          if (payload.code !== codeToJoin) return;
+          joinStep = payload.stage;
+          joinStepMessage = payload.message;
+          joinProgress = null;
+        }));
+        unlisten.push(await listen<{ stage: string; percentage: number; detail: string }>('install-progress', ({ payload }) => {
+          if (joinStep !== 'downloading_mods') return;
+          joinProgress = Number.isFinite(payload.percentage) ? payload.percentage : null;
+          joinStepMessage = payload.detail || payload.stage;
+        }));
+        unlisten.push(await listen<{ state: string; message: string }>('launch-status', ({ payload }) => {
+          if (payload.state === 'preparing' || payload.state === 'launching' || payload.state === 'installing') {
+            joinStep = 'connecting'; joinStepMessage = payload.message; joinProgress = null;
+          }
+        }));
+      }
+      const room = await invoke<LobbyRoom>('prepare_lobby_join', {
+        code: codeToJoin, playerName: effectivePlayerName, version, repair: autoFix === true,
       });
-
-      // Step 2: Compare mods and download if needed
-      joinStep = 'downloading_mods';
-      const mismatchCount = room.mod_mismatch_count || 0;
-      modsToDownloadCount = mismatchCount;
-      modsDownloadedCount = 0;
-      joinProgress = 50;
-
-      if (mismatchCount > 0) {
-        joinStepMessage = `Докачиваем ${mismatchCount} ${mismatchCount === 1 ? 'мод' : mismatchCount < 5 ? 'мода' : 'модов'}...`;
-        for (let i = 1; i <= mismatchCount; i++) {
-          await new Promise((r) => setTimeout(r, 60));
-          modsDownloadedCount = i;
-          joinProgress = 50 + Math.round((i / mismatchCount) * 35);
-        }
-      } else {
-        joinStepMessage = 'Все моды совпадают';
-        joinProgress = 85;
-        await new Promise((r) => setTimeout(r, 50));
+      if (!room || room.mod_mismatch_count > 0) {
+        pendingModSync = Boolean(room && room.mod_mismatch_count > 0);
+        throw new Error('Моды отличаются от сборки организатора. Синхронизируйте сборку и повторите вход.');
       }
-
-      // Step 3: Connecting to host tunnel / game
-      joinStep = 'connecting';
-      joinProgress = 95;
-      joinStepMessage = room.tunnel_address
-        ? `Подключение к игровому серверу хоста (${room.tunnel_address})...`
-        : 'Подключение к игровому миру хоста...';
-      await new Promise((r) => setTimeout(r, 50));
-
-      if (!room.tunnel_active && room.tunnel_error) {
-        joinStep = 'error';
-        errorMessage = room.tunnel_error;
-        activeRoom = room;
-        return;
+      if (!room.tunnel_active || !room.tunnel_address) {
+        throw new Error(room.tunnel_error || 'Организатор ещё не открыл игровой мир для подключения.');
       }
-
-      joinProgress = 100;
-      joinStep = 'idle';
+      await invoke('launch_game', { version, nickname: effectivePlayerName, server: room.tunnel_address });
       activeRoom = room;
-    } catch (e: any) {
-      const msg = typeof e === 'string' ? e : e?.message || 'Не удалось присоединиться к комнате';
-      errorMessage = msg;
+      pendingModSync = false;
+      joinStep = 'idle';
+    } catch (e: unknown) {
+      errorMessage = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Не удалось присоединиться к комнате';
+      pendingModSync = pendingModSync || errorMessage.includes('Моды отличаются');
       joinStep = 'error';
       activeRoom = null;
     } finally {
+      for (const stop of unlisten) stop();
       isConnecting = false;
     }
   }
@@ -556,11 +492,9 @@
     }
   }
 
-  export function handleAutoFixMods() {
-    if (activeRoom) {
-      activeRoom.mod_mismatch_count = 0;
-      activeRoom.players.forEach((p) => (p.mods_synced = true));
-    }
+  export async function handleAutoFixMods() {
+    if (activeRoom) guestCode = activeRoom.code;
+    await handleJoinRoom(true);
   }
 </script>
 
@@ -830,19 +764,19 @@
           <div class="modsync-text">
             <span class="modsync-title">
               {activeRoom.mod_mismatch_count === 0
-                ? `Моды совпадают (${activeRoom.total_mods}/${activeRoom.total_mods})`
+                ? (activeRoom.players.find(p => p.name === effectivePlayerName)?.mods_synced ? 'Ваши моды проверены' : 'Проверка модов не подтверждена')
                 : `Обнаружено расхождений модов: ${activeRoom.mod_mismatch_count}`}
             </span>
             <span class="modsync-desc">
               {activeRoom.mod_mismatch_count === 0
-                ? 'Все клиенты используют идентичный манифест сборки Wex.'
+                ? 'Состояние проверки каждого участника отображается в списке.'
                 : 'Конфигурация некоторых модов отличается от хоста.'}
             </span>
           </div>
         </div>
 
         {#if activeRoom.mod_mismatch_count > 0}
-          <Button variant="primary" size="small" onclick={handleAutoFixMods}>
+          <Button variant="secondary" size="small" onclick={handleAutoFixMods}>
             Исправить и войти
           </Button>
         {/if}
@@ -904,88 +838,14 @@
         </div>
 
         <!-- Step-by-Step Join Status Card -->
-        {#if isConnecting || (joinStep !== 'idle' && joinStep !== 'error')}
-          <div class="join-steps-card" data-testid="join-steps-card">
-            <div class="join-steps-header">
-              <span class="join-steps-title">Подключение к комнате</span>
-              <span class="join-steps-pct">{joinProgress}%</span>
-            </div>
-
-            <div class="join-progress-bar-track">
-              <div class="join-progress-bar-fill" style="width: {joinProgress}%;"></div>
-            </div>
-
-            <div class="join-steps-list">
-              <!-- Step 1: Сверяем моды -->
-              <div
-                class="join-step-item"
-                class:done={joinStep === 'downloading_mods' || joinStep === 'connecting'}
-                class:active={joinStep === 'checking_mods'}
-                data-testid="step-checking-mods"
-              >
-                <div class="step-icon">
-                  {#if joinStep === 'downloading_mods' || joinStep === 'connecting'}
-                    <Icon name="check" size={13} color="var(--color-system-green)" />
-                  {:else if joinStep === 'checking_mods'}
-                    <div class="step-spinner"></div>
-                  {:else}
-                    <span class="step-dot"></span>
-                  {/if}
-                </div>
-                <div class="step-text-wrap">
-                  <span class="step-label">Сверяем моды</span>
-                </div>
-              </div>
-
-              <!-- Step 2: Докачиваем N модов -->
-              <div
-                class="join-step-item"
-                class:done={joinStep === 'connecting'}
-                class:active={joinStep === 'downloading_mods'}
-                data-testid="step-downloading-mods"
-              >
-                <div class="step-icon">
-                  {#if joinStep === 'connecting'}
-                    <Icon name="check" size={13} color="var(--color-system-green)" />
-                  {:else if joinStep === 'downloading_mods'}
-                    <div class="step-spinner"></div>
-                  {:else}
-                    <span class="step-dot"></span>
-                  {/if}
-                </div>
-                <div class="step-text-wrap">
-                  <span class="step-label" data-testid="download-mods-label">
-                    {#if modsToDownloadCount > 0}
-                      Докачиваем {modsToDownloadCount} {modsToDownloadCount === 1 ? 'мод' : modsToDownloadCount < 5 ? 'мода' : 'модов'}{modsDownloadedCount > 0 ? ` (${modsDownloadedCount}/${modsToDownloadCount})` : ''}
-                    {:else}
-                      Докачиваем 0 модов
-                    {/if}
-                  </span>
-                </div>
-              </div>
-
-              <!-- Step 3: Подключаемся -->
-              <div
-                class="join-step-item"
-                class:active={joinStep === 'connecting'}
-                data-testid="step-connecting"
-              >
-                <div class="step-icon">
-                  {#if joinStep === 'connecting'}
-                    <div class="step-spinner"></div>
-                  {:else}
-                    <span class="step-dot"></span>
-                  {/if}
-                </div>
-                <div class="step-text-wrap">
-                  <span class="step-label">Подключаемся</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="step-details-message" data-testid="step-message">
-              {joinStepMessage}
-            </div>
+        {#if isConnecting}
+          <div class="join-steps-container" role="status" aria-live="polite" data-testid="join-progress">
+            {#if joinStep !== 'idle'}
+              <p data-testid={joinStep === 'checking_mods' ? 'step-checking-mods' : joinStep === 'downloading_mods' ? 'step-downloading-mods' : 'step-connecting'}>{joinStepMessage}</p>
+            {:else}<p>{joinStepMessage}</p>{/if}
+            {#if joinProgress !== null}
+              <ProgressBar percentage={joinProgress} detail={joinStepMessage} />
+            {/if}
           </div>
         {/if}
 
@@ -995,7 +855,7 @@
               type="text"
               placeholder="#A7X9"
               bind:value={guestCode}
-              maxlength={6}
+              maxlength={8}
               class="code-input"
               onkeydown={(e) => e.key === 'Enter' && handleJoinRoom()}
               aria-label={i18n.locale === 'en' ? 'Lobby code' : 'Код комнаты'}
@@ -1003,6 +863,9 @@
             />
           </div>
 
+          {#if pendingModSync && !isConnecting}
+            <Button variant="secondary" size="small" onclick={handleAutoFixMods}>Синхронизировать сборку</Button>
+          {/if}
           {#if errorMessage}
             <div class="lobby-error-wrapper">
               <ErrorState
@@ -1051,19 +914,20 @@
         <div class="world-picker">
           <label class="picker-label" for="world-select">{t('lobby.select_world')}</label>
           <div class="world-options" id="world-select" data-testid="world-select" role="radiogroup" aria-label={t('lobby.select_world')}>
+            {#if localWorlds.length === 0}<p>Откройте свой мир для сети в Minecraft.</p>{/if}
             {#each localWorlds as w (w.id || w.name)}
               <button
                 type="button"
                 role="radio"
                 aria-checked={selectedWorldId === w.id}
-                aria-label="{w.name}, {w.version}"
+                aria-label={w.name}
                 class="world-opt-btn"
                 class:selected={selectedWorldId === w.id}
                 onclick={() => (selectedWorldId = w.id)}
                 data-testid="world-opt-{w.id}"
               >
                 <div class="world-opt-title">{w.name}</div>
-                <div class="world-opt-meta">{w.version} • {w.size} • {w.lastPlayed}</div>
+                <div class="world-opt-meta">{w.address}</div>
               </button>
             {/each}
           </div>

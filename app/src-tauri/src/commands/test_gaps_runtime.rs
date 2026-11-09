@@ -661,7 +661,15 @@ async fn workshop_restore_world_backup_error_missing_archive_preserves_existing_
 async fn review_09_lan_respects_shared_launch_guard() {
     let f = Fixture::new().await;
     f.play().is_launching.store(true, Ordering::SeqCst);
-    assert!(lobby::connect_lan_world("127.0.0.1:54321".into(), Some("1.21.1".into()), Some("Guest".into()), f.play()).await.is_err());
+    assert!(lobby::connect_lan_world(
+        f.app.handle().clone(),
+        "127.0.0.1:54321".into(),
+        Some("1.21.1".into()),
+        Some("Guest".into()),
+        f.play()
+    )
+    .await
+    .is_err());
     assert!(!f.play().is_running.load(Ordering::SeqCst));
 }
 
@@ -669,7 +677,9 @@ async fn review_09_lan_respects_shared_launch_guard() {
 async fn review_26_failed_lan_bind_does_not_publish_running_state() {
     let occupied = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
     let service = wex_net::LanDiscoveryService::new_with_bind(
-        std::time::Duration::from_secs(1), occupied.local_addr().unwrap(), None,
+        std::time::Duration::from_secs(1),
+        occupied.local_addr().unwrap(),
+        None,
     );
     let _ = service.start().await;
     tokio::time::sleep(std::time::Duration::from_millis(30)).await;

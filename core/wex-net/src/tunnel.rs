@@ -259,6 +259,37 @@ impl PlayitSupervisor {
         binary_path: &Path,
         secret_path: &Path,
     ) -> Result<(), TunnelError> {
+        self.start_options(binary_path, secret_path, None).await
+    }
+
+    pub async fn start_mapped(
+        &mut self,
+        binary_path: &Path,
+        secret_path: &Path,
+        tunnel_id: &str,
+        local_port: u16,
+    ) -> Result<(), TunnelError> {
+        self.start_options(
+            binary_path,
+            secret_path,
+            Some(format!("{tunnel_id}=127.0.0.1:{local_port}")),
+        )
+        .await
+    }
+
+    pub async fn is_alive(&self) -> bool {
+        let mut child = self.child.lock().await;
+        child
+            .as_mut()
+            .is_some_and(|c| matches!(c.try_wait(), Ok(None)))
+    }
+
+    async fn start_options(
+        &mut self,
+        binary_path: &Path,
+        secret_path: &Path,
+        mapping: Option<String>,
+    ) -> Result<(), TunnelError> {
         self.stop().await;
 
         if let Some(bus) = &self.events {
@@ -279,6 +310,10 @@ impl PlayitSupervisor {
             cmd.creation_flags(0x08000000);
         }
 
+        cmd.kill_on_drop(true);
+        if let Some(mapping) = mapping {
+            cmd.args(["--stdout", "run", &mapping]);
+        }
         let mut child = cmd
             .spawn()
             .map_err(|e| TunnelError::ProcessSpawn(e.to_string()))?;
@@ -307,9 +342,12 @@ impl PlayitSupervisor {
             let mut found_address = false;
 
             loop {
+                if stdout_reader.is_none() && stderr_reader.is_none() {
+                    break;
+                }
                 tokio::select! {
                     _ = stop_rx.changed() => {
-                        if *stop_rx.borrow() {
+                        if stop_rx.has_changed().is_err() || *stop_rx.borrow() {
                             break;
                         }
                     }
@@ -331,7 +369,7 @@ impl PlayitSupervisor {
                                     }
                                 }
                             }
-                        }
+                        } else { stdout_reader = None; }
                     }
                     err_line = async {
                         if let Some(reader) = &mut stderr_reader {
@@ -351,7 +389,7 @@ impl PlayitSupervisor {
                                     }
                                 }
                             }
-                        }
+                        } else { stderr_reader = None; }
                     }
                 }
             }
