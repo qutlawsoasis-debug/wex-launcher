@@ -199,25 +199,14 @@ export function getCapePartDefinition(): PartDefinition {
  * Checks if WebGL is available and functional on this canvas/system.
  */
 export function isWebGLSupported(canvas?: HTMLCanvasElement | null): boolean {
-  if (typeof window !== 'undefined' && typeof (window as any).WebGLRenderingContext === 'undefined') {
-    if (!canvas || typeof (canvas as any).getContext !== 'function') return false;
-    try {
-      const gl = (canvas as any).getContext('webgl');
-      return gl !== null && typeof (gl as any)?.createShader === 'function';
-    } catch {
-      return false;
-    }
-  }
-
-  if (!canvas) {
-    if (typeof document === 'undefined') return false;
-    canvas = document.createElement('canvas');
-  }
+  if (typeof window === 'undefined') return false;
   try {
+    const testCanvas = canvas || (typeof document !== 'undefined' ? document.createElement('canvas') : null);
+    if (!testCanvas || typeof (testCanvas as any).getContext !== 'function') return false;
     const gl =
-      canvas.getContext('webgl2') ||
-      canvas.getContext('webgl') ||
-      canvas.getContext('experimental-webgl');
+      testCanvas.getContext('webgl', { alpha: true, antialias: true }) ||
+      testCanvas.getContext('experimental-webgl', { alpha: true, antialias: true }) ||
+      testCanvas.getContext('webgl2', { alpha: true, antialias: true });
     return gl !== null && typeof (gl as any)?.createShader === 'function';
   } catch {
     return false;
@@ -648,6 +637,7 @@ export class Skin3DRenderer {
 
     this.initGL();
     this.initListeners();
+    (this.options.canvas as any).__renderer3d = this;
     this.startLoop();
   }
 
@@ -683,6 +673,10 @@ export class Skin3DRenderer {
     const canvas = this.options.canvas;
     const gl =
       canvas.getContext('webgl', { alpha: true, antialias: true }) ||
+      (canvas.getContext('webgl2', {
+        alpha: true,
+        antialias: true,
+      }) as WebGLRenderingContext | null) ||
       (canvas.getContext('experimental-webgl', {
         alpha: true,
         antialias: true,
@@ -832,6 +826,25 @@ export class Skin3DRenderer {
     this.pitch = 0.1;
     this.velocityX = 0;
     this.velocityY = 0;
+    this.render();
+  }
+
+  public setOrientation(yaw: number, pitch: number, velocityX = 0, velocityY = 0) {
+    this.yaw = yaw;
+    this.pitch = pitch;
+    this.velocityX = velocityX;
+    this.velocityY = velocityY;
+    this.render();
+  }
+
+  public applyDrag(dx: number, dy: number) {
+    const sensitivity = 0.012;
+    this.yaw += dx * sensitivity;
+    this.pitch = Math.max(-0.8, Math.min(0.8, this.pitch + dy * sensitivity));
+    this.velocityX = dx * sensitivity;
+    this.velocityY = dy * sensitivity;
+    this.options.onRotationChange?.(this.yaw, this.pitch);
+    this.render();
   }
 
   private compileShader(type: number, src: string): WebGLShader | null {
@@ -959,8 +972,10 @@ export class Skin3DRenderer {
 
     // Handle high DPI display
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    const displayWidth = Math.round(canvas.clientWidth * dpr);
-    const displayHeight = Math.round(canvas.clientHeight * dpr);
+    const clientW = canvas.clientWidth || canvas.width || 240;
+    const clientH = canvas.clientHeight || canvas.height || 320;
+    const displayWidth = Math.round(clientW * dpr);
+    const displayHeight = Math.round(clientH * dpr);
 
     if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
       canvas.width = displayWidth;

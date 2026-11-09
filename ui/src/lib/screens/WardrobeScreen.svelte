@@ -657,46 +657,57 @@
       <div class="preview-card">
         <div class="preview-header">
           {#if hasWebGL}
-            <SegmentedControl
-              options={displayModeOptions}
-              bind:value={displayMode}
-              size="small"
-            />
-          {/if}
-          {#if displayMode === '2d' || !hasWebGL}
-            <SegmentedControl
-              options={viewOptions}
-              bind:value={selectedView}
-              size="small"
-            />
-          {:else}
-            <div class="animation-control-wrap">
+            <div class="mode-control-row">
               <SegmentedControl
-                options={animationOptions}
-                bind:value={selectedAnimation}
+                options={displayModeOptions}
+                bind:value={displayMode}
                 size="small"
               />
             </div>
-            <button
-              class="reset-angle-btn"
-              onclick={() => renderer3d?.resetOrientation()}
-              title="Сбросить угол обзора"
-              type="button"
-            >
-              Сброс
-            </button>
+          {/if}
+
+          {#if displayMode === '3d' && hasWebGL}
+            <div class="animation-control-row">
+              <div class="animation-control-wrap">
+                <SegmentedControl
+                  options={animationOptions}
+                  bind:value={selectedAnimation}
+                  size="small"
+                />
+              </div>
+              <button
+                class="reset-angle-btn"
+                onclick={() => renderer3d?.resetOrientation()}
+                title="Сбросить угол обзора"
+                type="button"
+              >
+                Сброс
+              </button>
+            </div>
+          {:else}
+            <div class="view-control-row">
+              <SegmentedControl
+                options={viewOptions}
+                bind:value={selectedView}
+                size="small"
+              />
+            </div>
           {/if}
         </div>
 
         <div class="canvas-container">
           <canvas
             bind:this={canvas3dRef}
+            width="240"
+            height="320"
             class="character-canvas character-canvas-3d"
             class:hidden={!hasWebGL || displayMode !== '3d'}
             aria-label="3D интерактивная модель персонажа"
           ></canvas>
           <canvas
             bind:this={canvas2dRef}
+            width="160"
+            height="320"
             class="character-canvas character-canvas-2d"
             class:hidden={hasWebGL && displayMode === '3d'}
             aria-label="2D предпросмотр персонажа"
@@ -708,7 +719,7 @@
         </div>
 
         <div class="preview-status">
-          <div class="status-title">{skinName}</div>
+          <div class="status-title visually-hidden">{skinName}</div>
           <div class="skin-name-field">
             <input
               type="text"
@@ -905,9 +916,9 @@
 
   .wardrobe-layout {
     display: grid;
-    grid-template-columns: 280px 1fr;
+    grid-template-columns: 310px 1fr;
     gap: 24px;
-    max-width: 960px;
+    max-width: 1000px;
     margin: 0 auto;
     width: 100%;
   }
@@ -933,16 +944,26 @@
   .preview-header {
     width: 100%;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
     gap: 8px;
     margin-bottom: 12px;
   }
 
+  .mode-control-row,
+  .view-control-row {
+    width: 100%;
+  }
+
+  .animation-control-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
   .animation-control-wrap {
     flex: 1;
-    min-width: 110px;
-    max-width: 130px;
   }
 
   .canvas-container {
@@ -956,10 +977,17 @@
   }
 
   .character-canvas {
+    width: 240px;
+    height: 320px;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
     touch-action: none;
     user-select: none;
+  }
+
+  .character-canvas-2d {
+    width: 160px;
+    height: 320px;
   }
 
   .character-canvas-3d {
@@ -1003,6 +1031,18 @@
     margin-top: 16px;
     text-align: center;
     width: 100%;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .skin-name-field {
@@ -1120,5 +1160,17 @@
     margin-top: 8px;
     display: flex;
     justify-content: flex-end;
+  }
+
+  /* Scenery Art Contrast Parity (wex-contrast): text over art is always white with shadow */
+  :global(.wardrobe-screen .list-header) {
+    color: rgba(255, 255, 255, 0.94) !important;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75), 0 1px 2px rgba(0, 0, 0, 0.90);
+    font-weight: 600;
+  }
+
+  :global(.wardrobe-screen .list-footer) {
+    color: rgba(255, 255, 255, 0.72) !important;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.70);
   }
 </style>
