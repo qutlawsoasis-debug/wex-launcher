@@ -1026,7 +1026,7 @@
           {:else if activeTab === 'lobby'}
             {#if screenComponents.lobby}
               {@const LobbyScreen = screenComponents.lobby}
-              <LobbyScreen {playerName} initialRoom={initialLobbyRoom} />
+              <LobbyScreen {playerName} version={selectedVersion} initialRoom={initialLobbyRoom} />
             {/if}
           {:else if activeTab === 'friends'}
             {#if screenComponents.friends}

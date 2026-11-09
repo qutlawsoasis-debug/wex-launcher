@@ -208,7 +208,7 @@ pub fn get_launcher_settings_impl(paths: &WexPaths) -> LauncherSettingsDto {
 pub async fn save_launcher_settings_impl(
     new_settings: LauncherSettingsDto,
     paths: &WexPaths,
-    core: &dyn LauncherCore,
+    _core: &dyn LauncherCore,
 ) -> Result<(), String> {
     let mut cfg = CoreConfig::load_or_default(&paths.config_file);
 
@@ -253,8 +253,8 @@ pub async fn save_launcher_settings_impl(
     let inst_dir = paths.instance_dir(&cfg.selected_version);
     let _ = wex_extras::presets::apply_preset(&inst_dir, &new_settings.graphics_preset, &pool_dirs);
 
-    // Sync with LauncherCore
-    let _ = core.save_config(cfg.into()).await;
+    // WexLauncherCore reads this same file; converting via the smaller IPC DTO
+    // would discard settings that are not represented by that DTO.
 
     Ok(())
 }
@@ -832,5 +832,31 @@ mod tests {
         assert!(!log_file.exists());
         assert!(!crash_file.exists());
         assert!(result.status_message.contains("Очищено"));
+    }
+    #[tokio::test]
+    async fn review_04_real_core_preserves_full_settings_for_both_versions() {
+        for version in ["1.20.1", "1.21.1"] {
+            let tmp = tempdir().unwrap();
+            let paths = WexPaths::new(Some(tmp.path().to_path_buf()));
+            paths.ensure_dirs().unwrap();
+            let core = wex_core::WexLauncherCore::new(paths.clone());
+            let mut desired = get_launcher_settings_impl(&paths);
+            desired.selected_version = version.into();
+            desired.language = "en".into();
+            desired.discord_rpc = false;
+            desired.friend_notifications = false;
+            desired.game_window_behavior = "keep".into();
+            desired.java_mode = "custom".into();
+            desired.custom_java_path = Some(tmp.path().join("custom-java").display().to_string());
+            save_launcher_settings_impl(desired.clone(), &paths, &core)
+                .await
+                .unwrap();
+            let actual = get_launcher_settings_impl(&paths);
+            assert_eq!(actual.language, desired.language);
+            assert_eq!(actual.discord_rpc, desired.discord_rpc);
+            assert_eq!(actual.friend_notifications, desired.friend_notifications);
+            assert_eq!(actual.game_window_behavior, desired.game_window_behavior);
+            assert_eq!(actual.custom_java_path, desired.custom_java_path);
+        }
     }
 }

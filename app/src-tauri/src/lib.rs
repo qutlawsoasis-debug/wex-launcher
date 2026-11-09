@@ -210,6 +210,7 @@ pub fn run() {
             commands::lobby::net_tunnel_status,
             commands::lobby::create_lobby_room,
             commands::lobby::join_lobby_room,
+            commands::lobby::prepare_lobby_join,
             commands::lobby::get_lobby_status,
             commands::lobby::close_lobby_room,
             commands::lobby::kick_lobby_player,

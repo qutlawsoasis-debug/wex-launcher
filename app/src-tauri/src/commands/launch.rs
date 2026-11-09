@@ -203,6 +203,7 @@ pub struct PlayState {
     pub prewarm_generation: Arc<std::sync::atomic::AtomicU64>,
     pub active_process: Arc<Mutex<Option<wex_core::GameProcess>>>,
     pub app_handle: Option<AppHandle>,
+    prewarm_processes_enabled: bool,
 }
 
 impl PlayState {
@@ -245,6 +246,7 @@ impl PlayState {
             prewarm_generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             active_process: Arc::new(Mutex::new(None)),
             app_handle: Some(app),
+            prewarm_processes_enabled: true,
         };
 
         // Trigger background verification & prewarm ONLY if fast_launch is enabled
@@ -303,6 +305,7 @@ impl PlayState {
             prewarm_generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             active_process: Arc::new(Mutex::new(None)),
             app_handle: None,
+            prewarm_processes_enabled: false,
         }
     }
 
@@ -325,6 +328,7 @@ impl PlayState {
             prewarm_generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             active_process: Arc::new(Mutex::new(None)),
             app_handle: None,
+            prewarm_processes_enabled: false,
         }
     }
 
@@ -432,6 +436,12 @@ impl PlayState {
     }
 
     pub async fn trigger_prewarm(&self, version: String, nickname: String, ram_mb: u32) {
+        // Constructors with an injected core must not escape that boundary by
+        // launching a real JVM (including from settings/reset command tests).
+        if !self.prewarm_processes_enabled {
+            return;
+        }
+
         if self.is_running.load(Ordering::SeqCst) || self.is_launching.load(Ordering::SeqCst) {
             return;
         }
@@ -620,7 +630,12 @@ pub async fn start_game<R: tauri::Runtime>(
     state: State<'_, PlayState>,
 ) -> Result<LaunchGameResponse, String> {
     // 1. Guard against duplicate starts
-    if state.is_launching.swap(true, Ordering::SeqCst) || state.is_running.load(Ordering::SeqCst) {
+    if state.is_running.load(Ordering::SeqCst)
+        || state
+            .is_launching
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+    {
         return Err("Игра уже запущена или выполняется запуск".to_string());
     }
 
@@ -711,6 +726,8 @@ pub async fn start_game<R: tauri::Runtime>(
         }
     }
 
+    // Server requests need their own JVM command line. Background preparation is
+    // coordinated separately; never activate a menu-only prewarm for multiplayer.
     // 3.5. Fast-launch: check prewarm status (cannot be used if custom server or jvm args were specified)
     let has_custom_server = server.as_ref().is_some_and(|s| !s.trim().is_empty());
     let has_custom_jvm_args = jvm_args.as_ref().is_some_and(|a| !a.is_empty());
@@ -798,11 +815,7 @@ pub async fn start_game<R: tauri::Runtime>(
                 },
             );
 
-            // Apply window minimize-to-tray behavior per wex-window specification
-            if let Some(w) = app.get_webview_window("main") {
-                let minimize = crate::commands::window::is_minimize_to_tray_enabled(&state.paths);
-                crate::commands::window::apply_launch_window_behavior(&w, minimize);
-            }
+            super::tray::apply_launch_window_behavior(&app, &cfg.game_window_behavior);
 
             // Spawn background supervisor to monitor running prewarmed process
             let app_clone = app.clone();
@@ -984,12 +997,6 @@ pub async fn start_game<R: tauri::Runtime>(
                     exit_code: None,
                 },
             );
-
-            // Apply window minimize-to-tray behavior per wex-window specification
-            if let Some(w) = app.get_webview_window("main") {
-                let minimize = crate::commands::window::is_minimize_to_tray_enabled(&state.paths);
-                crate::commands::window::apply_launch_window_behavior(&w, minimize);
-            }
 
             // Throttle launcher priority to minimize CPU usage while the game is running
             wex_core::set_current_process_priority_low();
