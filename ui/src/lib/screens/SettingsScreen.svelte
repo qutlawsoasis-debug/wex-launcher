@@ -32,7 +32,6 @@
   import LogsSheet from '../components/LogsSheet.svelte';
   import { theme } from '../design/theme.svelte';
   import { network } from '../design/network.svelte';
-  import { AccentPresets, type AccentColor } from '../design/colors';
   import { i18n, t, type SupportedLocale } from '../i18n';
   import { friendsLive } from '../services/friendsLive';
 
@@ -266,14 +265,6 @@
     }
   }
 
-  const accents: { key: AccentColor; title: string; color: string }[] = Object.entries(
-    AccentPresets
-  ).map(([key, val]) => ({
-    key: key as AccentColor,
-    title: val.title,
-    color: theme.isDark ? val.dark : val.light,
-  }));
-
   function formatRam(val: number): string {
     const gb = (val / 1024).toFixed(1);
     const unitGb = t('common.unit_gb');
@@ -377,9 +368,14 @@
           i18n.setLocale(cfg.language);
         }
         if (cfg.appearance) theme.setAppearance(cfg.appearance as 'dark' | 'light' | 'auto');
-        if (cfg.accent) theme.setAccent(cfg.accent as AccentColor);
-        if (cfg.minimize_to_tray !== undefined) minimizeToTray = cfg.minimize_to_tray;
-        if (cfg.game_window_behavior) gameWindowBehavior = cfg.game_window_behavior;
+        theme.setAccent('blue');
+        if (cfg.game_window_behavior) {
+          gameWindowBehavior = cfg.game_window_behavior;
+          minimizeToTray = cfg.game_window_behavior === 'tray';
+        } else if (cfg.minimize_to_tray !== undefined) {
+          minimizeToTray = cfg.minimize_to_tray;
+          gameWindowBehavior = cfg.minimize_to_tray ? 'tray' : 'minimize';
+        }
         theme.setReduceMotion(cfg.reduce_motion ?? false);
         theme.setReduceTransparency(cfg.reduce_transparency ?? false);
       }
@@ -711,13 +707,6 @@
       keywords: t('settings.kw_game_window_behavior').split(' '),
     },
     {
-      id: 'game_tray',
-      group: 'game',
-      title: t('settings.minimize_to_tray_title'),
-      subtitle: t('settings.minimize_to_tray_desc'),
-      keywords: t('settings.kw_game_tray').split(' '),
-    },
-    {
       id: 'game_fast_start',
       group: 'game',
       title: t('settings.fast_launch_title'),
@@ -769,13 +758,6 @@
       title: t('settings.theme_title'),
       subtitle: t('settings.theme_subtitle'),
       keywords: t('settings.kw_app_theme').split(' '),
-    },
-    {
-      id: 'app_accent',
-      group: 'appearance',
-      title: t('settings.accent_title'),
-      subtitle: t('settings.accent_subtitle'),
-      keywords: t('settings.kw_app_accent').split(' '),
     },
     {
       id: 'app_lang',
@@ -1085,28 +1067,11 @@
                   ariaLabel={t('settings.window_behavior_title')}
                   onchange={(val) => {
                     gameWindowBehavior = val;
+                    minimizeToTray = val === 'tray';
                     saveConfig();
                   }}
                 />
               </div>
-            {/snippet}
-          </Row>
-        {/if}
-
-        {#if isItemVisible('game_tray')}
-          <Row
-            title={t('settings.minimize_to_tray_title')}
-            subtitle={t('settings.minimize_to_tray_desc')}
-          >
-            {#snippet trailing()}
-              <Toggle
-                ariaLabel={t('settings.minimize_to_tray_title')}
-                checked={minimizeToTray}
-                onchange={(checked) => {
-                  minimizeToTray = checked;
-                  saveConfig();
-                }}
-              />
             {/snippet}
           </Row>
         {/if}
@@ -1287,35 +1252,6 @@
                   }}
                   size="small"
                 />
-              </div>
-            {/snippet}
-          </Row>
-        {/if}
-
-        {#if isItemVisible('app_accent')}
-          <Row title={t('settings.accent_title')} subtitle={t('settings.accent_subtitle')}>
-            {#snippet trailing()}
-              <div class="accent-picker" role="radiogroup" aria-label={t('settings.accent_title')}>
-                {#each accents as acc (acc.key)}
-                  <button
-                    type="button"
-                    class="accent-dot"
-                    class:active={theme.accent === acc.key}
-                    style="background-color: {acc.color};"
-                    title={acc.title}
-                    role="radio"
-                    aria-checked={theme.accent === acc.key}
-                    onclick={() => {
-                      theme.setAccent(acc.key);
-                      saveConfig();
-                    }}
-                    aria-label={acc.title}
-                  >
-                    {#if theme.accent === acc.key}
-                      <span class="active-check">✓</span>
-                    {/if}
-                  </button>
-                {/each}
               </div>
             {/snippet}
           </Row>
@@ -1775,6 +1711,14 @@
     font-size: var(--text-subheadline);
     outline: none;
     box-sizing: border-box;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  .search-input::-webkit-search-cancel-button,
+  .search-input::-webkit-search-decoration {
+    -webkit-appearance: none;
+    display: none;
   }
 
   .search-input::placeholder {
@@ -1896,63 +1840,6 @@
     display: flex;
     align-items: center;
     gap: 8px;
-  }
-
-  .accent-picker {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .accent-dot {
-    position: relative;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    border: 2px solid transparent;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform var(--motion-duration-short) ease;
-    outline: none;
-    padding: 0;
-  }
-
-  .accent-dot::after {
-    content: '';
-    position: absolute;
-    inset: -10px;
-  }
-
-  .accent-dot:focus-visible {
-    outline: 2px solid var(--color-system-blue);
-    outline-offset: 3px;
-  }
-
-  .accent-dot:hover {
-    transform: scale(1.15);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .accent-dot:hover {
-      transform: none !important;
-    }
-  }
-
-  :global([data-reduce-motion="true"]) .accent-dot:hover {
-    transform: none !important;
-  }
-
-  .accent-dot.active {
-    box-shadow: 0 0 0 2px var(--color-system-background), 0 0 0 4px var(--color-system-blue);
-  }
-
-  .active-check {
-    font-size: 11px;
-    font-weight: 800;
-    color: #ffffff;
-    line-height: 1;
   }
 
   .discord-preview-wrap {

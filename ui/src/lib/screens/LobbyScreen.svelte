@@ -159,6 +159,13 @@
     id: world.address, name: world.motd, port: world.port,
     address: world.address,
   })));
+  $effect(() => {
+    if (localWorlds.length > 0 && !selectedWorldId) {
+      selectedWorldId = localWorlds[0].id;
+    } else if (localWorlds.length === 0 && selectedWorldId) {
+      selectedWorldId = '';
+    }
+  });
   let isLoadingLan = $state(false);
   let isConnectingLan = $state(false);
   let isPublishingLan = $state(false);
@@ -561,6 +568,9 @@
           <ErrorState
             error={cloudError}
             domain="lobby"
+            title={t('lobby.cloud_error_title')}
+            description={t('lobby.cloud_error_desc')}
+            actionText={t('lobby.cloud_error_retry')}
             onaction={fetchCloudRooms}
           />
         </div>
@@ -925,7 +935,11 @@
         <div class="world-picker">
           <label class="picker-label" for="world-select">{t('lobby.select_world')}</label>
           <div class="world-options" id="world-select" data-testid="world-select" role="radiogroup" aria-label={t('lobby.select_world')}>
-            {#if localWorlds.length === 0}<p>{t('lobby.open_world_lan_empty')}</p>{/if}
+            {#if localWorlds.length === 0}
+              <div class="empty-worlds-callout" role="status">
+                <p class="empty-callout-text">{t('lobby.open_world_lan_empty')}</p>
+              </div>
+            {/if}
             {#each localWorlds as w (w.id || w.name)}
               <button
                 type="button"
@@ -937,7 +951,12 @@
                 onclick={() => (selectedWorldId = w.id)}
                 data-testid="world-opt-{w.id}"
               >
-                <div class="world-opt-title">{w.name}</div>
+                <div class="world-opt-header">
+                  <div class="world-opt-title">{w.name}</div>
+                  {#if selectedWorldId === w.id}
+                    <span class="world-opt-check" aria-hidden="true">✓</span>
+                  {/if}
+                </div>
                 <div class="world-opt-meta">{w.address}</div>
               </button>
             {/each}
@@ -949,6 +968,7 @@
             variant="primary"
             size="large"
             fullWidth
+            disabled={!selectedWorldId || isHosting}
             onclick={handleCreateRoom}
             loading={isHosting}
           >
@@ -1259,7 +1279,6 @@
     font-weight: 700;
     letter-spacing: 0.15em;
     text-align: center;
-    text-transform: uppercase;
     outline: none;
     transition: border-color var(--motion-duration-short) ease;
   }
@@ -1311,8 +1330,36 @@
   }
 
   .world-opt-btn.selected {
-    border-color: var(--color-system-blue);
-    background-color: rgba(0, 122, 255, 0.1);
+    border-color: var(--glass-border);
+    background-color: var(--color-system-fill);
+  }
+
+  .world-opt-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+
+  .world-opt-check {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-system-blue);
+  }
+
+  .empty-worlds-callout {
+    padding: 14px 16px;
+    background-color: var(--color-quaternary-system-fill);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    text-align: center;
+  }
+
+  .empty-callout-text {
+    font-size: var(--text-subheadline);
+    color: var(--color-secondary-label);
+    margin: 0;
+    line-height: 1.4;
   }
 
   .world-opt-title {
