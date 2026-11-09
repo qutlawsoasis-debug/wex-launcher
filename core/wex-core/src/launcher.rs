@@ -1083,4 +1083,198 @@ mod tests {
             "Default launch args must contain tuned MaxGCPauseMillis=20"
         );
     }
+
+    #[test]
+    fn test_launch_args_memory_scaling_both_versions() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let java_bin = PathBuf::from("java.exe");
+        let client_jar = PathBuf::from("client.jar");
+        let vanilla_libs = Vec::new();
+        let fabric_libs = Vec::new();
+
+        for version in &["1.20.1", "1.21.1"] {
+            // Test 2048M (Weak PC), 3072M (3GB), 4096M (4GB), 6144M (6GB), 8192M (8GB)
+            for ram_mb in &[2048, 3072, 4096, 6144, 8192] {
+                let mut config = LauncherConfig::default();
+                config.max_memory_mb = *ram_mb;
+
+                let launch_opts = LaunchOptions {
+                    paths: &paths,
+                    config: &config,
+                    version,
+                    java_binary: &java_bin,
+                    client_jar: &client_jar,
+                    vanilla_libraries: &vanilla_libs,
+                    fabric_libraries: &fabric_libs,
+                    asset_index_id: "5",
+                    extra_jvm_args: &[],
+                    quick_play_multiplayer: None,
+                };
+
+                let args = build_launch_args(&launch_opts);
+                let expected_xmx = format!("-Xmx{}M", ram_mb);
+                assert!(
+                    args.contains(&expected_xmx),
+                    "Version {} must contain {} for memory {}",
+                    version,
+                    expected_xmx,
+                    ram_mb
+                );
+            }
+        }
+
+        // SPEC 2.8: Optimal RAM heuristic for weak PC (<= 4096 MB physical RAM)
+        let weak_pc_ram = crate::jvm_args::calculate_optimal_ram_mb(4096, false);
+        assert_eq!(
+            weak_pc_ram, 2048,
+            "Weak PC with 4GB RAM must be allocated 2048MB"
+        );
+    }
+
+    #[test]
+    fn test_launch_args_quickplay_only_when_server_specified_both_versions() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let config = LauncherConfig::default();
+        let java_bin = PathBuf::from("java.exe");
+        let client_jar = PathBuf::from("client.jar");
+        let vanilla_libs = Vec::new();
+        let fabric_libs = Vec::new();
+
+        for version in &["1.20.1", "1.21.1"] {
+            // Case 1: Singleplayer launch (quick_play_multiplayer is None)
+            let singleplayer_opts = LaunchOptions {
+                paths: &paths,
+                config: &config,
+                version,
+                java_binary: &java_bin,
+                client_jar: &client_jar,
+                vanilla_libraries: &vanilla_libs,
+                fabric_libraries: &fabric_libs,
+                asset_index_id: "5",
+                extra_jvm_args: &[],
+                quick_play_multiplayer: None,
+            };
+            let sp_args = build_launch_args(&singleplayer_opts);
+            assert!(
+                !sp_args.iter().any(|a| a == "--quickPlayMultiplayer"),
+                "Singleplayer on {} must NOT include --quickPlayMultiplayer",
+                version
+            );
+
+            // Case 2: Server join (quick_play_multiplayer is Some)
+            let server_addr = "mc.aura.local:25565";
+            let mp_opts = LaunchOptions {
+                paths: &paths,
+                config: &config,
+                version,
+                java_binary: &java_bin,
+                client_jar: &client_jar,
+                vanilla_libraries: &vanilla_libs,
+                fabric_libraries: &fabric_libs,
+                asset_index_id: "5",
+                extra_jvm_args: &[],
+                quick_play_multiplayer: Some(server_addr),
+            };
+            let mp_args = build_launch_args(&mp_opts);
+            let qp_idx = mp_args.iter().position(|a| a == "--quickPlayMultiplayer");
+            assert!(
+                qp_idx.is_some(),
+                "Server launch on {} must include --quickPlayMultiplayer",
+                version
+            );
+            assert_eq!(
+                mp_args[qp_idx.unwrap() + 1],
+                server_addr,
+                "Argument after --quickPlayMultiplayer must be server address"
+            );
+        }
+    }
+
+    #[test]
+    fn test_launch_args_qa_background_only_in_test_mode() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let config = LauncherConfig::default();
+        let java_bin = PathBuf::from("java.exe");
+        let client_jar = PathBuf::from("client.jar");
+        let vanilla_libs = Vec::new();
+        let fabric_libs = Vec::new();
+
+        // 1. Normal user mode (no env var, no extra args)
+        std::env::remove_var("WEX_QA_BACKGROUND");
+        let normal_opts = LaunchOptions {
+            paths: &paths,
+            config: &config,
+            version: "1.20.1",
+            java_binary: &java_bin,
+            client_jar: &client_jar,
+            vanilla_libraries: &vanilla_libs,
+            fabric_libraries: &fabric_libs,
+            asset_index_id: "5",
+            extra_jvm_args: &[],
+            quick_play_multiplayer: None,
+        };
+        let normal_args = build_launch_args(&normal_opts);
+        assert!(
+            !normal_args.iter().any(|a| a.contains("wex.qa.background")),
+            "Normal user launch must NOT contain -Dwex.qa.background"
+        );
+        assert!(
+            !normal_args
+                .iter()
+                .any(|a| a.contains("aura.client.hiddenWindow")),
+            "Normal user launch must NOT contain -Daura.client.hiddenWindow"
+        );
+
+        // 2. Test mode via environment variable
+        std::env::set_var("WEX_QA_BACKGROUND", "1");
+        let qa_args = build_launch_args(&normal_opts);
+        std::env::remove_var("WEX_QA_BACKGROUND");
+        assert!(
+            qa_args.iter().any(|a| a == "-Dwex.qa.background=true"),
+            "Test mode must include -Dwex.qa.background=true"
+        );
+        assert!(
+            qa_args
+                .iter()
+                .any(|a| a == "-Daura.client.hiddenWindow=true"),
+            "Test mode must include -Daura.client.hiddenWindow=true"
+        );
+    }
+
+    #[test]
+    fn test_launch_args_prewarm_toggle_behavior() {
+        let mut cfg = LauncherConfig::default();
+        assert!(
+            !cfg.fast_start_jvm,
+            "fast_start_jvm must default to false for standard users"
+        );
+        cfg.fast_start_jvm = true;
+        assert!(cfg.fast_start_jvm, "fast_start_jvm toggle must be enabled");
+    }
+
+    #[test]
+    fn test_process_priority_elevation_windows_only() {
+        let priority = crate::jvm_args::ProcessPriority::AboveNormal;
+        assert_eq!(
+            priority,
+            crate::jvm_args::ProcessPriority::parse_from_str("above_normal")
+        );
+
+        #[cfg(windows)]
+        {
+            use windows_sys::Win32::System::Threading::ABOVE_NORMAL_PRIORITY_CLASS;
+            assert_eq!(
+                priority.to_windows_class(),
+                ABOVE_NORMAL_PRIORITY_CLASS,
+                "Priority AboveNormal must map to Win32 ABOVE_NORMAL_PRIORITY_CLASS"
+            );
+        }
+
+        // Invalid PID 0 must safely return false without crashing or raising errors
+        let res = crate::jvm_args::apply_process_priority(0, priority);
+        assert!(!res, "PID 0 must safely return false");
+    }
 }
