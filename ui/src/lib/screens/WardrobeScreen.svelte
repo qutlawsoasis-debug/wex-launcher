@@ -59,11 +59,7 @@
   let displayMode = $state<'3d' | '2d'>('3d');
   let selectedAnimation = $state<'idle' | 'walking'>('idle');
 
-  import {
-    Skin3DRenderer,
-    isWebGLSupported,
-    createDefaultSkinCanvas,
-  } from '../design/skin3d';
+  import type { Skin3DRenderer } from '../design/skin3d';
 
   let displayModeOptions = $derived([
     { value: '3d', label: i18n.locale === 'en' ? '3D Model' : '3D модель' },
@@ -113,19 +109,31 @@
     loadActiveState();
     loadHistory();
 
-    hasWebGL = isWebGLSupported(canvas3dRef);
-    if (hasWebGL && canvas3dRef) {
-      try {
-        renderer3d = new Skin3DRenderer({
-          canvas: canvas3dRef,
-          model: selectedModel,
-          animation: selectedAnimation,
+    if (canvas3dRef) {
+      import('../design/skin3d')
+        .then(({ isWebGLSupported, Skin3DRenderer }) => {
+          if (!canvas3dRef) return;
+          hasWebGL = isWebGLSupported(canvas3dRef);
+          if (hasWebGL) {
+            try {
+              renderer3d = new Skin3DRenderer({
+                canvas: canvas3dRef,
+                model: selectedModel,
+                animation: selectedAnimation,
+              });
+              update3DTexture();
+            } catch {
+              hasWebGL = false;
+              displayMode = '2d';
+            }
+          } else {
+            displayMode = '2d';
+          }
+        })
+        .catch(() => {
+          hasWebGL = false;
+          displayMode = '2d';
         });
-        update3DTexture();
-      } catch {
-        hasWebGL = false;
-        displayMode = '2d';
-      }
     } else {
       displayMode = '2d';
     }
@@ -173,8 +181,10 @@
       };
       img.src = skinBase64.startsWith('data:') ? skinBase64 : `data:image/png;base64,${skinBase64}`;
     } else {
-      const defSkinCanvas = createDefaultSkinCanvas(selectedModel);
-      renderer3d.setSkinImage(defSkinCanvas);
+      import('../design/skin3d').then(({ createDefaultSkinCanvas }) => {
+        const defSkinCanvas = createDefaultSkinCanvas(selectedModel);
+        renderer3d?.setSkinImage(defSkinCanvas);
+      });
     }
 
     // 2. Cape Texture

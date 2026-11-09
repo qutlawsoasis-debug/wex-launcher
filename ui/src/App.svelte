@@ -18,22 +18,95 @@
   import Icon from './lib/components/icons/Icon.svelte';
 
   import PlayScreen from './lib/screens/PlayScreen.svelte';
-  import ServersScreen from './lib/screens/ServersScreen.svelte';
-  import LobbyScreen from './lib/screens/LobbyScreen.svelte';
-  import FriendsScreen from './lib/screens/FriendsScreen.svelte';
-  import WardrobeScreen from './lib/screens/WardrobeScreen.svelte';
-  import ModsScreen from './lib/screens/ModsScreen.svelte';
-  import WorkshopScreen from './lib/screens/WorkshopScreen.svelte';
-  import SettingsScreen from './lib/screens/SettingsScreen.svelte';
-  import ShowcaseScreen from './lib/screens/ShowcaseScreen.svelte';
-  import SplashScreen from './lib/screens/SplashScreen.svelte';
-  import CrashSheet from './lib/components/CrashSheet.svelte';
-  import MusicDiskWidget from './lib/components/MusicDiskWidget.svelte';
-  import OnboardingModal from './lib/components/OnboardingModal.svelte';
-  import DeepLinkConfirmationModal, { type DeepLinkAction } from './lib/components/DeepLinkConfirmationModal.svelte';
   import type { CrashDiagnosisDto } from './lib/ipc/generated/models';
+  import type { DeepLinkAction } from './lib/components/DeepLinkConfirmationModal.svelte';
   import { initIdleManager, setGameRunning, createIdleInterval } from './lib/design/idleManager';
   import { friendsLive, parseWexJoinUri } from './lib/services/friendsLive';
+
+  // Lazy screen loading
+  let screenComponents = $state<Record<string, any>>({
+    play: PlayScreen,
+  });
+
+  async function loadScreen(tab: string) {
+    if (screenComponents[tab]) return screenComponents[tab];
+    let comp: any = null;
+    switch (tab) {
+      case 'servers':
+        comp = (await import('./lib/screens/ServersScreen.svelte')).default;
+        break;
+      case 'lobby':
+        comp = (await import('./lib/screens/LobbyScreen.svelte')).default;
+        break;
+      case 'friends':
+        comp = (await import('./lib/screens/FriendsScreen.svelte')).default;
+        break;
+      case 'wardrobe':
+        comp = (await import('./lib/screens/WardrobeScreen.svelte')).default;
+        break;
+      case 'workshop':
+        comp = (await import('./lib/screens/WorkshopScreen.svelte')).default;
+        break;
+      case 'mods':
+        comp = (await import('./lib/screens/ModsScreen.svelte')).default;
+        break;
+      case 'settings':
+        comp = (await import('./lib/screens/SettingsScreen.svelte')).default;
+        break;
+      case 'showcase':
+        comp = (await import('./lib/screens/ShowcaseScreen.svelte')).default;
+        break;
+      case 'splash':
+        comp = (await import('./lib/screens/SplashScreen.svelte')).default;
+        break;
+    }
+    if (comp) {
+      screenComponents[tab] = comp;
+    }
+    return comp;
+  }
+
+  // Lazy components
+  let MusicDiskWidget = $state<any>(null);
+  let CrashSheet = $state<any>(null);
+  let OnboardingModal = $state<any>(null);
+  let DeepLinkConfirmationModal = $state<any>(null);
+
+  $effect(() => {
+    if (activeTab && !screenComponents[activeTab]) {
+      loadScreen(activeTab);
+    }
+    if (isStartingUp && !screenComponents.splash) {
+      loadScreen('splash');
+    }
+    if (crashSheetOpen && !CrashSheet) {
+      import('./lib/components/CrashSheet.svelte').then((m) => (CrashSheet = m.default));
+    }
+    if (showOnboarding && !OnboardingModal) {
+      import('./lib/components/OnboardingModal.svelte').then((m) => (OnboardingModal = m.default));
+    }
+    if (deepLinkModalOpen && !DeepLinkConfirmationModal) {
+      import('./lib/components/DeepLinkConfirmationModal.svelte').then((m) => (DeepLinkConfirmationModal = m.default));
+    }
+  });
+
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    if (tabParam && tabParam !== 'play') {
+      loadScreen(tabParam);
+    }
+  }
+
+  onMount(() => {
+    import('./lib/components/MusicDiskWidget.svelte').then((m) => (MusicDiskWidget = m.default));
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      window.requestIdleCallback(() => {
+        loadScreen('servers');
+        loadScreen('settings');
+      });
+    }
+  });
 
   // Startup splash state
   let isStartingUp = $state(true);
@@ -177,13 +250,13 @@
   let bgImage = $derived.by(() => {
     if (customBg) return customBg;
     if (currentHour >= 22 || currentHour < 6) {
-      return '/backgrounds/night.jpg';
+      return '/backgrounds/night.webp';
     } else if (currentHour >= 6 && currentHour < 12) {
-      return '/backgrounds/morning.jpg';
+      return '/backgrounds/morning.webp';
     } else if (currentHour >= 12 && currentHour < 18) {
-      return '/backgrounds/day.jpg';
+      return '/backgrounds/day.webp';
     } else {
-      return '/backgrounds/sunset.jpg';
+      return '/backgrounds/sunset.webp';
     }
   });
 
@@ -449,7 +522,9 @@
       }
       const bg = params.get('bg');
       if (bg === 'night' || bg === 'day' || bg === 'sunset' || bg === 'morning') {
-        customBg = `/backgrounds/${bg}.jpg`;
+        customBg = `/backgrounds/${bg}.webp`;
+      } else if (bg && bg.endsWith('.jpg')) {
+        customBg = bg.replace('.jpg', '.webp');
       } else if (bg === 'reset') {
         customBg = null;
       }
@@ -720,7 +795,9 @@
   >
     {#snippet footer()}
       <div class="sidebar-footer-controls">
-        <MusicDiskWidget {isGameRunning} />
+        {#if MusicDiskWidget}
+          <MusicDiskWidget {isGameRunning} />
+        {/if}
         <div class="theme-quick-toggle">
           <Button
             variant="ghost"
@@ -791,30 +868,54 @@
               }}
             />
           {:else if activeTab === 'servers'}
-            <ServersScreen {selectedVersion} {playerName} />
+            {#if screenComponents.servers}
+              {@const ServersScreen = screenComponents.servers}
+              <ServersScreen {selectedVersion} {playerName} />
+            {/if}
           {:else if activeTab === 'lobby'}
-            <LobbyScreen {playerName} initialRoom={initialLobbyRoom} />
+            {#if screenComponents.lobby}
+              {@const LobbyScreen = screenComponents.lobby}
+              <LobbyScreen {playerName} initialRoom={initialLobbyRoom} />
+            {/if}
           {:else if activeTab === 'friends'}
-            <FriendsScreen tab={friendsSubtab} />
+            {#if screenComponents.friends}
+              {@const FriendsScreen = screenComponents.friends}
+              <FriendsScreen tab={friendsSubtab} />
+            {/if}
           {:else if activeTab === 'wardrobe'}
-            <WardrobeScreen {playerName} ontoast={addToast} />
+            {#if screenComponents.wardrobe}
+              {@const WardrobeScreen = screenComponents.wardrobe}
+              <WardrobeScreen {playerName} ontoast={addToast} />
+            {/if}
           {:else if activeTab === 'workshop'}
-            <WorkshopScreen
-              {selectedVersion}
-              initialTab={workshopSubtab}
-              ontoast={addToast}
-              {playerName}
-              onopenlobby={(room) => {
-                initialLobbyRoom = room;
-                activeTab = 'lobby';
-              }}
-            />
+            {#if screenComponents.workshop}
+              {@const WorkshopScreen = screenComponents.workshop}
+              <WorkshopScreen
+                {selectedVersion}
+                initialTab={workshopSubtab}
+                ontoast={addToast}
+                {playerName}
+                onopenlobby={(room: any) => {
+                  initialLobbyRoom = room;
+                  activeTab = 'lobby';
+                }}
+              />
+            {/if}
           {:else if activeTab === 'mods'}
-            <ModsScreen />
+            {#if screenComponents.mods}
+              {@const ModsScreen = screenComponents.mods}
+              <ModsScreen />
+            {/if}
           {:else if activeTab === 'settings'}
-            <SettingsScreen isGameRunning={isGameRunning} version={selectedVersion} onopenonboarding={() => { showOnboarding = true; }} />
+            {#if screenComponents.settings}
+              {@const SettingsScreen = screenComponents.settings}
+              <SettingsScreen isGameRunning={isGameRunning} version={selectedVersion} onopenonboarding={() => { showOnboarding = true; }} />
+            {/if}
           {:else if activeTab === 'showcase'}
-            <ShowcaseScreen />
+            {#if screenComponents.showcase}
+              {@const ShowcaseScreen = screenComponents.showcase}
+              <ShowcaseScreen />
+            {/if}
           {/if}
         </div>
       {/key}
@@ -831,7 +932,8 @@
   {/if}
 
   <!-- Startup Splash Screen per SPEC 1.1 -->
-  {#if isStartingUp}
+  {#if isStartingUp && screenComponents.splash}
+    {@const SplashScreen = screenComponents.splash}
     <SplashScreen
       oncomplete={() => {
         isStartingUp = false;
@@ -840,37 +942,43 @@
   {/if}
 
   <!-- Game Crash Diagnosis Sheet (SPEC 2.10) -->
-  <CrashSheet
-    bind:open={crashSheetOpen}
-    diagnosis={currentCrashDiagnosis}
-    version={selectedVersion}
-    onnavigate={(tab) => {
-      activeTab = tab;
-    }}
-    ontoast={addToast}
-  />
+  {#if crashSheetOpen && CrashSheet}
+    <CrashSheet
+      bind:open={crashSheetOpen}
+      diagnosis={currentCrashDiagnosis}
+      version={selectedVersion}
+      onnavigate={(tab: string) => {
+        activeTab = tab;
+      }}
+      ontoast={addToast}
+    />
+  {/if}
 
   <!-- First Launch Onboarding Modal (SPEC 1.1 / Apple HIG) -->
-  <OnboardingModal
-    bind:open={showOnboarding}
-    oncomplete={(data) => {
-      playerName = data.nickname;
-      selectedVersion = data.version;
-      loadProfile();
-      addToast('success', 'Настройка завершена', `Добро пожаловать в Wex, ${data.nickname}!`);
-      if (data.launchImmediately) {
-        handleLaunch();
-      }
-    }}
-  />
+  {#if showOnboarding && OnboardingModal}
+    <OnboardingModal
+      bind:open={showOnboarding}
+      oncomplete={(data: any) => {
+        playerName = data.nickname;
+        selectedVersion = data.version;
+        loadProfile();
+        addToast('success', 'Настройка завершена', `Добро пожаловать в Wex, ${data.nickname}!`);
+        if (data.launchImmediately) {
+          handleLaunch();
+        }
+      }}
+    />
+  {/if}
 
   <!-- Deep Link Confirmation Modal (wex://) -->
-  <DeepLinkConfirmationModal
-    bind:open={deepLinkModalOpen}
-    action={pendingDeepLink}
-    onconfirm={handleConfirmDeepLink}
-    oncancel={handleCancelDeepLink}
-  />
+  {#if deepLinkModalOpen && DeepLinkConfirmationModal}
+    <DeepLinkConfirmationModal
+      bind:open={deepLinkModalOpen}
+      action={pendingDeepLink}
+      onconfirm={handleConfirmDeepLink}
+      oncancel={handleCancelDeepLink}
+    />
+  {/if}
 </div>
 
 <style>
