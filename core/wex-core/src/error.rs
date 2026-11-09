@@ -63,11 +63,17 @@ pub enum WexError {
 impl From<WexError> for wex_ipc::error::IpcError {
     fn from(err: WexError) -> Self {
         match err {
-            WexError::DiskFull { path, source } => Self::new(
-                "IO_DISK_FULL",
-                "Недостаточно свободного места на диске",
-                Some(format!("Path: {}, details: {}", path.display(), source)),
-            ),
+            WexError::DiskFull { path, source } => {
+                let file_name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("файла");
+                Self::new(
+                    "IO_DISK_FULL",
+                    "На диске закончилось свободное место. Освободите место на диске и повторите попытку.",
+                    Some(format!("File: {}, source: {}", file_name, source)),
+                )
+            }
             WexError::Io(e) => e.into(),
             WexError::Network(e) => {
                 let code = if e.is_timeout() {
@@ -76,84 +82,130 @@ impl From<WexError> for wex_ipc::error::IpcError {
                     "NETWORK_ERROR"
                 };
                 let msg = if e.is_timeout() {
-                    "Истекло время ожидания ответа сервера"
+                    "Сервер не отвечает на запрос. Проверьте подключение к интернету или попробуйте позже."
                 } else {
-                    "Сетевая ошибка при загрузке компонентов игры"
+                    "Нет подключения к интернету. Проверьте сеть и повторите попытку."
                 };
                 Self::new(code, msg, Some(e.to_string()))
             }
             WexError::Json(e) => e.into(),
             WexError::Zip(e) => Self::new(
                 "WORKSHOP_ZIP_ERROR",
-                "Ошибка распаковки или создания ZIP-архива",
+                "Не удалось распаковать архив с файлами. Проверьте свободное место на диске и повторите попытку.",
                 Some(e.to_string()),
             ),
             WexError::HashMismatch {
                 path,
                 expected,
                 actual,
-            } => Self::new(
-                "INSTALL_HASH_MISMATCH",
-                "Контрольная сумма загруженного файла не совпадает",
-                Some(format!(
-                    "Path: {}, expected {}, actual {}",
-                    path.display(),
-                    expected,
-                    actual
-                )),
-            ),
+            } => {
+                let file_name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("файла");
+                Self::new(
+                    "INSTALL_HASH_MISMATCH",
+                    "Файл игры повреждён при скачивании. Лаунчер скачает его заново.",
+                    Some(format!(
+                        "File: {}, expected {}, actual {}",
+                        file_name, expected, actual
+                    )),
+                )
+            }
             WexError::SizeMismatch {
                 path,
                 expected,
                 actual,
-            } => Self::new(
-                "INSTALL_SIZE_MISMATCH",
-                "Размер загруженного файла не совпадает с ожидаемым",
-                Some(format!(
-                    "Path: {}, expected {} bytes, actual {} bytes",
-                    path.display(),
-                    expected,
-                    actual
-                )),
-            ),
-            WexError::DownloadError { url, message } => Self::new(
-                "INSTALL_DOWNLOAD_FAILED",
-                "Не удалось загрузить файл по сети",
-                Some(format!("URL: {}, error: {}", url, message)),
-            ),
+            } => {
+                let file_name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("файла");
+                Self::new(
+                    "INSTALL_SIZE_MISMATCH",
+                    "Файл игры загрузился не полностью. Лаунчер повторит загрузку.",
+                    Some(format!(
+                        "File: {}, expected {} bytes, actual {} bytes",
+                        file_name, expected, actual
+                    )),
+                )
+            }
+            WexError::DownloadError { url, message } => {
+                let clean_name = if let Some(last_slash) = url.rfind('/') {
+                    &url[last_slash + 1..]
+                } else {
+                    &url
+                };
+                Self::new(
+                    "INSTALL_DOWNLOAD_FAILED",
+                    "Не удалось скачать файлы игры. Проверьте подключение к интернету и повторите загрузку.",
+                    Some(format!("File: {}, details: {}", clean_name, message)),
+                )
+            }
             WexError::ManifestError(msg) => Self::new(
                 "INSTALL_MANIFEST_ERROR",
-                "Ошибка структуры манифеста версии игры",
+                "Не удалось прочитать список файлов игры. Проверьте подключение к интернету или попробуйте позже.",
                 Some(msg),
             ),
             WexError::UnsupportedVersion(ver) => Self::new(
                 "LAUNCH_FAILED",
-                format!("Версия {} не поддерживается лаунчером", ver),
+                format!("Версия {} не поддерживается лаунчером. Выберите поддерживаемую версию в списке.", ver),
                 None,
             ),
             WexError::JavaError(msg) => {
-                let code = if msg.contains("not found") || msg.contains("не найден") {
-                    "JAVA_NOT_FOUND"
-                } else if msg.contains("version") || msg.contains("версия") {
-                    "JAVA_WRONG_VERSION"
+                let lower = msg.to_lowercase();
+                let (code, text) = if lower.contains("not found") || lower.contains("не найден") {
+                    (
+                        "JAVA_NOT_FOUND",
+                        "Java не найдена на компьютере. Укажите путь к Java в настройках лаунчера или установите её.",
+                    )
+                } else if lower.contains("version") || lower.contains("версия") || lower.contains("major.minor") {
+                    (
+                        "JAVA_WRONG_VERSION",
+                        "Установленная версия Java не подходит для этой игры. Выберите подходящую версию Java в настройках.",
+                    )
                 } else {
-                    "JAVA_RUNTIME_ERROR"
+                    (
+                        "JAVA_RUNTIME_ERROR",
+                        "Java не запускается. Проверьте аргументы запуска и путь к Java в настройках лаунчера.",
+                    )
                 };
-                Self::new(code, "Ошибка среды выполнения Java", Some(msg))
+                Self::new(code, text, Some(msg))
             }
-            WexError::LaunchError(msg) => Self::new(
-                "LAUNCH_FAILED",
-                "Ошибка при подготовке или запуске игры",
-                Some(msg),
-            ),
-            WexError::ProcessFailed(code) => Self::new(
-                "LAUNCH_PROCESS_FAILED",
-                format!("Игровой процесс завершился с кодом ошибки {}", code),
-                Some(format!("Process exit code: {}", code)),
-            ),
+            WexError::LaunchError(msg) => {
+                let lower = msg.to_lowercase();
+                if lower.contains("memory") || lower.contains("памяти") || lower.contains("heap") {
+                    Self::new(
+                        "LAUNCH_OUT_OF_MEMORY",
+                        "Недостаточно оперативной памяти для запуска игры. Уменьшите объём памяти в настройках лаунчера.",
+                        Some(msg),
+                    )
+                } else {
+                    Self::new(
+                        "LAUNCH_FAILED",
+                        "Не удалось запустить игру. Проверьте настройки лаунчера и повторите запуск.",
+                        Some(msg),
+                    )
+                }
+            }
+            WexError::ProcessFailed(code) => {
+                if code == -805306369 {
+                    Self::new(
+                        "LAUNCH_OUT_OF_MEMORY",
+                        "Игре не хватило оперативной памяти. Увеличьте объём выделенной памяти в настройках лаунчера.",
+                        Some(format!("Process exit code: {}", code)),
+                    )
+                } else {
+                    Self::new(
+                        "LAUNCH_PROCESS_FAILED",
+                        "Игра неожиданно завершила работу. Проверьте настройки графики и выделенную память в настройках.",
+                        Some(format!("Process exit code: {}", code)),
+                    )
+                }
+            }
             WexError::Cancelled => Self::new(
                 "OPERATION_CANCELLED",
-                "Операция отменена пользователем",
+                "Операция отменена. Вы можете повторить её в любое время.",
                 None,
             ),
         }
@@ -164,17 +216,52 @@ impl From<WexError> for wex_ipc::error::IpcError {
 mod tests {
     use super::*;
 
+    const BANNED_WORDS: &[&str] = &[
+        "reqwest",
+        "ipc",
+        "os error",
+        "exit code",
+        "status code",
+        "exception",
+        "errno",
+        "nullpointer",
+        "stacktrace",
+        "failed to",
+        "error:",
+        "c:\\users\\",
+        "/home/",
+        "/users/",
+    ];
+
+    fn assert_clean_russian(msg: &str) {
+        let lower = msg.to_lowercase();
+        for word in BANNED_WORDS {
+            assert!(
+                !lower.contains(word),
+                "User-facing message contains banned word '{}': {}",
+                word,
+                msg
+            );
+        }
+        assert!(
+            msg.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c)),
+            "Message must be localized in Russian: {}",
+            msg
+        );
+    }
+
     #[test]
     fn test_wex_error_to_ipc_error_conversions() {
         let err = WexError::JavaError("java binary not found in PATH".into());
         let ipc: wex_ipc::error::IpcError = err.into();
         assert_eq!(ipc.code, "JAVA_NOT_FOUND");
-        assert_eq!(ipc.message, "Ошибка среды выполнения Java");
+        assert_clean_russian(&ipc.message);
         assert!(ipc.technical.unwrap().contains("not found"));
 
         let err2 = WexError::ProcessFailed(1);
         let ipc2: wex_ipc::error::IpcError = err2.into();
         assert_eq!(ipc2.code, "LAUNCH_PROCESS_FAILED");
+        assert_clean_russian(&ipc2.message);
 
         let err3 = WexError::HashMismatch {
             path: PathBuf::from("client.jar"),
@@ -183,5 +270,21 @@ mod tests {
         };
         let ipc3: wex_ipc::error::IpcError = err3.into();
         assert_eq!(ipc3.code, "INSTALL_HASH_MISMATCH");
+        assert_clean_russian(&ipc3.message);
+
+        let err_oom = WexError::ProcessFailed(-805306369);
+        let ipc_oom: wex_ipc::error::IpcError = err_oom.into();
+        assert_eq!(ipc_oom.code, "LAUNCH_OUT_OF_MEMORY");
+        assert_clean_russian(&ipc_oom.message);
+
+        let err_disk = WexError::DiskFull {
+            path: PathBuf::from("C:\\Users\\SecretUser\\test.jar"),
+            source: std::io::Error::new(std::io::ErrorKind::StorageFull, "disk full"),
+        };
+        let ipc_disk: wex_ipc::error::IpcError = err_disk.into();
+        assert_eq!(ipc_disk.code, "IO_DISK_FULL");
+        assert_clean_russian(&ipc_disk.message);
+        // Ensure user path is NOT in user-facing message
+        assert!(!ipc_disk.message.contains("SecretUser"));
     }
 }

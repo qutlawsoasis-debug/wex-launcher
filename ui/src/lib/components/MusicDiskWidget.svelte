@@ -967,7 +967,6 @@
     font-size: 8px;
     font-weight: 700;
     color: #ffffff;
-    letter-spacing: 0.5px;
   }
 
   .vinyl-cover-img {

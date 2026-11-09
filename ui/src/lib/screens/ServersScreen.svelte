@@ -479,6 +479,16 @@
     loadServers(newVer);
   }
 
+  let prevOnline = network.isOnline;
+  $effect(() => {
+    const currentOnline = network.isOnline;
+    if (currentOnline && !prevOnline) {
+      loadServers(activeVersion);
+      loadFriendServers();
+    }
+    prevOnline = currentOnline;
+  });
+
   onMount(() => {
     // 1. Attempt reading configuration to match current active nickname and version
     import('@tauri-apps/api/core')

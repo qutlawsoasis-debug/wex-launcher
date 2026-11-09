@@ -539,7 +539,7 @@ describe('LobbyScreen Component Tests', () => {
     cloudTab?.click();
     await new Promise((r) => setTimeout(r, 60));
 
-    expect(target.textContent).toContain('Ошибка в лобби');
+    expect(target.textContent).toMatch(/Ошибка в (комнате|лобби)/);
     const retryBtn = target.querySelector('.error-state-card button');
     expect(retryBtn).not.toBeNull();
     expect(retryBtn?.textContent).toContain('Повторить');

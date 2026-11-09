@@ -20,6 +20,7 @@
   import ErrorState from '../components/ErrorState.svelte';
   import StoriesCarousel, { type StorySlideData } from '../components/StoriesCarousel.svelte';
   import { theme } from '../design/theme.svelte';
+  import { network } from '../design/network.svelte';
   import { t, i18n } from '../i18n';
   import type { ScreenshotItemDto } from '../ipc/generated';
 
@@ -474,6 +475,45 @@
     loadLatestScreenshot();
   });
 
+  async function loadOnlineData() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      if (initialNews === undefined) {
+        try {
+          const res = await invoke<any>('overview_get_news');
+          if (Array.isArray(res) && res.length > 0) {
+            fetchedNews = res;
+          } else if (res?.versions && Array.isArray(res.versions) && res.versions.length > 0) {
+            fetchedNews = res.versions;
+          }
+        } catch {}
+      }
+      if (initialUpdateInfo === null) {
+        try {
+          const res = await invoke<UpdateInfo>('overview_check_update');
+          if (res && res.update_available) {
+            fetchedUpdateInfo = res;
+          }
+        } catch {}
+      }
+      try {
+        const list = await invoke<any[]>('list_servers');
+        if (list && list.length > 0) {
+          recentServer = list[0];
+        }
+      } catch {}
+    } catch {}
+  }
+
+  let prevOnline = network.isOnline;
+  $effect(() => {
+    const currentOnline = network.isOnline;
+    if (currentOnline && !prevOnline) {
+      loadOnlineData();
+    }
+    prevOnline = currentOnline;
+  });
+
   function handleImportCompleted(result: {
     nickname?: string;
     ramMb?: number;
@@ -494,6 +534,34 @@
 <div class="play-screen-immersive">
   <!-- Interactive Content Layer -->
   <div class="play-content-container">
+    <!-- Honest Offline State Banner -->
+    {#if !network.isOnline}
+      <div class="offline-banner" role="status" aria-live="polite">
+        <div class="offline-banner-icon">
+          <Icon name="wifi-off" size={16} color="var(--color-system-orange)" />
+        </div>
+        <div class="offline-banner-body">
+          <span class="offline-banner-headline">
+            {t('offline.title')}
+          </span>
+          <span class="offline-banner-subtext">
+            {t('play.offline_launch_note')} — {i18n.locale === 'en' ? 'Game launches from local files' : 'Доступен запуск уже скачанной версии'}
+          </span>
+        </div>
+        <div class="offline-banner-action">
+          <Button
+            variant="glass"
+            size="small"
+            onclick={() => network.check()}
+            title="Проверить подключение к сети"
+          >
+            <Icon name="refresh" size={12} color="rgba(255, 255, 255, 0.9)" />
+            <span>{t('offline.retry')}</span>
+          </Button>
+        </div>
+      </div>
+    {/if}
+
     <!-- Unobtrusive Update Notification Banner (Apple HIG Banners & Alerts) -->
     {#if showUpdateBanner && updateInfo}
       <div class="update-banner" class:closing={isClosingBanner} role="status" aria-live="polite">
@@ -557,6 +625,16 @@
             {onnavigatescreen}
             {ontoast}
           />
+        </div>
+      {:else if !network.isOnline}
+        <div class="stories-shelf-col updates-card offline-card">
+          <div class="offline-card-inner">
+            <Icon name="wifi-off" size={24} color="var(--color-secondary-label)" />
+            <span class="offline-card-title">{t('offline.title')}</span>
+            <span class="offline-card-desc">
+              {i18n.locale === 'en' ? 'News and updates are unavailable offline. Local game launch is ready.' : 'Новости и обновления недоступны без сети. Доступен запуск уже скачанной версии.'}
+            </span>
+          </div>
         </div>
       {/if}
 
@@ -704,6 +782,8 @@
               <span class="tech-runtime-text">{javaRuntime}</span>
               {#if isRunning}
                 <span class="tech-status-badge running">({i18n.locale === 'en' ? 'Playing' : 'В игре'})</span>
+              {:else if !network.isOnline}
+                <span class="tech-status-badge offline">• {t('play.offline_launch_note')}</span>
               {:else if clientStatus}
                 <span class="tech-status-badge">• {clientStatus}</span>
               {/if}
@@ -796,6 +876,93 @@
 
   .update-banner.closing {
     animation: updateBannerCollapse 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .offline-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--color-system-thin-material);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 159, 10, 0.3);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    margin-bottom: 12px;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .offline-banner-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(255, 159, 10, 0.15);
+    flex-shrink: 0;
+  }
+
+  .offline-banner-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .offline-banner-headline {
+    font-size: var(--text-footnote);
+    font-weight: 600;
+    color: var(--color-label);
+  }
+
+  .offline-banner-subtext {
+    font-size: var(--text-caption-1);
+    color: var(--color-secondary-label);
+  }
+
+  .offline-banner-action {
+    flex-shrink: 0;
+  }
+
+  .offline-card {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 20px;
+    text-align: center;
+  }
+
+  .offline-card-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .offline-card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-label);
+  }
+
+  .offline-card-desc {
+    font-size: 12px;
+    color: var(--color-secondary-label);
+    max-width: 280px;
+    line-height: 1.4;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   @keyframes updateBannerSlideDown {

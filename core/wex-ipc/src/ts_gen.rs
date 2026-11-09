@@ -29,11 +29,15 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ("IO_PERMISSION_DENIED", "IO_PERMISSION_DENIED"),
         ("IO_ALREADY_EXISTS", "IO_ALREADY_EXISTS"),
         ("IO_TIMED_OUT", "IO_TIMED_OUT"),
+        ("IO_DISK_FULL", "IO_DISK_FULL"),
+        ("NETWORK_ERROR", "NETWORK_ERROR"),
+        ("OPERATION_CANCELLED", "OPERATION_CANCELLED"),
         ("SERIALIZATION_ERROR", "SERIALIZATION_ERROR"),
         ("LAUNCH_FAILED", "LAUNCH_FAILED"),
         ("LAUNCH_PROCESS_FAILED", "LAUNCH_PROCESS_FAILED"),
         ("LAUNCH_OFFLINE_FORBIDDEN", "LAUNCH_OFFLINE_FORBIDDEN"),
         ("LAUNCH_ALREADY_RUNNING", "LAUNCH_ALREADY_RUNNING"),
+        ("LAUNCH_OUT_OF_MEMORY", "LAUNCH_OUT_OF_MEMORY"),
         ("JAVA_NOT_FOUND", "JAVA_NOT_FOUND"),
         ("JAVA_WRONG_VERSION", "JAVA_WRONG_VERSION"),
         ("JAVA_RUNTIME_ERROR", "JAVA_RUNTIME_ERROR"),
@@ -53,11 +57,17 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ("NET_LOBBY_NETWORK_ERROR", "NET_LOBBY_NETWORK_ERROR"),
         ("NET_LOBBY_JSON_ERROR", "NET_LOBBY_JSON_ERROR"),
         ("NET_LOBBY_URL_ERROR", "NET_LOBBY_URL_ERROR"),
+        ("NET_LOBBY_KICKED", "NET_LOBBY_KICKED"),
+        ("NET_TUNNEL_ERROR", "NET_TUNNEL_ERROR"),
+        ("NET_PING_TIMEOUT", "NET_PING_TIMEOUT"),
+        ("NET_DNS_ERROR", "NET_DNS_ERROR"),
+        ("NET_PROTOCOL_ERROR", "NET_PROTOCOL_ERROR"),
         ("SOCIAL_NOT_FOUND", "SOCIAL_NOT_FOUND"),
         ("SOCIAL_UNAUTHORIZED", "SOCIAL_UNAUTHORIZED"),
         ("SOCIAL_API_ERROR", "SOCIAL_API_ERROR"),
         ("SOCIAL_NETWORK_ERROR", "SOCIAL_NETWORK_ERROR"),
         ("SOCIAL_JSON_ERROR", "SOCIAL_JSON_ERROR"),
+        ("SOCIAL_ALREADY_EXISTS", "SOCIAL_ALREADY_EXISTS"),
         ("ACHIEVEMENT_IO_ERROR", "ACHIEVEMENT_IO_ERROR"),
         ("ACHIEVEMENT_SERIALIZE_ERROR", "ACHIEVEMENT_SERIALIZE_ERROR"),
         ("WORKSHOP_NOT_FOUND", "WORKSHOP_NOT_FOUND"),
@@ -68,6 +78,10 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         ("UPDATE_INVALID_MANIFEST", "UPDATE_INVALID_MANIFEST"),
         ("UPDATE_PLATFORM_NOT_FOUND", "UPDATE_PLATFORM_NOT_FOUND"),
         ("UPDATE_SIGNATURE_FAILED", "UPDATE_SIGNATURE_FAILED"),
+        ("SKIN_IMAGE_ERROR", "SKIN_IMAGE_ERROR"),
+        ("SKIN_INVALID_PNG", "SKIN_INVALID_PNG"),
+        ("SKIN_UNSUPPORTED_DIMENSIONS", "SKIN_UNSUPPORTED_DIMENSIONS"),
+        ("SKIN_FILE_TOO_LARGE", "SKIN_FILE_TOO_LARGE"),
     ];
     for (k, v) in codes {
         error_ts.push_str(&format!("    {}: \"{}\",\n", k, v));
@@ -136,6 +150,9 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         UpdateCheckResultDto::decl(),
         OnboardingSpecsDto::decl(),
         OnboardingCompleteRequest::decl(),
+        IntegrityCheckResultDto::decl(),
+        StorageCacheInfoDto::decl(),
+        ClearStorageCacheResultDto::decl(),
     ];
     for decl in models_decls {
         models_ts.push_str(&format!("export {};\n\n", decl));
@@ -147,11 +164,13 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
     cmd_ts.push_str("import type {\n");
     cmd_ts.push_str("    AchievementDefinitionDto,\n");
     cmd_ts.push_str("    AchievementProgressDto,\n");
+    cmd_ts.push_str("    ClearStorageCacheResultDto,\n");
     cmd_ts.push_str("    CrashDiagnosisDto,\n");
     cmd_ts.push_str("    DiscordActivityDto,\n");
     cmd_ts.push_str("    FriendItemDto,\n");
     cmd_ts.push_str("    FriendProfileDto,\n");
     cmd_ts.push_str("    GraphicsPresetDto,\n");
+    cmd_ts.push_str("    IntegrityCheckResultDto,\n");
     cmd_ts.push_str("    LobbyCreateResponseDto,\n");
     cmd_ts.push_str("    LobbyJoinResponseDto,\n");
     cmd_ts.push_str("    LobbyStatusResponseDto,\n");
@@ -167,6 +186,7 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
     cmd_ts.push_str("    ScreenshotItemDto,\n");
     cmd_ts.push_str("    ServerPingResponseDto,\n");
     cmd_ts.push_str("    SkinModelDto,\n");
+    cmd_ts.push_str("    StorageCacheInfoDto,\n");
     cmd_ts.push_str("    SkinValidationResultDto,\n");
     cmd_ts.push_str("    SyncResponseDto,\n");
     cmd_ts.push_str("    TunnelConfigResponseDto,\n");
@@ -267,6 +287,13 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
         SocialGetNewsRequest::decl(),
         SocialGetNewsResponse::decl(),
         SocialCheckLauncherUpdateRequest::decl(),
+        SocialCheckLauncherUpdateResponse::decl(),
+        StorageVerifyFilesRequest::decl(),
+        StorageVerifyFilesResponse::decl(),
+        StorageGetCacheInfoRequest::decl(),
+        StorageGetCacheInfoResponse::decl(),
+        StorageClearCacheRequest::decl(),
+        StorageClearCacheResponse::decl(),
         // Music
         MusicTrackDto::decl(),
         MusicPlaylistResponse::decl(),
@@ -372,6 +399,9 @@ pub fn generate_all_bindings() -> HashMap<String, String> {
             "SOCIAL_CHECK_LAUNCHER_UPDATE",
             CMD_SOCIAL_CHECK_LAUNCHER_UPDATE,
         ),
+        ("STORAGE_VERIFY_FILES", CMD_STORAGE_VERIFY_FILES),
+        ("STORAGE_GET_CACHE_INFO", CMD_STORAGE_GET_CACHE_INFO),
+        ("STORAGE_CLEAR_CACHE", CMD_STORAGE_CLEAR_CACHE),
         ("MUSIC_GET_PLAYLIST", CMD_MUSIC_GET_PLAYLIST),
         ("MUSIC_GET_TRACK_DATA", CMD_MUSIC_GET_TRACK_DATA),
         ("MUSIC_OPEN_FOLDER", CMD_MUSIC_OPEN_FOLDER),
