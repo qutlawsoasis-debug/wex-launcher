@@ -107,20 +107,30 @@
           update_available: boolean;
           latest_version?: string;
           download_url?: string;
+          signature?: string | null;
         }>('startup_check_update', {
           simulateNetworkError: false,
         });
 
-        if (update && update.update_available && update.download_url) {
+        // Only auto-download signed updates (unsigned updates enter link-only mode on PlayScreen)
+        if (update && update.update_available && update.download_url && update.signature) {
           await runUpdateDownload(update.download_url, update.latest_version);
           return;
         }
       } catch (err: unknown) {
-        handleNetworkFailure(
-          err instanceof Error
-            ? err.message
-            : t('splash.err_network_failed')
-        );
+        if (simulateNetworkError) {
+          handleNetworkFailure(
+            err instanceof Error
+              ? err.message
+              : t('splash.err_network_failed')
+          );
+          return;
+        }
+        // Scenario 4: Unobtrusive offline / server unreachable -> silent transition to PlayScreen
+        statusText = t('splash.status_ready');
+        await waitDelay(100);
+        finishStartup();
+        return;
         return;
       }
     }

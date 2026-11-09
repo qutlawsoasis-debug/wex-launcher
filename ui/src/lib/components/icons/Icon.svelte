@@ -38,7 +38,8 @@
       | 'forward'
       | 'backward'
       | 'volume'
-      | 'volume-x';
+      | 'volume-x'
+      | 'link';
     size?: number;
     color?: string;
     class?: string;
@@ -196,6 +197,9 @@
     <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
     <line x1="23" y1="9" x2="17" y2="15"></line>
     <line x1="17" y1="9" x2="23" y2="15"></line>
+  {:else if name === 'link'}
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
   {/if}
 </svg>
 

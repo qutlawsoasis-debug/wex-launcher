@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use wex_core::config::{LauncherConfig, WexPaths};
 use wex_ipc::models::{LauncherConfig as IpcLauncherConfig, UpdateCheckResultDto};
-use wex_social::launcher_update::{check_update_from_url, DEFAULT_TARGET_PLATFORM};
+use wex_social::launcher_update::DEFAULT_TARGET_PLATFORM;
 
 /// Managed state for startup commands
 pub struct StartupState {
@@ -93,15 +93,22 @@ pub async fn startup_check_update(
         return Err("Сетевая ошибка: невозможно связаться с сервером обновлений".to_string());
     }
 
-    let url = manifest_url.unwrap_or_else(|| {
-        "https://raw.githubusercontent.com/wex-launcher/manifest/main/latest.json".to_string()
-    });
-    let cur_ver = env!("CARGO_PKG_VERSION");
+    let url = manifest_url
+        .or_else(|| std::env::var("WEX_UPDATE_URL").ok())
+        .or_else(|| std::env::var("WEX_MANIFEST_URL").ok())
+        .unwrap_or_else(|| {
+            "https://raw.githubusercontent.com/wex-launcher/manifest/main/latest.json".to_string()
+        });
+    let cur_ver = std::env::var("WEX_CURRENT_VERSION")
+        .unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string());
 
-    check_update_from_url(&state.client, cur_ver, DEFAULT_TARGET_PLATFORM, &url)
-        .await
-        .map(UpdateCheckResultDto::from)
-        .map_err(|e| format!("Ошибка проверки обновления: {e}"))
+    super::overview::check_update_internal_with_paths(
+        Some(&state.paths),
+        &cur_ver,
+        Some(&url),
+        Some(DEFAULT_TARGET_PLATFORM),
+    )
+    .await
 }
 
 /// Downloads and applies launcher update, reporting progress through IPC events

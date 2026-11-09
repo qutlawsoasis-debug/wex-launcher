@@ -181,17 +181,29 @@ pub fn get_news_internal(
         .collect()
 }
 
-pub async fn check_update_internal(
+pub async fn check_update_internal_with_paths(
+    paths: Option<&WexPaths>,
     current_version: &str,
     manifest_url: Option<&str>,
     target_platform: Option<&str>,
 ) -> Result<UpdateCheckResultDto, String> {
     let cur = if current_version.trim().is_empty() {
-        "1.0.0"
+        env!("CARGO_PKG_VERSION")
     } else {
         current_version.trim()
     };
     let plat = target_platform.unwrap_or(DEFAULT_TARGET_PLATFORM);
+
+    if let Some(p) = paths {
+        log_launcher(
+            p,
+            "INFO",
+            &format!(
+                "Запрос проверки обновлений лаунчера: текущая версия={}, URL={:?}",
+                cur, manifest_url
+            ),
+        );
+    }
 
     match manifest_url {
         Some(url) if !url.trim().is_empty() => {
@@ -201,12 +213,84 @@ pub async fn check_update_internal(
                 .map_err(|e| e.to_string())?;
 
             match check_update_from_url(&client, cur, plat, url).await {
-                Ok(res) => Ok(res.into()),
-                Err(err) => Err(err.to_string()),
+                Ok(res) => {
+                    if let Some(p) = paths {
+                        if res.update_available {
+                            if res.signature.is_some() {
+                                log_launcher(
+                                    p,
+                                    "INFO",
+                                    &format!(
+                                        "Найдено обновление лаунчера: версия {:?} (подписано). Отображение баннера «Доступно обновление».",
+                                        res.latest_version
+                                    ),
+                                );
+                            } else {
+                                log_launcher(
+                                    p,
+                                    "INFO",
+                                    &format!(
+                                        "Найдено обновление лаунчера: версия {:?} (без подписи -> режим «только ссылка»). Фоновая загрузка и запуск блокированы.",
+                                        res.latest_version
+                                    ),
+                                );
+                            }
+                        } else {
+                            log_launcher(
+                                p,
+                                "INFO",
+                                &format!(
+                                    "Лаунчер актуален, обновлений нет: текущая версия={}",
+                                    res.current_version
+                                ),
+                            );
+                        }
+                    }
+                    Ok(res.into())
+                }
+                Err(err) => {
+                    let ipc_err = wex_ipc::error::IpcError::from(err);
+                    let formatted = format!("{}: {}", ipc_err.code, ipc_err.message);
+                    if let Some(p) = paths {
+                        if ipc_err.code == "UPDATE_SIGNATURE_FAILED" {
+                            log_launcher(
+                                p,
+                                "ERROR",
+                                &format!(
+                                    "Отказ проверки обновления: {formatted}. Загрузка и установка отклонены в целях безопасности."
+                                ),
+                            );
+                        } else if ipc_err.code == "UPDATE_NETWORK_ERROR" {
+                            log_launcher(
+                                p,
+                                "WARN",
+                                &format!(
+                                    "Сервер обновлений недоступен: {formatted}. Тихий режим: ошибка игроку не отображается."
+                                ),
+                            );
+                        } else {
+                            log_launcher(
+                                p,
+                                "WARN",
+                                &format!("Ошибка при проверке обновления: {formatted}"),
+                            );
+                        }
+                    }
+                    Err(formatted)
+                }
             }
         }
         _ => {
             // Unobtrusive default check: if no remote url configured, report current version is up to date
+            if let Some(p) = paths {
+                log_launcher(
+                    p,
+                    "INFO",
+                    &format!(
+                        "Лаунчер актуален: удалённый сервер не настроен, текущая версия={cur}"
+                    ),
+                );
+            }
             Ok(UpdateCheckResultDto {
                 update_available: false,
                 current_version: cur.to_string(),
@@ -218,6 +302,14 @@ pub async fn check_update_internal(
             })
         }
     }
+}
+
+pub async fn check_update_internal(
+    current_version: &str,
+    manifest_url: Option<&str>,
+    target_platform: Option<&str>,
+) -> Result<UpdateCheckResultDto, String> {
+    check_update_internal_with_paths(None, current_version, manifest_url, target_platform).await
 }
 
 pub fn detect_old_launcher_internal() -> Option<String> {
@@ -733,21 +825,43 @@ pub async fn social_check_launcher_update(
     let cur_v = request
         .as_ref()
         .map(|r| r.current_version.as_str())
-        .unwrap_or("1.0.0");
+        .unwrap_or(env!("CARGO_PKG_VERSION"));
     let manifest_url = request.as_ref().map(|r| r.manifest_url.as_str());
     let target_platform = request.as_ref().and_then(|r| r.target_platform.as_deref());
 
     check_update_internal(cur_v, manifest_url, target_platform).await
 }
 
+pub fn log_launcher(paths: &WexPaths, level: &str, message: &str) {
+    let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
+    let line = format!("[{now}] [{level}] {message}\n");
+    let _ = paths.ensure_dirs();
+    let log_file = paths.logs_dir.join("launcher.log");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_file)
+    {
+        use std::io::Write;
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
 #[tauri::command]
 pub async fn overview_check_update(
-    _state: State<'_, PlayState>,
+    state: State<'_, PlayState>,
     manifest_url: Option<String>,
 ) -> Result<UpdateCheckResultDto, String> {
-    check_update_internal(
-        "1.0.0",
-        manifest_url.as_deref(),
+    let cur_v = std::env::var("WEX_CURRENT_VERSION")
+        .unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string());
+    let effective_url = manifest_url
+        .or_else(|| std::env::var("WEX_UPDATE_URL").ok())
+        .or_else(|| std::env::var("WEX_MANIFEST_URL").ok());
+
+    check_update_internal_with_paths(
+        Some(&state.paths),
+        &cur_v,
+        effective_url.as_deref(),
         Some(DEFAULT_TARGET_PLATFORM),
     )
     .await

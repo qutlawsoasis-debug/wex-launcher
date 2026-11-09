@@ -374,6 +374,10 @@ impl From<wex_social::launcher_update::UpdateError> for IpcError {
                 "UPDATE_SIGNATURE_FAILED",
                 "Цифровая подпись обновления не подтверждена. Загрузка отменена в целях безопасности.",
             ),
+            UpdateError::FileTampered(_) => (
+                "UPDATE_SIGNATURE_FAILED",
+                "Файл обновления повреждён или подменён. Загрузка отменена в целях безопасности.",
+            ),
             _ => (
                 "UPDATE_UNKNOWN",
                 "Неизвестная ошибка обновления.",
