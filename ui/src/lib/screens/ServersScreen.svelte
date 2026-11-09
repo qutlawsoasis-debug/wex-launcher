@@ -348,7 +348,7 @@
 
     if (!name || !address) {
       addError = 'Укажите название и адрес сервера.';
-      return;
+      return false;
     }
 
     try {
@@ -364,9 +364,11 @@
       addSheetOpen = false;
       newServerName = '';
       newServerAddress = '';
+      return true;
     } catch (e: any) {
       const msg = typeof e === 'string' ? e : e?.message || 'Не удалось сохранить сервер.';
       addError = msg;
+      return false;
     }
   }
 
@@ -387,7 +389,7 @@
 
     if (!name || !address) {
       editError = 'Укажите название и адрес сервера.';
-      return;
+      return false;
     }
 
     try {
@@ -407,9 +409,11 @@
 
       editSheetOpen = false;
       editingServer = null;
+      return true;
     } catch (e: any) {
       const msg = typeof e === 'string' ? e : e?.message || 'Не удалось обновить сервер.';
       editError = msg;
+      return false;
     }
   }
 

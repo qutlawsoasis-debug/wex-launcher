@@ -21,7 +21,7 @@
     showDone?: boolean;
     maxWidth?: string;
     onclose?: () => void;
-    ondone?: () => void;
+    ondone?: () => void | boolean | Promise<void | boolean>;
     children?: Snippet;
   }
 
@@ -55,8 +55,14 @@
     }
   }
 
-  function handleDone() {
-    ondone?.();
+  async function handleDone() {
+    if (ondone) {
+      const res = await ondone();
+      if (res === false) return;
+    }
+    if (ondone && open) {
+      return;
+    }
     close();
   }
 

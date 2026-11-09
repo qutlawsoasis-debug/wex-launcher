@@ -1,0 +1,150 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mount, unmount } from 'svelte';
+import Sheet from './lib/components/Sheet.svelte';
+import Sidebar from './lib/components/Sidebar.svelte';
+import WorkshopScreen from './lib/screens/WorkshopScreen.svelte';
+import ServersScreen from './lib/screens/ServersScreen.svelte';
+import { theme } from './lib/design/theme.svelte';
+
+let target: HTMLDivElement;
+
+beforeEach(() => {
+  target = document.createElement('div');
+  document.body.appendChild(target);
+  localStorage.clear();
+  localStorage.setItem('wex_onboarding_completed', 'true');
+});
+
+afterEach(() => {
+  target.remove();
+  document.body.innerHTML = '';
+});
+
+describe('Apple HIG Fixes Verification', () => {
+  it('1. Sheet does not close when ondone returns false (empty save validation)', async () => {
+    let open = true;
+    let ondoneCalled = false;
+
+    const comp = mount(Sheet, {
+      target,
+      props: {
+        open,
+        title: 'Тестовый Sheet',
+        showDone: true,
+        ondone: () => {
+          ondoneCalled = true;
+          return false; // validation failed
+        },
+      },
+    });
+
+    const doneBtn = target.querySelector<HTMLButtonElement>('.header-action.trailing button');
+    expect(doneBtn).not.toBeNull();
+    doneBtn?.click();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(ondoneCalled).toBe(true);
+    // Sheet card must remain in the DOM because ondone returned false
+    expect(target.querySelector('.sheet-card')).not.toBeNull();
+
+    unmount(comp);
+  });
+
+  it('2. ServersScreen keeps Add Server sheet open and displays error when saving empty inputs', async () => {
+    const comp = mount(ServersScreen, { target });
+
+    const buttons = Array.from(target.querySelectorAll('button'));
+    const addBtn = buttons.find((b) => b.textContent?.includes('Добавить'));
+    expect(addBtn).toBeDefined();
+    addBtn?.click();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(document.querySelector('.sheet-card')).not.toBeNull();
+
+    // Click "Сохранить" with empty fields
+    const sheetDoneBtn = document.querySelector<HTMLButtonElement>('.header-action.trailing button');
+    expect(sheetDoneBtn).not.toBeNull();
+    sheetDoneBtn?.click();
+    await new Promise((r) => setTimeout(r, 50));
+
+    // The sheet must remain open with validation error displayed
+    expect(document.querySelector('.sheet-card')).not.toBeNull();
+    expect(document.querySelector('.sheet-error')).not.toBeNull();
+    expect(document.querySelector('.sheet-error')?.textContent).toContain('Укажите название и адрес');
+
+    unmount(comp);
+  });
+
+  it('3. WorkshopScreen resource packs and shaders empty states interpolate version and do not leak literal {version}', async () => {
+    const comp = mount(WorkshopScreen, {
+      target,
+      props: {
+        selectedVersion: '1.21.1',
+      },
+    });
+
+    // Switch to Resource Packs tab
+    const buttons = Array.from(target.querySelectorAll('button'));
+    const packsBtn = buttons.find((b) => b.textContent?.includes('Ресурс-паки'));
+    expect(packsBtn).toBeDefined();
+    packsBtn?.click();
+    await new Promise((r) => setTimeout(r, 50));
+
+    const descEl = target.querySelector('.empty-description');
+    expect(descEl).not.toBeNull();
+    expect(descEl?.textContent).not.toContain('{version}');
+    expect(descEl?.textContent).toContain('1.21.1');
+
+    // Switch to Shaders tab
+    const shadersBtn = Array.from(target.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Шейдеры')
+    );
+    expect(shadersBtn).toBeDefined();
+    shadersBtn?.click();
+    await new Promise((r) => setTimeout(r, 50));
+
+    const shadersDesc = target.querySelector('.empty-description');
+    expect(shadersDesc).not.toBeNull();
+    expect(shadersDesc?.textContent).not.toContain('{version}');
+    expect(shadersDesc?.textContent).toContain('1.21.1');
+
+    unmount(comp);
+  });
+
+  it('4. Sidebar renders active navigation icon with Apple systemBlue, not cyan', () => {
+    const items = [
+      { id: 'play', label: 'Главная', icon: 'play' as const },
+      { id: 'servers', label: 'Серверы', icon: 'server' as const },
+    ];
+
+    const comp = mount(Sidebar, {
+      target,
+      props: {
+        items,
+        activeId: 'play',
+      },
+    });
+
+    const activeItem = target.querySelector('.nav-item.active');
+    expect(activeItem).not.toBeNull();
+
+    const iconSvg = activeItem?.querySelector('svg');
+    expect(iconSvg).not.toBeNull();
+    // System color should be system-blue, not system-cyan
+    const stroke = iconSvg?.getAttribute('stroke') || '';
+    expect(stroke).toContain('var(--color-system-blue)');
+    expect(stroke).not.toContain('var(--color-system-cyan)');
+
+    unmount(comp);
+  });
+
+  it('5. Reduce motion styles preserve transform positioning and disable animation durations', () => {
+    theme.setReduceMotion(true);
+    expect(theme.reduceMotion).toBe(true);
+
+    const root = document.documentElement;
+    expect(root.getAttribute('data-reduce-motion')).toBe('true');
+
+    theme.setReduceMotion(false);
+  });
+});

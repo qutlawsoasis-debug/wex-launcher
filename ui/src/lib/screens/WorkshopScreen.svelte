@@ -843,7 +843,7 @@
           </div>
           <h2 class="empty-title">{t('workshop.resourcepacks_empty_title')}</h2>
           <p class="empty-description">
-            {t('workshop.resourcepacks_empty_desc')}
+            {t('workshop.resourcepacks_empty_desc', { version: currentVersion })}
           </p>
           <div style="margin-top: 16px;">
             <Button variant="secondary" size="small" onclick={() => openFolderForType('resourcepack')}>
@@ -938,7 +938,7 @@
           </div>
           <h2 class="empty-title">{t('workshop.shaders_empty_title')}</h2>
           <p class="empty-description">
-            {t('workshop.shaders_empty_desc')}
+            {t('workshop.shaders_empty_desc', { version: currentVersion })}
           </p>
           <div style="margin-top: 16px;">
             <Button variant="secondary" size="small" onclick={() => openFolderForType('shaderpack')}>

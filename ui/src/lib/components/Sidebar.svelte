@@ -101,7 +101,7 @@
               <Icon
                 name={item.icon}
                 size={18}
-                color={isActive ? 'var(--color-system-cyan)' : 'var(--color-secondary-label)'}
+                color={isActive ? 'var(--color-system-blue)' : 'var(--color-secondary-label)'}
               />
             </span>
 
@@ -208,6 +208,10 @@
 
   :global([data-theme="dark"]) .nav-active-capsule {
     background-color: rgba(255, 255, 255, 0.12);
+  }
+
+  :global([data-reduce-motion="true"]) .nav-active-capsule {
+    transition: none !important;
   }
 
   .nav-list {
