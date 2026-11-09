@@ -141,11 +141,14 @@
     finishStartup();
   }
 
-  async function runUpdateDownload(downloadUrl: string, latestVer?: string) {
+  export async function runUpdateDownload(downloadUrl: string, latestVer?: string) {
     isDownloading = true;
+    downloadProgress = 0;
+    downloadSpeed = '';
+    downloadDetail = t('splash.preparing');
     statusText = latestVer
-      ? t('splash.downloading_ver', { version: latestVer })
-      : t('splash.downloading_generic');
+      ? t('splash.downloading_update_ver', { version: latestVer })
+      : t('splash.downloading_update_generic');
 
     if (isTauri()) {
       try {
@@ -157,44 +160,37 @@
           speed_bytes_per_sec: number;
           stage: string;
         }>('startup-update-progress', (event) => {
-          downloadProgress = event.payload.percentage;
-          downloadDetail = event.payload.stage;
-          if (event.payload.speed_bytes_per_sec > 0) {
-            downloadSpeed = t('splash.speed_mbs', { speed: (event.payload.speed_bytes_per_sec / (1024 * 1024)).toFixed(1) });
+          if (event?.payload) {
+            downloadProgress = Math.max(0, Math.min(100, event.payload.percentage ?? 0));
+            downloadDetail = event.payload.stage || (downloadProgress > 0 ? t('splash.downloading_generic') : t('splash.preparing'));
+            if (event.payload.speed_bytes_per_sec > 0) {
+              downloadSpeed = t('splash.speed_mbs', { speed: (event.payload.speed_bytes_per_sec / (1024 * 1024)).toFixed(1) });
+            } else {
+              downloadSpeed = '';
+            }
           }
         });
 
-        await invoke('startup_download_update', { downloadUrl });
-        unlisten();
-      } catch {
-        // Fallback progress simulation
-        await simulateDownloadFallback();
+        try {
+          await invoke('startup_download_update', { downloadUrl });
+        } finally {
+          unlisten();
+        }
+      } catch (err: unknown) {
+        handleNetworkFailure(err instanceof Error ? err.message : String(err));
+        return;
       }
     } else {
-      await simulateDownloadFallback();
+      // In-browser or test fallback without backend events:
+      // Honest without fake percentage or fake simulation
+      downloadProgress = 0;
+      downloadDetail = t('splash.preparing');
     }
 
     statusText = t('splash.update_done');
     await waitDelay(250);
     finishStartup();
   }
-
-  async function simulateDownloadFallback() {
-    const steps = [
-      { pct: 20, speed: t('splash.speed_mbs', { speed: '12.4' }), detail: t('splash.download_manifest') },
-      { pct: 55, speed: t('splash.speed_mbs', { speed: '14.8' }), detail: t('splash.download_archive') },
-      { pct: 85, speed: t('splash.speed_mbs', { speed: '15.1' }), detail: t('splash.verify_checksum') },
-      { pct: 100, speed: '', detail: t('splash.ready_to_install') },
-    ];
-
-    for (const step of steps) {
-      downloadProgress = step.pct;
-      downloadSpeed = step.speed;
-      downloadDetail = step.detail;
-      await waitDelay(120);
-    }
-  }
-
   function handleNetworkFailure(msg: string) {
     hasNetworkError = true;
     errorMessage = msg || t('splash.err_unreachable');
@@ -265,8 +261,11 @@
         <div class="download-container">
           <ProgressBar
             percentage={downloadProgress}
+            indeterminate={downloadProgress === 0}
             label={statusText}
-            detail={downloadSpeed ? `${downloadDetail} • ${downloadSpeed}` : downloadDetail}
+            detail={downloadProgress > 0
+              ? (downloadSpeed ? `${Math.round(downloadProgress)}% • ${downloadSpeed}` : `${Math.round(downloadProgress)}%`)
+              : (downloadDetail || 'Подготавливаем…')}
             height={6}
           />
         </div>
