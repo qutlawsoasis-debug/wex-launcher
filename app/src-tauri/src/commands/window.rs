@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::Ordering;
 use tauri::{
     Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, State, WebviewWindow,
 };
@@ -284,14 +283,7 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 let app_clone = app.clone();
                 tauri::async_runtime::spawn(async move {
                     if let Some(state) = app_clone.try_state::<PlayState>() {
-                        let ver = {
-                            let v = state.running_version.lock().await;
-                            v.clone()
-                        };
-                        if let Some(ver) = ver {
-                            let _ = state.core.kill_game(&ver).await;
-                        }
-                        state.is_running.store(false, Ordering::SeqCst);
+                        state.stop_active_game(None).await;
                         if let Some(w) = app_clone.get_webview_window("main") {
                             restore_window_from_game(&w);
                         }

@@ -297,7 +297,12 @@ pub async fn save_launcher_settings(
     let need_restart = old_cfg.selected_version != new_settings.selected_version
         || old_cfg.nickname != new_settings.player_name
         || old_cfg.max_memory_mb != new_settings.ram_mb
-        || old_cfg.fast_launch != new_settings.fast_launch;
+        || old_cfg.fast_launch != new_settings.fast_launch
+        || old_cfg
+            .custom_java_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            != new_settings.custom_java_path;
 
     if need_restart {
         state.cleanup_prewarm().await;
