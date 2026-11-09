@@ -27,32 +27,12 @@
   import { formatError } from '../design/errors';
   import { network } from '../design/network.svelte';
   import { t, i18n } from '../i18n';
-
-  interface FriendItem {
-    id: string;
-    nick: string;
-    status: 'online' | 'playing' | 'in_lobby' | 'offline';
-    last_seen?: number | null;
-    game_version?: string | null;
-    world_name?: string | null;
-    lobby_code?: string | null;
-  }
-
-  interface FriendRequestItem {
-    id: string;
-    from_id: string;
-    from_nick: string;
-    created_at?: number | null;
-  }
-
-  interface LobbyInviteItem {
-    id: string;
-    lobby_code: string;
-    from_id: string;
-    from_nick: string;
-    host_name?: string | null;
-    created_at?: number | null;
-  }
+  import {
+    friendsLive,
+    type FriendItem,
+    type FriendRequestItem,
+    type LobbyInviteItem,
+  } from '../services/friendsLive';
 
   interface AchievementItem {
     id: string;
@@ -109,9 +89,14 @@
   // Local Toast notifications
   let localToasts = $state<ToastMessage[]>([]);
 
-  function addToast(type: 'info' | 'success' | 'warning' | 'error', title: string, description?: string) {
+  function addToast(
+    type: 'info' | 'success' | 'warning' | 'error',
+    title: string,
+    description?: string,
+    action?: { label: string; onClick: () => void }
+  ) {
     const id = `toast-${Date.now()}-${Math.random()}`;
-    localToasts = [...localToasts, { id, type, title, description, duration: 4000 }];
+    localToasts = [...localToasts, { id, type, title, description, duration: 5000, action }];
   }
 
   function dismissToast(id: string) {
@@ -140,24 +125,18 @@
     return typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
   }
 
-  // Backend IPC loading
+  // Backend IPC loading via live friends poller
   async function loadSocialData() {
-    if (!isTauri()) return;
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const syncResult = await invoke<{
-        friends: FriendItem[];
-        incoming_requests: FriendRequestItem[];
-        incoming_invites: LobbyInviteItem[];
-      }>('social_sync', {});
-
-      if (syncResult) {
-        friends = syncResult.friends || [];
-        requests = syncResult.incoming_requests || [];
-        invites = syncResult.incoming_invites || [];
-      }
-    } catch {
-      // In-browser mock fallback preserves empty state
+    if (friendsLive.friends.length > 0) {
+      friends = friendsLive.friends;
+      requests = friendsLive.requests;
+      invites = friendsLive.invites;
+    }
+    const syncResult = await friendsLive.pollNow();
+    if (syncResult) {
+      friends = syncResult.friends || [];
+      requests = syncResult.incoming_requests || [];
+      invites = syncResult.incoming_invites || [];
     }
   }
 
@@ -315,6 +294,13 @@
     loadSocialData();
     loadAchievements();
 
+    // Subscribe to live friends and presence updates
+    const unlistenLive = friendsLive.onData((data) => {
+      friends = data.friends || [];
+      requests = data.incoming_requests || [];
+      invites = data.incoming_invites || [];
+    });
+
     // Listen to real-time achievement toast event from Tauri backend
     let unlistenToast: (() => void) | undefined;
     let unlistenInvite: (() => void) | undefined;
@@ -336,7 +322,12 @@
 
           listen<LobbyInviteItem>('social-lobby-invite', (event) => {
             const inv = event.payload;
-            addToast('info', `Приглашение в лобби ${inv.lobby_code}`, `${inv.from_nick} зовёт вас в игру`);
+            addToast('info', `Приглашение в лобби ${inv.lobby_code}`, `${inv.from_nick} зовёт вас в игру`, {
+              label: 'Присоединиться',
+              onClick: () => {
+                void friendsLive.handleJoin(inv.lobby_code);
+              },
+            });
             invites = [...invites, inv];
           }).then((fn) => {
             unlistenInvite = fn;
@@ -346,6 +337,7 @@
     }
 
     return () => {
+      unlistenLive();
       unlistenToast?.();
       unlistenInvite?.();
     };
@@ -420,7 +412,9 @@
                 title={friend.nick}
                 subtitle={
                   friend.status === 'playing'
-                    ? (i18n.locale === 'en' ? `Playing ${friend.game_version || 'Minecraft'}` : `В игре: ${friend.game_version || 'Minecraft'}`)
+                    ? (friend.world_name
+                        ? (i18n.locale === 'en' ? `Playing on server ${friend.world_name}` : `В игре на сервере ${friend.world_name}`)
+                        : (i18n.locale === 'en' ? `Playing ${friend.game_version || 'Minecraft'}` : `В игре: ${friend.game_version || 'Minecraft'}`))
                     : friend.status === 'in_lobby'
                       ? (i18n.locale === 'en' ? `In lobby ${friend.lobby_code || ''}` : `В лобби ${friend.lobby_code || ''}`)
                       : friend.status === 'online'
