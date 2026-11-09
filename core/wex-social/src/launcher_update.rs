@@ -80,7 +80,7 @@ pub fn validate_signature_format(sig: &str) -> bool {
 
     let is_b64 = |s: &str| {
         !s.is_empty()
-            && s.len() >= 32
+            && s.len() >= 16
             && s.chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=')
     };

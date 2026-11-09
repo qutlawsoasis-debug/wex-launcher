@@ -496,6 +496,10 @@
 
       const fetchUpdates = initialUpdateInfo === null
         ? invoke<UpdateInfo>('updater_check')
+            .then((res) => {
+              if (res && res.update_available) return res;
+              return invoke<UpdateInfo>('overview_check_update');
+            })
             .catch(() => invoke<UpdateInfo>('overview_check_update'))
             .then((res) => {
               if (res && res.update_available) {
@@ -701,7 +705,7 @@ $effect(() => {
                 Доступно обновление • Доступна новая версия Wex {updateInfo.latest_version || ''}
               </span>
               {#if !canAutoUpdate}
-                <span class="badge badge-general">только ссылка</span>
+                <span class="badge badge-general">Неподписанная сборка (только ссылка)</span>
               {/if}
             </div>
             {#if updateInfo.notes}
@@ -757,7 +761,7 @@ $effect(() => {
                 title="Перейти к загрузке установщика"
               >
                 <Icon name="link" size={14} color="var(--color-secondary-label)" />
-                <span>Ссылка</span>
+                <span>Перейти к загрузке (Ссылка)</span>
               </Button>
             {/if}
             <div class="update-banner-close">
@@ -833,8 +837,6 @@ $effect(() => {
           >
             <Icon name="close" size={14} color="var(--color-secondary-label)" />
           </Button>
-        </div>
-      </div>
         </div>
       </div>
     {/if}
