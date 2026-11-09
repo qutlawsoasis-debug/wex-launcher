@@ -630,13 +630,13 @@
             .catch((err: any) => {
               const errStr = typeof err === 'string' ? err : err?.message || '';
               // Scenario 3: Invalid signature or tampered manifest -> refusal with clear message
+              const lower = errStr.toLowerCase();
               if (
                 errStr.includes('UPDATE_SIGNATURE_FAILED') ||
-                errStr.includes('подпись') ||
-                errStr.includes('signature') ||
-                errStr.includes('подменён')
+                lower.includes('signature') ||
+                lower.includes('tamper')
               ) {
-                updateError = 'Цифровая подпись обновления не подтверждена. Загрузка отменена в целях безопасности.';
+                updateError = t('play.update_err_signature');
               } else {
                 // Scenario 4: Server offline / network unreachable -> silence, zero errors to player!
                 updateError = null;
@@ -949,7 +949,7 @@ $effect(() => {
         </div>
         <div class="update-banner-body">
           <span class="update-banner-headline update-banner-headline-error">
-            Отказ обновления
+            {t('play.update_refusal_title')}
           </span>
           <span class="update-banner-subtext">{updateError}</span>
         </div>
@@ -958,7 +958,7 @@ $effect(() => {
             variant="ghost"
             size="small"
             onclick={() => (updateBannerDismissed = true)}
-            title="Закрыть уведомление"
+            title={t('play.update_btn_close_notification')}
           >
             <Icon name="close" size={14} color="var(--color-secondary-label)" />
           </Button>
