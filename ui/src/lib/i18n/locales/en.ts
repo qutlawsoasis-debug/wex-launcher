@@ -96,6 +96,8 @@ export const en: Record<TranslationKey, string> = {
 
   // Screen: Settings
   'settings.header_perf': 'Performance & Memory',
+  'settings.fast_launch_title': 'Fast Launch',
+  'settings.fast_launch_subtitle': 'Prewarm the game in the background for instant launch in 1–2 seconds',
   'settings.ram_title': 'Memory for Minecraft',
   'settings.ram_label': 'Memory for Minecraft',
   'settings.ram_hint_system': 'Recommended: 4096–6144 MB. Available: {total} MB.',

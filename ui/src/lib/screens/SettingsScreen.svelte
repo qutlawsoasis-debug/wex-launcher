@@ -68,6 +68,7 @@
   let friendNotifications = $state(true);
   let backgroundMusic = $state(true);
   let fastStartJvm = $state(false);
+  let fastLaunch = $state(true);
   let language = $state<string>(i18n.locale);
   let launcherVersion = $state('1.0.0');
   let osName = $state('windows');
@@ -268,6 +269,7 @@
         detected_java_21?: string | null;
         discord_rpc?: boolean;
         fast_start_jvm?: boolean;
+        fast_launch?: boolean;
         friend_notifications?: boolean;
         language?: string;
         appearance?: string;
@@ -291,6 +293,7 @@
         if (cfg.detected_java_21 !== undefined) detectedJava21 = cfg.detected_java_21;
         if (cfg.discord_rpc !== undefined) discordRpc = cfg.discord_rpc;
         if (cfg.fast_start_jvm !== undefined) fastStartJvm = cfg.fast_start_jvm;
+        if (cfg.fast_launch !== undefined) fastLaunch = cfg.fast_launch;
         if (cfg.friend_notifications !== undefined) {
           friendNotifications = cfg.friend_notifications;
         }
@@ -355,6 +358,7 @@
           detected_java_21: detectedJava21,
           discord_rpc: discordRpc,
           fast_start_jvm: fastStartJvm,
+          fast_launch: fastLaunch,
           friend_notifications: friendNotifications,
           language,
           appearance: theme.appearance,
@@ -380,6 +384,7 @@
         custom_java_path?: string | null;
         discord_rpc?: boolean;
         fast_start_jvm?: boolean;
+        fast_launch?: boolean;
         friend_notifications?: boolean;
         language?: string;
         minimize_to_tray?: boolean;
@@ -392,6 +397,7 @@
         customJavaPath = '';
         if (reset.discord_rpc !== undefined) discordRpc = reset.discord_rpc;
         if (reset.fast_start_jvm !== undefined) fastStartJvm = reset.fast_start_jvm;
+        if (reset.fast_launch !== undefined) fastLaunch = reset.fast_launch;
         if (reset.friend_notifications !== undefined) {
           friendNotifications = reset.friend_notifications;
         } else {
@@ -640,6 +646,22 @@
             label={t('settings.ram_label')}
           />
         </div>
+      </Row>
+
+      <Row
+        title={t('settings.fast_launch_title')}
+        subtitle={t('settings.fast_launch_subtitle')}
+      >
+        {#snippet trailing()}
+          <Toggle
+            ariaLabel={t('settings.fast_launch_title')}
+            checked={fastLaunch}
+            onchange={(checked) => {
+              fastLaunch = checked;
+              saveConfig();
+            }}
+          />
+        {/snippet}
       </Row>
 
       <Row

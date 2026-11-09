@@ -23,6 +23,8 @@ pub struct LauncherConfig {
         alias = "prewarmGame"
     )]
     pub fast_start_jvm: bool,
+    #[serde(default, alias = "fastLaunch", alias = "fast_launch")]
+    pub fast_launch: bool,
 }
 
 impl Default for LauncherConfig {
@@ -36,6 +38,7 @@ impl Default for LauncherConfig {
             appearance: "dark".to_string(),
             accent: "blue".to_string(),
             fast_start_jvm: false,
+            fast_launch: false,
         }
     }
 }

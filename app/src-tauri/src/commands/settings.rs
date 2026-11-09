@@ -60,12 +60,18 @@ pub struct LauncherSettingsDto {
     pub reduce_motion: bool,
     pub reduce_transparency: bool,
     pub fast_start_jvm: bool,
+    #[serde(default = "default_fast_launch_dto")]
+    pub fast_launch: bool,
     #[serde(default = "default_true")]
     pub minimize_to_tray: bool,
     #[serde(default = "default_true")]
     pub friend_notifications: bool,
     #[serde(default = "default_window_behavior")]
     pub game_window_behavior: String, // "keep" | "minimize" | "tray"
+}
+
+pub fn default_fast_launch_dto() -> bool {
+    get_total_ram_mb() >= 15360
 }
 
 fn default_true() -> bool {
@@ -96,6 +102,7 @@ impl Default for LauncherSettingsDto {
             reduce_motion: false,
             reduce_transparency: false,
             fast_start_jvm: false,
+            fast_launch: default_fast_launch_dto(),
             minimize_to_tray: true,
             friend_notifications: true,
             game_window_behavior: "minimize".to_string(),
@@ -190,6 +197,7 @@ pub fn get_launcher_settings_impl(paths: &WexPaths) -> LauncherSettingsDto {
         reduce_motion: cfg.reduce_motion,
         reduce_transparency: cfg.reduce_transparency,
         fast_start_jvm: cfg.fast_start_jvm,
+        fast_launch: cfg.fast_launch,
         minimize_to_tray: cfg.minimize_to_tray,
         friend_notifications: cfg.friend_notifications,
         game_window_behavior: cfg.game_window_behavior,
@@ -231,6 +239,7 @@ pub async fn save_launcher_settings_impl(
     cfg.reduce_motion = new_settings.reduce_motion;
     cfg.reduce_transparency = new_settings.reduce_transparency;
     cfg.fast_start_jvm = new_settings.fast_start_jvm;
+    cfg.fast_launch = new_settings.fast_launch;
     cfg.minimize_to_tray = new_settings.minimize_to_tray;
     cfg.friend_notifications = new_settings.friend_notifications;
     cfg.game_window_behavior = new_settings.game_window_behavior;
@@ -275,22 +284,52 @@ pub async fn save_launcher_settings(
     new_settings: LauncherSettingsDto,
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
+    let old_cfg = CoreConfig::load_or_default(&state.paths.config_file);
     let discord_rpc = new_settings.discord_rpc;
-    save_launcher_settings_impl(new_settings, &state.paths, state.core.as_ref()).await?;
+    save_launcher_settings_impl(new_settings.clone(), &state.paths, state.core.as_ref()).await?;
 
     let mut lock = state.discord.lock().await;
     if let Some(client) = lock.as_mut() {
         client.set_enabled(discord_rpc).await;
     }
+
+    let need_restart = old_cfg.selected_version != new_settings.selected_version
+        || old_cfg.nickname != new_settings.player_name
+        || old_cfg.max_memory_mb != new_settings.ram_mb
+        || old_cfg.fast_launch != new_settings.fast_launch;
+
+    if need_restart {
+        state.cleanup_prewarm().await;
+        if new_settings.fast_launch {
+            state
+                .trigger_prewarm(
+                    new_settings.selected_version,
+                    new_settings.player_name,
+                    new_settings.ram_mb,
+                )
+                .await;
+        }
+    }
+
     Ok(())
 }
 
 #[tauri::command]
 pub async fn reset_settings(state: State<'_, PlayState>) -> Result<LauncherSettingsDto, String> {
+    state.cleanup_prewarm().await;
     let res = reset_settings_impl(&state.paths, state.core.as_ref()).await?;
     let mut lock = state.discord.lock().await;
     if let Some(client) = lock.as_mut() {
         client.set_enabled(true).await;
+    }
+    if res.fast_launch {
+        state
+            .trigger_prewarm(
+                res.selected_version.clone(),
+                res.player_name.clone(),
+                res.ram_mb,
+            )
+            .await;
     }
     Ok(res)
 }
