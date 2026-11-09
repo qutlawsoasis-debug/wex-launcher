@@ -39,6 +39,7 @@ pub fn run() {
                 }
             }
         }))
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();
@@ -143,6 +144,9 @@ pub fn run() {
             commands::lobby::list_lan_worlds,
             commands::lobby::record_lan_world,
             commands::lobby::connect_lan_world,
+            commands::lobby::net_lan_start_discovery,
+            commands::lobby::net_lan_stop_discovery,
+            commands::lobby::net_lan_is_discovering,
             commands::lobby::publish_lan_world,
             // Wardrobe commands
             commands::wardrobe::extras_validate_skin,

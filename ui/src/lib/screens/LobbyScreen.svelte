@@ -180,9 +180,47 @@
     if (mode === 'cloud') {
       fetchCloudRooms();
     } else if (mode === 'lan') {
+      const startLan = async () => {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('net_lan_start_discovery');
+        } catch {}
+      };
+
+      const stopLan = async () => {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('net_lan_stop_discovery');
+        } catch {}
+      };
+
+      const isHidden = typeof document !== 'undefined' && document.hidden === true;
+      if (!isHidden) {
+        startLan();
+      }
       fetchLanWorlds();
       const cleanupLan = createIdleInterval(fetchLanWorlds, 3000);
-      return () => cleanupLan();
+
+      const onVisibilityChange = () => {
+        if (typeof document !== 'undefined' && document.hidden) {
+          stopLan();
+        } else if (mode === 'lan') {
+          startLan();
+          fetchLanWorlds();
+        }
+      };
+
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', onVisibilityChange);
+      }
+
+      return () => {
+        cleanupLan();
+        if (typeof document !== 'undefined') {
+          document.removeEventListener('visibilitychange', onVisibilityChange);
+        }
+        stopLan();
+      };
     }
   });
 

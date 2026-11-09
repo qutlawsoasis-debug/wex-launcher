@@ -1,3 +1,4 @@
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
@@ -9,7 +10,7 @@ use zip::ZipWriter;
 use wex_core::config::WexPaths;
 use wex_extras::crash::analyze_crash;
 
-/// Anonymizes personal user paths, player nicknames, and secret tokens in text.
+/// Anonymizes personal user paths, player nicknames, secret tokens, and friends' IP addresses in text.
 pub fn anonymize_text(text: &str, player_name: Option<&str>) -> String {
     if text.is_empty() {
         return String::new();
@@ -32,8 +33,11 @@ pub fn anonymize_text(text: &str, player_name: Option<&str>) -> String {
     // 2. Mask user paths (e.g. C:\Users\Username\... or /home/username/...)
     result = mask_user_directories(&result);
 
-    // 3. Mask secret tokens / headers
+    // 3. Mask secret tokens / headers / CLI args
     result = mask_sensitive_tokens(&result);
+
+    // 4. Mask friends' IPs, LAN endpoints, and playit tunnel hosts
+    result = mask_ip_addresses(&result);
 
     result
 }
@@ -45,7 +49,16 @@ fn mask_user_directories(text: &str) -> String {
     let bytes = text.as_bytes();
     let len = bytes.len();
 
-    let markers = ["\\Users\\", "\\users\\", "/Users/", "/users/", "/home/"];
+    // Support both single backslash and JSON-escaped double backslash, and forward slashes
+    let markers = [
+        "\\\\Users\\\\",
+        "\\\\users\\\\",
+        "\\Users\\",
+        "\\users\\",
+        "/Users/",
+        "/users/",
+        "/home/",
+    ];
 
     while i < len {
         let mut matched_marker = None;
@@ -91,37 +104,105 @@ fn mask_user_directories(text: &str) -> String {
         }
     }
 
+    // Additional check for active Windows/Unix user environment variables
+    for env_key in &["USERNAME", "USER"] {
+        if let Ok(uname) = std::env::var(env_key) {
+            let trimmed = uname.trim();
+            if trimmed.len() >= 3
+                && trimmed.to_lowercase() != "root"
+                && trimmed.to_lowercase() != "default"
+            {
+                output = output.replace(&format!("\\{}", trimmed), "\\***");
+                output = output.replace(&format!("/{}", trimmed), "/***");
+                output = output.replace(&format!("\\\\{}", trimmed), "\\\\***");
+                output = output.replace(&format!("\"{}\"", trimmed), "\"***\"");
+                output = output.replace(&format!("'{}'", trimmed), "'***'");
+            }
+        }
+    }
+
     output
 }
 
 /// Masks sensitive tokens, passwords, and API keys.
 fn mask_sensitive_tokens(text: &str) -> String {
-    let mut lines = Vec::new();
+    let mut res = text.to_string();
 
-    for line in text.lines() {
-        let lower = line.to_lowercase();
-        if lower.contains("x-user-token")
-            || lower.contains("usertoken")
-            || lower.contains("ownertoken")
-            || lower.contains("hosttoken")
-            || lower.contains("playitsecret")
-            || lower.contains("discordappid")
+    // 1. Key-value pairs anywhere in text or JSON:
+    // e.g. "key": "secret123", key: secret123, key = secret123, with key: secret123
+    let kv_token_re = Regex::new(
+        r#"(?i)(\b(?:x-user-token|usertoken|ownertoken|hosttoken|playitsecret|discordappid|accesstoken|access_token|refreshtoken|refresh_token|authtoken|auth_token|sessiontoken|session_token|secret_key|client_secret|apikey|api_key|api-key|private_key|key|token|secret|password|passwd|credential|auth)\s*[:=]\s*["']?)([^"',\s\r\n\}]+)(["']?)"#,
+    ).expect("valid regex");
+    res = kv_token_re.replace_all(&res, "${1}***${3}").to_string();
+
+    // 2. CLI arguments: --accessToken <token>
+    let cli_token_re =
+        Regex::new(r"--(?:accessToken|userProperties)\s+[^\s]+").expect("valid regex");
+    res = cli_token_re
+        .replace_all(&res, "--accessToken ***")
+        .to_string();
+
+    // 3. Bearer tokens: Bearer <token>
+    let bearer_re = Regex::new(r"(?i)Bearer\s+[A-Za-z0-9_\-\.]+").expect("valid regex");
+    res = bearer_re.replace_all(&res, "Bearer ***").to_string();
+
+    // 4. Query parameters: ?token=xxx or &token=xxx, ?secret=xxx, ?key=xxx
+    let query_re =
+        Regex::new(r#"(?i)([?&](?:token|access_token|secret|key|api_key|password)=)[^&\s\r\n"']+"#)
+            .expect("valid regex");
+    res = query_re.replace_all(&res, "${1}***").to_string();
+
+    res
+}
+
+/// Masks IP addresses, tunnel hosts, and friend connection endpoints.
+fn mask_ip_addresses(text: &str) -> String {
+    // 1. Mask playit tunnels: e.g. xxx.auto.playit.gg:12345 or xxx.playit.gg
+    let tunnel_re =
+        Regex::new(r"(?i)[a-z0-9-]+\.(?:auto\.)?playit\.gg(?::\d+)?").expect("valid regex");
+    let res = tunnel_re.replace_all(text, "[tunnel]");
+
+    // 2. Mask joinmc links: e.g. xxx.joinmc.link
+    let joinmc_re = Regex::new(r"(?i)[a-z0-9-]+\.joinmc\.link(?::\d+)?").expect("valid regex");
+    let res = joinmc_re.replace_all(&res, "[tunnel]");
+
+    // 3. Mask IPv4 addresses with optional port: e.g. 192.168.1.50:25565 or 147.185.221.16
+    // Use word boundaries and check that it's 4 octets. Note that Minecraft versions (e.g. 1.21.1) only have 3 octets.
+    let ip_re = Regex::new(
+        r"\b(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(?::\d{1,5})?\b",
+    ).expect("valid regex");
+
+    let mut output = String::with_capacity(res.len());
+    let mut last_end = 0;
+
+    for m in ip_re.find_iter(&res) {
+        let start = m.start();
+        let end = m.end();
+
+        // Check prefix in res before start: if preceded by "jdk-", "java-", "version ", skip
+        let prefix = if start >= 8 {
+            &res[start - 8..start]
+        } else {
+            &res[..start]
+        };
+        let lower_prefix = prefix.to_lowercase();
+        if lower_prefix.ends_with("jdk-")
+            || lower_prefix.ends_with("java-")
+            || lower_prefix.ends_with("version ")
+            || lower_prefix.ends_with("v")
         {
-            // Mask line values
-            if let Some(colon_idx) = line.find(':') {
-                let key = line[..colon_idx].trim_end();
-                lines.push(format!("{}: ***", key));
-                continue;
-            } else if let Some(eq_idx) = line.find('=') {
-                let key = line[..eq_idx].trim_end();
-                lines.push(format!("{} = ***", key));
-                continue;
-            }
+            output.push_str(&res[last_end..end]);
+            last_end = end;
+            continue;
         }
-        lines.push(line.to_string());
+
+        output.push_str(&res[last_end..start]);
+        output.push_str("[IP]");
+        last_end = end;
     }
 
-    lines.join("\n")
+    output.push_str(&res[last_end..]);
+    output
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -308,8 +389,8 @@ pub fn prepare_report_preview_impl(
 
     // 1. Diagnosis
     let diagnosis = analyze_crash(&inst_dir, Some(-1));
-    let diagnosis_title = Some(diagnosis.title);
-    let diagnosis_advice = Some(diagnosis.user_advice);
+    let diagnosis_title = Some(anonymize_text(&diagnosis.title, player_name));
+    let diagnosis_advice = Some(anonymize_text(&diagnosis.user_advice, player_name));
 
     // 2. Logs
     let latest_log_path = inst_dir.join("logs").join("latest.log");
@@ -426,9 +507,10 @@ pub fn save_report_zip_impl(
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
     // 1. report.json
+    let anon_json = anonymize_text(&preview.full_json_preview, player_name);
     zip.start_file("report.json", options)
         .map_err(|e| format!("Ошибка добавления report.json в архив: {}", e))?;
-    zip.write_all(preview.full_json_preview.as_bytes())
+    zip.write_all(anon_json.as_bytes())
         .map_err(|e| format!("Ошибка записи report.json: {}", e))?;
 
     // 2. system-info.txt
@@ -448,28 +530,31 @@ pub fn save_report_zip_impl(
         sys_info.push_str(&format!("\nError Details:\n{}\n", err));
     }
 
+    let anon_sys_info = anonymize_text(&sys_info, player_name);
     zip.start_file("system-info.txt", options)
         .map_err(|e| format!("Ошибка добавления system-info.txt в архив: {}", e))?;
-    zip.write_all(sys_info.as_bytes())
+    zip.write_all(anon_sys_info.as_bytes())
         .map_err(|e| format!("Ошибка записи system-info.txt: {}", e))?;
 
     // 3. latest.log
     if let Some(log_content) = &preview.latest_log_tail {
+        let anon_log = anonymize_text(log_content, player_name);
         zip.start_file("latest.log", options)
             .map_err(|e| format!("Ошибка добавления latest.log в архив: {}", e))?;
-        zip.write_all(log_content.as_bytes())
+        zip.write_all(anon_log.as_bytes())
             .map_err(|e| format!("Ошибка записи latest.log: {}", e))?;
     }
 
     // 4. crash-report.txt
     if let Some(crash_content) = &preview.crash_report_tail {
+        let anon_crash = anonymize_text(crash_content, player_name);
         let entry_name = preview
             .crash_report_name
             .as_deref()
             .unwrap_or("crash-report.txt");
         zip.start_file(entry_name, options)
             .map_err(|e| format!("Ошибка добавления отчёта о сбое в архив: {}", e))?;
-        zip.write_all(crash_content.as_bytes())
+        zip.write_all(anon_crash.as_bytes())
             .map_err(|e| format!("Ошибка записи отчёта о сбое: {}", e))?;
     }
 
@@ -484,9 +569,10 @@ pub fn save_report_zip_impl(
                 m.filename, m.size_bytes, status
             ));
         }
+        let anon_mods = anonymize_text(&mods_text, player_name);
         zip.start_file("mods.txt", options)
             .map_err(|e| format!("Ошибка добавления mods.txt в архив: {}", e))?;
-        zip.write_all(mods_text.as_bytes())
+        zip.write_all(anon_mods.as_bytes())
             .map_err(|e| format!("Ошибка записи mods.txt: {}", e))?;
     }
 
@@ -742,5 +828,118 @@ mod tests {
         assert!(archive.by_name("report.json").is_ok());
         assert!(archive.by_name("system-info.txt").is_ok());
         assert!(archive.by_name("mods.txt").is_ok());
+    }
+
+    #[test]
+    fn test_anonymize_ip_addresses_and_tunnels() {
+        let input = "Player Alex connected from 192.168.1.50:25565, tunnel at friend.auto.playit.gg:12345 or 147.185.221.16\nLoading Minecraft 1.21.1 with Fabric 0.16.9 (jdk-21.0.12.1)";
+        let anonymized = anonymize_text(input, None);
+
+        // IPs and tunnels must be masked
+        assert!(!anonymized.contains("192.168.1.50"));
+        assert!(!anonymized.contains("147.185.221.16"));
+        assert!(!anonymized.contains("friend.auto.playit.gg"));
+        assert!(anonymized.contains("[IP]"));
+        assert!(anonymized.contains("[tunnel]"));
+
+        // Versions must NOT be broken
+        assert!(anonymized.contains("1.21.1"));
+        assert!(anonymized.contains("0.16.9"));
+        assert!(anonymized.contains("jdk-21.0.12.1"));
+    }
+
+    #[test]
+    fn test_anonymize_json_escaped_paths_and_tokens() {
+        let input = r#"{"path":"C:\\Users\\aq08\\AppData\\Roaming\\Wex","auth":"Bearer secret_token_12345","args":"--accessToken token998877"}"#;
+        let anonymized = anonymize_text(input, None);
+
+        assert!(!anonymized.contains("aq08"));
+        assert!(!anonymized.contains("secret_token_12345"));
+        assert!(!anonymized.contains("token998877"));
+        assert!(anonymized.contains("C:\\\\Users\\\\***\\\\AppData"));
+        assert!(anonymized.contains("Bearer ***"));
+        assert!(anonymized.contains("--accessToken ***"));
+    }
+
+    #[test]
+    fn test_save_report_zip_leaks_audit() {
+        use std::io::Read;
+
+        let temp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(temp.path().join("launcher_data")));
+
+        let inst_dir = paths.instance_dir("1.21.1");
+        fs::create_dir_all(inst_dir.join("logs")).unwrap();
+        fs::create_dir_all(inst_dir.join("mods")).unwrap();
+
+        // Populate logs with sensitive tokens, paths, and friends' IPs
+        fs::write(
+            inst_dir.join("logs").join("latest.log"),
+            b"[10:00:00] [Client/INFO]: Connecting to 192.168.1.100:25565\n[10:00:01] [Client/INFO]: UserToken: SuperSecretUserToken\n[10:00:02] [Client/INFO]: Loaded from C:\\Users\\aq08\\AppData\\Local\\Temp\n",
+        )
+        .unwrap();
+
+        fs::write(
+            inst_dir.join("mods").join("test_mod.jar"),
+            b"fake jar content",
+        )
+        .unwrap();
+
+        let dest_dir = temp.path().join("out_reports");
+        fs::create_dir_all(&dest_dir).unwrap();
+
+        let res = save_report_zip_impl(
+            &paths,
+            Some("1.21.1"),
+            Some("Error in C:\\Users\\aq08\\file.rs with key: secret_api_key_42"),
+            Some("Friend at 147.185.221.16 hosted server"),
+            Some("SecretGamerNick"),
+            Some(dest_dir.to_str().unwrap()),
+        )
+        .unwrap();
+
+        assert!(res.success);
+
+        // Open and audit all files in the ZIP
+        let zip_file = File::open(&res.zip_path).unwrap();
+        let mut archive = zip::ZipArchive::new(zip_file).unwrap();
+
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).unwrap();
+            let mut content = String::new();
+            file.read_to_string(&mut content).unwrap();
+
+            // Leak checks on every file in the ZIP:
+            assert!(
+                !content.contains("aq08"),
+                "Leaked Windows username in {}",
+                file.name()
+            );
+            assert!(
+                !content.contains("192.168.1.100"),
+                "Leaked friend IP in {}",
+                file.name()
+            );
+            assert!(
+                !content.contains("147.185.221.16"),
+                "Leaked external IP in {}",
+                file.name()
+            );
+            assert!(
+                !content.contains("SuperSecretUserToken"),
+                "Leaked user token in {}",
+                file.name()
+            );
+            assert!(
+                !content.contains("secret_api_key_42"),
+                "Leaked secret key in {}",
+                file.name()
+            );
+            assert!(
+                !content.contains("SecretGamerNick"),
+                "Leaked player nickname in {}",
+                file.name()
+            );
+        }
     }
 }
