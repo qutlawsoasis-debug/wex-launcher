@@ -13,6 +13,7 @@ pub mod settings;
 pub mod shell;
 pub mod startup;
 pub mod storage;
+pub mod tray;
 pub mod wardrobe;
 pub mod window;
 pub mod workshop;

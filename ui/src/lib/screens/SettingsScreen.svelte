@@ -70,6 +70,13 @@
   let launcherVersion = $state('1.0.0');
   let osName = $state('windows');
   let minimizeToTray = $state(true);
+  let gameWindowBehavior = $state('minimize');
+
+  const gameWindowBehaviorOptions = [
+    { value: 'keep', label: 'Оставить' },
+    { value: 'minimize', label: 'Свернуть' },
+    { value: 'tray', label: 'Скрыть в трей' },
+  ];
 
   let graphicsOptions = $derived([
     { value: 'Low', label: t('settings.graphics_low') },
@@ -223,6 +230,7 @@
         reduce_motion?: boolean;
         reduce_transparency?: boolean;
         minimize_to_tray?: boolean;
+        game_window_behavior?: string;
       }>('get_launcher_settings');
 
       if (cfg) {
@@ -249,6 +257,7 @@
         if (cfg.appearance) theme.setAppearance(cfg.appearance as 'dark' | 'light' | 'auto');
         if (cfg.accent) theme.setAccent(cfg.accent as AccentColor);
         if (cfg.minimize_to_tray !== undefined) minimizeToTray = cfg.minimize_to_tray;
+        if (cfg.game_window_behavior) gameWindowBehavior = cfg.game_window_behavior;
         theme.setReduceMotion(cfg.reduce_motion ?? false);
         theme.setReduceTransparency(cfg.reduce_transparency ?? false);
       }
@@ -308,6 +317,7 @@
           reduce_motion: theme.reduceMotion,
           reduce_transparency: theme.reduceTransparency,
           minimize_to_tray: minimizeToTray,
+          game_window_behavior: gameWindowBehavior,
         },
       });
     } catch {
@@ -371,6 +381,12 @@
     theme.setAccent('blue');
     theme.setReduceMotion(false);
     theme.setReduceTransparency(false);
+    gameWindowBehavior = 'minimize';
+    saveConfig();
+  }
+
+  function handleGameWindowBehaviorChange(val: string) {
+    gameWindowBehavior = val;
     saveConfig();
   }
 
@@ -917,6 +933,26 @@
                 {/if}
               </button>
             {/each}
+          </div>
+        {/snippet}
+      </Row>
+    </List>
+
+    <!-- Window Behavior During Game (SPEC 1.2 / Apple HIG) -->
+    <List header="Поведение окна">
+      <Row
+        title="Во время игры"
+        subtitle="Действие с окном лаунчера после старта игры: оставить открытым, свернуть или спрятать в область уведомлений"
+      >
+        {#snippet trailing()}
+          <div style="width: 320px;">
+            <SegmentedControl
+              options={gameWindowBehaviorOptions}
+              value={gameWindowBehavior}
+              ariaLabel="Во время игры"
+              onchange={handleGameWindowBehaviorChange}
+              size="small"
+            />
           </div>
         {/snippet}
       </Row>

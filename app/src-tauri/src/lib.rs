@@ -27,6 +27,7 @@ impl Default for AppState {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            commands::tray::restore_window(app);
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.show();
                 let _ = w.unminimize();
@@ -59,7 +60,8 @@ pub fn run() {
                 commands::lobby::DEFAULT_OLD_BACKEND_URL,
             );
             app.manage(lobby_state);
-            let _ = commands::window::setup_tray(app);
+            app.manage(commands::tray::TrayState::default());
+            let _ = commands::tray::setup_tray(app);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -68,6 +70,10 @@ pub fn run() {
             commands::startup::startup_verify_directories,
             commands::startup::startup_check_update,
             commands::startup::startup_download_update,
+            // Tray & Window behavior commands
+            commands::tray::tray_apply_launch_behavior,
+            commands::tray::tray_restore_window,
+            commands::tray::tray_get_window_behavior,
             // Network & Connectivity commands
             commands::network::get_network_status,
             // Standard wex-ipc commands

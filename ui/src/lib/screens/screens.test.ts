@@ -89,6 +89,7 @@ const defaultInvoke = vi.fn(async (cmd: string, args?: Record<string, any>, opti
       custom_java_path: null,
       discord_rpc: true,
       language: 'ru',
+      game_window_behavior: 'minimize',
     };
   }
   if (cmd === 'get_playtime_summary') {
@@ -690,6 +691,11 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Уменьшение прозрачности');
     expect(target.textContent).toContain('Выделение оперативной памяти');
     expect(target.textContent).toContain('Графический пресет');
+    expect(target.textContent).toContain('Поведение окна');
+    expect(target.textContent).toContain('Во время игры');
+    expect(target.textContent).toContain('Оставить');
+    expect(target.textContent).toContain('Свернуть');
+    expect(target.textContent).toContain('Скрыть в трей');
     expect(target.textContent).toContain('Выбор исполняемого файла Java');
     expect(target.textContent).toContain('Discord Rich Presence');
     expect(target.textContent).toContain('Сворачивать в трей при запуске игры');
