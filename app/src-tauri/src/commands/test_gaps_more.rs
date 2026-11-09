@@ -88,27 +88,29 @@ async fn extras_save_skin_error_invalid_base64_leaves_history_unchanged() {
 #[tokio::test]
 async fn extras_list_skin_history_success_absent_history_is_empty() {
     let f = Fixture::new().await;
-    assert!(
-        wardrobe::extras_list_skin_history(ExtrasListSkinHistoryRequest {
+    assert!(wardrobe::extras_list_skin_history(
+        ExtrasListSkinHistoryRequest {
             history_dir: f.paths.root.to_string_lossy().into()
-        })
-        .await
-        .unwrap()
-        .items
-        .is_empty()
-    );
+        },
+        f.app.state::<launch::PlayState>()
+    )
+    .await
+    .unwrap()
+    .items
+    .is_empty());
 }
 #[tokio::test]
 async fn extras_list_skin_history_error_corrupt_history_is_reported() {
     let f = Fixture::new().await;
     fs::write(f.paths.root.join("wardrobe_history.json"), b"corrupt").unwrap();
-    assert!(
-        wardrobe::extras_list_skin_history(ExtrasListSkinHistoryRequest {
+    assert!(wardrobe::extras_list_skin_history(
+        ExtrasListSkinHistoryRequest {
             history_dir: f.paths.root.to_string_lossy().into()
-        })
-        .await
-        .is_err()
-    );
+        },
+        f.app.state::<launch::PlayState>()
+    )
+    .await
+    .is_err());
 }
 #[tokio::test]
 async fn wardrobe_delete_history_success_removes_selected_entry() {
@@ -121,35 +123,40 @@ async fn wardrobe_delete_history_success_removes_selected_entry() {
     })
     .await
     .unwrap();
-    let response = wardrobe::wardrobe_delete_history(WardrobeDeleteHistoryRequest {
-        history_dir: f.paths.root.to_string_lossy().into(),
-        item_id: saved.id,
-    })
+    let response = wardrobe::wardrobe_delete_history(
+        WardrobeDeleteHistoryRequest {
+            history_dir: f.paths.root.to_string_lossy().into(),
+            item_id: saved.id,
+        },
+        f.app.state::<launch::PlayState>(),
+    )
     .await
     .unwrap();
     assert!(response.success);
-    assert!(
-        wardrobe::extras_list_skin_history(ExtrasListSkinHistoryRequest {
+    assert!(wardrobe::extras_list_skin_history(
+        ExtrasListSkinHistoryRequest {
             history_dir: f.paths.root.to_string_lossy().into()
-        })
-        .await
-        .unwrap()
-        .items
-        .is_empty()
-    );
+        },
+        f.app.state::<launch::PlayState>()
+    )
+    .await
+    .unwrap()
+    .items
+    .is_empty());
 }
 #[tokio::test]
 async fn wardrobe_delete_history_error_corrupt_history() {
     let f = Fixture::new().await;
     fs::write(f.paths.root.join("wardrobe_history.json"), b"corrupt").unwrap();
-    assert!(
-        wardrobe::wardrobe_delete_history(WardrobeDeleteHistoryRequest {
+    assert!(wardrobe::wardrobe_delete_history(
+        WardrobeDeleteHistoryRequest {
             history_dir: f.paths.root.to_string_lossy().into(),
             item_id: "missing".into()
-        })
-        .await
-        .is_err()
-    );
+        },
+        f.app.state::<launch::PlayState>()
+    )
+    .await
+    .is_err());
 }
 #[tokio::test]
 async fn extras_generate_csl_config_success_preserves_api_root() {
