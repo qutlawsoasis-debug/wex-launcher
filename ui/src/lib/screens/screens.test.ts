@@ -1200,6 +1200,136 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  describe('wex-offline-states: Offline State for All 8 Screens', () => {
+    it('1. PlayScreen renders honest offline state and allows local launch', async () => {
+      const { network } = await import('../design/network.svelte');
+      network.setOnlineForTesting(false);
+
+      const comp = mount(PlayScreen, {
+        target,
+        props: { selectedVersion: '1.21.1', playerName: 'Alex' },
+      });
+      await tick();
+
+      expect(target.textContent).toContain('Нет подключения');
+      expect(target.textContent).toContain('Доступен запуск уже скачанной версии');
+      expect(target.textContent).toContain('Повторить');
+
+      const playBtn = target.querySelector('.dock-action button') as HTMLButtonElement;
+      expect(playBtn).not.toBeNull();
+      expect(playBtn.disabled).toBe(false);
+
+      network.setOnlineForTesting(true);
+      unmount(comp);
+    });
+
+    it('2. ServersScreen renders honest offline state with retry action', async () => {
+      const { network } = await import('../design/network.svelte');
+      network.setOnlineForTesting(false);
+
+      const comp = mount(ServersScreen, { target });
+      await tick();
+
+      expect(target.textContent).toContain('Нет подключения');
+      expect(target.textContent).toContain('Повторить');
+
+      network.setOnlineForTesting(true);
+      unmount(comp);
+    });
+
+    it('3. LobbyScreen renders honest offline state with retry action', async () => {
+      const { network } = await import('../design/network.svelte');
+      network.setOnlineForTesting(false);
+
+      const comp = mount(LobbyScreen, { target });
+      await tick();
+
+      expect(target.textContent).toContain('Нет подключения');
+      expect(target.textContent).toContain('Повторить');
+
+      network.setOnlineForTesting(true);
+      unmount(comp);
+    });
+
+    it('4. FriendsScreen renders honest offline state with retry action', async () => {
+      const { network } = await import('../design/network.svelte');
+      network.setOnlineForTesting(false);
+
+      const comp = mount(FriendsScreen, { target });
+      await tick();
+
+      expect(target.textContent).toContain('Нет подключения');
+      expect(target.textContent).toContain('Повторить');
+
+      network.setOnlineForTesting(true);
+      unmount(comp);
+    });
+
+    it('5. WardrobeScreen renders honest offline state while local skins and preview work', async () => {
+      const { network } = await import('../design/network.svelte');
+      network.setOnlineForTesting(false);
+
+      const comp = mount(WardrobeScreen, { target });
+      await tick();
+
+      expect(target.textContent).toContain('Нет подключения');
+      expect(target.textContent).toContain('Локальные скины и 3D-просмотр работают офлайн');
+      expect(target.textContent).toContain('Повторить');
+
+      // Apply button and local controls must remain functional
+      const applyBtn = target.querySelector('.apply-bar button') as HTMLButtonElement;
+      expect(applyBtn).not.toBeNull();
+
+      network.setOnlineForTesting(true);
+      unmount(comp);
+    });
+
+    it('6. WorkshopScreen renders honest offline state while local worlds, packs, shaders, and screenshots work', async () => {
+      const { network } = await import('../design/network.svelte');
+      network.setOnlineForTesting(false);
+
+      const comp = mount(WorkshopScreen, { target });
+      await tick();
+
+      expect(target.textContent).toContain('Нет подключения');
+      expect(target.textContent).toContain('Одиночные миры, ресурс-паки, шейдеры и скриншоты полностью доступны офлайн');
+      expect(target.textContent).toContain('Повторить');
+
+      network.setOnlineForTesting(true);
+      unmount(comp);
+    });
+
+    it('7. ModsScreen renders honest offline state while installed mods management works', async () => {
+      const { network } = await import('../design/network.svelte');
+      network.setOnlineForTesting(false);
+
+      const comp = mount(ModsScreen, { target });
+      await tick();
+
+      expect(target.textContent).toContain('Нет подключения');
+      expect(target.textContent).toContain('Управление установленными модами и папка инстанса доступны офлайн');
+      expect(target.textContent).toContain('Повторить');
+
+      network.setOnlineForTesting(true);
+      unmount(comp);
+    });
+
+    it('8. SettingsScreen renders honest offline state while local launcher settings work', async () => {
+      const { network } = await import('../design/network.svelte');
+      network.setOnlineForTesting(false);
+
+      const comp = mount(SettingsScreen, { target });
+      await tick();
+
+      expect(target.textContent).toContain('Нет подключения');
+      expect(target.textContent).toContain('Локальные параметры сохранены');
+      expect(target.textContent).toContain('Повторить');
+
+      network.setOnlineForTesting(true);
+      unmount(comp);
+    });
+  });
+
   it('renders CrashSheet with honest unknown diagnosis without fake reasons', () => {
     const comp = mount(CrashSheet, {
       target,

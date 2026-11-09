@@ -14,6 +14,7 @@
   import List from '../components/List.svelte';
   import Row from '../components/Row.svelte';
   import Icon from '../components/icons/Icon.svelte';
+  import { network } from '../design/network.svelte';
   import { t, i18n } from '../i18n';
   import { COMMANDS } from '../ipc/generated/commands';
   import type { WardrobeItemDto, WardrobeStateDto, SkinValidationResultDto } from '../ipc/generated';
@@ -97,6 +98,16 @@
       throw new Error(e?.message || String(e));
     }
   }
+
+  let prevOnline = network.isOnline;
+  $effect(() => {
+    const currentOnline = network.isOnline;
+    if (currentOnline && !prevOnline) {
+      loadActiveState();
+      loadHistory();
+    }
+    prevOnline = currentOnline;
+  });
 
   onMount(() => {
     loadActiveState();
@@ -635,6 +646,30 @@
 </script>
 
 <div class="wardrobe-screen" aria-label="Экран «Гардероб»">
+  <!-- Honest Offline State Banner -->
+  {#if !network.isOnline}
+    <div class="wardrobe-offline-banner" role="status" aria-live="polite">
+      <div class="offline-banner-left">
+        <Icon name="wifi-off" size={16} color="var(--color-system-orange)" />
+        <div class="offline-banner-text">
+          <span class="offline-banner-title">{t('offline.title')}</span>
+          <span class="offline-banner-desc">
+            {i18n.locale === 'en' ? 'Local skins and 3D preview are available. Changes will sync when online.' : 'Локальные скины и 3D-просмотр работают офлайн. Синхронизация произойдёт при подключении.'}
+          </span>
+        </div>
+      </div>
+      <Button
+        variant="secondary"
+        size="small"
+        onclick={() => network.check()}
+        title="Проверить подключение к сети"
+      >
+        <Icon name="refresh" size={12} color="var(--color-secondary-label)" />
+        <span>{t('offline.retry')}</span>
+      </Button>
+    </div>
+  {/if}
+
   <!-- Hidden File Pickers -->
   <input
     type="file"
@@ -912,6 +947,49 @@
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
+    gap: 16px;
+  }
+
+  .wardrobe-offline-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--color-material-regular, rgba(30, 30, 35, 0.75));
+    border: 1px solid rgba(255, 159, 10, 0.3);
+    border-radius: var(--radius-large, 14px);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    animation: fadeIn var(--motion-duration-modal-enter) var(--motion-curve-spring-system);
+    max-width: 960px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .offline-banner-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .offline-banner-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .offline-banner-title {
+    font-size: var(--text-footnote, 13px);
+    font-weight: 600;
+    color: var(--color-label);
+  }
+
+  .offline-banner-desc {
+    font-size: var(--text-caption-1, 11px);
+    color: var(--color-secondary-label);
   }
 
   .wardrobe-layout {

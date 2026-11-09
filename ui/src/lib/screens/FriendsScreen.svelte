@@ -292,6 +292,15 @@
     }
   }
 
+  let prevOnline = network.isOnline;
+  $effect(() => {
+    const currentOnline = network.isOnline;
+    if (currentOnline && !prevOnline) {
+      loadSocialData();
+    }
+    prevOnline = currentOnline;
+  });
+
   onMount(() => {
     loadSocialData();
     loadAchievements();
