@@ -6,6 +6,7 @@
   import { onMount } from 'svelte';
   import './lib/design/tokens.css';
   import { theme } from './lib/design/theme.svelte';
+  import { motionState, screenTransition } from './lib/motion';
   import { network } from './lib/design/network.svelte';
   import { formatError } from './lib/design/errors';
   import { i18n, t } from './lib/i18n';
@@ -82,17 +83,23 @@
   let showImportWizard = $state(false);
   let showOnboarding = $state(false);
 
-  // Dynamic background based on theme and time of day
+  $effect(() => {
+    motionState.setGameRunning(isGameRunning);
+  });
+
+  // Dynamic background based on time of day (SPEC 1.1 / Island parity)
+  let customBg = $state<string | null>(null);
   let currentHour = new Date().getHours();
   let bgImage = $derived.by(() => {
-    if (theme.isDark) {
-      return currentHour >= 22 || currentHour < 5
-        ? '/backgrounds/night.jpg'
-        : '/backgrounds/sunset.jpg';
+    if (customBg) return customBg;
+    if (currentHour >= 22 || currentHour < 6) {
+      return '/backgrounds/night.jpg';
+    } else if (currentHour >= 6 && currentHour < 12) {
+      return '/backgrounds/morning.jpg';
+    } else if (currentHour >= 12 && currentHour < 18) {
+      return '/backgrounds/day.jpg';
     } else {
-      return currentHour >= 6 && currentHour < 12
-        ? '/backgrounds/morning.jpg'
-        : '/backgrounds/day.jpg';
+      return '/backgrounds/sunset.jpg';
     }
   });
 
@@ -131,6 +138,39 @@
     settings: t('sidebar.settings'),
     showcase: 'Showcase',
   });
+
+  // Keyboard Navigation & Shortcuts per wex-window SPEC:
+  // - Esc: closes open modals and sheets
+  // - Ctrl+1..7: switches active screen sections
+  function handleWindowKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      if (crashSheetOpen) {
+        crashSheetOpen = false;
+        e.preventDefault();
+        return;
+      }
+      if (showImportWizard) {
+        showImportWizard = false;
+        e.preventDefault();
+        return;
+      }
+      // Broadcast custom escape event for any active local sheets/modals
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('wex-escape'));
+      }
+    }
+
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+      const num = parseInt(e.key, 10);
+      if (num >= 1 && num <= 7) {
+        const item = sidebarItems[num - 1];
+        if (item) {
+          activeTab = item.id;
+          e.preventDefault();
+        }
+      }
+    }
+  }
 
   // Tauri Window Control Actions
   async function minimizeWindow() {
@@ -314,6 +354,12 @@
       }
       if (t === 'light' || t === 'dark') {
         theme.setAppearance(t);
+      }
+      const bg = params.get('bg');
+      if (bg === 'night' || bg === 'day' || bg === 'sunset' || bg === 'morning') {
+        customBg = `/backgrounds/${bg}.jpg`;
+      } else if (bg === 'reset') {
+        customBg = null;
       }
       const l = params.get('lang');
       if (l === 'ru' || l === 'en') {
@@ -530,6 +576,8 @@
   });
 </script>
 
+<svelte:window onkeydown={handleWindowKeydown} />
+
 <div class="wex-shell" data-theme={theme.isDark ? 'dark' : 'light'}>
   <!-- Real Game Scenery Backdrop under entire app shell -->
   <div class="scenery-canvas" style="background-image: url('{bgImage}');">
@@ -581,53 +629,57 @@
 
     <!-- Active Screen -->
     <div class="screen-viewport">
-      {#if activeTab === 'play'}
-        <PlayScreen
-          bind:selectedVersion
-          bind:playerName
-          {clientStatus}
-          {isLaunching}
-          isRunning={isGameRunning}
-          {progressPercentage}
-          {progressStage}
-          {progressDetail}
-          {progressSpeed}
-          bind:launchError
-          initialShowImportWizard={showImportWizard}
-          onlaunch={handleLaunch}
-          oncancel={handleCancelLaunch}
-          onstop={handleStopGame}
-          onopensettings={() => {
-            activeTab = 'settings';
-          }}
-          onnavigatescreen={(screen: string) => {
-            activeTab = screen as any;
-          }}
-          ontoast={(t: { type: 'info' | 'success' | 'warning' | 'error'; title: string; message: string }) => addToast(t.type, t.title, t.message)}
-          onopenworkshop={(subtab?: string) => {
-            activeTab = 'workshop';
-            if (subtab && ['worlds', 'resourcepacks', 'shaders', 'screenshots'].includes(subtab)) {
-              workshopSubtab = subtab as any;
-            }
-          }}
-        />
-      {:else if activeTab === 'servers'}
-        <ServersScreen />
-      {:else if activeTab === 'lobby'}
-        <LobbyScreen />
-      {:else if activeTab === 'friends'}
-        <FriendsScreen tab={friendsSubtab} />
-      {:else if activeTab === 'wardrobe'}
-        <WardrobeScreen {playerName} ontoast={addToast} />
-      {:else if activeTab === 'workshop'}
-        <WorkshopScreen {selectedVersion} initialTab={workshopSubtab} ontoast={addToast} />
-      {:else if activeTab === 'mods'}
-        <ModsScreen />
-      {:else if activeTab === 'settings'}
-        <SettingsScreen onopenonboarding={() => { showOnboarding = true; }} />
-      {:else if activeTab === 'showcase'}
-        <ShowcaseScreen />
-      {/if}
+      {#key activeTab}
+        <div class="screen-slide-wrapper" in:screenTransition>
+          {#if activeTab === 'play'}
+            <PlayScreen
+              bind:selectedVersion
+              bind:playerName
+              {clientStatus}
+              {isLaunching}
+              isRunning={isGameRunning}
+              {progressPercentage}
+              {progressStage}
+              {progressDetail}
+              {progressSpeed}
+              bind:launchError
+              initialShowImportWizard={showImportWizard}
+              onlaunch={handleLaunch}
+              oncancel={handleCancelLaunch}
+              onstop={handleStopGame}
+              onopensettings={() => {
+                activeTab = 'settings';
+              }}
+              onnavigatescreen={(screen: string) => {
+                activeTab = screen as any;
+              }}
+              ontoast={(t: { type: 'info' | 'success' | 'warning' | 'error'; title: string; message: string }) => addToast(t.type, t.title, t.message)}
+              onopenworkshop={(subtab?: string) => {
+                activeTab = 'workshop';
+                if (subtab && ['worlds', 'resourcepacks', 'shaders', 'screenshots'].includes(subtab)) {
+                  workshopSubtab = subtab as any;
+                }
+              }}
+            />
+          {:else if activeTab === 'servers'}
+            <ServersScreen />
+          {:else if activeTab === 'lobby'}
+            <LobbyScreen />
+          {:else if activeTab === 'friends'}
+            <FriendsScreen tab={friendsSubtab} />
+          {:else if activeTab === 'wardrobe'}
+            <WardrobeScreen {playerName} ontoast={addToast} />
+          {:else if activeTab === 'workshop'}
+            <WorkshopScreen {selectedVersion} initialTab={workshopSubtab} ontoast={addToast} />
+          {:else if activeTab === 'mods'}
+            <ModsScreen />
+          {:else if activeTab === 'settings'}
+            <SettingsScreen onopenonboarding={() => { showOnboarding = true; }} />
+          {:else if activeTab === 'showcase'}
+            <ShowcaseScreen />
+          {/if}
+        </div>
+      {/key}
     </div>
   </main>
 
@@ -694,20 +746,11 @@
     inset: 0;
     background: linear-gradient(
       to bottom,
-      rgba(0, 0, 0, 0.40) 0%,
-      rgba(0, 0, 0, 0.15) 35%,
-      rgba(0, 0, 0, 0.50) 75%,
-      rgba(0, 0, 0, 0.82) 100%
-    );
-  }
-
-  :global([data-theme='light']) .scenery-vignette {
-    background: linear-gradient(
-      to bottom,
-      rgba(255, 255, 255, 0.65) 0%,
-      rgba(255, 255, 255, 0.30) 35%,
-      rgba(255, 255, 255, 0.65) 75%,
-      rgba(255, 255, 255, 0.88) 100%
+      rgba(0, 0, 0, 0.65) 0%,
+      rgba(0, 0, 0, 0.50) 25%,
+      rgba(0, 0, 0, 0.30) 50%,
+      rgba(0, 0, 0, 0.65) 75%,
+      rgba(0, 0, 0, 0.88) 100%
     );
   }
 
@@ -730,6 +773,14 @@
     overflow: hidden;
     box-sizing: border-box;
     z-index: 1;
+  }
+
+  .screen-slide-wrapper {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
 
   .sidebar-footer-controls {

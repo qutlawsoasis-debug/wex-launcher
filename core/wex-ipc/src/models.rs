@@ -511,6 +511,10 @@ pub struct WardrobeStateDto {
 pub enum DiscordActivityDto {
     #[default]
     InLauncher,
+    Installing {
+        version: String,
+        stage: Option<String>,
+    },
     Playing {
         version: String,
         world_name: Option<String>,
@@ -528,6 +532,9 @@ impl From<wex_extras::Activity> for DiscordActivityDto {
     fn from(a: wex_extras::Activity) -> Self {
         match a {
             wex_extras::Activity::InLauncher => Self::InLauncher,
+            wex_extras::Activity::Installing { version, stage } => {
+                Self::Installing { version, stage }
+            }
             wex_extras::Activity::Playing {
                 version,
                 world_name,
@@ -558,6 +565,9 @@ impl From<DiscordActivityDto> for wex_extras::Activity {
     fn from(a: DiscordActivityDto) -> Self {
         match a {
             DiscordActivityDto::InLauncher => Self::InLauncher,
+            DiscordActivityDto::Installing { version, stage } => {
+                Self::Installing { version, stage }
+            }
             DiscordActivityDto::Playing {
                 version,
                 world_name,
@@ -578,6 +588,31 @@ impl From<DiscordActivityDto> for wex_extras::Activity {
                 player_count,
                 host_name,
             },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct DiscordPreviewDto {
+    pub is_enabled: bool,
+    pub is_connected: bool,
+    pub title: String,
+    pub details: String,
+    pub state: String,
+    pub small_text: Option<String>,
+    pub has_timestamp: bool,
+}
+
+impl From<wex_extras::discord::DiscordPreview> for DiscordPreviewDto {
+    fn from(p: wex_extras::discord::DiscordPreview) -> Self {
+        Self {
+            is_enabled: p.is_enabled,
+            is_connected: p.is_connected,
+            title: p.title,
+            details: p.details,
+            state: p.state,
+            small_text: p.small_text,
+            has_timestamp: p.has_timestamp,
         }
     }
 }

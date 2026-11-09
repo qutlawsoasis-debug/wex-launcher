@@ -42,7 +42,9 @@ export type WardrobeItemDto = { id: string, item_type: string, name: string, has
 
 export type WardrobeStateDto = { nickname: string, skin_name: string, skin_base64: string | null, model: SkinModelDto, cape_id: string, cape_name: string, cape_base64: string | null, };;
 
-export type DiscordActivityDto = "InLauncher" | { "Playing": { version: string, world_name: string | null, mod_count: number | null, start_timestamp: bigint | null, } } | { "InLobby": { lobby_code: string | null, player_count: number, host_name: string | null, } };;
+export type DiscordActivityDto = "InLauncher" | { "Installing": { version: string, stage: string | null, } } | { "Playing": { version: string, world_name: string | null, mod_count: number | null, start_timestamp: bigint | null, } } | { "InLobby": { lobby_code: string | null, player_count: number, host_name: string | null, } };;
+
+export type DiscordPreviewDto = { is_enabled: boolean, is_connected: boolean, title: string, details: string, state: string, small_text: string | null, has_timestamp: boolean, };;
 
 export type ImportedServerDto = { name: string, ip: string, icon: string | null, };;
 

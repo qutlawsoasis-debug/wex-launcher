@@ -521,12 +521,12 @@
         </div>
         <div class="header-tools">
           <Button
-            variant="secondary"
+            variant="glass"
             size="small"
             onclick={() => (manualImportWizardOpen = true)}
             title="Мастер импорта данных из старого лаунчера"
           >
-            <Icon name="folder" size={14} color="var(--color-secondary-label)" />
+            <Icon name="folder" size={14} color="rgba(255, 255, 255, 0.90)" />
             <span>{t('import.action_import')}</span>
           </Button>
         </div>
@@ -688,7 +688,7 @@
             <div class="tech-runtime-box">
               <span class="tech-runtime-text">{javaRuntime}</span>
               {#if isRunning}
-                <span class="tech-status-badge running">• {i18n.locale === 'en' ? 'Playing' : 'В игре'}</span>
+                <span class="tech-status-badge running">({i18n.locale === 'en' ? 'Playing' : 'В игре'})</span>
               {:else if clientStatus}
                 <span class="tech-status-badge">• {clientStatus}</span>
               {/if}
@@ -712,7 +712,6 @@
                 onclick={onstop}
                 title={i18n.locale === 'en' ? 'Stop Minecraft' : 'Остановить процесс Minecraft'}
               >
-                <span class="running-indicator-dot"></span>
                 <span>{i18n.locale === 'en' ? 'Stop Minecraft' : 'В игре • Остановить'}</span>
               </Button>
             {:else}
@@ -844,27 +843,16 @@
     letter-spacing: -0.03em;
     line-height: 1.08;
     margin: 0 0 4px;
-    color: var(--color-label);
-    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+    color: rgba(255, 255, 255, 1.0);
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.75), 0 1px 3px rgba(0, 0, 0, 0.90);
   }
 
   .game-subheading {
     font-size: 16px;
-    color: var(--color-label);
-    opacity: 0.94;
+    color: rgba(255, 255, 255, 0.88);
     margin: 0;
     font-weight: 600;
-    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.4);
-  }
-
-  :global([data-theme="light"]) .game-heading {
-    text-shadow: 0 1px 8px rgba(255, 255, 255, 0.8);
-  }
-
-  :global([data-theme="light"]) .game-subheading {
-    color: #1c1c1e;
-    opacity: 1;
-    text-shadow: 0 1px 8px rgba(255, 255, 255, 0.8);
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.75), 0 1px 3px rgba(0, 0, 0, 0.90);
   }
 
   .header-tools {
@@ -891,6 +879,15 @@
     padding: 16px 20px;
     box-sizing: border-box;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+    transition:
+      transform var(--motion-duration-normal) var(--motion-curve-spring-bouncy),
+      box-shadow var(--motion-duration-hover) ease,
+      background-color var(--motion-duration-hover) ease;
+  }
+
+  .glass-card:hover {
+    transform: translateY(var(--motion-card-hover-y, -2px));
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
   }
 
   .updates-card,
@@ -1197,6 +1194,17 @@
   .dock-primary-action {
     margin-left: auto;
     flex-shrink: 0;
+    transition:
+      transform var(--motion-duration-morph) var(--motion-curve-spring-bouncy),
+      opacity var(--motion-duration-screen-enter) ease;
+  }
+
+  .dock-controls-row {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 16px;
+    animation: dockRowIn var(--motion-duration-morph) var(--motion-curve-spring-bouncy) forwards;
   }
 
   .dock-progress-mode {
@@ -1204,6 +1212,37 @@
     align-items: center;
     gap: 16px;
     width: 100%;
+    animation: dockProgressIn var(--motion-duration-morph) var(--motion-curve-spring-bouncy) forwards;
+  }
+
+  @keyframes dockRowIn {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes dockProgressIn {
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  :global([data-effects="off"]) .dock-controls-row,
+  :global([data-effects="off"]) .dock-progress-mode,
+  :global([data-reduce-motion="true"]) .dock-controls-row,
+  :global([data-reduce-motion="true"]) .dock-progress-mode {
+    animation: none;
+    transform: none !important;
   }
 
   .dock-progress-mode :global(.progress-bar-wrapper) {

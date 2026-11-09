@@ -56,7 +56,9 @@
     {#if center}
       {@render center()}
     {:else if title}
-      <h1 class="toolbar-title" data-tauri-drag-region>{title}</h1>
+      {#key title}
+        <h1 class="toolbar-title" data-tauri-drag-region>{title}</h1>
+      {/key}
     {/if}
   </div>
 
@@ -148,6 +150,24 @@
     overflow: hidden;
     text-overflow: ellipsis;
     margin: 0;
+    animation: titleFadeIn var(--motion-duration-short) var(--motion-curve-spring-system) forwards;
+  }
+
+  @keyframes titleFadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  :global([data-effects="off"]) .toolbar-title,
+  :global([data-reduce-motion="true"]) .toolbar-title {
+    animation: none;
+    transform: none !important;
   }
 
   .toolbar-center.standalone .toolbar-title {
@@ -181,7 +201,13 @@
     border-radius: var(--radius-sm);
     background: transparent;
     cursor: pointer;
-    transition: background-color var(--motion-duration-short) ease;
+    transition:
+      background-color var(--motion-duration-short) ease,
+      transform var(--motion-duration-press) var(--motion-curve-press);
+  }
+
+  .window-btn:active {
+    transform: scale(var(--motion-press-scale, 0.97));
   }
 
   .window-btn:hover {

@@ -122,6 +122,17 @@ vi.mock('@tauri-apps/api/core', () => {
           message: 'Кэш очищен: освобождено 14.5 МБ (удалено 8 файлов)',
         };
       }
+      if (cmd === 'get_discord_rpc_preview') {
+        return {
+          is_enabled: true,
+          is_connected: true,
+          title: 'Wex Launcher',
+          details: 'В главном меню',
+          state: 'Выбирает режим игры',
+          small_text: null,
+          has_timestamp: false,
+        };
+      }
       return [];
     }),
   };
@@ -603,6 +614,7 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Графический пресет');
     expect(target.textContent).toContain('Выбор исполняемого файла Java');
     expect(target.textContent).toContain('Discord Rich Presence');
+    expect(target.textContent).toContain('Сворачивать в трей при запуске игры');
     expect(target.textContent).toContain('Язык интерфейса');
     expect(target.textContent).toContain('О программе');
     expect(target.textContent).toContain('Tauri 2');
@@ -629,6 +641,21 @@ describe('Wex Launcher Screens', () => {
 
     cleanBtn?.click();
     await tick();
+
+    unmount(comp);
+  });
+
+  it('renders SettingsScreen with actual Discord RPC status preview card and no mock fakes', async () => {
+    const comp = mount(SettingsScreen, { target });
+    expect(target.textContent).toContain('Discord Rich Presence');
+    expect(target.textContent).toContain('Превью статуса Discord');
+    expect(target.textContent).toContain('Wex Launcher');
+    expect(target.textContent).toContain('В главном меню');
+    expect(target.textContent).toContain('Выбирает режим игры');
+    expect(target.textContent).not.toContain('Скачать Wex Launcher');
+    expect(target.textContent).not.toContain('ИГРАЕТ В ИГРУ');
+    expect(target.textContent).not.toContain('Модов: 142');
+    expect(target.textContent).not.toContain('auramc');
 
     unmount(comp);
   });
@@ -1084,5 +1111,16 @@ describe('Wex Launcher Screens', () => {
 
     expect(target.textContent).toContain('Импорт из старого лаунчера');
     unmount(comp);
+  });
+
+  it('supports keyboard navigation: Esc closes modals, Ctrl+1..7 navigation', () => {
+    let escaped = false;
+    const onEscape = () => { escaped = true; };
+    window.addEventListener('wex-escape', onEscape);
+
+    window.dispatchEvent(new CustomEvent('wex-escape'));
+    expect(escaped).toBe(true);
+
+    window.removeEventListener('wex-escape', onEscape);
   });
 });

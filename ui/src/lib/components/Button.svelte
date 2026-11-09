@@ -12,7 +12,7 @@
   import type { Snippet } from 'svelte';
 
   interface Props {
-    variant?: 'primary' | 'secondary' | 'destructive' | 'ghost';
+    variant?: 'primary' | 'secondary' | 'destructive' | 'ghost' | 'glass';
     size?: 'small' | 'regular' | 'large';
     title?: string;
     disabled?: boolean;
@@ -81,11 +81,16 @@
     text-align: center;
     user-select: none;
     transition:
-      transform var(--motion-duration-short) var(--motion-spring-ease),
+      transform var(--motion-duration-press) var(--motion-curve-spring-system),
       background-color var(--motion-duration-short) ease,
       opacity var(--motion-duration-short) ease,
       box-shadow var(--motion-duration-short) ease;
     outline: none;
+  }
+
+  .apple-button:active:not(:disabled) {
+    transition-duration: var(--motion-duration-press);
+    transition-timing-function: var(--motion-curve-press);
   }
 
   .apple-button:focus-visible {
@@ -188,6 +193,32 @@
     transform: scale(var(--motion-press-scale));
   }
 
+  .apple-button.glass {
+    background-color: rgba(118, 118, 128, 0.24);
+    color: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+
+  .apple-button.glass:hover:not(:disabled) {
+    background-color: rgba(118, 118, 128, 0.36);
+    border-color: rgba(255, 255, 255, 0.28);
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .apple-button.glass:active:not(:disabled) {
+    transform: scale(var(--motion-press-scale));
+    background-color: rgba(118, 118, 128, 0.44);
+  }
+
+  .apple-button.glass :global(svg) {
+    color: rgba(255, 255, 255, 0.90);
+  }
+
   /* Disabled state */
   .apple-button:disabled {
     opacity: 0.42;
@@ -236,10 +267,12 @@
     }
   }
 
+  :global([data-effects="off"]) .apple-button,
   :global([data-reduce-motion="true"]) .apple-button {
-    transition: none !important;
+    transition: background-color var(--motion-duration-short) ease, opacity var(--motion-duration-short) ease !important;
   }
 
+  :global([data-effects="off"]) .apple-button:active:not(:disabled),
   :global([data-reduce-motion="true"]) .apple-button:active:not(:disabled) {
     transform: none !important;
   }

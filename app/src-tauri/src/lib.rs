@@ -4,7 +4,7 @@ pub mod ipc;
 pub use commands::servers::*;
 
 use std::sync::Mutex;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 use commands::launch::PlayState;
 use ipc::{LobbyRoomModel, ServerEntryModel};
@@ -26,6 +26,19 @@ impl Default for AppState {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+                for arg in argv {
+                    if arg.starts_with("wex://") || arg.starts_with("aura://") {
+                        let _ = w.emit("deep-link://url", vec![arg]);
+                        break;
+                    }
+                }
+            }
+        }))
         .setup(|app| {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();
@@ -43,6 +56,7 @@ pub fn run() {
                 commands::lobby::DEFAULT_OLD_BACKEND_URL,
             );
             app.manage(lobby_state);
+            let _ = commands::window::setup_tray(app);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -75,6 +89,7 @@ pub fn run() {
             commands::settings::settings_verify_files,
             commands::settings::cleanup_cache,
             commands::settings::settings_cleanup_cache,
+            commands::settings::get_discord_rpc_preview,
             // Mods commands (commands/mods.rs)
             commands::mods::list_mods,
             commands::mods::toggle_mod,
@@ -145,6 +160,10 @@ pub fn run() {
             commands::music::music_open_folder,
             commands::music::music_get_settings,
             commands::music::music_set_settings,
+            commands::music::music_sync_smtc,
+            commands::music::music_get_smtc_state,
+            commands::music::music_update_session,
+            commands::music::music_check_command,
             // Friends & Social commands
             commands::friends::social_login,
             commands::friends::social_get_friends,
@@ -197,6 +216,15 @@ pub fn run() {
             commands::report::report_get_preview,
             commands::report::report_save_zip,
             commands::report::report_copy_text,
+            // Window & Tray commands (SPEC wex-window)
+            commands::window::window_get_state,
+            commands::window::window_save_state,
+            commands::window::window_restore_saved_state,
+            commands::window::window_get_minimize_to_tray,
+            commands::window::window_set_minimize_to_tray,
+            commands::window::window_on_game_launch,
+            commands::window::window_on_game_exit,
+            commands::window::window_raise_and_focus,
             // Onboarding commands (SPEC 1.1 / Apple HIG Onboarding)
             commands::onboarding::onboarding_get_specs,
             commands::onboarding::onboarding_complete,

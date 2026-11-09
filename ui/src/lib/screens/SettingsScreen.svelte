@@ -49,12 +49,19 @@
   let language = $state<string>(i18n.locale);
   let launcherVersion = $state('1.0.0');
   let osName = $state('windows');
+  let minimizeToTray = $state(true);
 
   let graphicsOptions = $derived([
     { value: 'Low', label: t('settings.graphics_low') },
     { value: 'Medium', label: t('settings.graphics_medium') },
     { value: 'High', label: t('settings.graphics_high') },
     { value: 'Ultra', label: t('settings.graphics_ultra') },
+  ]);
+
+  let effectsOptions = $derived([
+    { value: 'full', label: i18n.locale === 'en' ? 'Full' : 'Полные' },
+    { value: 'low', label: i18n.locale === 'en' ? 'Low' : 'Умеренные' },
+    { value: 'off', label: i18n.locale === 'en' ? 'Off' : 'Отключены' },
   ]);
 
   let javaModeOptions = $derived([
@@ -72,6 +79,45 @@
     { value: 'light', label: t('settings.theme_light') },
     { value: 'auto', label: t('settings.theme_auto') },
   ]);
+
+  // Discord Rich Presence preview state (reflects actual backend activity)
+  let discordPreview = $state<{
+    is_enabled: boolean;
+    is_connected: boolean;
+    title: string;
+    details: string;
+    state: string;
+    small_text: string | null;
+    has_timestamp: boolean;
+  }>({
+    is_enabled: true,
+    is_connected: false,
+    title: 'Wex Launcher',
+    details: 'В главном меню',
+    state: 'Выбирает режим игры',
+    small_text: null,
+    has_timestamp: false,
+  });
+
+  async function updateDiscordPreview() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const prev = await invoke<{
+        is_enabled: boolean;
+        is_connected: boolean;
+        title: string;
+        details: string;
+        state: string;
+        small_text: string | null;
+        has_timestamp: boolean;
+      }>('get_discord_rpc_preview');
+      if (prev) {
+        discordPreview = prev;
+      }
+    } catch {
+      // Offline / unit test fallback
+    }
+  }
 
   const accents: { key: AccentColor; title: string; color: string }[] = Object.entries(
     AccentPresets
@@ -155,6 +201,7 @@
         accent?: string;
         reduce_motion?: boolean;
         reduce_transparency?: boolean;
+        minimize_to_tray?: boolean;
       }>('get_launcher_settings');
 
       if (cfg) {
@@ -176,14 +223,15 @@
         }
         if (cfg.appearance) theme.setAppearance(cfg.appearance as 'dark' | 'light' | 'auto');
         if (cfg.accent) theme.setAccent(cfg.accent as AccentColor);
+        if (cfg.minimize_to_tray !== undefined) minimizeToTray = cfg.minimize_to_tray;
         theme.setReduceMotion(cfg.reduce_motion ?? false);
         theme.setReduceTransparency(cfg.reduce_transparency ?? false);
       }
-
       const musicSettings = await invoke<{ enabled?: boolean }>('music_get_settings');
       if (musicSettings && musicSettings.enabled !== undefined) {
         backgroundMusic = musicSettings.enabled;
       }
+      await updateDiscordPreview();
     } catch {
       // In-browser mock fallback
     }
@@ -233,6 +281,7 @@
           accent: theme.accent,
           reduce_motion: theme.reduceMotion,
           reduce_transparency: theme.reduceTransparency,
+          minimize_to_tray: minimizeToTray,
         },
       });
     } catch {
@@ -251,6 +300,7 @@
         discord_rpc?: boolean;
         fast_start_jvm?: boolean;
         language?: string;
+        minimize_to_tray?: boolean;
       }>('reset_settings');
 
       if (reset) {
@@ -267,6 +317,7 @@
           language = 'ru';
           i18n.setLocale('ru');
         }
+        if (reset.minimize_to_tray !== undefined) minimizeToTray = reset.minimize_to_tray;
       }
     } catch {
       // Browser reset fallback
@@ -277,6 +328,7 @@
       discordRpc = true;
       fastStartJvm = false;
       language = 'ru';
+      minimizeToTray = true;
       i18n.setLocale('ru');
     }
 
@@ -533,6 +585,25 @@
       </Row>
     </List>
 
+    <!-- Window and Tray behavior (SPEC wex-window) -->
+    <List header="Окно и трей">
+      <Row
+        title="Сворачивать в трей при запуске игры"
+        subtitle="Скрывать окно лаунчера во время игры и возвращать его на экран после закрытия"
+      >
+        {#snippet trailing()}
+          <Toggle
+            ariaLabel="Сворачивать в трей при запуске игры"
+            checked={minimizeToTray}
+            onchange={(checked) => {
+              minimizeToTray = checked;
+              saveConfig();
+            }}
+          />
+        {/snippet}
+      </Row>
+    </List>
+
     <!-- Integrations & Localization -->
     <List header={t('settings.header_integrations')}>
       <Row
@@ -546,9 +617,60 @@
             onchange={(checked) => {
               discordRpc = checked;
               saveConfig();
+              updateDiscordPreview();
             }}
           />
         {/snippet}
+      </Row>
+
+      <Row
+        title="Превью статуса Discord"
+        subtitle={discordRpc ? "Фактическое состояние активности профиля в Discord" : "Трансляция активности выключена в настройках"}
+      >
+        <div class="discord-preview-wrap">
+          {#if discordRpc}
+            <div class="discord-card">
+              <div class="discord-card-header">
+                <span class="discord-card-tag">Активность в Discord</span>
+              </div>
+              <div class="discord-card-body">
+                <div class="discord-avatar-wrap">
+                  <div class="discord-avatar">
+                    <Icon name="server" size={26} color="var(--color-system-blue)" />
+                  </div>
+                  <span
+                    class="discord-status-dot"
+                    class:online={discordPreview.is_connected}
+                    title={discordPreview.is_connected ? "Подключено к Discord" : "Ожидание подключения"}
+                  ></span>
+                </div>
+                <div class="discord-content">
+                  <div class="discord-app-title">{discordPreview.title || 'Wex Launcher'}</div>
+                  <div class="discord-detail-title">{discordPreview.details}</div>
+                  <div class="discord-state-text">{discordPreview.state}</div>
+                  {#if discordPreview.small_text}
+                    <div class="discord-meta-text">{discordPreview.small_text}</div>
+                  {/if}
+                  {#if !discordPreview.is_connected}
+                    <div class="discord-offline-hint">Discord не запущен или ожидается подключение</div>
+                  {/if}
+                </div>
+              </div>
+            </div>
+          {:else}
+            <div class="discord-disabled-card">
+              <div class="discord-disabled-badge">
+                <Icon name="close" size={14} color="var(--color-secondary-label)" />
+              </div>
+              <div class="discord-disabled-info">
+                <div class="disabled-title">Статус отключён</div>
+                <div class="disabled-desc">
+                  Лаунчер не передаёт статус в Discord и не использует сокет Rich Presence.
+                </div>
+              </div>
+            </div>
+          {/if}
+        </div>
       </Row>
 
       <Row
@@ -633,6 +755,22 @@
 
     <!-- Accessibility / Универсальный доступ -->
     <List header={t('settings.header_a11y')}>
+      <Row
+        title={i18n.locale === 'en' ? 'Interface Effects' : 'Эффекты интерфейса'}
+        subtitle={i18n.locale === 'en' ? 'Animation fidelity and spring motion' : 'Степень плавности и пружинных анимаций'}
+      >
+        {#snippet trailing()}
+          <SegmentedControl
+            options={effectsOptions}
+            value={theme.effectsMode}
+            onchange={(val) => {
+              theme.setEffectsMode(val as any);
+              saveConfig();
+            }}
+          />
+        {/snippet}
+      </Row>
+
       <Row
         title={t('settings.reduce_motion_title')}
         subtitle={t('settings.reduce_motion_subtitle')}
@@ -836,5 +974,151 @@
     display: flex;
     padding-top: 8px;
     margin-bottom: 24px;
+  }
+
+  .discord-preview-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    margin-top: 6px;
+  }
+
+  .discord-card {
+    background: var(--color-fill-secondary);
+    border: 1px solid var(--color-separator);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  .discord-card-header {
+    display: flex;
+    align-items: center;
+  }
+
+  .discord-card-tag {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-tertiary-label);
+  }
+
+  .discord-card-body {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .discord-avatar-wrap {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+  }
+
+  .discord-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    background: var(--color-fill-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-separator);
+  }
+
+  .discord-status-dot {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--color-system-gray);
+    border: 2px solid var(--color-window-bg);
+  }
+
+  .discord-status-dot.online {
+    background: var(--color-system-green);
+  }
+
+  .discord-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .discord-app-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--color-label);
+    line-height: 1.2;
+  }
+
+  .discord-detail-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-secondary-label);
+    line-height: 1.3;
+  }
+
+  .discord-state-text {
+    font-size: 12px;
+    color: var(--color-secondary-label);
+    line-height: 1.3;
+  }
+
+  .discord-meta-text {
+    font-size: 11px;
+    color: var(--color-secondary-label);
+    margin-top: 2px;
+  }
+
+  .discord-offline-hint {
+    font-size: 11px;
+    color: var(--color-tertiary-label);
+    margin-top: 2px;
+  }
+
+  .discord-disabled-card {
+    background: var(--color-fill-tertiary);
+    border: 1px dashed var(--color-separator);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .discord-disabled-badge {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--color-fill-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .discord-disabled-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .disabled-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-secondary-label);
+  }
+
+  .disabled-desc {
+    font-size: 12px;
+    color: var(--color-tertiary-label);
   }
 </style>

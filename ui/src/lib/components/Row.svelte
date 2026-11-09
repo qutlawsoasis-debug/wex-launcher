@@ -139,7 +139,9 @@
     background-color: transparent;
     font-family: var(--font-system);
     user-select: none;
-    transition: background-color var(--motion-duration-short) ease;
+    transition:
+      background-color var(--motion-duration-hover) ease,
+      transform var(--motion-duration-press) var(--motion-curve-press);
     border: none;
     border-bottom: 1px solid var(--color-separator);
     width: 100%;
@@ -163,6 +165,7 @@
 
   .apple-row.clickable:active:not(.disabled) {
     background-color: var(--color-tertiary-system-fill);
+    transform: scale(var(--motion-press-scale, 0.97));
   }
 
   .apple-row.clickable:focus-visible {

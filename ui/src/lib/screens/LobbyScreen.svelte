@@ -1189,7 +1189,7 @@
     color: var(--color-system-blue);
     padding: 2px 6px;
     border-radius: var(--radius-sm);
-    transition: background-color 0.15s ease;
+    transition: background-color var(--motion-duration-short) ease;
   }
 
   .copy-badge-btn:hover,

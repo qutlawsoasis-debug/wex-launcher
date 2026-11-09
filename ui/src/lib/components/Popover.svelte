@@ -180,6 +180,7 @@
     }
   }
 
+  :global([data-effects="off"]) .popover-card,
   :global([data-reduce-motion="true"]) .popover-card {
     animation: none !important;
     scale: 1 !important;
