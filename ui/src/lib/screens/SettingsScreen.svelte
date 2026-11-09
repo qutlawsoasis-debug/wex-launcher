@@ -1865,7 +1865,6 @@
     margin-bottom: 8px;
   }
 
-
   .slider-wrapper {
     width: 100%;
     padding: 10px 0 4px;
@@ -1906,7 +1905,6 @@
     align-items: center;
     gap: 8px;
   }
-
 
   .accent-picker {
     display: flex;
@@ -2111,7 +2109,6 @@
     color: var(--color-tertiary-label);
   }
 
-
   .system-warning-banner {
     display: flex;
     align-items: center;
@@ -2141,7 +2138,6 @@
     align-items: center;
     gap: 8px;
   }
-
   /* Scenery Art Contrast Parity (wex-contrast): text over art is always white with shadow */
   :global(.settings-screen .list-header) {
     color: rgba(255, 255, 255, 0.94) !important;
