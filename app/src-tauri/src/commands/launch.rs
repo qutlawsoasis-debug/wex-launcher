@@ -204,6 +204,10 @@ pub struct PlayState {
     pub active_process: Arc<Mutex<Option<wex_core::GameProcess>>>,
     pub app_handle: Option<AppHandle>,
     prewarm_processes_enabled: bool,
+    /// Serializes every `install_full_environment` run (startup verification,
+    /// fast-launch prewarm and Play). Two installs must never write the same
+    /// version, libraries or assets at once.
+    pub install_lock: Arc<Mutex<()>>,
 }
 
 impl PlayState {
@@ -247,6 +251,7 @@ impl PlayState {
             active_process: Arc::new(Mutex::new(None)),
             app_handle: Some(app),
             prewarm_processes_enabled: true,
+            install_lock: Arc::new(Mutex::new(())),
         };
 
         // Trigger background verification & prewarm ONLY if fast_launch is enabled
@@ -269,14 +274,24 @@ impl PlayState {
                 .build()
                 .unwrap_or_default();
             let events = Arc::new(wex_core::NoopEventHandler);
-            let _ = wex_core::install_full_environment(
-                &paths_clone,
-                &version,
-                &client,
-                events.as_ref(),
-                4,
-            )
-            .await;
+            {
+                // Play may have started while this task was scheduled; then Play
+                // installs under the same lock and this verification is skipped.
+                let _install = state_clone.install_lock.lock().await;
+                if state_clone.is_launching.load(Ordering::SeqCst)
+                    || state_clone.is_running.load(Ordering::SeqCst)
+                {
+                    return;
+                }
+                let _ = wex_core::install_full_environment(
+                    &paths_clone,
+                    &version,
+                    &client,
+                    events.as_ref(),
+                    4,
+                )
+                .await;
+            }
 
             if !state_clone.is_launching.load(Ordering::SeqCst)
                 && !state_clone.is_running.load(Ordering::SeqCst)
@@ -306,6 +321,7 @@ impl PlayState {
             active_process: Arc::new(Mutex::new(None)),
             app_handle: None,
             prewarm_processes_enabled: false,
+            install_lock: Arc::new(Mutex::new(())),
         }
     }
 
@@ -329,6 +345,7 @@ impl PlayState {
             active_process: Arc::new(Mutex::new(None)),
             app_handle: None,
             prewarm_processes_enabled: false,
+            install_lock: Arc::new(Mutex::new(())),
         }
     }
 
@@ -490,8 +507,12 @@ impl PlayState {
         let is_prewarming_clone = self.is_prewarming.clone();
         let prewarm_gen_clone = self.prewarm_generation.clone();
         let app_clone = self.app_handle.clone();
+        let install_lock = self.install_lock.clone();
 
         tauri::async_runtime::spawn(async move {
+            // prepare_and_prewarm installs the environment first; hold the shared
+            // install lock so it never overlaps the startup verification or Play.
+            let _install = install_lock.lock().await;
             let signal_file = paths_clone.instance_dir(&version).join("prewarm.signal");
             let _ = std::fs::remove_file(&signal_file);
             let parent_pid = std::process::id();
@@ -951,6 +972,34 @@ pub async fn start_game<R: tauri::Runtime>(
         }
     }
 
+    // core.launch_game installs the environment before starting the JVM. Wait for
+    // any background preparation (startup verification or prewarm) to finish and
+    // reuse its files instead of writing the same version from two tasks.
+    let install_guard = match state.install_lock.try_lock() {
+        Ok(guard) => guard,
+        Err(_) => {
+            let _ = app.emit(
+                EVT_LAUNCH_STATUS,
+                LaunchStatusPayload {
+                    state: "preparing".to_string(),
+                    message: "Ждём завершения фоновой подготовки…".to_string(),
+                    exit_code: None,
+                },
+            );
+            state.install_lock.lock().await
+        }
+    };
+    if !state.is_launching.load(Ordering::SeqCst) {
+        // cancel_launch() was called while waiting for the background preparation.
+        drop(install_guard);
+        if cfg.discord_rpc {
+            set_discord_rpc(&state.discord, Activity::InLauncher).await;
+        } else {
+            clear_discord_rpc(&state.discord).await;
+        }
+        return Err("Запуск отменён".to_string());
+    }
+
     let launch_res = state
         .core
         .launch_game(LaunchGameRequest {
@@ -960,6 +1009,7 @@ pub async fn start_game<R: tauri::Runtime>(
             quick_play_multiplayer: server.clone(),
         })
         .await;
+    drop(install_guard);
 
     match launch_res {
         Ok(resp) => {

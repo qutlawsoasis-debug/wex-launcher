@@ -554,6 +554,13 @@ pub async fn verify_game_files(
     }
 
     let handler = AppEventHandler { app };
+    // Repairs write instance files: never overlap a background install or Play.
+    // A running game is rejected inside the impl, so only wait when it may repair.
+    let _install = if is_running {
+        None
+    } else {
+        Some(state.install_lock.lock().await)
+    };
     verify_game_files_impl(&state.paths, &target_version, is_running, &client, &handler).await
 }
 

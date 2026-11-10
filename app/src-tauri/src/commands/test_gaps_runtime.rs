@@ -409,6 +409,71 @@ async fn start_game_success_and_supervisor_cleanup_both_versions() {
         assert!(cleaned_up);
     }
 }
+// Regression: the startup verification / prewarm installs in the background.
+// Play must wait for it instead of installing the same version at the same time.
+#[tokio::test]
+async fn start_game_waits_for_background_install_both_versions() {
+    for version in ["1.20.1", "1.21.1"] {
+        let f = Fixture::new().await;
+        let background_install = f.play().install_lock.clone().lock_owned().await;
+        let play = f.play();
+        let release = async {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            assert!(
+                !play.is_running.load(Ordering::SeqCst),
+                "Play started while the background install still held the lock"
+            );
+            assert!(play.is_launching.load(Ordering::SeqCst));
+            drop(background_install);
+        };
+        let (response, ()) = tokio::join!(
+            launch::start_game(
+                f.app.handle().clone(),
+                version.into(),
+                "Fixture".into(),
+                None,
+                None,
+                f.play(),
+            ),
+            release
+        );
+        assert!(response.unwrap().success);
+        assert!(f.play().is_running.load(Ordering::SeqCst));
+        assert!(
+            f.play().install_lock.try_lock().is_ok(),
+            "Play must release the install lock"
+        );
+        launch::kill_game(Some(version.into()), f.play())
+            .await
+            .unwrap();
+    }
+}
+#[tokio::test]
+async fn start_game_cancelled_while_waiting_for_background_install_does_not_launch() {
+    let f = Fixture::new().await;
+    let background_install = f.play().install_lock.clone().lock_owned().await;
+    let cancel = async {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        launch::cancel_launch(f.app.handle().clone(), f.play())
+            .await
+            .unwrap();
+        drop(background_install);
+    };
+    let (response, ()) = tokio::join!(
+        launch::start_game(
+            f.app.handle().clone(),
+            "1.21.1".into(),
+            "Fixture".into(),
+            None,
+            None,
+            f.play(),
+        ),
+        cancel
+    );
+    assert!(response.is_err());
+    assert!(!f.play().is_running.load(Ordering::SeqCst));
+    assert!(!f.play().is_launching.load(Ordering::SeqCst));
+}
 #[tokio::test]
 async fn start_game_error_duplicate_does_not_launch_core() {
     let f = Fixture::new().await;

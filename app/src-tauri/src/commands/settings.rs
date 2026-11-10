@@ -686,6 +686,8 @@ pub async fn verify_instance_files(
         .build()
         .map_err(|e| e.to_string())?;
 
+    // Repairs write instance files: never overlap a background install or Play.
+    let _install = state.install_lock.lock().await;
     verify_instance_files_impl(&state.paths, &ver, &client).await
 }
 
