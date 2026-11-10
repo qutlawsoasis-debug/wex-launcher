@@ -972,24 +972,17 @@ $effect(() => {
 
         {#if recentServer}
           <div class="recent-server-item">
-            <span class="status-indicator-green"></span>
+            <span class="status-indicator" class:online={typeof recentServer.ping_ms === 'number' && recentServer.ping_ms >= 0}></span>
             <div class="server-text-wrap">
               <span class="server-display-name">{recentServer.name}</span>
               <span class="server-network-meta">
-                {recentServer.address}{recentServer.ping_ms !== undefined ? ` • ${recentServer.ping_ms} мс` : ''}
+                {recentServer.address}{typeof recentServer.ping_ms === 'number' && recentServer.ping_ms >= 0 ? ` • ${recentServer.ping_ms} мс` : ''}
               </span>
             </div>
           </div>
         {:else}
           <div class="empty-status-text">Вы ещё не играли на серверах</div>
         {/if}
-
-        <div class="shelf-card-divider"></div>
-
-        <div class="friends-glance-row">
-          <Icon name="friends" size={15} color="var(--color-tertiary-label)" />
-          <span class="friends-status-label">Нет друзей в игре</span>
-        </div>
       </div>
 
       <!-- Recent Screenshot Glance (Parity Item 10) -->
@@ -1529,7 +1522,8 @@ $effect(() => {
     flex: 0 1 300px;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
+    align-self: flex-start;
   }
 
   .screenshot-glance-card {
@@ -1615,12 +1609,17 @@ $effect(() => {
     margin: 2px 0;
   }
 
-  .status-indicator-green {
+  /* Green only when a ping actually answered; neutral otherwise. */
+  .status-indicator {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background-color: var(--color-system-green);
+    background-color: var(--color-tertiary-label);
     flex-shrink: 0;
+  }
+
+  .status-indicator.online {
+    background-color: var(--color-system-green);
   }
 
   .server-text-wrap {
@@ -1726,6 +1725,7 @@ $effect(() => {
 
   .nickname-block {
     flex: 1 1 200px;
+    min-width: 150px;
     max-width: 260px;
   }
 
@@ -1756,6 +1756,7 @@ $effect(() => {
     font-family: var(--font-system);
     font-size: var(--text-footnote);
     width: 100%;
+    min-width: 0;
   }
 
   .tech-block {

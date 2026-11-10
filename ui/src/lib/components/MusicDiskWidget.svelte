@@ -823,8 +823,11 @@
     border: 1px solid var(--color-separator);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
-    min-width: 250px;
-    max-width: 320px;
+    /* Fill the sidebar footer; a fixed 250px minimum overflowed the
+       ~220px sidebar and stuck out past its edge. */
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     user-select: none;
     transition: border-color var(--motion-duration-fast) var(--motion-spring-ease);
   }

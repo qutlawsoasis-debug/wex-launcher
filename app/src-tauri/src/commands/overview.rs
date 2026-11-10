@@ -781,7 +781,7 @@ mod tests {
         // 1. Initial retrieval returns bundled release notes
         let news = get_news_internal(&paths, None);
         assert!(!news.is_empty(), "Bundled release notes must not be empty");
-        assert_eq!(news[0].version, "v1.0.0");
+        assert_eq!(news[0].version, format!("v{}", env!("CARGO_PKG_VERSION")));
         assert!(news[0].is_current);
 
         // 2. Custom news cache file persistence
