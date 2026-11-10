@@ -474,6 +474,83 @@ async fn start_game_cancelled_while_waiting_for_background_install_does_not_laun
     assert!(!f.play().is_running.load(Ordering::SeqCst));
     assert!(!f.play().is_launching.load(Ordering::SeqCst));
 }
+/// Starts a game whose instance log contains a GPU crash signature and records
+/// the launch-status and game-crash events emitted after it ends.
+async fn run_session_with_gpu_log(
+    f: &Fixture,
+    version: &str,
+    user_stop: bool,
+) -> (Vec<String>, usize) {
+    use tauri::Listener;
+    let logs = f.paths.instance_dir(version).join("logs");
+    fs::create_dir_all(&logs).unwrap();
+    fs::write(logs.join("latest.log"), "[main/ERROR]: GLFW error 65543\n").unwrap();
+    let statuses = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let crashes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let captured = statuses.clone();
+    f.app.listen(wex_ipc::events::EVT_LAUNCH_STATUS, move |e| {
+        captured.lock().unwrap().push(e.payload().to_owned());
+    });
+    let crash_count = crashes.clone();
+    f.app.listen("game-crash", move |_| {
+        crash_count.fetch_add(1, Ordering::SeqCst);
+    });
+    launch::start_game(
+        f.app.handle().clone(),
+        version.into(),
+        "Fixture".into(),
+        None,
+        None,
+        f.play(),
+    )
+    .await
+    .unwrap();
+    if user_stop {
+        launch::kill_game(Some(version.into()), f.play())
+            .await
+            .unwrap();
+    } else {
+        // The game process ends on its own (crash), without a stop request.
+        f.play().core.kill_game(version).await.unwrap();
+    }
+    // The supervisor polls every 500 ms; wait for its final idle/error status.
+    for _ in 0..40 {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        if statuses
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|s| s.contains("\"idle\"") || s.contains("\"error\""))
+        {
+            break;
+        }
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let statuses = statuses.lock().unwrap().clone();
+    (statuses, crashes.load(Ordering::SeqCst))
+}
+#[tokio::test]
+async fn stop_button_is_not_reported_as_crash_both_versions() {
+    for version in ["1.20.1", "1.21.1"] {
+        let f = Fixture::new().await;
+        let (statuses, crashes) = run_session_with_gpu_log(&f, version, true).await;
+        assert_eq!(
+            crashes, 0,
+            "a user stop must not open the crash sheet: {statuses:?}"
+        );
+        let last = statuses.last().expect("a final launch status");
+        assert!(last.contains("\"idle\""), "{last}");
+        assert!(last.contains("Игра остановлена"), "{last}");
+        assert!(!f.play().stop_requested.load(Ordering::SeqCst));
+    }
+}
+#[tokio::test]
+async fn game_exit_without_stop_still_reports_crash() {
+    let f = Fixture::new().await;
+    let (statuses, crashes) = run_session_with_gpu_log(&f, "1.21.1", false).await;
+    assert_eq!(crashes, 1, "{statuses:?}");
+    assert!(statuses.last().unwrap().contains("\"error\""));
+}
 #[tokio::test]
 async fn start_game_error_duplicate_does_not_launch_core() {
     let f = Fixture::new().await;

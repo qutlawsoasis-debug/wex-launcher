@@ -208,6 +208,9 @@ pub struct PlayState {
     /// fast-launch prewarm and Play). Two installs must never write the same
     /// version, libraries or assets at once.
     pub install_lock: Arc<Mutex<()>>,
+    /// Set by stop_active_game(): the next game exit was requested by the user
+    /// (Stop button, tray, window close) and must not be reported as a crash.
+    pub stop_requested: Arc<AtomicBool>,
 }
 
 impl PlayState {
@@ -252,6 +255,7 @@ impl PlayState {
             app_handle: Some(app),
             prewarm_processes_enabled: true,
             install_lock: Arc::new(Mutex::new(())),
+            stop_requested: Arc::new(AtomicBool::new(false)),
         };
 
         // Trigger background verification & prewarm ONLY if fast_launch is enabled
@@ -322,6 +326,7 @@ impl PlayState {
             app_handle: None,
             prewarm_processes_enabled: false,
             install_lock: Arc::new(Mutex::new(())),
+            stop_requested: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -346,10 +351,12 @@ impl PlayState {
             app_handle: None,
             prewarm_processes_enabled: false,
             install_lock: Arc::new(Mutex::new(())),
+            stop_requested: Arc::new(AtomicBool::new(false)),
         }
     }
 
     pub async fn stop_active_game(&self, version: Option<&str>) {
+        self.stop_requested.store(true, Ordering::SeqCst);
         if let Some(mut proc) = self.active_process.lock().await.take() {
             let _ = proc.kill();
         }
@@ -659,6 +666,7 @@ pub async fn start_game<R: tauri::Runtime>(
     {
         return Err("Игра уже запущена или выполняется запуск".to_string());
     }
+    state.stop_requested.store(false, Ordering::SeqCst);
 
     // 2. Load launcher config to apply preset and check features
     let cfg = wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file);
@@ -841,6 +849,7 @@ pub async fn start_game<R: tauri::Runtime>(
             // Spawn background supervisor to monitor running prewarmed process
             let app_clone = app.clone();
             let is_running_clone = state.is_running.clone();
+            let stop_requested_clone = state.stop_requested.clone();
             let running_version_clone = state.running_version.clone();
             let discord_clone = state.discord.clone();
             let active_proc_clone = state.active_process.clone();
@@ -916,6 +925,14 @@ pub async fn start_game<R: tauri::Runtime>(
                         format!("{}: {}", diagnosis.title, diagnosis.user_advice),
                     ),
                 };
+
+                // A stop the user asked for is a normal end of the session, not a crash.
+                let (status_state, status_msg) =
+                    if stop_requested_clone.swap(false, Ordering::SeqCst) {
+                        ("idle".to_string(), "Игра остановлена".to_string())
+                    } else {
+                        (status_state, status_msg)
+                    };
 
                 let _ = app_clone.emit(
                     EVT_LAUNCH_STATUS,
@@ -1058,6 +1075,7 @@ pub async fn start_game<R: tauri::Runtime>(
             let app_clone = app.clone();
             let core_clone = state.core.clone();
             let is_running_clone = state.is_running.clone();
+            let stop_requested_clone = state.stop_requested.clone();
             let running_version_clone = state.running_version.clone();
             let discord_clone = state.discord.clone();
             let instance_dir = state.paths.instance_dir(&version);
@@ -1128,6 +1146,14 @@ pub async fn start_game<R: tauri::Runtime>(
                         format!("{}: {}", diagnosis.title, diagnosis.user_advice),
                     ),
                 };
+
+                // A stop the user asked for is a normal end of the session, not a crash.
+                let (status_state, status_msg) =
+                    if stop_requested_clone.swap(false, Ordering::SeqCst) {
+                        ("idle".to_string(), "Игра остановлена".to_string())
+                    } else {
+                        (status_state, status_msg)
+                    };
 
                 let _ = app_clone.emit(
                     EVT_LAUNCH_STATUS,
