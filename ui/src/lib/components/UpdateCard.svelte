@@ -91,7 +91,9 @@
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('updater_open_download_url', { url });
     } catch {
-      if (typeof window !== 'undefined') window.open(url, '_blank');
+      // No window.open fallback: links must go through the validated backend opener.
+      updateStage = 'error';
+      updateErrorMessage = 'Не удалось открыть ссылку загрузки. Повторите попытку позже.';
     }
   }
 

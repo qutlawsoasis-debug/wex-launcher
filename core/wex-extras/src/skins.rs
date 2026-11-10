@@ -322,6 +322,19 @@ pub fn generate_csl_config(
     skin_png_bytes: Option<&[u8]>,
     cape_png_bytes: Option<&[u8]>,
 ) -> Result<(), SkinError> {
+    let trimmed = nickname.trim();
+    if trimmed.is_empty()
+        || trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed == "."
+        || trimmed == ".."
+        || trimmed.contains('\0')
+    {
+        return Err(SkinError::InvalidPng(
+            "Никнейм должен быть одиночным именем без разделителей пути".to_string(),
+        ));
+    }
+
     let csl_dir = game_dir.join("CustomSkinLoader");
     let local_skins_dir = csl_dir.join("LocalSkin").join("skins");
     let local_capes_dir = csl_dir.join("LocalSkin").join("capes");
@@ -365,12 +378,24 @@ pub fn generate_csl_config(
     fs::write(config_path, serde_json::to_string_pretty(&config_json)?)?;
 
     if let Some(bytes) = skin_png_bytes {
-        let skin_path = local_skins_dir.join(format!("{}.png", nickname));
+        let val = validate_skin_bytes(bytes);
+        if !val.is_valid {
+            return Err(SkinError::InvalidPng(
+                val.error
+                    .unwrap_or_else(|| "Файл скина не в формате PNG".to_string()),
+            ));
+        }
+        let skin_path = local_skins_dir.join(format!("{}.png", trimmed));
         fs::write(skin_path, bytes)?;
     }
 
     if let Some(bytes) = cape_png_bytes {
-        let cape_path = local_capes_dir.join(format!("{}.png", nickname));
+        if bytes.len() < 8 || &bytes[0..8] != b"\x89PNG\r\n\x1a\n" {
+            return Err(SkinError::InvalidPng(
+                "Файл плаща должен быть в формате .png".to_string(),
+            ));
+        }
+        let cape_path = local_capes_dir.join(format!("{}.png", trimmed));
         fs::write(cape_path, bytes)?;
     }
 
@@ -500,5 +525,40 @@ mod tests {
             .join("skins")
             .join("TestPlayer.png");
         assert!(player_skin.is_file());
+    }
+
+    #[test]
+    fn test_sec_generate_csl_config_rejects_traversal_nickname() {
+        let dir = tempdir().unwrap();
+        let game_dir = dir.path();
+        let img = make_test_skin_image(64, 64, false);
+        let skin_bytes = encode_png_bytes(&img).unwrap();
+
+        let res = generate_csl_config(game_dir, "../../evil_player", Some(&skin_bytes), None);
+        assert!(
+            res.is_err(),
+            "generate_csl_config must reject traversal nickname"
+        );
+        let escaped_path = game_dir
+            .join("CustomSkinLoader")
+            .join("LocalSkin")
+            .join("evil_player.png");
+        assert!(
+            !escaped_path.exists(),
+            "Escaped skin file must not be created"
+        );
+    }
+
+    #[test]
+    fn test_sec_generate_csl_config_rejects_non_png() {
+        let dir = tempdir().unwrap();
+        let game_dir = dir.path();
+        let bad_bytes = b"NOT_A_PNG_HEADER_DATA";
+
+        let res = generate_csl_config(game_dir, "NormalPlayer", Some(bad_bytes), None);
+        assert!(
+            res.is_err(),
+            "generate_csl_config must reject non-PNG skin bytes"
+        );
     }
 }

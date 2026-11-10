@@ -1056,9 +1056,7 @@ async fn net_tunnel_status_success_initially_inactive() {
 #[tokio::test]
 async fn net_tunnel_start_error_missing_binary_is_structured() {
     let f = Fixture::new().await;
-    let request = dto(
-        json!({"binary_path":f.paths.root.join("missing.exe"),"secret_key":f.paths.root.join("fixture.secret")}),
-    );
+    let request = dto(json!({}));
     assert_eq!(
         lobby::net_tunnel_start(request, f.room())
             .await

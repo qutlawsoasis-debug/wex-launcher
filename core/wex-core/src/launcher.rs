@@ -19,6 +19,10 @@ use std::sync::Arc;
 use tokio::io::AsyncBufReadExt;
 use tokio::process::Command;
 
+#[cfg(test)]
+#[path = "launcher_integrity_tests.rs"]
+mod integrity_tests;
+
 pub struct LaunchOptions<'a> {
     pub paths: &'a WexPaths,
     pub config: &'a LauncherConfig,
@@ -512,7 +516,13 @@ pub async fn install_full_environment(
     paths.ensure_instance_dirs(version)?;
 
     let ver_cache_dir = paths.versions_dir.join(version);
-    let _ = fs::create_dir_all(&ver_cache_dir);
+    // Invalidate an earlier success before checking or modifying this environment.
+    match fs::remove_file(fast_path_state_path(paths, version)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
+    fs::create_dir_all(&ver_cache_dir)?;
     let pkg_cache_file = ver_cache_dir.join(format!("{}.json", version));
     let fabric_cache_file = ver_cache_dir.join(format!("fabric-{}.json", version));
 
@@ -524,13 +534,11 @@ pub async fn install_full_environment(
     });
     let pkg = match fetch_version_package(client, version).await {
         Ok(p) => {
-            if let Ok(json) = serde_json::to_string_pretty(&p) {
-                let _ = fs::write(&pkg_cache_file, json);
-            }
+            fs::write(&pkg_cache_file, serde_json::to_vec_pretty(&p)?)?;
             p
         }
         Err(e) => {
-            if pkg_cache_file.exists() {
+            if e.is_network_unavailable() && pkg_cache_file.exists() {
                 events.on_event(&Event::Log {
                     level: LogLevel::Warn,
                     message: format!(
@@ -546,41 +554,12 @@ pub async fn install_full_environment(
         }
     };
 
-    let client_jar = match install_minecraft_client(paths, version, &pkg, client, events).await {
-        Ok(jar) => jar,
-        Err(e) => {
-            let local_jar = paths.client_jar(version);
-            if local_jar.exists() {
-                events.on_event(&Event::Log {
-                    level: LogLevel::Warn,
-                    message: format!(
-                        "Network error downloading client.jar, using cached {}",
-                        local_jar.display()
-                    ),
-                });
-                local_jar
-            } else {
-                return Err(e);
-            }
-        }
-    };
-
+    // These installers already verify cached artifacts before attempting a download.
+    // A failed repair cannot be replaced with an unchecked path or partial classpath.
+    let client_jar = install_minecraft_client(paths, version, &pkg, client, events).await?;
     let vanilla_libs =
-        match install_vanilla_libraries(paths, version, &pkg, client, events, concurrency).await {
-            Ok(libs) => libs,
-            Err(e) => {
-                events.on_event(&Event::Log {
-                    level: LogLevel::Warn,
-                    message: format!(
-                    "Network error downloading vanilla libraries ({}), resolving cached libraries",
-                    e
-                ),
-                });
-                resolve_vanilla_libraries(paths, &pkg)
-            }
-        };
-
-    let _ = install_assets(paths, &pkg, client, events, concurrency).await;
+        install_vanilla_libraries(paths, version, &pkg, client, events, concurrency).await?;
+    install_assets(paths, &pkg, client, events, concurrency).await?;
 
     // 2. Fabric Profile & Libraries (with offline fallback cache)
     events.on_event(&Event::StageStarted {
@@ -590,13 +569,11 @@ pub async fn install_full_environment(
     });
     let fabric_profile = match fetch_fabric_profile(client, version, None).await {
         Ok(prof) => {
-            if let Ok(json) = serde_json::to_string_pretty(&prof) {
-                let _ = fs::write(&fabric_cache_file, json);
-            }
+            fs::write(&fabric_cache_file, serde_json::to_vec_pretty(&prof)?)?;
             prof
         }
         Err(e) => {
-            if fabric_cache_file.exists() {
+            if e.is_network_unavailable() && fabric_cache_file.exists() {
                 events.on_event(&Event::Log {
                     level: LogLevel::Warn,
                     message: format!(
@@ -613,19 +590,7 @@ pub async fn install_full_environment(
     };
 
     let fabric_libs =
-        match install_fabric_libraries(paths, &fabric_profile, client, events, concurrency).await {
-            Ok(libs) => libs,
-            Err(e) => {
-                events.on_event(&Event::Log {
-                    level: LogLevel::Warn,
-                    message: format!(
-                    "Network error downloading Fabric libraries ({}), resolving cached libraries",
-                    e
-                ),
-                });
-                resolve_fabric_libraries(paths, &fabric_profile)
-            }
-        };
+        install_fabric_libraries(paths, &fabric_profile, client, events, concurrency).await?;
 
     // 3. Java Runtime
     events.on_event(&Event::StageStarted {
@@ -641,23 +606,12 @@ pub async fn install_full_environment(
         step: 4,
         total_steps: 4,
     });
-    let state_file = paths.instance_dir(version).join("pack.state.json");
-    if let Err(e) = sync_aura_pack(paths, version, client, events, concurrency).await {
-        if matches!(e, WexError::Cancelled) {
-            return Err(e);
-        }
-        if state_file.exists() {
-            events.on_event(&Event::Log {
-                level: LogLevel::Warn,
-                message: format!("Aura-Pack sync failed ({}), but local pack state exists. Continuing offline launch.", e),
-            });
-        } else {
-            return Err(e);
-        }
-    }
+    // Pack sync supports a cached manifest and verifies each required file itself.
+    // pack.state.json alone is never evidence that a failed sync is safe to launch.
+    sync_aura_pack(paths, version, client, events, concurrency).await?;
 
     let asset_index_id = pkg.asset_index.id;
-    let _ = mark_fast_path_verified(paths, version);
+    mark_fast_path_verified(paths, version)?;
     Ok((
         java_binary,
         client_jar,
@@ -734,21 +688,37 @@ pub fn mark_fast_path_verified(paths: &WexPaths, version: &str) -> Result<()> {
         timestamp_utc: chrono::Utc::now().timestamp(),
     };
     let inst_dir = paths.instance_dir(version);
-    let _ = fs::create_dir_all(&inst_dir);
-    if let Ok(content) = serde_json::to_string_pretty(&state) {
-        let _ = fs::write(fast_path_state_path(paths, version), content);
-    }
+    fs::create_dir_all(&inst_dir)?;
+    fs::write(
+        fast_path_state_path(paths, version),
+        serde_json::to_vec_pretty(&state)?,
+    )?;
     Ok(())
 }
 
 pub fn is_fast_path_ready(paths: &WexPaths, version: &str) -> bool {
     let client_jar = paths.client_jar(version);
-    if !client_jar.exists() {
-        return false;
-    }
+    let jar_meta = match fs::metadata(&client_jar) {
+        Ok(m) if m.len() > 0 => m,
+        _ => return false,
+    };
 
     let state_file = fast_path_state_path(paths, version);
-    if !state_file.exists() {
+    let state_content = match fs::read_to_string(&state_file) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    let state: FastPathState = match serde_json::from_str(&state_content) {
+        Ok(s) => s,
+        Err(_) => {
+            let _ = fs::remove_file(&state_file);
+            return false;
+        }
+    };
+
+    if !state.verified || state.client_jar_size == 0 || jar_meta.len() != state.client_jar_size {
+        let _ = fs::remove_file(&state_file);
         return false;
     }
 
@@ -773,7 +743,7 @@ pub fn is_fast_path_ready(paths: &WexPaths, version: &str) -> bool {
         return false;
     }
 
-    // Check Mojang Java binary exists
+    // Check Mojang Java binary exists and is non-empty
     let java_dir = if version == "1.20.1" {
         "java-runtime-gamma"
     } else {
@@ -787,8 +757,28 @@ pub fn is_fast_path_ready(paths: &WexPaths, version: &str) -> bool {
         } else {
             "bin/java"
         });
-    if !mojang_java.exists() {
-        return false;
+    match fs::metadata(&mojang_java) {
+        Ok(m) if m.len() > 0 => {}
+        _ => return false,
+    }
+
+    // Verify resolved fast-path environment libraries are present on disk
+    match resolve_fast_path_environment(paths, version) {
+        Ok((_, _, vanilla_libs, fabric_libs, _)) => {
+            for lib in vanilla_libs.iter().chain(fabric_libs.iter()) {
+                match fs::metadata(lib) {
+                    Ok(m) if m.len() > 0 => {}
+                    _ => {
+                        let _ = fs::remove_file(&state_file);
+                        return false;
+                    }
+                }
+            }
+        }
+        Err(_) => {
+            let _ = fs::remove_file(&state_file);
+            return false;
+        }
     }
 
     true
@@ -1255,96 +1245,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_install_full_environment_offline_success() {
-        let tmp = tempdir().unwrap();
-        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
-        paths.ensure_dirs().unwrap();
-        let version = "1.20.1";
-        paths.ensure_instance_dirs(version).unwrap();
-
-        let ver_dir = paths.versions_dir.join(version);
-        fs::create_dir_all(&ver_dir).unwrap();
-
-        // 1. Cached version package
-        let pkg_cache_file = ver_dir.join(format!("{}.json", version));
-        let mock_pkg_json = r#"{
-            "id": "1.20.1",
-            "mainClass": "net.minecraft.client.main.Main",
-            "downloads": {
-                "client": {
-                    "sha1": "test_sha1",
-                    "size": 100,
-                    "url": "https://piston-data.mojang.com/v1/objects/test/client.jar"
-                }
-            },
-            "libraries": [],
-            "assetIndex": {
-                "id": "5",
-                "sha1": "idx_sha1",
-                "size": 100,
-                "url": "https://piston-meta.mojang.com/v1/packages/idx.json",
-                "totalSize": 200
-            }
-        }"#;
-        fs::write(&pkg_cache_file, mock_pkg_json).unwrap();
-
-        // 2. Installed client.jar
-        let client_jar = paths.client_jar(version);
-        fs::create_dir_all(client_jar.parent().unwrap()).unwrap();
-        fs::write(&client_jar, b"mock client jar binary").unwrap();
-
-        // 3. Cached Fabric profile
-        let fabric_cache_file = ver_dir.join(format!("fabric-{}.json", version));
-        let mock_fabric_json = r#"{
-            "id": "fabric-loader-0.19.5-1.20.1",
-            "mainClass": "net.fabricmc.loader.impl.launch.knot.KnotClient",
-            "libraries": []
-        }"#;
-        fs::write(&fabric_cache_file, mock_fabric_json).unwrap();
-
-        // 4. Installed Mojang Java Runtime
-        let comp = crate::java::get_java_component_for_version(version);
-        let comp_dir = paths.runtime_dir.join(comp);
-        let bin_dir = comp_dir.join("bin");
-        fs::create_dir_all(&bin_dir).unwrap();
-        fs::write(comp_dir.join("release"), "JAVA_VERSION=17\n").unwrap();
-        let javaw = crate::java::get_java_binary_path(&paths.runtime_dir, comp, true);
-        fs::write(&javaw, b"dummy java").unwrap();
-
-        // 5. Installed pack state
-        let state_file = paths.instance_dir(version).join("pack.state.json");
-        let pack_state = crate::pack::PackState {
-            pack_version: "20261108.offline".to_string(),
-            minecraft: version.to_string(),
-            fabric_loader: "0.19.5".to_string(),
-            installed_at_utc: chrono::Utc::now().to_rfc3339(),
-            installed_mods: vec![],
-        };
-        fs::write(&state_file, serde_json::to_string(&pack_state).unwrap()).unwrap();
-
-        // Unreachable client (offline)
-        let offline_client = reqwest::Client::builder()
-            // Route every request to a closed local port so the test is truly offline
-            // (a short timeout alone still reaches GitHub on fast CI runners).
-            .proxy(reqwest::Proxy::all("http://127.0.0.1:9").unwrap())
-            .timeout(std::time::Duration::from_millis(500))
-            .build()
-            .unwrap();
-        let events = crate::event::NoopEventHandler;
-
-        let res = install_full_environment(&paths, version, &offline_client, &events, 2).await;
-        assert!(
-            res.is_ok(),
-            "Offline environment installation must succeed when cached/installed: {:?}",
-            res
-        );
-        let (java_bin, jar, _, _, asset_id) = res.unwrap();
-        assert_eq!(jar, client_jar);
-        assert_eq!(asset_id, "5");
-        assert!(java_bin.exists());
-    }
-
-    #[tokio::test]
     async fn test_prewarm_jvm_nonexistent() {
         let fake_java = PathBuf::from("nonexistent_java_path_12345.exe");
         let res = prewarm_jvm(&fake_java).await;
@@ -1495,6 +1395,56 @@ mod tests {
         assert_eq!(asset_idx, "17");
         assert!(v_libs.is_empty());
         assert!(f_libs.is_empty());
+    }
+
+    #[test]
+    fn test_review_fast_path_rejects_corrupted_empty_client_jar() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        paths.ensure_dirs().unwrap();
+        let version = "1.21.1";
+        paths.ensure_instance_dirs(version).unwrap();
+
+        let client_jar = paths.client_jar(version);
+        fs::create_dir_all(client_jar.parent().unwrap()).unwrap();
+        fs::write(&client_jar, b"VALID_JAR_DATA").unwrap();
+
+        let ver_dir = paths.versions_dir.join(version);
+        fs::create_dir_all(&ver_dir).unwrap();
+        let pkg_json = r#"{"id":"1.21.1","mainClass":"net.minecraft.client.main.Main","downloads":{"client":{"sha1":"","size":0,"url":""}},"libraries":[],"assetIndex":{"id":"17","sha1":"","size":0,"url":"","totalSize":0}}"#;
+        fs::write(ver_dir.join(format!("{}.json", version)), pkg_json).unwrap();
+
+        let fabric_profile = r#"{"id":"fabric-loader-0.19.5-1.21.1","mainClass":"net.fabricmc.loader.impl.launch.knot.KnotClient","libraries":[]}"#;
+        fs::write(
+            ver_dir.join(format!("fabric-{}.json", version)),
+            fabric_profile,
+        )
+        .unwrap();
+
+        let pack_state = paths.instance_dir(version).join("pack.state.json");
+        fs::write(&pack_state, b"{}").unwrap();
+
+        let java_dir = paths.runtime_dir.join("java-runtime-delta").join("bin");
+        fs::create_dir_all(&java_dir).unwrap();
+        let java_bin = java_dir.join(if cfg!(target_os = "windows") {
+            "javaw.exe"
+        } else {
+            "java"
+        });
+        fs::write(&java_bin, b"stub").unwrap();
+
+        // Mark verified when jar was valid
+        mark_fast_path_verified(&paths, version).unwrap();
+        assert!(is_fast_path_ready(&paths, version));
+
+        // Corrupt client_jar to 0 bytes
+        fs::write(&client_jar, b"").unwrap();
+
+        // Fast path MUST reject corrupted installation
+        assert!(
+            !is_fast_path_ready(&paths, version),
+            "Fast path must reject 0-byte/corrupted client_jar"
+        );
     }
 
     #[test]

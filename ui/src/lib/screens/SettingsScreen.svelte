@@ -170,7 +170,7 @@
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('updater_open_download_url', { url: updateDownloadUrl });
       } catch {
-        if (typeof window !== 'undefined') window.open(updateDownloadUrl, '_blank');
+        updateStatusText = 'Не удалось открыть ссылку загрузки. Повторите попытку позже.';
       }
     } else {
       updateStatusText = 'Перейдите на экран «Играть» для установки';

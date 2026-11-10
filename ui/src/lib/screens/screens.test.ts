@@ -528,6 +528,38 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  // The update UI lives in the sidebar UpdateCard since 0.9.2 (it is no longer part of PlayScreen).
+  it('security regression: rejected update URL never falls back to window.open', async () => {
+    const invokeSpy = defaultInvoke;
+    const originalImplementation = invokeSpy.getMockImplementation()!;
+    invokeSpy.mockImplementation(async (cmd, args, options) => {
+      if (cmd === 'updater_open_download_url') throw new Error('URL rejected by backend');
+      return originalImplementation(cmd, args, options);
+    });
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    const url = 'javascript:alert(1)';
+    const comp = mount(UpdateCard, { target, props: {
+      initialInfo: { update_available: true, current_version: '0.1.0', latest_version: '0.2.0',
+        download_url: url, signature: null, is_signed: false, can_auto_update: false },
+    } });
+    try {
+      const button = Array.from(target.querySelectorAll('.update-banner button')).find((b) =>
+        b.textContent?.includes('Перейти к загрузке')
+      ) as HTMLButtonElement | undefined;
+      expect(button).not.toBeUndefined();
+      button!.click();
+      await vi.waitFor(() => expect(invokeSpy).toHaveBeenCalledWith('updater_open_download_url', { url }));
+      await tick();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(openSpy).not.toHaveBeenCalled();
+      expect(target.querySelector('.update-banner')?.textContent).toContain('Не удалось открыть ссылку загрузки');
+    } finally {
+      await unmount(comp);
+      openSpy.mockRestore();
+      invokeSpy.mockImplementation(originalImplementation);
+    }
+  });
+
   it('renders unsigned release mode: only notify with download link button', async () => {
     const comp = mount(UpdateCard, {
       target,

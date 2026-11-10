@@ -110,11 +110,11 @@ export type NetComputeManifestHashRequest = { manifest: Array<ModManifestEntryDt
 
 export type NetComputeManifestHashResponse = { hash: string, };;
 
-export type NetTunnelStartRequest = { binary_path: string, secret_key: string, };;
+export type NetTunnelStartRequest = Record<string, never>;;
 
 export type NetTunnelStartResponse = { pid: number, };;
 
-export type NetTunnelEnsureBinaryRequest = { destination_path: string, };;
+export type NetTunnelEnsureBinaryRequest = Record<string, never>;;
 
 export type NetTunnelEnsureBinaryResponse = { path: string, verified: boolean, };;
 
