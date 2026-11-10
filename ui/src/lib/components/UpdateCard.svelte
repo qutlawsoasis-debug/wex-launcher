@@ -11,6 +11,7 @@
   import Button from './Button.svelte';
   import ProgressBar from './ProgressBar.svelte';
   import Icon from './icons/Icon.svelte';
+  import { t } from '../i18n';
 
   export interface UpdateInfo {
     update_available: boolean;
@@ -52,7 +53,7 @@
     if (!updateInfo) return;
     updateStage = 'downloading';
     updateProgressPct = 0;
-    updateProgressText = 'Подключение…';
+    updateProgressText = t('update_card.connecting');
     updateErrorMessage = '';
 
     try {
@@ -66,12 +67,14 @@
         updateStage = 'ready_to_restart';
       } else {
         updateStage = 'error';
-        updateErrorMessage = res?.message || 'Не удалось завершить обновление';
+        updateErrorMessage = res?.message || t('update_card.err_complete');
       }
     } catch (err: any) {
       updateStage = 'error';
-      const msg = typeof err === 'string' ? err : err?.message || 'Ошибка загрузки обновления';
-      updateErrorMessage = msg.includes('Прежняя версия') ? msg : `${msg}. Прежняя версия сохранена.`;
+      const msg = typeof err === 'string' ? err : err?.message || t('update_card.err_download');
+      updateErrorMessage = msg.includes(t('play.update_prev_version_keyword'))
+        ? msg
+        : `${msg}. ${t('update_card.prev_version_preserved')}`;
     }
   }
 
@@ -93,7 +96,7 @@
     } catch {
       // No window.open fallback: links must go through the validated backend opener.
       updateStage = 'error';
-      updateErrorMessage = 'Не удалось открыть ссылку загрузки. Повторите попытку позже.';
+      updateErrorMessage = t('update_card.link_error');
     }
   }
 
@@ -146,13 +149,13 @@
       </div>
       <span class="update-banner-headline" class:update-banner-headline-error={updateStage === 'error'}>
         {#if updateStage === 'available'}
-          Доступна новая версия Wex {updateInfo.latest_version || ''}
+          {t('update_card.title_available', { version: updateInfo.latest_version || '' })}
         {:else if updateStage === 'downloading'}
-          Загрузка обновления Wex {updateInfo.latest_version || ''}
+          {t('update_card.title_downloading', { version: updateInfo.latest_version || '' })}
         {:else if updateStage === 'ready_to_restart'}
-          Обновление готово к установке
+          {t('update_card.title_ready')}
         {:else}
-          Не удалось обновить лаунчер
+          {t('update_card.title_error')}
         {/if}
       </span>
       {#if updateStage !== 'downloading'}
@@ -161,8 +164,8 @@
             type="button"
             class="close-btn"
             onclick={() => (dismissed = true)}
-            title={updateStage === 'ready_to_restart' ? 'Отложить перезапуск' : 'Закрыть уведомление'}
-            aria-label={updateStage === 'ready_to_restart' ? 'Отложить перезапуск' : 'Закрыть уведомление'}
+            title={updateStage === 'ready_to_restart' ? t('update_card.postpone_restart') : t('update_card.close')}
+            aria-label={updateStage === 'ready_to_restart' ? t('update_card.postpone_restart') : t('update_card.close')}
           >
             <Icon name="close" size={12} color="var(--color-secondary-label)" />
           </button>
@@ -175,40 +178,40 @@
         <span class="update-banner-subtext" title={updateInfo.notes}>{updateInfo.notes}</span>
       {/if}
       {#if !canAutoUpdate}
-        <span class="update-banner-subtext">Неподписанная сборка — только ручная загрузка.</span>
+        <span class="update-banner-subtext">{t('update_card.unsigned')}</span>
       {/if}
     {:else if updateStage === 'downloading'}
       <span class="update-banner-subtext">
-        {updateProgressText || `Скачиваем обновление… ${updateProgressPct}%`}
+        {updateProgressText || t('update_card.downloading_pct', { pct: updateProgressPct })}
       </span>
       <ProgressBar percentage={updateProgressPct} height={4} />
     {:else if updateStage === 'ready_to_restart'}
       <span class="update-banner-subtext">
-        Лаунчер закроется, обновится и откроется сам.
+        {t('update_card.ready_desc')}
       </span>
     {:else}
       <span class="update-banner-subtext" title={updateErrorMessage}>
-        {updateErrorMessage || 'Ошибка при загрузке. Прежняя версия сохранена и готова к работе.'}
+        {updateErrorMessage || t('update_card.error_desc')}
       </span>
     {/if}
 
     {#if updateStage === 'available'}
       {#if canAutoUpdate}
-        <Button variant="primary" size="small" fullWidth onclick={handleStartUpdate} title="Скачать и установить обновление">
-          <span>Обновить</span>
+        <Button variant="primary" size="small" fullWidth onclick={handleStartUpdate} title={t('update_card.update_title')}>
+          <span>{t('update_card.update')}</span>
         </Button>
       {:else}
-        <Button variant="secondary" size="small" fullWidth onclick={handleOpenDownloadUrl} title="Перейти к загрузке установщика">
-          <span>Перейти к загрузке</span>
+        <Button variant="secondary" size="small" fullWidth onclick={handleOpenDownloadUrl} title={t('update_card.open_download_title')}>
+          <span>{t('update_card.open_download')}</span>
         </Button>
       {/if}
     {:else if updateStage === 'ready_to_restart'}
-      <Button variant="primary" size="small" fullWidth onclick={handleRestart} title="Перезапустить лаунчер сейчас">
-        <span>Перезапуск</span>
+      <Button variant="primary" size="small" fullWidth onclick={handleRestart} title={t('update_card.restart_title')}>
+        <span>{t('update_card.restart')}</span>
       </Button>
     {:else if updateStage === 'error'}
-      <Button variant="secondary" size="small" fullWidth onclick={handleStartUpdate} title="Повторить попытку обновления">
-        <span>Повторить</span>
+      <Button variant="secondary" size="small" fullWidth onclick={handleStartUpdate} title={t('update_card.retry_title')}>
+        <span>{t('update_card.retry')}</span>
       </Button>
     {/if}
   </div>

@@ -1346,28 +1346,35 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('SplashScreen does not simulate fake progress steps or fake percentages without genuine update events (wex-review-fake-progress item 14)', async () => {
+  // wex-review-fake-progress item 14. Since 0.9.1 the splash never checks or downloads launcher
+  // updates (the sidebar UpdateCard owns that), so it must not show any update progress at all.
+  it('SplashScreen never checks for updates or shows fake download progress', async () => {
+    const tauriWindow = window as unknown as { __TAURI_INTERNALS__?: unknown };
+    const hadInternals = '__TAURI_INTERNALS__' in tauriWindow;
+    const previousInternals = tauriWindow.__TAURI_INTERNALS__;
+    tauriWindow.__TAURI_INTERNALS__ = {};
+    defaultInvoke.mockClear();
+    const oncomplete = vi.fn();
     const comp = mount(SplashScreen, {
       target,
-      props: {
-        initialVersion: 'v0.1.0',
-        autoStart: false,
-      },
+      props: { initialVersion: 'v0.1.0', autoStart: false, oncomplete },
     });
+    try {
+      await tick();
+      await (comp as any).startInitialization();
+      await vi.waitFor(() => expect(oncomplete).toHaveBeenCalledOnce(), { timeout: 3000 });
 
-    await tick();
-
-    // Trigger update download without Tauri events (e.g. in browser / headless test)
-    const p = (comp as any).runUpdateDownload('https://example.com/update.zip', 'v1.0.0');
-    await tick();
-
-    // In absence of genuine events, must show honest 'Подготавливаем…' and NEVER fake '12.4 МБ/с' or '20%'
-    expect(target.textContent).not.toContain('12.4 МБ/с');
-    expect(target.textContent).not.toContain('20%');
-    expect(target.textContent).toContain('Подготавливаем…');
-
-    if (p) await p;
-    unmount(comp);
+      const commands = defaultInvoke.mock.calls.map(([cmd]) => cmd);
+      expect(commands).not.toContain('startup_check_update');
+      expect(commands).not.toContain('startup_download_update');
+      expect(target.querySelector('[role="progressbar"], .download-container')).toBeNull();
+      expect(target.textContent).not.toMatch(/\d+\s?%/);
+      expect(target.textContent).not.toContain('МБ/с');
+    } finally {
+      unmount(comp);
+      if (hadInternals) tauriWindow.__TAURI_INTERNALS__ = previousInternals;
+      else delete tauriWindow.__TAURI_INTERNALS__;
+    }
   });
   it('renders ImportWizardSheet with found old launcher data, non-destructive notice, and transfer toggles', () => {
     const comp = mount(ImportWizardSheet, {
