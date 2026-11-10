@@ -875,7 +875,9 @@
     flex-direction: column;
     width: 580px;
     max-width: calc(100vw - 48px);
-    max-height: calc(100vh - 64px);
+    /* Fixed height: steps differ in content height, and a card that resizes
+       on every step reads as a flash. Long steps scroll in .step-content. */
+    height: min(640px, calc(100vh - 64px));
     border-radius: var(--radius-xl, 18px);
     background: var(--color-system-background, #1c1c1e);
     border: 1px solid var(--color-separator, rgba(255, 255, 255, 0.12));
@@ -963,13 +965,14 @@
     flex-direction: column;
     align-items: center;
     text-align: center;
-    animation: paneFadeIn 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation: paneFadeIn 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
+  /* Starts partly visible so a step change never shows an empty card. */
   @keyframes paneFadeIn {
     from {
-      opacity: 0;
-      transform: translateY(6px);
+      opacity: 0.4;
+      transform: translateY(4px);
     }
     to {
       opacity: 1;
