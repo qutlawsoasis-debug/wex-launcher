@@ -38,7 +38,7 @@ describe('SettingsScreen Component Tests', () => {
 
     expect(target.textContent).toContain('Выделение оперативной памяти');
     expect(target.textContent).toContain('Среда выполнения Java');
-    expect(target.textContent).toContain('Папки и файлы данных');
+    expect(target.textContent).toContain('Рабочая папка игры');
     expect(target.textContent).toContain('Тема оформления');
 
     unmount(comp);

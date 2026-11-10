@@ -13,6 +13,7 @@
   import Sheet from './Sheet.svelte';
   import Button from './Button.svelte';
   import Icon from './icons/Icon.svelte';
+  import { t } from '../i18n';
 
   interface Props {
     open?: boolean;
@@ -89,20 +90,20 @@
         if (res && res.success) {
           ontoast?.(
             'success',
-            'Отчёт сохранён на рабочий стол',
-            res.file_name || 'Архив с логами и конфигурацией готов'
+            t('report.saved_to_desktop'),
+            res.file_name || t('report.archive_ready')
           );
         }
       } else {
         // Mock fallback for browser / vitest
         ontoast?.(
           'success',
-          'Отчёт сохранён на рабочий стол',
+          t('report.saved_to_desktop'),
           `Wex-report-${version}.zip`
         );
       }
     } catch (e: any) {
-      ontoast?.('error', 'Не удалось сохранить отчёт', String(e?.message || e));
+      ontoast?.('error', t('report.save_failed'), String(e?.message || e));
     } finally {
       isSavingZip = false;
     }
@@ -123,19 +124,19 @@
       }
 
       if (!textToCopy) {
-        textToCopy = `### Отчёт об ошибке Wex Launcher\n- **Версия игры:** \`${version}\`\n- **Версия лаунчера:** \`0.9.2\`\n- **Диагноз:** ${diagnosisTitle || 'Сбой игры'}\n\n**Комментарий:**\n${anonymizedComment || 'Без комментария'}\n\n**Ошибка:**\n\`\`\`\n${anonymizedError || 'Нет технических подробностей'}\n\`\`\``;
+        textToCopy = `### ${t('report.report_title')}\n- **${t('report.game_ver_lbl')}:** \`${version}\`\n- **${t('report.launcher_ver_lbl')}:** \`0.9.2\`\n- **${t('report.diagnosis_lbl')}:** ${diagnosisTitle || t('report.game_crash_default')}\n\n**${t('report.comment_lbl')}:**\n${anonymizedComment || t('report.no_comment')}\n\n**${t('report.error_lbl')}:**\n\`\`\`\n${anonymizedError || t('report.no_tech_details')}\n\`\`\``;
       }
 
       if (navigator.clipboard) {
         await navigator.clipboard.writeText(textToCopy);
       }
       copyFeedback = true;
-      ontoast?.('success', 'Отчёт скопирован в буфер обмена');
+      ontoast?.('success', t('report.copied_toast'));
       setTimeout(() => {
         copyFeedback = false;
       }, 2500);
     } catch (e: any) {
-      ontoast?.('error', 'Ошибка при копировании', String(e?.message || e));
+      ontoast?.('error', t('report.copy_failed'), String(e?.message || e));
     } finally {
       isCopying = false;
     }
@@ -147,7 +148,7 @@
   }
 </script>
 
-<Sheet bind:open title="Отчёт об ошибке" maxWidth="680px">
+<Sheet bind:open title={t('report.sheet_title')} maxWidth="680px">
   <div class="report-container">
     <!-- Header summary info -->
     <div class="report-header-card">
@@ -156,7 +157,7 @@
         <span class="info-pill">Wex 0.9.2</span>
         <span class="info-pill secure-pill">
           <Icon name="check" size={12} color="var(--color-system-green)" />
-          <span>Обезличено</span>
+          <span>{t('report.anonymized_badge')}</span>
         </span>
       </div>
 
@@ -167,20 +168,20 @@
       {/if}
 
       <div class="security-notice">
-        Личные пути к файлам пользователя (<code>C:\Users\***</code>) и ваш никнейм автоматически скрыты из всех файлов и логов отчёта.
+        {t('report.anonymized_prefix')}<code>C:\Users\***</code>{t('report.anonymized_suffix')}
       </div>
     </div>
 
     <!-- User Comment section -->
     <div class="input-section">
       <label for="user-comment-field" class="section-label">
-        Что произошло? (необязательно)
+        {t('report.what_happened')}
       </label>
       <textarea
         id="user-comment-field"
         class="comment-textarea"
         rows="3"
-        placeholder="Опишите, какие действия выполнялись перед возникновением ошибки..."
+        placeholder={t('report.placeholder_comment')}
         bind:value={userComment}
         data-testid="input-user-comment"
       ></textarea>
@@ -188,23 +189,23 @@
 
     <!-- Included data list -->
     <div class="data-manifest">
-      <span class="section-label">В архив будут включены:</span>
+      <span class="section-label">{t('report.archive_includes')}</span>
       <div class="manifest-grid">
         <div class="manifest-item">
           <Icon name="info" size={14} color="var(--color-system-blue)" />
-          <span class="manifest-text"><strong>latest.log</strong> — журнал игры с маскировкой путей</span>
+          <span class="manifest-text"><strong>latest.log</strong> {t('report.inc_latest_log')}</span>
         </div>
         <div class="manifest-item">
           <Icon name="warning" size={14} color="var(--color-system-orange)" />
-          <span class="manifest-text"><strong>crash-report</strong> — технический отчёт сбоя (если есть)</span>
+          <span class="manifest-text"><strong>crash-report</strong> {t('report.inc_crash_report')}</span>
         </div>
         <div class="manifest-item">
           <Icon name="folder" size={14} color="var(--color-secondary-label)" />
-          <span class="manifest-text"><strong>mods.txt</strong> — список установленных модов версии</span>
+          <span class="manifest-text"><strong>mods.txt</strong> {t('report.inc_mods_txt')}</span>
         </div>
         <div class="manifest-item">
           <Icon name="cpu" size={14} color="var(--color-secondary-label)" />
-          <span class="manifest-text"><strong>system-info.txt</strong> — версия ОС, Java и конфигурация памяти</span>
+          <span class="manifest-text"><strong>system-info.txt</strong> {t('report.inc_system_info')}</span>
         </div>
       </div>
     </div>
@@ -218,7 +219,7 @@
         data-testid="btn-toggle-preview"
       >
         <Icon name={showFullPreview ? 'chevron-down' : 'chevron-right'} size={12} />
-        <span>{showFullPreview ? 'Скрыть структуру данных' : 'Показать структуру данных (JSON)'}</span>
+        <span>{showFullPreview ? t('common.hide') : t('common.details')}</span>
       </button>
 
       {#if showFullPreview}
@@ -228,7 +229,7 @@
 
     <!-- Offline note -->
     <div class="service-notice">
-      Сервер автоматической отправки старого лаунчера недоступен. Сохраните ZIP-архив на рабочий стол или скопируйте текст отчёта.
+      {t('report.server_unavailable_note')}
     </div>
 
     <!-- Action Bar -->
@@ -241,7 +242,7 @@
           loading={isSavingZip}
         >
           <Icon name="folder" size={14} />
-          <span data-testid="btn-save-zip">Сохранить на рабочий стол (.zip)</span>
+          <span data-testid="btn-save-zip">{t('report.btn_save_desktop')}</span>
         </Button>
 
         <Button
@@ -250,13 +251,13 @@
           onclick={handleCopyReport}
           loading={isCopying}
         >
-          <span data-testid="btn-copy-report">{copyFeedback ? 'Скопировано!' : 'Скопировать отчёт'}</span>
+          <span data-testid="btn-copy-report">{copyFeedback ? t('common.copied') : t('report.btn_copy_report')}</span>
         </Button>
       </div>
 
       <div class="actions-right">
         <Button variant="ghost" size="regular" onclick={handleClose}>
-          <span data-testid="btn-close-report">Закрыть</span>
+          <span data-testid="btn-close-report">{t('report.btn_close')}</span>
         </Button>
       </div>
     </div>

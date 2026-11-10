@@ -17,6 +17,7 @@
   import Button from '../components/Button.svelte';
   import { theme } from '../design/theme.svelte';
   import { isSystemReduceMotion } from '../design/motion';
+  import { t } from '../i18n';
 
   interface Props {
     initialVersion?: string;
@@ -34,7 +35,7 @@
 
   // svelte-ignore state_referenced_locally
   let appVersion = $state(initialVersion);
-  let statusText = $state('Инициализация каталогов…');
+  let statusText = $state(t('splash.status_init_dirs'));
   let hasNetworkError = $state(false);
   let errorMessage = $state('');
   let isRetrying = $state(false);
@@ -52,7 +53,7 @@
   export async function startInitialization() {
     hasNetworkError = false;
     errorMessage = '';
-    statusText = 'Инициализация каталогов…';
+    statusText = t('splash.status_init_dirs');
 
     try {
       if (isTauri()) {
@@ -84,11 +85,11 @@
   }
 
   export async function checkUpdates() {
-    statusText = 'Проверка обновлений…';
+    statusText = t('splash.status_check_updates');
     hasNetworkError = false;
 
     if (simulateNetworkError) {
-      handleNetworkFailure('Сетевая ошибка: невозможно связаться с сервером обновлений');
+      handleNetworkFailure(t('splash.err_network_check'));
       return;
     }
 
@@ -96,29 +97,29 @@
     // offered as a banner on the Play screen; the splash never blocks on them.
 
     // In-browser or up-to-date transition
-    statusText = 'Готово к запуску';
+    statusText = t('splash.status_ready');
     await waitDelay(200);
     finishStartup();
   }
 
   function handleNetworkFailure(msg: string) {
     hasNetworkError = true;
-    errorMessage = msg || 'Не удалось связаться с сервером обновлений';
-    statusText = 'Сетевая ошибка';
+    errorMessage = msg || t('splash.err_unreachable');
+    statusText = t('splash.network_err');
   }
 
   export async function retryCheck() {
     if (isRetrying) return;
     isRetrying = true;
     hasNetworkError = false;
-    statusText = 'Повторная попытка…';
+    statusText = t('splash.retrying');
     await waitDelay(250);
     isRetrying = false;
     await checkUpdates();
   }
 
   export function skipOffline() {
-    statusText = 'Переход в автономный режим…';
+    statusText = t('splash.entering_offline');
     finishStartup();
   }
 
@@ -152,7 +153,7 @@
   class="splash-viewport"
   class:exiting={isExiting}
   role="region"
-  aria-label="Экран загрузки лаунчера"
+  aria-label={t('splash.aria_splash')}
 >
   <div class="splash-card">
     <!-- Brand Wordmark Logo (Modular, easily replaceable) -->
@@ -185,14 +186,14 @@
             onclick={retryCheck}
             loading={isRetrying}
           >
-            Повторить
+            {t('splash.btn_retry')}
           </Button>
           <Button
             variant="secondary"
             size="small"
             onclick={skipOffline}
           >
-            Пропустить
+            {t('splash.btn_skip')}
           </Button>
         </div>
       </div>

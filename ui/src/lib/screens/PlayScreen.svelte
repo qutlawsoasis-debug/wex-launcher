@@ -84,8 +84,8 @@
     isLaunching = false,
     isRunning = false,
     progressPercentage = 0,
-    progressStage = 'Готов к запуску',
-    progressDetail = 'Нажмите «Играть» для старта',
+    progressStage = t('play.status_ready'),
+    progressDetail = t('play.status_click_to_start'),
     progressSpeed = '',
     launchError = $bindable<unknown>(null),
     initialNews = undefined,
@@ -146,17 +146,13 @@
 
   let buttonTitle = $derived.by(() => {
     if (effectiveState === 'running') {
-      return i18n.locale === 'en' ? 'Stop Minecraft' : 'Остановить процесс Minecraft';
+      return t('play.stop_minecraft_title');
     }
     if (effectiveState === 'prewarming') {
-      return i18n.locale === 'en'
-        ? `Game prewarming: ${Math.round(currentPrewarmProgress)}%`
-        : `Игра догружается: ${Math.round(currentPrewarmProgress)}%`;
+      return t('play.prewarming_title_progress', { pct: Math.round(currentPrewarmProgress) });
     }
     if (effectiveState === 'ready') {
-      return i18n.locale === 'en'
-        ? 'Ready to launch (prewarm complete)'
-        : 'Готово к запуску (прогрев завершён)';
+      return t('play.ready_to_launch_prewarm');
     }
     return t('play.launch');
   });
@@ -194,27 +190,27 @@
       if (cat === 'new' || raw.startsWith('[Новое]')) {
         return {
           categoryClass: 'new',
-          badgeText: 'Новое',
-          text: item.text.replace(/^\[Новое\]\s*/, ''),
+          badgeText: t('play.badge_new'),
+          text: item.text.replace(/^\[(?:Новое|New)\]\s*/i, ''),
         };
       }
       if (cat === 'improved' || raw.startsWith('[Улучшено]')) {
         return {
           categoryClass: 'improved',
-          badgeText: 'Улучшено',
-          text: item.text.replace(/^\[Улучшено\]\s*/, ''),
+          badgeText: t('play.badge_improved'),
+          text: item.text.replace(/^\[(?:Улучшено|Improved)\]\s*/i, ''),
         };
       }
       if (cat === 'fixed' || raw.startsWith('[Исправлено]')) {
         return {
           categoryClass: 'fixed',
-          badgeText: 'Исправлено',
-          text: item.text.replace(/^\[Исправлено\]\s*/, ''),
+          badgeText: t('play.badge_fixed'),
+          text: item.text.replace(/^\[(?:Исправлено|Fixed)\]\s*/i, ''),
         };
       }
       return {
         categoryClass: 'general',
-        badgeText: 'Инфо',
+        badgeText: t('play.badge_info'),
         text: item.text,
       };
     });
@@ -353,7 +349,7 @@
       list.push({
         type: 'playtime',
         totalSeconds: playtimeData.total_seconds,
-        formattedPlayTime: playtimeData.formatted_play_time || `${Math.floor(playtimeData.total_seconds / 60)} мин.`,
+        formattedPlayTime: playtimeData.formatted_play_time || t('play.minutes_short', { minutes: Math.floor(playtimeData.total_seconds / 60) }),
         totalLaunches: playtimeData.total_launches,
         lastPlayed: playtimeData.last_played_utc ? new Date(playtimeData.last_played_utc).toLocaleDateString() : undefined,
       });
@@ -421,7 +417,7 @@
         if (state === 'prewarming' || state === 'downloading') {
           currentPrewarmState = 'prewarming';
           currentPrewarmProgress = progress ? parseInt(progress, 10) : 48;
-          currentPrewarmDetail = 'Синхронизация библиотек (1.2 МБ / 2.4 МБ)';
+          currentPrewarmDetail = t('play.prewarm_sync_libraries');
         } else if (state === 'ready' || state === 'prewarmed') {
           currentPrewarmState = 'ready';
           currentPrewarmProgress = 100;
@@ -458,11 +454,11 @@
             if (s === 'prewarming') {
               currentPrewarmState = 'prewarming';
               currentPrewarmProgress = event.payload.progress ?? 48;
-              currentPrewarmDetail = event.payload.message ?? 'Игра догружается…';
+              currentPrewarmDetail = event.payload.message ?? t('play.btn_prewarming');
             } else if (s === 'ready') {
               currentPrewarmState = 'ready';
               currentPrewarmProgress = 100;
-              currentPrewarmDetail = event.payload.message ?? 'Готово к запуску';
+              currentPrewarmDetail = event.payload.message ?? t('play.btn_ready_title');
             } else if (s === 'idle') {
               currentPrewarmState = 'idle';
               currentPrewarmProgress = 0;
@@ -637,7 +633,7 @@ $effect(() => {
             {t('offline.title')}
           </span>
           <span class="offline-banner-subtext">
-            {t('play.offline_launch_note')} — {i18n.locale === 'en' ? 'Game launches from local files' : 'Доступен запуск уже скачанной версии'}
+            {t('play.offline_launch_note')}
           </span>
         </div>
         <div class="offline-banner-action">
@@ -645,7 +641,7 @@ $effect(() => {
             variant="glass"
             size="small"
             onclick={() => network.check()}
-            title="Проверить подключение к сети"
+            title={t('mods.check_connection_title')}
           >
             <Icon name="refresh" size={12} color="rgba(255, 255, 255, 0.9)" />
             <span>{t('offline.retry')}</span>
@@ -662,7 +658,7 @@ $effect(() => {
           <p class="game-subheading">
             {t('play.client_title')} • {t('play.version_label')} {selectedVersion}
             {#if playtimeSummary && playtimeSummary.total_seconds > 0}
-              <span class="header-playtime-meta">• {playtimeSummary.version_seconds > 0 ? (i18n.locale === 'en' ? `${playtimeSummary.version_formatted} on this version` : `${playtimeSummary.version_formatted} на этой версии`) : (i18n.locale === 'en' ? `${playtimeSummary.total_formatted} total` : `${playtimeSummary.total_formatted} всего`)}</span>
+              <span class="header-playtime-meta">• {playtimeSummary.version_seconds > 0 ? t('play.on_this_version', { time: playtimeSummary.version_formatted }) : t('play.total_time', { time: playtimeSummary.total_formatted })}</span>
             {/if}
           </p>
         </div>
@@ -671,7 +667,7 @@ $effect(() => {
             variant="glass"
             size="small"
             onclick={() => (manualImportWizardOpen = true)}
-            title="Мастер импорта данных из старого лаунчера"
+            title={t('play.import_wizard_title')}
           >
             <Icon name="folder" size={14} color="rgba(255, 255, 255, 0.90)" />
             <span>{t('import.action_import')}</span>
@@ -697,7 +693,7 @@ $effect(() => {
             <Icon name="wifi-off" size={24} color="var(--color-secondary-label)" />
             <span class="offline-card-title">{t('offline.title')}</span>
             <span class="offline-card-desc">
-              {i18n.locale === 'en' ? 'News and updates are unavailable offline. Local game launch is ready.' : 'Новости и обновления недоступны без сети. Доступен запуск уже скачанной версии.'}
+              {t('play.offline_news_note')}
             </span>
           </div>
         </div>
@@ -707,7 +703,7 @@ $effect(() => {
       <div class="glass-card status-card">
         <div class="card-title-row">
           <Icon name="server" size={15} color="var(--color-secondary-label)" />
-          <span class="card-title">Последний сервер</span>
+          <span class="card-title">{t('play.card_last_server')}</span>
         </div>
 
         {#if recentServer}
@@ -721,7 +717,7 @@ $effect(() => {
             </div>
           </div>
         {:else}
-          <div class="empty-status-text">Вы ещё не играли на серверах</div>
+          <div class="empty-status-text">{t('play.no_servers_played')}</div>
         {/if}
       </div>
 
@@ -730,7 +726,7 @@ $effect(() => {
         <div class="glass-card screenshot-glance-card" data-testid="latest-screenshot-card">
           <div class="card-title-row">
             <Icon name="sun" size={15} color="var(--color-system-orange)" />
-            <span class="card-title">Свежий скриншот</span>
+            <span class="card-title">{t('stories.latest_screenshot')}</span>
             <span class="card-meta">
               {latestScreenshot.file_name}
             </span>
@@ -744,8 +740,8 @@ $effect(() => {
                 onopenworkshop('screenshots');
               }
             }}
-            title="Нажмите, чтобы открыть в Мастерской"
-            aria-label="Последний скриншот. Нажмите, чтобы открыть в Мастерской"
+            title={t('workshop.click_to_open_workshop')}
+            aria-label={t('workshop.latest_screenshot_aria')}
           >
             <div class="glance-img-container">
               <img
@@ -756,7 +752,7 @@ $effect(() => {
               />
               <div class="glance-hover-hint">
                 <Icon name="folder" size={15} color="#ffffff" />
-                <span>Открыть в Мастерской</span>
+                <span>{t('workshop.open_in_workshop')}</span>
               </div>
             </div>
           </button>
@@ -834,12 +830,12 @@ $effect(() => {
           <!-- Java Environment & Core Status -->
           <div class="dock-block tech-block">
             <span class="dock-caption">
-              {isRunning ? (i18n.locale === 'en' ? 'Session Status' : 'Статус сессии') : (i18n.locale === 'en' ? 'Java Runtime' : 'Среда выполнения')}
+              {isRunning ? t('play.session_status') : t('play.runtime_env')}
             </span>
             <div class="tech-runtime-box">
               <span class="tech-runtime-text">{javaRuntime}</span>
               {#if isRunning}
-                <span class="tech-status-badge running">({i18n.locale === 'en' ? 'Playing' : 'В игре'})</span>
+                <span class="tech-status-badge running">({t('play.status_in_game')})</span>
               {:else if !network.isOnline}
                 <span class="tech-status-badge offline">• {t('play.offline_launch_note')}</span>
               {:else if clientStatus}
@@ -847,10 +843,10 @@ $effect(() => {
               {/if}
             </div>
             {#if playtimeSummary && playtimeSummary.total_seconds > 0}
-              <div class="tech-playtime-line" title="Суммарно: {playtimeSummary.total_formatted} • Запусков: {playtimeSummary.total_launches}">
+              <div class="tech-playtime-line" title={t('play.playtime_tooltip', { total: playtimeSummary.total_formatted, launches: playtimeSummary.total_launches })}>
                 <Icon name="clock" size={11} color="var(--color-tertiary-label)" />
                 <span class="tech-playtime-label">
-                  {playtimeSummary.version_seconds > 0 ? `В игре: ${playtimeSummary.version_formatted}` : `В игре: ${playtimeSummary.total_formatted}`}
+                  {playtimeSummary.version_seconds > 0 ? t('play.in_game_label', { time: playtimeSummary.version_formatted }) : t('play.in_game_label', { time: playtimeSummary.total_formatted })}
                 </span>
               </div>
             {/if}
@@ -880,21 +876,21 @@ $effect(() => {
                 ></div>
                 <div class="prewarm-btn-content">
                   <div class="prewarm-spinner" aria-hidden="true"></div>
-                  <span class="prewarm-btn-title">Игра догружается…</span>
+                  <span class="prewarm-btn-title">{t('play.btn_prewarming')}</span>
                   <span class="prewarm-btn-pct">{Math.round(currentPrewarmProgress)}%</span>
                 </div>
               {:else if effectiveState === 'ready'}
                 <div class="ready-btn-content">
                   <Icon name="play" size={17} color="#ffffff" />
                   <div class="ready-btn-text">
-                    <span class="ready-title">Готово к запуску</span>
-                    <span class="ready-sub">Прогрев готов</span>
+                    <span class="ready-title">{t('play.btn_ready_title')}</span>
+                    <span class="ready-sub">{t('play.btn_ready_sub')}</span>
                   </div>
                 </div>
               {:else if effectiveState === 'running'}
                 <div class="running-btn-content">
                   <span class="running-icon-stop" aria-hidden="true"></span>
-                  <span class="running-title">В игре • Остановить</span>
+                  <span class="running-title">{t('play.btn_playing_stop')}</span>
                 </div>
               {:else}
                 <!-- Idle State: Play -->

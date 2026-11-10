@@ -15,7 +15,7 @@
   6. Ready: Review choices + launch or return to launcher
 -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import Button from './Button.svelte';
   import Slider from './Slider.svelte';
   import Icon from './icons/Icon.svelte';
@@ -56,7 +56,7 @@
   let totalMemoryMb = $state(16384);
   let ramMb = $state(4096);
   let ramExplanation = $state(
-    'Рекомендуется 4 ГБ: оптимально для модов и шейдеров без зависаний операционной системы.'
+    t('onboarding.ram_exp_default')
   );
   let detectedAuraDir = $state<string | null>(null);
   let oldLauncherData = $state<OldLauncherDataDto | null>(null);
@@ -69,10 +69,17 @@
   let selectedVersion = $state<'1.21.1' | '1.20.1'>('1.21.1');
   let nicknameTouched = $state(false);
 
-  // Background game download progress simulation / tracking
-  let prewarmProgress = $state(12);
-  let prewarmStage = $state('Проверка манифеста и целостности клиента в фоне');
+  // Background game download progress tracking (genuine IPC events only)
+  let prewarmProgress = $state<number | null>(null);
+  let prewarmStage = $state(t('onboarding.prewarm_stage_preparing'));
   let isPrewarming = $state(false);
+  let unlistenInstallProgress: (() => void) | undefined;
+  let unlistenPrewarmStatus: (() => void) | undefined;
+
+  onDestroy(() => {
+    if (unlistenInstallProgress) unlistenInstallProgress();
+    if (unlistenPrewarmStatus) unlistenPrewarmStatus();
+  });
 
   // Nickname validation: 3-16 chars, alphanumeric and underscore
   let isNicknameValid = $derived.by(() => {
@@ -87,56 +94,79 @@
     const freeGb = Math.max(0, Math.round((totalMemoryMb - val) / 1024));
 
     if (val <= 2048) {
-      ramExplanation = `Выделено ${chosenGb} ГБ из ${totalGb} ГБ. Минимальный расход ресурсов, подходит для стандартной игры без тяжёлых текстур.`;
+      ramExplanation = t('onboarding.ram_exp_min', { chosenGb, totalGb });
     } else if (val <= 4096) {
-      ramExplanation = `Выделено ${chosenGb} ГБ из ${totalGb} ГБ. Сбалансированный режим: комфортный FPS в сборке Wex, остаётся ${freeGb} ГБ операционной системе.`;
+      ramExplanation = t('onboarding.ram_exp_balanced', { chosenGb, totalGb, freeGb });
     } else if (val <= 6144) {
-      ramExplanation = `Выделено ${chosenGb} ГБ из ${totalGb} ГБ. Оптимально для шейдеров Iris, модов на оптимизацию и высоких настроек графики.`;
+      ramExplanation = t('onboarding.ram_exp_optimal', { chosenGb, totalGb });
     } else if (val <= totalMemoryMb * 0.75) {
-      ramExplanation = `Выделено ${chosenGb} ГБ из ${totalGb} ГБ. Для ресурс-паков высокого разрешения и максимальной дальности прорисовки.`;
+      ramExplanation = t('onboarding.ram_exp_heavy', { chosenGb, totalGb });
     } else {
-      ramExplanation = `Внимание: выделение более 75% всей памяти ПК (${chosenGb} ГБ) может замедлить работу Windows и фоновых программ.`;
+      ramExplanation = t('onboarding.ram_exp_warning', { chosenGb });
     }
   }
 
   function formatRamLabel(val: number): string {
     const gb = (val / 1024).toFixed(val % 1024 === 0 ? 0 : 1);
-    return `${gb} ГБ (${val} МБ)`;
+    return t('onboarding.ram_format', { gb, val });
   }
 
   // Pre-warm game download starting immediately from step 1
   async function startBackgroundPrewarm(ver: string) {
     if (isPrewarming) return;
     isPrewarming = true;
+    prewarmProgress = null;
+    prewarmStage = t('onboarding.prewarm_stage_preparing');
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
+      const { listen } = await import('@tauri-apps/api/event');
+
+      if (!unlistenInstallProgress) {
+        unlistenInstallProgress = await listen<{
+          percentage?: number;
+          stage?: string;
+          detail?: string;
+        }>('install-progress', (event) => {
+          if (event?.payload) {
+            if (typeof event.payload.percentage === 'number' && event.payload.percentage > 0) {
+              prewarmProgress = Math.max(0, Math.min(100, Math.round(event.payload.percentage)));
+            }
+            if (event.payload.detail || event.payload.stage) {
+              prewarmStage = event.payload.detail || event.payload.stage || t('onboarding.prewarm_stage_preparing');
+            }
+          }
+        });
+      }
+
+      if (!unlistenPrewarmStatus) {
+        unlistenPrewarmStatus = await listen<{
+          state?: string;
+          progress?: number;
+          message?: string;
+        }>('prewarm-status', (event) => {
+          if (event?.payload) {
+            if (typeof event.payload.progress === 'number' && event.payload.progress > 0) {
+              prewarmProgress = Math.max(0, Math.min(100, Math.round(event.payload.progress)));
+            }
+            if (event.payload.message) {
+              prewarmStage = event.payload.message;
+            }
+            if (event.payload.state === 'ready') {
+              prewarmProgress = 100;
+              prewarmStage = t('onboarding.prewarm_stage_ready', { version: selectedVersion });
+            }
+          }
+        });
+      }
+
       await invoke('onboarding_prewarm_game', { version: ver });
     } catch {
-      // In-browser or test fallback simulation
+      // In-browser or test fallback without backend events:
+      // Honest 'Подготавливаем…' without fake percentage.
+      prewarmProgress = null;
+      prewarmStage = t('onboarding.prewarm_stage_preparing');
     }
-
-    // Gentle progressive tick
-    const interval = setInterval(() => {
-      if (!open) {
-        clearInterval(interval);
-        return;
-      }
-      if (prewarmProgress < 95) {
-        prewarmProgress += Math.floor(Math.random() * 8) + 4;
-        if (prewarmProgress > 30 && prewarmProgress < 60) {
-          prewarmStage = `Синхронизация библиотек Fabric и Java для ${selectedVersion}`;
-        } else if (prewarmProgress >= 60 && prewarmProgress < 90) {
-          prewarmStage = `Загрузка и проверка ассетов Minecraft ${selectedVersion}`;
-        } else if (prewarmProgress >= 90) {
-          prewarmStage = `Клиент ${selectedVersion} подготовлен к первому запуску`;
-        }
-      } else {
-        prewarmProgress = 100;
-        prewarmStage = `Клиент ${selectedVersion} готов к запуску`;
-        clearInterval(interval);
-      }
-    }, 900);
   }
 
   // Scan for old Aura-Launcher directory and data
@@ -401,7 +431,7 @@
 
 {#if open}
   <!-- Scrim backdrop: RGBA without live blur per single blur layer rule -->
-  <div class="onboarding-scrim" role="dialog" aria-modal="true" aria-label="Первоначальная настройка Wex">
+  <div class="onboarding-scrim" role="dialog" aria-modal="true" aria-label={t('onboarding.modal_aria')}>
     <div
       class="onboarding-card"
       bind:this={modalEl}
@@ -409,7 +439,7 @@
     >
       <!-- Top header bar with step indicator & Skip button -->
       <div class="card-header">
-        <div class="step-indicator" aria-label="Шаг настройки">
+        <div class="step-indicator" aria-label={t('onboarding.step_indicator_aria')}>
           <span class="step-dot" class:active={currentStep === 'welcome'}></span>
           {#if detectedAuraDir}
             <span class="step-dot" class:active={currentStep === 'import'}></span>
@@ -424,9 +454,9 @@
           type="button"
           class="skip-action"
           onclick={handleSkip}
-          aria-label="Пропустить настройку"
+          aria-label={t('onboarding.skip_aria')}
         >
-          {i18n.locale === 'en' ? 'Skip setup' : 'Пропустить'}
+          {t('onboarding.skip')}
         </button>
       </div>
 
@@ -441,9 +471,9 @@
               </div>
             </div>
 
-            <h1 class="step-title">Добро пожаловать в Wex</h1>
+            <h1 class="step-title">{t('onboarding.welcome_title')}</h1>
             <p class="step-subtitle">
-              Быстрый лаунчер Minecraft. Всё готово для плавной игры, чистой графики и удобной игры с друзьями.
+              {t('onboarding.welcome_subtitle')}
             </p>
 
             <div class="features-list">
@@ -452,8 +482,8 @@
                   <Icon name="cpu" size={18} color="var(--color-system-blue)" />
                 </div>
                 <div class="feature-text">
-                  <span class="feature-headline">Оптимальная производительность</span>
-                  <span class="feature-desc">Умный контроль оперативной памяти и готовая оптимизация Fabric</span>
+                  <span class="feature-headline">{t('onboarding.feat_perf_title')}</span>
+                  <span class="feature-desc">{t('onboarding.feat_perf_desc')}</span>
                 </div>
               </div>
 
@@ -462,8 +492,8 @@
                   <Icon name="friends" size={18} color="var(--color-system-green)" />
                 </div>
                 <div class="feature-text">
-                  <span class="feature-headline">Друзья и локальная сеть</span>
-                  <span class="feature-desc">Подключение к мирам без сторонних утилит и сложных настроек портов</span>
+                  <span class="feature-headline">{t('onboarding.feat_friends_title')}</span>
+                  <span class="feature-desc">{t('onboarding.feat_friends_desc')}</span>
                 </div>
               </div>
 
@@ -472,8 +502,8 @@
                   <Icon name="folder" size={18} color="var(--color-system-indigo, #5e5ce6)" />
                 </div>
                 <div class="feature-text">
-                  <span class="feature-headline">Изоляция и порядок</span>
-                  <span class="feature-desc">Каждая версия хранится в отдельной папке и не трогает другие лаунчеры</span>
+                  <span class="feature-headline">{t('onboarding.feat_order_title')}</span>
+                  <span class="feature-desc">{t('onboarding.feat_order_desc')}</span>
                 </div>
               </div>
             </div>
@@ -483,10 +513,16 @@
               <div class="prewarm-info">
                 <Icon name="refresh" size={14} color="var(--color-system-blue)" />
                 <span class="prewarm-text">{prewarmStage}</span>
-                <span class="prewarm-pct">{prewarmProgress}%</span>
+                {#if prewarmProgress !== null && prewarmProgress > 0}
+                  <span class="prewarm-pct">{prewarmProgress}%</span>
+                {/if}
               </div>
               <div class="prewarm-track">
-                <div class="prewarm-fill" style="width: {prewarmProgress}%;"></div>
+                <div
+                  class="prewarm-fill"
+                  class:indeterminate={prewarmProgress === null || prewarmProgress === 0}
+                  style={prewarmProgress !== null && prewarmProgress > 0 ? `width: ${prewarmProgress}%;` : ''}
+                ></div>
               </div>
             </div>
           </div>
@@ -498,41 +534,41 @@
               <Icon name="folder" size={28} color="var(--color-system-blue)" />
             </div>
 
-            <h2 class="step-title">Найден Aura-Launcher</h2>
+            <h2 class="step-title">{t('onboarding.import_title')}</h2>
             <p class="step-subtitle">
-              Мы обнаружили сохранённые данные старого лаунчера. Хотите перенести профиль, настройки и серверы в Wex?
+              {t('onboarding.import_desc')}
             </p>
 
             {#if oldLauncherData}
               <div class="discovered-card">
                 <div class="card-item">
-                  <span class="item-label">Игровой ник</span>
-                  <span class="item-value">{oldLauncherData.nickname || 'Не указан'}</span>
+                  <span class="item-label">{t('onboarding.import_nickname')}</span>
+                  <span class="item-value">{oldLauncherData.nickname || t('onboarding.import_nickname_none')}</span>
                 </div>
                 <div class="card-item">
-                  <span class="item-label">Выделенная память</span>
-                  <span class="item-value">{Math.round((oldLauncherData.ram_mb || 4096) / 1024)} ГБ</span>
+                  <span class="item-label">{t('onboarding.import_ram')}</span>
+                  <span class="item-value">{t('onboarding.ram_preset', { gb: Math.round((oldLauncherData.ram_mb || 4096) / 1024) })}</span>
                 </div>
                 <div class="card-item">
-                  <span class="item-label">Сохранённые серверы</span>
-                  <span class="item-value">{oldLauncherData.servers?.length || 0} шт.</span>
+                  <span class="item-label">{t('onboarding.import_servers')}</span>
+                  <span class="item-value">{t('onboarding.count_units', { count: oldLauncherData.servers?.length || 0 })}</span>
                 </div>
                 <div class="card-item">
-                  <span class="item-label">Скины и миры</span>
-                  <span class="item-value">{(oldLauncherData.skins?.length || 0) + (oldLauncherData.worlds?.length || 0)} шт.</span>
+                  <span class="item-label">{t('onboarding.import_skins_worlds')}</span>
+                  <span class="item-value">{t('onboarding.count_units', { count: (oldLauncherData.skins?.length || 0) + (oldLauncherData.worlds?.length || 0) })}</span>
                 </div>
               </div>
 
               <div class="safe-notice">
                 <Icon name="info" size={14} color="var(--color-secondary-label)" />
-                <span>Данные Aura-Launcher не изменяются и останутся нетронутыми на диске.</span>
+                <span>{t('onboarding.import_notice')}</span>
               </div>
             {/if}
 
             {#if importSuccess}
               <div class="import-status success">
                 <Icon name="check" size={16} color="var(--color-system-green)" />
-                <span>Данные успешно скопированы! Переходим к никнейму...</span>
+                <span>{t('onboarding.import_success')}</span>
               </div>
             {/if}
           </div>
@@ -544,19 +580,19 @@
               <Icon name="friends" size={28} color="var(--color-system-blue)" />
             </div>
 
-            <h2 class="step-title">Как вас зовут в игре?</h2>
+            <h2 class="step-title">{t('onboarding.step1_title')}</h2>
             <p class="step-subtitle">
-              Этот никнейм будут видеть друзья в совместной игре, на серверах и в локальной сети.
+              {t('onboarding.step1_desc')}
             </p>
 
             <div class="input-container">
-              <label for="onboarding-nickname-input" class="input-label">Игровой ник</label>
+              <label for="onboarding-nickname-input" class="input-label">{t('onboarding.nickname_label')}</label>
               <div class="apple-field-wrapper" class:has-error={nicknameTouched && !isNicknameValid}>
                 <input
                   id="onboarding-nickname-input"
                   type="text"
                   class="apple-input"
-                  placeholder="Player"
+                  placeholder={t('onboarding.nickname_placeholder')}
                   maxlength="16"
                   bind:value={nickname}
                   oninput={() => { nicknameTouched = true; }}
@@ -567,8 +603,8 @@
                     type="button"
                     class="clear-input-btn"
                     onclick={() => { nickname = ''; nicknameTouched = true; }}
-                    title="Очистить ник"
-                    aria-label="Очистить ник"
+                    title={t('onboarding.clear_nickname')}
+                    aria-label={t('onboarding.clear_nickname')}
                   >
                     <Icon name="clear" size={14} color="var(--color-secondary-label)" />
                   </button>
@@ -577,11 +613,11 @@
 
               {#if nicknameTouched && !isNicknameValid}
                 <p class="validation-msg error">
-                  Ник должен состоять из 3–16 латинских букв, цифр или подчёркивания.
+                  {t('onboarding.nickname_valid_error')}
                 </p>
               {:else}
                 <p class="validation-msg hint">
-                  Используйте латинские буквы, цифры и символ подчёркивания.
+                  {t('onboarding.nickname_valid_hint')}
                 </p>
               {/if}
             </div>
@@ -594,12 +630,12 @@
               <Icon name="server" size={28} color="var(--color-system-blue)" />
             </div>
 
-            <h2 class="step-title">Выберите версию игры</h2>
+            <h2 class="step-title">{t('onboarding.step2_title')}</h2>
             <p class="step-subtitle">
-              Wex поддерживает обе популярные версии одновременно. Вы сможете переключить версию в любой момент.
+              {t('onboarding.step2_desc')}
             </p>
 
-            <div class="version-cards-grid" role="radiogroup" aria-label="Версия Minecraft">
+            <div class="version-cards-grid" role="radiogroup" aria-label={t('onboarding.ver_aria')}>
               <!-- Minecraft 1.21.1 Card -->
               <button
                 type="button"
@@ -614,10 +650,10 @@
               >
                 <div class="card-top">
                   <span class="version-name">Minecraft 1.21.1</span>
-                  <span class="version-badge recommended">Рекомендуется</span>
+                  <span class="version-badge recommended">{t('onboarding.ver_recommended')}</span>
                 </div>
                 <p class="version-desc">
-                  Новейший релиз с оптимизацией Wex Pack, актуальными механиками, шейдерами Iris и современным звуком.
+                  {t('onboarding.ver_1211_custom_desc')}
                 </p>
                 <div class="card-check" class:active={selectedVersion === '1.21.1'}>
                   {#if selectedVersion === '1.21.1'}
@@ -640,10 +676,10 @@
               >
                 <div class="card-top">
                   <span class="version-name">Minecraft 1.20.1</span>
-                  <span class="version-badge classic">Классика</span>
+                  <span class="version-badge classic">{t('onboarding.ver_classic')}</span>
                 </div>
                 <p class="version-desc">
-                  Проверенная временем стабильная версия с максимальным каталогом любимых модификаций сообщества.
+                  {t('onboarding.ver_1201_custom_desc')}
                 </p>
                 <div class="card-check" class:active={selectedVersion === '1.20.1'}>
                   {#if selectedVersion === '1.20.1'}
@@ -661,14 +697,14 @@
               <Icon name="cpu" size={28} color="var(--color-system-blue)" />
             </div>
 
-            <h2 class="step-title">Выделение оперативной памяти</h2>
+            <h2 class="step-title">{t('onboarding.step3_title')}</h2>
             <p class="step-subtitle">
-              Лаунчер автоматически подобрал оптимальный объём памяти под конфигурацию вашего компьютера.
+              {t('onboarding.step3_desc')}
             </p>
 
             <div class="memory-slider-card">
               <div class="slider-header-row">
-                <span class="sys-ram-badge">Всего в ПК: {Math.round(totalMemoryMb / 1024)} ГБ</span>
+                <span class="sys-ram-badge">{t('onboarding.ram_total_pc', { total: Math.round(totalMemoryMb / 1024) })}</span>
                 <span class="current-ram-val">{formatRamLabel(ramMb)}</span>
               </div>
 
@@ -682,7 +718,7 @@
                   ramMb = val;
                   updateRamExplanation(val);
                 }}
-                label="Оперативная память для игры"
+                label={t('onboarding.ram_slider_label')}
               />
 
               <!-- Explanation based on Apple HIG Contextual Guidance -->
@@ -699,7 +735,7 @@
                   class:active={ramMb === 2048}
                   onclick={() => { ramMb = 2048; updateRamExplanation(2048); }}
                 >
-                  2 ГБ
+                  {t('onboarding.ram_preset', { gb: 2 })}
                 </button>
                 <button
                   type="button"
@@ -707,7 +743,7 @@
                   class:active={ramMb === 4096}
                   onclick={() => { ramMb = 4096; updateRamExplanation(4096); }}
                 >
-                  4 ГБ
+                  {t('onboarding.ram_preset', { gb: 4 })}
                 </button>
                 <button
                   type="button"
@@ -715,7 +751,7 @@
                   class:active={ramMb === 6144}
                   onclick={() => { ramMb = 6144; updateRamExplanation(6144); }}
                 >
-                  6 ГБ
+                  {t('onboarding.ram_preset', { gb: 6 })}
                 </button>
                 {#if totalMemoryMb >= 8192}
                   <button
@@ -724,7 +760,7 @@
                     class:active={ramMb === 8192}
                     onclick={() => { ramMb = 8192; updateRamExplanation(8192); }}
                   >
-                    8 ГБ
+                    {t('onboarding.ram_preset', { gb: 8 })}
                   </button>
                 {/if}
               </div>
@@ -738,29 +774,29 @@
               <Icon name="check" size={32} color="var(--color-system-green)" />
             </div>
 
-            <h2 class="step-title">Всё готово к игре</h2>
+            <h2 class="step-title">{t('onboarding.step4_title')}</h2>
             <p class="step-subtitle">
-              Настройки сохранены. Вы всегда сможете изменить их во вкладке «Настройки».
+              {t('onboarding.step4_desc')}
             </p>
 
             <div class="summary-card">
               <div class="summary-row">
-                <span class="summary-label">Игровой никнейм</span>
+                <span class="summary-label">{t('onboarding.summary_nickname')}</span>
                 <span class="summary-value highlight">{nickname}</span>
               </div>
               <div class="summary-row">
-                <span class="summary-label">Выбранная версия</span>
+                <span class="summary-label">{t('onboarding.summary_version')}</span>
                 <span class="summary-value">Minecraft {selectedVersion}</span>
               </div>
               <div class="summary-row">
-                <span class="summary-label">Выделено памяти</span>
-                <span class="summary-value">{Math.round(ramMb / 1024)} ГБ ({ramMb} МБ)</span>
+                <span class="summary-label">{t('onboarding.summary_ram')}</span>
+                <span class="summary-value">{t('onboarding.ready_ram_format', { gb: Math.round(ramMb / 1024), mb: ramMb })}</span>
               </div>
               <div class="summary-row status-row">
-                <span class="summary-label">Фоновая загрузка</span>
+                <span class="summary-label">{t('onboarding.ready_bg_download')}</span>
                 <span class="summary-value ready-status">
                   <Icon name="check" size={14} color="var(--color-system-green)" />
-                  <span>Клиент подготовлен к старту</span>
+                  <span>{t('onboarding.ready_client_prepared')}</span>
                 </span>
               </div>
             </div>
@@ -777,7 +813,7 @@
               size="large"
               onclick={handleNext}
             >
-              <span>Начать настройку</span>
+              <span>{t('onboarding.start_setup')}</span>
               <Icon name="chevron-right" size={16} color="white" />
             </Button>
           </div>
@@ -789,7 +825,7 @@
               size="regular"
               onclick={() => { currentStep = 'nickname'; }}
             >
-              <span>Настроить с нуля</span>
+              <span>{t('onboarding.import_clean')}</span>
             </Button>
 
             <Button
@@ -800,7 +836,7 @@
               onclick={executeImport}
             >
               <Icon name="refresh" size={14} color="white" />
-              <span>Перенести всё</span>
+              <span>{t('onboarding.import_all')}</span>
             </Button>
           </div>
 
@@ -811,7 +847,7 @@
               size="regular"
               onclick={() => finishOnboarding(false)}
             >
-              <span>В лаунчер</span>
+              <span>{t('onboarding.to_launcher')}</span>
             </Button>
 
             <Button
@@ -820,7 +856,7 @@
               onclick={() => finishOnboarding(true)}
             >
               <Icon name="play" size={16} color="white" />
-              <span>Начать игру</span>
+              <span>{t('onboarding.start_game')}</span>
             </Button>
           </div>
 
@@ -833,7 +869,7 @@
               onclick={handleBack}
             >
               <Icon name="chevron-left" size={14} color="var(--color-label)" />
-              <span>Назад</span>
+              <span>{t('common.back')}</span>
             </Button>
 
             <Button
@@ -842,7 +878,7 @@
               disabled={currentStep === 'nickname' && !isNicknameValid}
               onclick={handleNext}
             >
-              <span>Далее</span>
+              <span>{t('onboarding.btn_next')}</span>
               <Icon name="chevron-right" size={14} color="white" />
             </Button>
           </div>
@@ -888,6 +924,11 @@
     overflow: hidden;
     outline: none;
     animation: cardPopIn 260ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .onboarding-card:focus,
+  .onboarding-card:focus-visible {
+    outline: none !important;
   }
 
   :global([data-theme='light']) .onboarding-card {
@@ -1129,6 +1170,17 @@
     height: 100%;
     background: var(--color-system-blue, #0a84ff);
     transition: width 300ms ease;
+  }
+
+  .prewarm-fill.indeterminate {
+    width: 32% !important;
+    animation: prewarmSlide 1.8s ease-in-out infinite;
+  }
+
+  @keyframes prewarmSlide {
+    0% { transform: translateX(-100%); }
+    50% { transform: translateX(250%); }
+    100% { transform: translateX(-100%); }
   }
 
   /* Discovered Aura Data */

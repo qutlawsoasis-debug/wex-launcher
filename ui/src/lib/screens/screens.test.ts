@@ -630,7 +630,7 @@ describe('Wex Launcher Screens', () => {
     const comp = mount(SettingsScreen, { target });
     await tick();
 
-    expect(target.textContent).toContain('Самообновление лаунчера');
+    expect(target.textContent).toContain('Обновление лаунчера');
     const checkBtn = Array.from(target.querySelectorAll('button')).find((b) =>
       b.textContent?.includes('Проверить')
     );
@@ -670,7 +670,7 @@ describe('Wex Launcher Screens', () => {
 
   it('renders LobbyScreen with LAN/Cloud mode switch, guest code input, and world picker', () => {
     const comp = mount(LobbyScreen, { target });
-    expect(target.textContent).toContain('LAN и Туннели');
+    expect(target.textContent).toContain('Локальная сеть и туннели');
     expect(target.textContent).toContain('Облачные миры');
     expect(target.textContent).toContain('Присоединиться по коду');
     expect(target.textContent).toContain('Открыть локальный мир');
@@ -893,7 +893,7 @@ describe('Wex Launcher Screens', () => {
     await new Promise((r) => setTimeout(r, 20));
 
     expect(target.textContent).toContain('Моды не найдены');
-    expect(target.textContent).toContain('В папке инстанса пока нет модов');
+    expect(target.textContent).toContain('В папке игры пока нет модов');
     unmount(comp);
   });
 
@@ -1019,7 +1019,7 @@ describe('Wex Launcher Screens', () => {
   it('renders SettingsScreen with actual Discord RPC status preview card and no mock fakes', async () => {
     const comp = mount(SettingsScreen, { target });
     expect(target.textContent).toContain('Discord Rich Presence');
-    expect(target.textContent).toContain('Превью статуса Discord');
+    expect(target.textContent).toContain('Просмотр статуса в Discord');
     expect(target.textContent).toContain('Wex Launcher');
     expect(target.textContent).toContain('В главном меню');
     expect(target.textContent).toContain('Выбирает режим игры');
@@ -1040,8 +1040,8 @@ describe('Wex Launcher Screens', () => {
 
     // Check preview and model controls
     expect(target.querySelector('canvas.character-canvas')).not.toBeNull();
-    expect(target.textContent).toContain('Классическая (4 px)');
-    expect(target.textContent).toContain('Тонкая (3 px)');
+    expect(target.textContent).toContain('Классическая (4 пикселя)');
+    expect(target.textContent).toContain('Тонкая (3 пикселя)');
     expect(target.textContent).toContain('Спереди');
     expect(target.textContent).toContain('Сзади');
 
@@ -1053,7 +1053,7 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Стандартный скин');
 
     // Check action buttons
-    expect(target.textContent).toContain('Загрузить скин (PNG)');
+    expect(target.textContent).toContain('Загрузить скин (.png)');
     expect(target.textContent).toContain('Сбросить на стандартный');
     expect(target.textContent).toContain('Применить к игре');
 
@@ -1239,8 +1239,8 @@ describe('Wex Launcher Screens', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(target.textContent).toContain('Ресурс-паков пока нет');
-    expect(target.textContent).toContain('Поместите ZIP-архив с ресурс-паком');
-    expect(target.textContent).toContain('Добавить ZIP…');
+    expect(target.textContent).toContain('Поместите архив с ресурс-паком');
+    expect(target.textContent).toContain('Добавить архив…');
     expect(target.textContent).toContain('Папка паков');
 
     unmount(comp);
@@ -1262,8 +1262,8 @@ describe('Wex Launcher Screens', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(target.textContent).toContain('Шейдер-паков пока нет');
-    expect(target.textContent).toContain('Поместите ZIP-архив с шейдерами');
-    expect(target.textContent).toContain('Добавить ZIP…');
+    expect(target.textContent).toContain('Поместите архив с шейдерами');
+    expect(target.textContent).toContain('Добавить архив…');
     expect(target.textContent).toContain('Папка шейдеров');
 
     unmount(comp);
@@ -1344,6 +1344,30 @@ describe('Wex Launcher Screens', () => {
     theme.setReduceMotion(false);
     unmount(comp);
   });
+
+  it('SplashScreen does not simulate fake progress steps or fake percentages without genuine update events (wex-review-fake-progress item 14)', async () => {
+    const comp = mount(SplashScreen, {
+      target,
+      props: {
+        initialVersion: 'v0.1.0',
+        autoStart: false,
+      },
+    });
+
+    await tick();
+
+    // Trigger update download without Tauri events (e.g. in browser / headless test)
+    const p = (comp as any).runUpdateDownload('https://example.com/update.zip', 'v1.0.0');
+    await tick();
+
+    // In absence of genuine events, must show honest 'Подготавливаем…' and NEVER fake '12.4 МБ/с' or '20%'
+    expect(target.textContent).not.toContain('12.4 МБ/с');
+    expect(target.textContent).not.toContain('20%');
+    expect(target.textContent).toContain('Подготавливаем…');
+
+    if (p) await p;
+    unmount(comp);
+  });
   it('renders ImportWizardSheet with found old launcher data, non-destructive notice, and transfer toggles', () => {
     const comp = mount(ImportWizardSheet, {
       target,
@@ -1381,8 +1405,8 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('AuraVeteran');
     expect(target.textContent).toContain('6 ГБ (6144 МБ)');
     expect(target.textContent).toContain('1.20.1');
-    expect(target.textContent).toContain('2 сервер(-ов) найдено');
-    expect(target.textContent).toContain('1 скин(-ов) найдено');
+    expect(target.textContent).toContain('Найдено серверов: 2');
+    expect(target.textContent).toContain('Найдено скинов: 1');
 
     // Transfer buttons
     expect(target.textContent).toContain('Перенести');

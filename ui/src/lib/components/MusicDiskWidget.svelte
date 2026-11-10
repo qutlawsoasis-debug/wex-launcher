@@ -18,6 +18,7 @@
   import Button from './Button.svelte';
   import Skeleton from './Skeleton.svelte';
   import { theme } from '../design/theme.svelte';
+  import { t } from '../i18n';
   import { COMMANDS } from '../ipc/generated/commands';
   import type {
     MusicTrackDto,
@@ -610,7 +611,7 @@
   });
 </script>
 
-<div class="music-disk-widget" class:playing={isPlaying} aria-label="Виджет фоновой музыки">
+<div class="music-disk-widget" class:playing={isPlaying} aria-label={t('music.widget_aria')}>
   <!-- Hidden HTML5 Audio Element (preload auto and playsinline for background SMTC) -->
   <audio
     bind:this={audioElement}
@@ -624,7 +625,7 @@
   {#if !isEnabled}
     <div class="disabled-state">
       <Icon name="volume-x" size={16} color="var(--color-tertiary-label)" />
-      <span class="disabled-text">Музыка отключена</span>
+      <span class="disabled-text">{t('music.disabled')}</span>
     </div>
   {:else if tracks.length === 0}
     <!-- Honest Empty State -->
@@ -641,17 +642,17 @@
       </div>
 
       <div class="widget-details">
-        <span class="track-title empty">Нет музыки</span>
-        <span class="track-artist">Папка Wex/music пуста</span>
+        <span class="track-title empty">{t('music.empty')}</span>
+        <span class="track-artist">{t('music.folder_empty')}</span>
 
         <button
           type="button"
           class="open-folder-btn"
           onclick={openFolder}
-          title="Открыть папку с музыкой в проводнике"
+          title={t('music.open_folder_title')}
         >
           <Icon name="folder" size={13} color="var(--color-system-blue)" />
-          <span>Открыть папку</span>
+          <span>{t('music.open_folder')}</span>
         </button>
       </div>
     </div>
@@ -718,8 +719,8 @@
             type="button"
             class="folder-icon-btn"
             onclick={openFolder}
-            title="Открыть папку с музыкой"
-            aria-label="Открыть папку с музыкой"
+            title={t('music.open_folder_aria')}
+            aria-label={t('music.open_folder_aria')}
           >
             <Icon name="folder" size={14} color="var(--color-secondary-label)" />
           </button>
@@ -731,7 +732,7 @@
             type="button"
             class="progress-track"
             onclick={handleSeek}
-            aria-label="Перемотка трека"
+            aria-label={t('music.seek_aria')}
           >
             <div
               class="progress-fill"
@@ -753,8 +754,8 @@
               type="button"
               class="ctrl-btn"
               onclick={previous}
-              title="Предыдущий трек"
-              aria-label="Предыдущий трек"
+              title={t('music.prev_title')}
+              aria-label={t('music.prev_aria')}
             >
               <Icon name="chevron-left" size={16} />
             </button>
@@ -763,8 +764,8 @@
               type="button"
               class="ctrl-btn play-pause-btn"
               onclick={togglePlayPause}
-              title={isPlaying ? 'Пауза' : 'Воспроизведение'}
-              aria-label={isPlaying ? 'Пауза' : 'Воспроизведение'}
+              title={isPlaying ? t('music.pause') : t('music.play')}
+              aria-label={isPlaying ? t('music.pause') : t('music.play')}
             >
               {#if isPlaying}
                 <Icon name="pause" size={16} color="#ffffff" />
@@ -777,8 +778,8 @@
               type="button"
               class="ctrl-btn"
               onclick={next}
-              title="Следующий трек"
-              aria-label="Следующий трек"
+              title={t('music.next_title')}
+              aria-label={t('music.next_aria')}
             >
               <Icon name="chevron-right" size={16} />
             </button>
@@ -790,8 +791,8 @@
               type="button"
               class="mute-btn"
               onclick={toggleMute}
-              title={isMuted ? 'Включить звук' : 'Выключить звук'}
-              aria-label={isMuted ? 'Включить звук' : 'Выключить звук'}
+              title={isMuted ? t('music.unmute') : t('music.mute')}
+              aria-label={isMuted ? t('music.unmute') : t('music.mute')}
             >
               <Icon
                 name={isMuted || volume === 0 ? 'volume-x' : 'volume'}
@@ -806,7 +807,7 @@
               value={isMuted ? 0 : volume}
               oninput={(e) => handleVolumeChange(Number((e.target as HTMLInputElement).value))}
               class="volume-slider"
-              aria-label="Громкость музыки"
+              aria-label={t('music.volume_aria')}
             />
           </div>
         </div>
@@ -818,7 +819,7 @@
 <style>
   .music-disk-widget {
     position: relative;
-    padding: 10px 14px;
+    padding: 8px 8px;
     background-color: var(--color-bg-secondary);
     border: 1px solid var(--color-separator);
     border-radius: var(--radius-lg);
@@ -827,6 +828,7 @@
        ~220px sidebar and stuck out past its edge. */
     width: 100%;
     min-width: 0;
+    max-width: 100%;
     box-sizing: border-box;
     user-select: none;
     transition: border-color var(--motion-duration-fast) var(--motion-spring-ease);
@@ -847,7 +849,8 @@
   .empty-widget {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
+    width: 100%;
   }
 
   .turntable-mini {
@@ -857,6 +860,7 @@
   .widget-details {
     display: flex;
     flex-direction: column;
+    flex: 1;
     min-width: 0;
   }
 
@@ -909,8 +913,8 @@
   }
 
   .vinyl-disc.static {
-    width: 48px;
-    height: 48px;
+    width: 36px;
+    height: 36px;
     background: radial-gradient(circle, #2a2a2e 0%, #161618 100%);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
   }
@@ -952,8 +956,8 @@
   }
 
   .vinyl-center.empty {
-    width: 22px;
-    height: 22px;
+    width: 18px;
+    height: 18px;
     background-color: var(--color-tertiary-label);
   }
 

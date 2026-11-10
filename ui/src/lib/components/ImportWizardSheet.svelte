@@ -80,7 +80,7 @@
       }
 
       if (!dirToScan) {
-        errorMessage = 'Каталог старого лаунчера не найден автоматически.';
+        errorMessage = t('import.dir_not_found');
         isScanning = false;
         return;
       }
@@ -91,7 +91,7 @@
 
       scannedData = data;
     } catch (err: any) {
-      errorMessage = err?.message || String(err) || 'Ошибка при чтении данных старого лаунчера';
+      errorMessage = err?.message || String(err) || t('import.read_error');
     } finally {
       isScanning = false;
     }
@@ -149,7 +149,7 @@
         }, 1200);
       }
     } catch (err: any) {
-      errorMessage = err?.message || String(err) || 'Ошибка при переносе данных';
+      errorMessage = err?.message || String(err) || t('import.transfer_error');
     } finally {
       isImporting = false;
     }
@@ -215,9 +215,9 @@
         <div class="option-item">
           <div class="option-details">
             <span class="option-title">{t('import.nickname')}</span>
-            <span class="option-subtitle">{oldData.nickname || (i18n.locale === 'en' ? 'Not specified' : 'Не указано')}</span>
+            <span class="option-subtitle">{oldData.nickname || t('import.not_specified')}</span>
           </div>
-          <Toggle bind:checked={importNickname} label={i18n.locale === 'en' ? 'Import player name' : 'Перенести имя игрока'} />
+          <Toggle bind:checked={importNickname} label={t('import.transfer_nickname')} />
         </div>
 
         <div class="option-divider"></div>
@@ -227,10 +227,10 @@
           <div class="option-details">
             <span class="option-title">{t('import.ram')}</span>
             <span class="option-subtitle">
-              {oldData.ram_mb ? `${Math.round(oldData.ram_mb / 1024)} ${i18n.locale === 'en' ? 'GB' : 'ГБ'} (${oldData.ram_mb} ${i18n.locale === 'en' ? 'MB' : 'МБ'})` : (i18n.locale === 'en' ? 'Default' : 'По умолчанию')}
+              {oldData.ram_mb ? `${Math.round(oldData.ram_mb / 1024)} ${t('common.unit_gb')} (${oldData.ram_mb} ${t('common.unit_mb')})` : t('import.default')}
             </span>
           </div>
-          <Toggle bind:checked={importRam} label={i18n.locale === 'en' ? 'Import memory settings' : 'Перенести настройки памяти'} />
+          <Toggle bind:checked={importRam} label={t('import.transfer_ram')} />
         </div>
 
         <div class="option-divider"></div>
@@ -241,7 +241,7 @@
             <span class="option-title">{t('import.version')}</span>
             <span class="option-subtitle">{oldData.selected_version || '1.21.1'}</span>
           </div>
-          <Toggle bind:checked={importVersion} label={i18n.locale === 'en' ? 'Import selected game version' : 'Перенести выбранную версию'} />
+          <Toggle bind:checked={importVersion} label={t('import.transfer_version')} />
         </div>
 
         <div class="option-divider"></div>
@@ -252,14 +252,14 @@
             <span class="option-title">{t('import.servers')}</span>
             <span class="option-subtitle">
               {oldData.servers?.length
-                ? (i18n.locale === 'en' ? `Servers found: ${oldData.servers.length}` : `${oldData.servers.length} сервер(-ов) найдено`)
-                : (i18n.locale === 'en' ? 'No servers found' : 'Серверы не найдены')}
+                ? t('import.servers_found', { count: oldData.servers.length })
+                : t('import.servers_none')}
             </span>
           </div>
           <Toggle
             bind:checked={importServers}
             disabled={!oldData.servers || oldData.servers.length === 0}
-            label={i18n.locale === 'en' ? 'Import saved servers' : 'Перенести сохранённые серверы'}
+            label={t('import.transfer_servers')}
           />
         </div>
 
@@ -271,14 +271,14 @@
             <span class="option-title">{t('import.skins')}</span>
             <span class="option-subtitle">
               {oldData.skins?.length
-                ? (i18n.locale === 'en' ? `Skins found: ${oldData.skins.length}` : `${oldData.skins.length} скин(-ов) найдено`)
-                : (i18n.locale === 'en' ? 'No skins found' : 'Скины не найдены')}
+                ? t('import.skins_found', { count: oldData.skins.length })
+                : t('import.skins_none')}
             </span>
           </div>
           <Toggle
             bind:checked={importSkins}
             disabled={!oldData.skins || oldData.skins.length === 0}
-            label={i18n.locale === 'en' ? 'Import skins and capes' : 'Перенести скины и плащи'}
+            label={t('import.transfer_skins')}
           />
         </div>
 
@@ -287,17 +287,17 @@
         <!-- Worlds -->
         <div class="option-item">
           <div class="option-details">
-            <span class="option-title">Локальные миры</span>
+            <span class="option-title">{t('import.local_worlds')}</span>
             <span class="option-subtitle">
               {oldData.worlds?.length
-                ? `${oldData.worlds.length} мир(-ов) найдено`
-                : 'Миры не найдены'}
+                ? t('import.worlds_found', { count: oldData.worlds.length })
+                : t('import.worlds_none')}
             </span>
           </div>
           <Toggle
             bind:checked={importWorlds}
             disabled={!oldData.worlds || oldData.worlds.length === 0}
-            label="Перенести сохранённые миры"
+            label={t('import.transfer_worlds')}
           />
         </div>
       </div>
@@ -307,7 +307,7 @@
         <Icon name="folder" size={32} color="var(--color-tertiary-label)" />
         <h3 class="empty-title">{t('import.not_found')}</h3>
         <p class="empty-subtitle">
-          {errorMessage || (i18n.locale === 'en' ? 'No previous launcher settings found. You can continue with the defaults.' : 'Wex не обнаружил каталог .aura в стандартной папке AppData. Вы можете продолжить со стандартными настройками.')}
+          {errorMessage || t('import.fallback_hint')}
         </p>
         <div class="empty-actions">
           <Button variant="secondary" size="regular" onclick={() => scanLauncher()}>
