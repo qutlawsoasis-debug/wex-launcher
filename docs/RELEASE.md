@@ -80,13 +80,13 @@ npx @tauri-apps/cli signer generate -w ~/.tauri/wex.key
 
 ```json
 {
-  "version": "0.9.0",
+  "version": "0.9.1",
   "notes": "Wex Launcher manual release build",
   "pub_date": "2026-11-09T06:00:00Z",
   "platforms": {
     "windows-x86_64": {
       "signature": "<Ed25519 подпись из .sig файла>",
-      "url": "https://github.com/qutlawsoasis-debug/wex-launcher/releases/download/v0.9.0/Wex_0.9.0_x64-setup.nsis.zip"
+      "url": "https://github.com/qutlawsoasis-debug/wex-launcher/releases/download/v0.9.1/Wex_0.9.1_x64-setup.nsis.zip"
     }
   }
 }
