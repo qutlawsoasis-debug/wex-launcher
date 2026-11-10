@@ -11,6 +11,12 @@
   outline-offset: 2px !important;
 }
 
+/* Pointer use never shows a focus ring on controls; text fields keep theirs. */
+html[data-input='pointer'] :focus-visible:not(input):not(textarea):not(select) {
+  outline: none !important;
+  box-shadow: none;
+}
+
 html,
 body {
   margin: 0;

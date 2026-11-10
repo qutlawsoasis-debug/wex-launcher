@@ -39,18 +39,6 @@
     items?: ReleaseNoteItem[];
   }
 
-  interface UpdateInfo {
-    update_available: boolean;
-    current_version: string;
-    latest_version?: string | null;
-    notes?: string | null;
-    download_url?: string | null;
-    signature?: string | null;
-    is_signed?: boolean;
-    can_auto_update?: boolean;
-    mode?: 'auto' | 'notify_only';
-  }
-
   interface PlaytimeSummary {
     total_seconds: number;
     total_formatted: string;
@@ -73,7 +61,6 @@
     progressSpeed?: string;
     launchError?: unknown;
     initialNews?: ReleaseNoteVersion[];
-    initialUpdateInfo?: UpdateInfo | null;
     initialShowImportWizard?: boolean;
     initialScreenshots?: Array<{ file_name: string; file_path: string; preview_data_url?: string; created_at?: string }>;
     initialAchievements?: { achievements: any[]; progress: any[] } | null;
@@ -102,7 +89,6 @@
     progressSpeed = '',
     launchError = $bindable<unknown>(null),
     initialNews = undefined,
-    initialUpdateInfo = null,
     initialShowImportWizard = false,
     initialScreenshots = undefined,
     initialAchievements = undefined,
@@ -274,88 +260,6 @@
     }
   });
 
-  // Unobtrusive update notification banner state
-  let fetchedUpdateInfo = $state<UpdateInfo | null>(null);
-  let updateInfo = $derived(initialUpdateInfo !== null ? initialUpdateInfo : fetchedUpdateInfo);
-  let updateBannerDismissed = $state(false);
-  let isClosingBanner = $state(false);
-  let showUpdateBanner = $derived(Boolean(updateInfo?.update_available) && !updateBannerDismissed);
-
-  function dismissUpdateBanner() {
-    if (theme.reduceMotion || import.meta.env?.MODE === 'test') {
-      updateBannerDismissed = true;
-      return;
-    }
-    isClosingBanner = true;
-    setTimeout(() => {
-      updateBannerDismissed = true;
-      isClosingBanner = false;
-    }, 240);
-  }
-
-  // Auto-updater lifecycle: 'available' -> 'downloading' -> 'ready_to_restart' | 'error'
-  let updateStage = $state<'available' | 'downloading' | 'ready_to_restart' | 'error'>('available');
-  let updateProgressPct = $state(0);
-  let updateProgressText = $state('');
-  let updateErrorMessage = $state('');
-
-  let canAutoUpdate = $derived.by(() => {
-    if (!updateInfo) return false;
-    if (typeof updateInfo.can_auto_update === 'boolean') return updateInfo.can_auto_update;
-    if (typeof updateInfo.is_signed === 'boolean') return updateInfo.is_signed;
-    return Boolean(updateInfo.signature && updateInfo.signature.trim().length >= 32);
-  });
-
-  async function handleStartUpdate() {
-    if (!updateInfo) return;
-    updateStage = 'downloading';
-    updateProgressPct = 0;
-    updateProgressText = 'Подключение к серверу обновлений…';
-    updateErrorMessage = '';
-
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const res = await invoke<{ status: string; message: string }>('updater_install', {
-        downloadUrl: updateInfo.download_url || '',
-        signature: updateInfo.signature || null,
-        version: updateInfo.latest_version || 'latest',
-      });
-      if (res && res.status === 'ready_to_restart') {
-        updateStage = 'ready_to_restart';
-      } else {
-        updateStage = 'error';
-        updateErrorMessage = res?.message || 'Не удалось завершить обновление';
-      }
-    } catch (err: any) {
-      updateStage = 'error';
-      const msg = typeof err === 'string' ? err : err?.message || 'Ошибка загрузки обновления';
-      updateErrorMessage = msg.includes('Прежняя версия')
-        ? msg
-        : `${msg}. Прежняя версия сохранена.`;
-    }
-  }
-
-  async function handleRestart() {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('updater_restart');
-    } catch {
-      if (typeof window !== 'undefined') window.location.reload();
-    }
-  }
-
-  async function handleOpenDownloadUrl() {
-    const url =
-      updateInfo?.download_url ||
-      'https://github.com/qutlawsoasis-debug/wex-launcher/releases';
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('updater_open_download_url', { url });
-    } catch {
-      if (typeof window !== 'undefined') window.open(url, '_blank');
-    }
-  }
-
   // Import wizard sheet state
   let manualImportWizardOpen = $state(false);
   let isImportWizardOpen = $derived(Boolean(initialShowImportWizard) || manualImportWizardOpen);
@@ -507,7 +411,6 @@
   });
 
   onMount(() => {
-    let unlistenProgress: (() => void) | undefined;
     let unlistenPrewarm: (() => void) | undefined;
 
     function checkHash() {
@@ -549,13 +452,6 @@
       // 1. Listen to updater download progress and prewarm status
       try {
         const { listen } = await import('@tauri-apps/api/event');
-        unlistenProgress = await listen<any>('updater-progress', (event) => {
-          if (event.payload) {
-            updateProgressPct = event.payload.percentage ?? 0;
-            updateProgressText = event.payload.status_text ?? '';
-          }
-        });
-
         unlistenPrewarm = await listen<any>('prewarm-status', (event) => {
           if (event.payload) {
             const s = event.payload.state;
@@ -601,17 +497,6 @@
               .catch(() => {
                 fetchedNews = [];
               })
-          : Promise.resolve();
-
-        const fetchUpdates = initialUpdateInfo === null
-          ? invoke<UpdateInfo>('updater_check')
-              .catch(() => invoke<UpdateInfo>('overview_check_update'))
-              .then((res) => {
-                if (res && res.update_available) {
-                  fetchedUpdateInfo = res;
-                }
-              })
-              .catch(() => {})
           : Promise.resolve();
 
         const checkOldLauncher = (typeof localStorage !== 'undefined' && !localStorage.getItem('wex_import_checked'))
@@ -667,7 +552,6 @@
       await Promise.allSettled([
         fetchServers,
         fetchNews,
-        fetchUpdates,
         checkOldLauncher,
         fetchScreenshots,
         fetchAchievements,
@@ -683,7 +567,6 @@
   })();
 
   return () => {
-    if (unlistenProgress) unlistenProgress();
     if (unlistenPrewarm) unlistenPrewarm();
     if (typeof window !== 'undefined') {
       window.removeEventListener('hashchange', checkHash);
@@ -702,14 +585,6 @@ async function loadOnlineData() {
           fetchedNews = res;
         } else if (res?.versions && Array.isArray(res.versions) && res.versions.length > 0) {
           fetchedNews = res.versions;
-        }
-      } catch {}
-    }
-    if (initialUpdateInfo === null) {
-      try {
-        const res = await invoke<UpdateInfo>('updater_check').catch(() => invoke<UpdateInfo>('overview_check_update'));
-        if (res && res.update_available) {
-          fetchedUpdateInfo = res;
         }
       } catch {}
     }
@@ -775,141 +650,6 @@ $effect(() => {
             <Icon name="refresh" size={12} color="rgba(255, 255, 255, 0.9)" />
             <span>{t('offline.retry')}</span>
           </Button>
-        </div>
-      </div>
-    {/if}
-
-    <!-- Unobtrusive Update Notification Banner (Apple HIG Banners & Alerts) -->
-    {#if showUpdateBanner && updateInfo}
-      <div class="update-banner" class:closing={isClosingBanner} role="status" aria-live="polite">
-        <div class="update-banner-icon {updateStage}">
-          {#if updateStage === 'ready_to_restart'}
-            <Icon name="check" size={16} color="var(--color-system-green)" />
-          {:else if updateStage === 'error'}
-            <Icon name="error" size={16} color="var(--color-system-red)" />
-          {:else if updateStage === 'downloading'}
-            <Icon name="refresh" size={16} color="var(--color-system-blue)" />
-          {:else}
-            <Icon name="info" size={16} color="var(--color-system-blue)" />
-          {/if}
-        </div>
-        <div class="update-banner-body">
-          {#if updateStage === 'available'}
-            <div class="update-banner-headline-row">
-              <span class="update-banner-headline">
-                Доступна новая версия Wex {updateInfo.latest_version || ''}
-              </span>
-              {#if !canAutoUpdate}
-                <span class="badge badge-general">Неподписанная сборка</span>
-              {/if}
-            </div>
-            {#if updateInfo.notes}
-              <span class="update-banner-subtext">{updateInfo.notes}</span>
-            {:else if !canAutoUpdate}
-              <span class="update-banner-subtext">
-                Автоматическая установка недоступна без цифровой подписи. Доступна ручная загрузка.
-              </span>
-            {/if}
-          {:else if updateStage === 'downloading'}
-            <span class="update-banner-headline">
-              Загрузка обновления Wex {updateInfo.latest_version || ''}
-            </span>
-            <span class="update-banner-subtext">
-              {updateProgressText || `Скачиваем обновление… ${updateProgressPct}%`}
-            </span>
-            <div class="update-banner-progress">
-              <ProgressBar percentage={updateProgressPct} height={4} />
-            </div>
-          {:else if updateStage === 'ready_to_restart'}
-            <span class="update-banner-headline">
-              Обновление готово к установке
-            </span>
-            <span class="update-banner-subtext">
-              Перезапустите лаунчер, чтобы применить версию {updateInfo.latest_version || ''}
-            </span>
-          {:else if updateStage === 'error'}
-            <span class="update-banner-headline update-banner-headline-error">
-              Не удалось обновить лаунчер
-            </span>
-            <span class="update-banner-subtext">
-              {updateErrorMessage || 'Ошибка при загрузке. Прежняя версия сохранена и готова к работе.'}
-            </span>
-          {/if}
-        </div>
-        <div class="update-banner-actions">
-          {#if updateStage === 'available'}
-            {#if canAutoUpdate}
-              <Button
-                variant="primary"
-                size="small"
-                onclick={handleStartUpdate}
-                title="Скачать и установить обновление"
-              >
-                <Icon name="refresh" size={14} color="#ffffff" />
-                <span>Обновить</span>
-              </Button>
-            {:else}
-              <Button
-                variant="secondary"
-                size="small"
-                onclick={handleOpenDownloadUrl}
-                title="Перейти к загрузке установщика"
-              >
-                <Icon name="folder" size={14} color="var(--color-secondary-label)" />
-                <span>Перейти к загрузке</span>
-              </Button>
-            {/if}
-            <div class="update-banner-close">
-              <Button
-                variant="ghost"
-                size="small"
-                onclick={dismissUpdateBanner}
-                title="Закрыть уведомление"
-              >
-                <Icon name="close" size={14} color="var(--color-secondary-label)" />
-              </Button>
-            </div>
-          {:else if updateStage === 'ready_to_restart'}
-            <Button
-              variant="primary"
-              size="small"
-              onclick={handleRestart}
-              title="Перезапустить лаунчер сейчас"
-            >
-              <Icon name="refresh" size={14} color="#ffffff" />
-              <span>Перезапуск</span>
-            </Button>
-            <div class="update-banner-close">
-              <Button
-                variant="ghost"
-                size="small"
-                onclick={dismissUpdateBanner}
-                title="Отложить перезапуск"
-              >
-                <span>Позже</span>
-              </Button>
-            </div>
-          {:else if updateStage === 'error'}
-            <Button
-              variant="secondary"
-              size="small"
-              onclick={handleStartUpdate}
-              title="Повторить попытку обновления"
-            >
-              <Icon name="refresh" size={14} color="var(--color-secondary-label)" />
-              <span>Повторить</span>
-            </Button>
-            <div class="update-banner-close">
-              <Button
-                variant="ghost"
-                size="small"
-                onclick={dismissUpdateBanner}
-                title="Закрыть уведомление"
-              >
-                <Icon name="close" size={14} color="var(--color-secondary-label)" />
-              </Button>
-            </div>
-          {/if}
         </div>
       </div>
     {/if}
@@ -1201,27 +941,6 @@ $effect(() => {
     box-sizing: border-box;
   }
 
-  /* Unobtrusive Update Banner (Apple HIG Banners) */
-  .update-banner {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 16px;
-    background: var(--color-system-thin-material);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid var(--color-separator);
-    border-radius: var(--radius-lg);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-    margin-bottom: 12px;
-    animation: updateBannerSlideDown var(--motion-duration-normal, 300ms) var(--motion-curve-spring-gentle, cubic-bezier(0.16, 1, 0.3, 1)) both;
-    overflow: hidden;
-  }
-
-  .update-banner.closing {
-    animation: updateBannerCollapse 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
-
   .offline-banner {
     display: flex;
     align-items: center;
@@ -1307,139 +1026,6 @@ $effect(() => {
       opacity: 1;
       transform: translateY(0);
     }
-  }
-
-  @keyframes updateBannerSlideDown {
-    0% {
-      opacity: 0;
-      transform: translateY(-8px) scale(0.98);
-      max-height: 0;
-      margin-bottom: 0;
-      padding-top: 0;
-      padding-bottom: 0;
-    }
-    40% {
-      opacity: 0.6;
-      max-height: 70px;
-      padding-top: 10px;
-      padding-bottom: 10px;
-    }
-    100% {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-      max-height: 120px;
-      margin-bottom: 12px;
-    }
-  }
-
-  @keyframes updateBannerCollapse {
-    0% {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-      max-height: 100px;
-      margin-bottom: 12px;
-    }
-    100% {
-      opacity: 0;
-      transform: translateY(-6px) scale(0.97);
-      max-height: 0;
-      margin-bottom: 0;
-      padding-top: 0;
-      padding-bottom: 0;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .update-banner,
-    .update-banner.closing {
-      animation: none !important;
-      transform: none !important;
-    }
-  }
-
-  :global([data-reduce-motion='true']) .update-banner,
-  :global([data-reduce-motion='true']) .update-banner.closing {
-    animation: none !important;
-    transform: none !important;
-  }
-
-  .update-banner-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: rgba(0, 145, 255, 0.12);
-    flex-shrink: 0;
-  }
-
-  .update-banner-body {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .update-banner-headline {
-    font-size: var(--text-footnote);
-    font-weight: 600;
-    color: var(--color-label);
-  }
-
-  .update-banner-subtext {
-    font-size: var(--text-caption-1);
-    color: var(--color-secondary-label);
-  }
-
-  .update-banner-headline-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .update-banner-headline-error {
-    color: var(--color-system-red);
-  }
-
-  .update-banner-progress {
-    margin-top: 6px;
-    width: 100%;
-    max-width: 320px;
-  }
-
-  .update-banner-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-
-  .update-banner-icon.ready_to_restart {
-    background: rgba(48, 209, 88, 0.16);
-  }
-
-  .update-banner-icon.error {
-    background: rgba(255, 69, 58, 0.16);
-  }
-
-  .update-banner-icon.downloading {
-    background: rgba(0, 145, 255, 0.16);
-    animation: spinSlow 3s linear infinite;
-  }
-
-  @keyframes spinSlow {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  .update-banner-close {
-    flex-shrink: 0;
   }
 
   /* Header Area: Apple Large Title */
@@ -1724,8 +1310,8 @@ $effect(() => {
   }
 
   .nickname-block {
-    flex: 1 1 200px;
-    min-width: 150px;
+    flex: 0 1 200px;
+    min-width: 120px;
     max-width: 260px;
   }
 
@@ -1759,8 +1345,12 @@ $effect(() => {
     min-width: 0;
   }
 
+  /* The status text is the only part of the dock that may shrink, so the
+     Play button always stays inside the dock at the minimum window width. */
   .tech-block {
-    flex-shrink: 0;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
   }
 
   .tech-runtime-box {
@@ -1769,9 +1359,17 @@ $effect(() => {
     gap: 4px;
     height: 34px;
     white-space: nowrap;
+    min-width: 0;
+  }
+
+  .tech-runtime-box .tech-status-badge {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .tech-runtime-text {
+    flex-shrink: 0;
     font-size: var(--text-footnote);
     color: var(--color-secondary-label);
     font-family: var(--font-mono);

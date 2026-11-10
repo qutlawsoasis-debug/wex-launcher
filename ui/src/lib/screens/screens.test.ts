@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
 import PlayScreen from './PlayScreen.svelte';
+import UpdateCard from '../components/UpdateCard.svelte';
 import Mockup1 from './mockups/Mockup1.svelte';
 import Mockup2 from './mockups/Mockup2.svelte';
 import Mockup3 from './mockups/Mockup3.svelte';
@@ -457,17 +458,14 @@ describe('Wex Launcher Screens', () => {
   });
 
   it('renders unobtrusive update notification banner when update is available and allows dismissing it', async () => {
-    const comp = mount(PlayScreen, {
+    const comp = mount(UpdateCard, {
       target,
       props: {
-        selectedVersion: '1.21.1',
-        playerName: 'Steve',
-        initialNews: [],
-        initialUpdateInfo: {
-          update_available: true,
-          current_version: '1.0.0',
-          latest_version: '1.1.0',
-          notes: 'Исправления ошибок и оптимизация',
+        initialInfo: {
+        update_available: true,
+        current_version: '1.0.0',
+        latest_version: '1.1.0',
+        notes: 'Исправления ошибок и оптимизация',
         },
       },
     });
@@ -489,21 +487,18 @@ describe('Wex Launcher Screens', () => {
   });
 
   it('renders auto-update flow: "Обновить" button for signed release and transitions to "Перезапуск"', async () => {
-    const comp = mount(PlayScreen, {
+    const comp = mount(UpdateCard, {
       target,
       props: {
-        selectedVersion: '1.21.1',
-        playerName: 'Steve',
-        initialNews: [],
-        initialUpdateInfo: {
-          update_available: true,
-          current_version: '0.1.0',
-          latest_version: '0.2.0',
-          notes: 'Релиз с новыми возможностями',
-          download_url: 'https://example.com/wex-update.exe',
-          signature: 'untrusted comment: signature\nRWSomeBase64SignatureString1234567890==',
-          is_signed: true,
-          can_auto_update: true,
+        initialInfo: {
+        update_available: true,
+        current_version: '0.1.0',
+        latest_version: '0.2.0',
+        notes: 'Релиз с новыми возможностями',
+        download_url: 'https://example.com/wex-update.exe',
+        signature: 'untrusted comment: signature\nRWSomeBase64SignatureString1234567890==',
+        is_signed: true,
+        can_auto_update: true,
         },
       },
     });
@@ -534,21 +529,18 @@ describe('Wex Launcher Screens', () => {
   });
 
   it('renders unsigned release mode: only notify with download link button', async () => {
-    const comp = mount(PlayScreen, {
+    const comp = mount(UpdateCard, {
       target,
       props: {
-        selectedVersion: '1.21.1',
-        playerName: 'Steve',
-        initialNews: [],
-        initialUpdateInfo: {
-          update_available: true,
-          current_version: '0.1.0',
-          latest_version: '0.2.0',
-          notes: 'Неподписанный билд',
-          download_url: 'https://example.com/wex-unsigned.exe',
-          signature: null,
-          is_signed: false,
-          can_auto_update: false,
+        initialInfo: {
+        update_available: true,
+        current_version: '0.1.0',
+        latest_version: '0.2.0',
+        notes: 'Неподписанный билд',
+        download_url: 'https://example.com/wex-unsigned.exe',
+        signature: null,
+        is_signed: false,
+        can_auto_update: false,
         },
       },
     });
@@ -565,21 +557,18 @@ describe('Wex Launcher Screens', () => {
   });
 
   it('renders rollback error state when update installation fails and allows retry', async () => {
-    const comp = mount(PlayScreen, {
+    const comp = mount(UpdateCard, {
       target,
       props: {
-        selectedVersion: '1.21.1',
-        playerName: 'Steve',
-        initialNews: [],
-        initialUpdateInfo: {
-          update_available: true,
-          current_version: '0.1.0',
-          latest_version: '0.2.0',
-          notes: 'Тест ошибки',
-          download_url: 'https://example.com/fail-download.exe',
-          signature: 'untrusted comment: signature\nRWSomeBase64SignatureString1234567890==',
-          is_signed: true,
-          can_auto_update: true,
+        initialInfo: {
+        update_available: true,
+        current_version: '0.1.0',
+        latest_version: '0.2.0',
+        notes: 'Тест ошибки',
+        download_url: 'https://example.com/fail-download.exe',
+        signature: 'untrusted comment: signature\nRWSomeBase64SignatureString1234567890==',
+        is_signed: true,
+        can_auto_update: true,
         },
       },
     });

@@ -281,10 +281,13 @@ pub fn build_installer_plan(
             installer_path: installer_path.to_path_buf(),
         })
     } else {
-        // NSIS .exe installer
+        // NSIS .exe installer (Tauri template flags):
+        //   /S      — fully silent, no installer window
+        //   /R      — relaunch Wex when the install finishes
+        //   /UPDATE — keep the existing install settings
         Ok(InstallerExecutionPlan {
             executable: installer_path.to_path_buf(),
-            args: vec!["/UPDATE".to_string(), "/P".to_string()],
+            args: vec!["/S".to_string(), "/R".to_string(), "/UPDATE".to_string()],
             target_version: target_version.to_string(),
             installer_path: installer_path.to_path_buf(),
         })
@@ -933,7 +936,7 @@ mod tests {
         // 1. Plan creation
         let plan = build_installer_plan(&exe_path, "1.2.0").expect("Plan must be built");
         assert_eq!(plan.executable, exe_path);
-        assert_eq!(plan.args, vec!["/UPDATE", "/P"]);
+        assert_eq!(plan.args, vec!["/S", "/R", "/UPDATE"]);
         assert_eq!(plan.target_version, "1.2.0");
 
         // 2. Execution through mock handler to verify command formation and version replacement
@@ -947,7 +950,8 @@ mod tests {
         let (executed_exe, executed_args) = executed_cmd.unwrap();
         assert_eq!(executed_exe, exe_path);
         assert!(executed_args.contains(&"/UPDATE".to_string()));
-        assert!(executed_args.contains(&"/P".to_string()));
+        assert!(executed_args.contains(&"/S".to_string()));
+        assert!(executed_args.contains(&"/R".to_string()));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

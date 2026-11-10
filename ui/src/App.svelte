@@ -11,6 +11,7 @@
   import { formatError } from './lib/design/errors';
   import { i18n, t } from './lib/i18n';
   import Sidebar, { type SidebarItem } from './lib/components/Sidebar.svelte';
+  import UpdateCard from './lib/components/UpdateCard.svelte';
   import Toolbar from './lib/components/Toolbar.svelte';
   import ProfileBadge from './lib/components/ProfileBadge.svelte';
   import Toast, { type ToastMessage } from './lib/components/Toast.svelte';
@@ -941,6 +942,7 @@
   >
     {#snippet footer()}
       <div class="sidebar-footer-controls">
+        <UpdateCard />
         {#if MusicDiskWidget}
           <MusicDiskWidget {isGameRunning} />
         {/if}
