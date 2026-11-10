@@ -91,8 +91,32 @@ pub fn get_bundled_release_notes() -> Vec<ReleaseNoteVersion> {
             version: format!("v{}", env!("CARGO_PKG_VERSION")),
             internal_version: env!("CARGO_PKG_VERSION").to_string(),
             date_text: "10 ноября 2026".to_string(),
-            short_title: "Исправления после первой версии".to_string(),
+            short_title: "Тихое обновление и правки интерфейса".to_string(),
             is_current: true,
+            items: vec![
+                ReleaseNoteItem::parse(
+                    "[Улучшено] Обновление ставится без окна установщика, лаунчер открывается сам",
+                ),
+                ReleaseNoteItem::parse(
+                    "[Улучшено] Сообщение об обновлении переехало в боковую панель",
+                ),
+                ReleaseNoteItem::parse(
+                    "[Исправлено] Синяя рамка не остаётся на кнопке после клика мышью",
+                ),
+                ReleaseNoteItem::parse(
+                    "[Исправлено] Кнопка «Играть» не выходит за край панели в маленьком окне",
+                ),
+                ReleaseNoteItem::parse(
+                    "[Исправлено] Текст на карточках читается на любом фоне",
+                ),
+            ],
+        },
+        ReleaseNoteVersion {
+            version: "v0.9.1".to_string(),
+            internal_version: "0.9.1".to_string(),
+            date_text: "10 ноября 2026".to_string(),
+            short_title: "Исправления после первой версии".to_string(),
+            is_current: false,
             items: vec![
                 ReleaseNoteItem::parse(
                     "[Исправлено] Заставка больше не показывает «Сетевая ошибка» при запуске",

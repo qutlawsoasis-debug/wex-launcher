@@ -26,7 +26,7 @@
   }
 
   let {
-    initialVersion = 'v0.9.1',
+    initialVersion = 'v0.9.2',
     autoStart = true,
     simulateNetworkError = false,
     oncomplete,

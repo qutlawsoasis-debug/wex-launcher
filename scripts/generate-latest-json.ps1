@@ -19,7 +19,7 @@ if (-not $Version) {
 }
 
 if (-not $Version) {
-    $Version = "0.9.1"
+    $Version = "0.9.2"
 }
 
 Write-Host "Generating latest.json for version $Version..."
