@@ -1241,6 +1241,21 @@ mod tests {
     fn test_installer_hooks_nsis_script_safety_and_marker_verification() {
         let nsh_content = include_str!("../../installer-hooks.nsh");
 
+        // URI handlers must point at the installed binary (wex-app.exe via the
+        // Tauri template define), never at a non-existent Wex.exe.
+        assert!(
+            !nsh_content.contains(r#"$INSTDIR\Wex.exe"#),
+            "wex:// and aura:// must not point at a hard-coded Wex.exe"
+        );
+        for scheme in ["wex", "aura"] {
+            assert!(
+                nsh_content.contains(&format!(
+                    r#"WriteRegStr HKCU "Software\Classes\{scheme}\shell\open\command" "" '"$INSTDIR\${{MAINBINARYNAME}}.exe" "%1"'"#
+                )),
+                "{scheme}:// must open $INSTDIR\\${{MAINBINARYNAME}}.exe"
+            );
+        }
+
         // Must display actual target directory ($2) in MessageBox prompt rather than hardcoded %APPDATA%\Wex
         assert!(
             nsh_content.contains(r#"MessageBox MB_YESNO|MB_DEFBUTTON2|MB_ICONQUESTION "Удалить пользовательские данные и настройки Wex ($2)?" IDNO skip_data_cleanup"#),

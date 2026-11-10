@@ -3,20 +3,21 @@
 ; - Prompt user on uninstall whether to delete %APPDATA%\Wex (default: NO)
 ; - Silent uninstall (/S) preserves user data by default
 ; - WEX_UNINSTALL_DELETE_DATA=1 environment variable enables data deletion in automated testing
-; - URI scheme registration: wex:// and aura://
+; - URI scheme registration: wex:// and aura:// pointing at the real binary
+;   (${MAINBINARYNAME}.exe, i.e. wex-app.exe; there is no Wex.exe)
 
 !macro NSIS_HOOK_POSTINSTALL
   ; Register wex:// URI scheme protocol handler
   WriteRegStr HKCU "Software\Classes\wex" "" "URL:Wex Protocol"
   WriteRegStr HKCU "Software\Classes\wex" "URL Protocol" ""
-  WriteRegStr HKCU "Software\Classes\wex\DefaultIcon" "" "$INSTDIR\Wex.exe,0"
-  WriteRegStr HKCU "Software\Classes\wex\shell\open\command" "" '"$INSTDIR\Wex.exe" "%1"'
+  WriteRegStr HKCU "Software\Classes\wex\DefaultIcon" "" "$INSTDIR\${MAINBINARYNAME}.exe,0"
+  WriteRegStr HKCU "Software\Classes\wex\shell\open\command" "" '"$INSTDIR\${MAINBINARYNAME}.exe" "%1"'
 
   ; Register legacy aura:// URI scheme protocol handler
   WriteRegStr HKCU "Software\Classes\aura" "" "URL:Wex Protocol"
   WriteRegStr HKCU "Software\Classes\aura" "URL Protocol" ""
-  WriteRegStr HKCU "Software\Classes\aura\DefaultIcon" "" "$INSTDIR\Wex.exe,0"
-  WriteRegStr HKCU "Software\Classes\aura\shell\open\command" "" '"$INSTDIR\Wex.exe" "%1"'
+  WriteRegStr HKCU "Software\Classes\aura\DefaultIcon" "" "$INSTDIR\${MAINBINARYNAME}.exe,0"
+  WriteRegStr HKCU "Software\Classes\aura\shell\open\command" "" '"$INSTDIR\${MAINBINARYNAME}.exe" "%1"'
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
