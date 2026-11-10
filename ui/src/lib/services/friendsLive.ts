@@ -17,6 +17,9 @@
  * - Anti-spam cooldown: at most one notification per friend in 5 minutes (300,000ms).
  */
 
+import type { UserPresenceDto } from '../ipc/generated/models';
+import type { LobbyRoom } from '../screens/LobbyScreen.svelte';
+
 export interface FriendItem {
   id: string;
   nick: string;
@@ -130,7 +133,7 @@ export function parseWexJoinUri(uri: string): string | null {
 }
 
 export type SyncFn = () => Promise<SyncResponse>;
-export type JoinFn = (code: string) => Promise<void>;
+export type JoinFn = (code: string) => Promise<void | LobbyRoom>;
 export type WindowsNotifyFn = (notif: FriendsLiveNotification) => Promise<void> | void;
 
 export class FriendsLiveService {
@@ -155,7 +158,18 @@ export class FriendsLiveService {
   private dataListeners: Set<(data: SyncResponse) => void> = new Set();
   private toastListeners: Set<(n: FriendsLiveNotification) => void> = new Set();
   private windowsNotificationListeners: Set<(n: FriendsLiveNotification) => void> = new Set();
-  private joinListeners: Set<(code: string) => void> = new Set();
+  private joinListeners: Set<(code: string, room?: LobbyRoom) => void> = new Set();
+  private errorListeners = new Set<(error: unknown, context: 'friends' | 'lobby') => void>();
+  private playerName = 'Player';
+  private gameVersion = '1.21.1';
+  private runningGameVersion: string | null = null;
+  private lobbyRoom: LobbyRoom | null = null;
+  private presenceQueue: Promise<void> = Promise.resolve();
+  private lastPublishedPresence = '';
+  public lastPresenceError: unknown = null;
+  private notificationActionListener: { unregister: () => void | Promise<void> } | null = null;
+  private notificationActionReady: Promise<void> | null = null;
+  private lifecycle = 0;
 
   private customSyncFn?: SyncFn;
   private customJoinFn?: JoinFn;
@@ -239,10 +253,12 @@ export class FriendsLiveService {
     if (typeof window !== 'undefined') {
       window.addEventListener('focus', this.onFocus);
       window.addEventListener('blur', this.onBlur);
+      window.addEventListener('beforeunload', this.onBeforeUnload);
     }
 
     // Setup action listener for tauri-plugin-notification
-    this.setupTauriNotificationActionListener();
+    this.notificationActionReady = this.setupTauriNotificationActionListener(++this.lifecycle);
+    void this.publishPresence();
 
     void this.pollNow();
     this.scheduleNext();
@@ -252,7 +268,12 @@ export class FriendsLiveService {
    * Completely stops polling and cleans up timers and listeners.
    */
   public stop(): void {
+    if (this.isStarted) void this.publishPresence('Offline');
     this.isStarted = false;
+    ++this.lifecycle;
+    const actionListener = this.notificationActionListener;
+    this.notificationActionListener = null;
+    if (actionListener) void Promise.resolve(actionListener.unregister()).catch(error => this.reportError(error));
     this.isPaused = false;
     this.clearTimer();
 
@@ -262,6 +283,7 @@ export class FriendsLiveService {
     if (typeof window !== 'undefined') {
       window.removeEventListener('focus', this.onFocus);
       window.removeEventListener('blur', this.onBlur);
+      window.removeEventListener('beforeunload', this.onBeforeUnload);
     }
   }
 
@@ -321,6 +343,8 @@ export class FriendsLiveService {
   public setGameRunning(running: boolean): void {
     if (this.isGameRunning === running) return;
     this.isGameRunning = running;
+    this.runningGameVersion = running ? this.gameVersion : null;
+    if (this.isStarted) void this.publishPresence();
     if (this.isStarted && !this.isPaused) {
       this.reschedule();
     }
@@ -333,6 +357,7 @@ export class FriendsLiveService {
     if (this.isPaused && this.isStarted) return null;
 
     try {
+      if (this.isStarted) void this.publishPresence();
       const data = await this.executeSync();
       this.processSyncResult(data);
       return data;
@@ -345,7 +370,7 @@ export class FriendsLiveService {
    * Handles user clicking "Присоединиться" or executing wex://join.
    */
   public async handleJoin(code: string): Promise<void> {
-    const cleanCode = code.trim().replace(/^#/, '');
+    const cleanCode = code.trim().replace(/^#/, '').toUpperCase();
     if (!cleanCode) return;
 
     // Raise and focus window if minimized or in tray
@@ -359,21 +384,60 @@ export class FriendsLiveService {
       } catch {}
     }
 
-    for (const listener of this.joinListeners) {
-      listener(cleanCode);
-    }
-
     if (this.customJoinFn) {
-      await this.customJoinFn(cleanCode);
+      const room = await this.customJoinFn(cleanCode);
+      for (const listener of this.joinListeners) listener(cleanCode, room || undefined);
       return;
     }
 
     if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const room = await invoke<LobbyRoom>('join_lobby_room', { code: cleanCode, playerName: this.playerName });
+      this.lobbyRoom = room;
+      if (this.isStarted) void this.publishPresence();
+      for (const listener of this.joinListeners) listener(cleanCode, room);
+    }
+  }
+
+  public setSessionContext(context: { playerName: string; gameVersion: string; lobby: LobbyRoom | null }): void {
+    const changed = this.playerName !== context.playerName || this.gameVersion !== context.gameVersion || this.lobbyRoom !== context.lobby;
+    this.playerName = context.playerName;
+    this.gameVersion = context.gameVersion;
+    this.lobbyRoom = context.lobby;
+    if (changed && this.isStarted) void this.publishPresence();
+  }
+
+  public onError(listener: (error: unknown, context: 'friends' | 'lobby') => void): () => void {
+    this.errorListeners.add(listener);
+    return () => this.errorListeners.delete(listener);
+  }
+
+  private reportError(error: unknown, context: 'friends' | 'lobby' = 'friends'): void {
+    for (const listener of this.errorListeners) listener(error, context);
+  }
+
+  private publishPresence(status?: 'Offline'): Promise<void> {
+    const presence: UserPresenceDto = {
+      status: status || (this.isGameRunning ? 'Playing' : this.lobbyRoom ? 'InLobby' : 'Online'),
+      game_version: !status ? this.runningGameVersion : null,
+      world_name: !status ? this.lobbyRoom?.world_name || null : null,
+      lobby_code: !status ? this.lobbyRoom?.code || null : null,
+    };
+    const key = JSON.stringify([this.playerName, presence]);
+    this.presenceQueue = this.presenceQueue.then(async () => {
+      if (key === this.lastPublishedPresence) return;
+      if (typeof window === 'undefined' || !(window as any).__TAURI_INTERNALS__) return;
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('join_lobby_room', { code: cleanCode, playerName: 'Player' });
-      } catch {}
-    }
+        await invoke('social_set_presence', { presence });
+        this.lastPublishedPresence = key;
+        this.lastPresenceError = null;
+      } catch (error) {
+        if (!this.lastPresenceError) this.reportError(error);
+        this.lastPresenceError = error;
+      }
+    });
+    return this.presenceQueue;
   }
 
   public onData(listener: (data: SyncResponse) => void): () => void {
@@ -397,7 +461,7 @@ export class FriendsLiveService {
     return () => this.windowsNotificationListeners.delete(listener);
   }
 
-  public onJoin(listener: (code: string) => void): () => void {
+  public onJoin(listener: (code: string, room?: LobbyRoom) => void): () => void {
     this.joinListeners.add(listener);
     return () => this.joinListeners.delete(listener);
   }
@@ -418,6 +482,10 @@ export class FriendsLiveService {
 
   private onBlur = () => {
     this.setFocused(false);
+  };
+
+  private onBeforeUnload = () => {
+    this.stop();
   };
 
   private clearTimer(): void {
@@ -514,7 +582,7 @@ export class FriendsLiveService {
               action: {
                 label: 'Присоединиться',
                 onClick: () => {
-                  void this.handleJoin(invite.lobby_code);
+                  void this.handleJoin(invite.lobby_code).catch(error => this.reportError(error, 'lobby'));
                 },
               },
             };
@@ -583,10 +651,8 @@ export class FriendsLiveService {
     // 1. Deliver through tauri-plugin-notification
     if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
       try {
-        const pluginPkg = '@tauri-apps/plugin-notification';
-        const { isPermissionGranted, requestPermission, sendNotification } = await import(
-          /* @vite-ignore */ pluginPkg
-        );
+        await this.notificationActionReady;
+        const { isPermissionGranted, requestPermission, sendNotification } = await import('@tauri-apps/plugin-notification');
         let hasPerm = await isPermissionGranted();
         if (!hasPerm) {
           const perm = await requestPermission();
@@ -613,7 +679,7 @@ export class FriendsLiveService {
             body: notif.description,
           });
           winNotif.onclick = () => {
-            void this.handleNotificationClick(notif);
+            void this.handleNotificationClick(notif).catch(error => this.reportError(error, 'lobby'));
           };
         } else if (Notification.permission !== 'denied') {
           Notification.requestPermission().then((perm) => {
@@ -622,7 +688,7 @@ export class FriendsLiveService {
                 body: notif.description,
               });
               winNotif.onclick = () => {
-                void this.handleNotificationClick(notif);
+                void this.handleNotificationClick(notif).catch(error => this.reportError(error, 'lobby'));
               };
             }
           });
@@ -653,19 +719,20 @@ export class FriendsLiveService {
     }
   }
 
-  private setupTauriNotificationActionListener(): void {
+  private async setupTauriNotificationActionListener(lifecycle: number): Promise<void> {
     if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
-      const pluginPkg = '@tauri-apps/plugin-notification';
-      import(/* @vite-ignore */ pluginPkg)
-        .then(({ onAction }) => {
-          onAction((action: any) => {
+      try {
+        const { onAction } = await import('@tauri-apps/plugin-notification');
+        const listener = await onAction((action) => {
+            if (!this.isStarted || lifecycle !== this.lifecycle) return;
             const lobbyCode = action.notification?.extra?.lobbyCode;
-            if (lobbyCode) {
-              void this.handleJoin(lobbyCode);
+            if (typeof lobbyCode === 'string') {
+              void this.handleJoin(lobbyCode).catch(error => this.reportError(error, 'lobby'));
             }
-          });
-        })
-        .catch(() => {});
+        });
+        if (!this.isStarted || lifecycle !== this.lifecycle) await listener.unregister();
+        else this.notificationActionListener = listener;
+      } catch (error) { this.reportError(error); }
     }
   }
 }

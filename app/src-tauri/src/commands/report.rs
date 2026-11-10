@@ -727,6 +727,7 @@ pub fn save_report_zip_with_opener<O: PathOpener>(
     if let Some(op) = opener {
         let _ = op.open_path(&zip_path);
     }
+    reveal_saved_report(&zip_path);
 
     Ok(SaveReportResultDto {
         success: true,
@@ -734,6 +735,18 @@ pub fn save_report_zip_with_opener<O: PathOpener>(
         file_name: zip_name,
         file_size_bytes,
     })
+}
+
+#[cfg(test)]
+thread_local! {
+    static REVEALED_REPORT: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+fn reveal_saved_report(zip_path: &std::path::Path) {
+    #[cfg(test)]
+    REVEALED_REPORT.with(|path| *path.borrow_mut() = Some(zip_path.to_path_buf()));
+    #[cfg(not(test))]
+    let _ = zip_path;
 }
 
 /// Generates a ZIP archive containing all report files. In tests, does NOT spawn explorer.
@@ -980,6 +993,7 @@ mod tests {
         assert!(res.success);
         let zip_path = PathBuf::from(&res.zip_path);
         assert!(zip_path.is_file());
+        REVEALED_REPORT.with(|path| assert_eq!(path.borrow().as_ref(), Some(&zip_path)));
         assert!(res.file_size_bytes > 0);
 
         // Read and verify zip contents

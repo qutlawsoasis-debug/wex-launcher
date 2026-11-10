@@ -53,10 +53,10 @@
 </script>
 
 <script lang="ts">
-  import { onMount } from 'svelte';
   import List from '../components/List.svelte';
   import Row from '../components/Row.svelte';
   import Button from '../components/Button.svelte';
+  import ProgressBar from '../components/ProgressBar.svelte';
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Icon from '../components/icons/Icon.svelte';
   import OfflineState from '../components/OfflineState.svelte';
@@ -69,11 +69,15 @@
   interface Props {
     playerName?: string;
     initialRoom?: LobbyRoom | null;
+    version?: string;
+    onroomchange?: (room: LobbyRoom | null) => void;
   }
 
   let {
     playerName = 'Player',
     initialRoom = null,
+    version = '1.21.1',
+    onroomchange,
   }: Props = $props();
 
   let effectivePlayerName = $derived(playerName);
@@ -88,9 +92,8 @@
   // Step-by-step guest connection pipeline state
   let joinStep = $state<JoinStep>('idle');
   let joinStepMessage = $state('');
-  let modsToDownloadCount = $state(0);
-  let modsDownloadedCount = $state(0);
-  let joinProgress = $state(0);
+  let joinProgress = $state<number | null>(null);
+  let pendingModSync = $state(false);
 
   function getDownloadingModsLabel(count: number, current: number): string {
     if (count <= 0) return t('lobby.step_download_mods_many', { count: 0 });
@@ -112,73 +115,16 @@
   let invitedFriendIds = $state<Set<string>>(new Set());
   let isLoadingFriends = $state(false);
 
-  // Local worlds available for hosting
-  const localWorlds = [
-    { id: 'world-1', name: t('lobby.world_taiga'), version: '1.21.1', size: '142 MB', lastPlayed: t('common.today') },
-    { id: 'world-2', name: t('lobby.world_creative'), version: '1.21.1', size: '86 MB', lastPlayed: t('common.yesterday') },
-    { id: 'world-3', name: t('lobby.world_redstone'), version: '1.20.1', size: '45 MB', lastPlayed: t('common.days_ago', { count: 3 }) },
-  ];
+  let selectedWorldId = $state('');
 
-  let selectedWorldId = $state('world-1');
 
   // Active room state (null when not in room)
   let activeRoom = $state<LobbyRoom | null>(null);
   $effect(() => {
     activeRoom = initialRoom ?? null;
   });
+  $effect(() => { onroomchange?.(activeRoom); });
 
-  function checkHash() {
-    if (typeof window !== 'undefined' && window.location.hash) {
-      const p = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-      const step = p.get('step');
-      if (step === 'downloading' || step === 'downloading_mods') {
-        isConnecting = true;
-        joinStep = 'downloading_mods';
-        modsToDownloadCount = 3;
-        modsDownloadedCount = 1;
-        joinProgress = 50;
-        joinStepMessage = t('lobby.step_msg_downloading_mod', { current: modsDownloadedCount, total: modsToDownloadCount, mod: 'sodium-extra-0.5.4.jar', downloaded: '1.2', size: '2.4' });
-      } else if (step === 'checking' || step === 'checking_mods') {
-        isConnecting = true;
-        joinStep = 'checking_mods';
-        joinProgress = 20;
-        joinStepMessage = t('lobby.step_msg_checking_manifest');
-      } else if (step === 'connecting') {
-        isConnecting = true;
-        joinStep = 'connecting';
-        joinProgress = 90;
-        joinStepMessage = t('lobby.step_msg_connecting_tunnel');
-      } else if (step === 'reset' || step === 'idle') {
-        isConnecting = false;
-        joinStep = 'idle';
-        modsToDownloadCount = 0;
-        modsDownloadedCount = 0;
-        joinProgress = 0;
-        joinStepMessage = '';
-      }
-    }
-  }
-
-  onMount(() => {
-    checkHash();
-    if (typeof window !== 'undefined') {
-      window.addEventListener('hashchange', checkHash);
-      (window as any).__setLobbyJoinState = (step: JoinStep, progress = 50, count = 3, downloaded = 1, msg = '') => {
-        isConnecting = true;
-        joinStep = step;
-        joinProgress = progress;
-        modsToDownloadCount = count;
-        modsDownloadedCount = downloaded;
-        joinStepMessage = msg || t('lobby.step_msg_downloading_mod', { current: downloaded, total: count, mod: 'sodium-extra-0.5.4.jar', downloaded: '1.2', size: '2.4' });
-      };
-    }
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('hashchange', checkHash);
-        delete (window as any).__setLobbyJoinState;
-      }
-    };
-  });
 
   // Cloud open rooms state
   let cloudRooms = $state<OpenRoom[]>([]);
@@ -208,6 +154,18 @@
   }
 
   let lanWorlds = $state<LanWorld[]>([]);
+  // Only discovered worlds can be published; the IPC DTO supplies motd.
+  const localWorlds = $derived(lanWorlds.map(world => ({
+    id: world.address, name: world.motd, port: world.port,
+    address: world.address,
+  })));
+  $effect(() => {
+    if (localWorlds.length > 0 && !selectedWorldId) {
+      selectedWorldId = localWorlds[0].id;
+    } else if (localWorlds.length === 0 && selectedWorldId) {
+      selectedWorldId = '';
+    }
+  });
   let isLoadingLan = $state(false);
   let isConnectingLan = $state(false);
   let isPublishingLan = $state(false);
@@ -283,6 +241,7 @@
       const { invoke } = await import('@tauri-apps/api/core');
       const list = await invoke<LanWorld[]>('list_lan_worlds');
       lanWorlds = list || [];
+      if (!selectedWorldId && lanWorlds[0]) selectedWorldId = lanWorlds[0].address;
     } catch {
       lanWorlds = [];
     } finally {
@@ -296,7 +255,7 @@
     lanConnectMessage = '';
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const msg = await invoke<string>('connect_lan_world', { address });
+      const msg = await invoke<string>('connect_lan_world', { address, version, nickname: effectivePlayerName });
       lanConnectMessage = msg || t('lobby.lan_connecting');
     } catch (e: any) {
       errorMessage = typeof e === 'string' ? e : e?.message || t('lobby.lan_connect_failed');
@@ -346,7 +305,9 @@
         try {
           const { invoke } = await import('@tauri-apps/api/core');
           await invoke('net_lan_start_discovery');
-        } catch {}
+        } catch (e: unknown) {
+          errorMessage = typeof e === 'string' ? e : t('lobby.lan_discover_failed');
+        }
       };
 
       const stopLan = async () => {
@@ -429,9 +390,9 @@
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const room = await invoke<LobbyRoom>('create_lobby_room', {
-        worldName,
-        playerName: effectivePlayerName,
+      if (!world) throw new Error(t('lobby.open_world_lan_hint'));
+      const room = await invoke<LobbyRoom>('publish_lan_world', {
+        motd: worldName, port: world.port, playerName: effectivePlayerName, version,
       });
       activeRoom = room;
       if (room.is_host) {
@@ -446,72 +407,58 @@
     }
   }
 
-  export async function handleJoinRoom() {
-    const codeToJoin = guestCode.trim();
-    if (!codeToJoin) {
-      errorMessage = t('lobby.enter_4digit_code');
-      return;
-    }
+  export async function handleJoinRoom(autoFix: boolean | MouseEvent = false) {
+    const codeToJoin = guestCode.trim().replace(/^#/, '').toUpperCase();
+    if (!codeToJoin || isConnecting) return;
     isConnecting = true;
     errorMessage = '';
     roomClosedMessage = '';
-    joinStep = 'checking_mods';
-    joinStepMessage = t('lobby.step_check_mods');
-    joinProgress = 25;
-
+    joinStep = 'idle';
+    joinProgress = null;
+    joinStepMessage = t('lobby.waiting_room_response');
+    const unlisten: Array<() => void> = [];
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-
-      // Step 1: Join room and query manifest
-      const room = await invoke<LobbyRoom>('join_lobby_room', {
-        code: codeToJoin.toUpperCase(),
-        playerName: effectivePlayerName,
+      if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+        const { listen } = await import('@tauri-apps/api/event');
+        unlisten.push(await listen<{ code: string; stage: JoinStep; message: string }>('lobby-join-progress', ({ payload }) => {
+          if (payload.code !== codeToJoin) return;
+          joinStep = payload.stage;
+          joinStepMessage = payload.message;
+          joinProgress = null;
+        }));
+        unlisten.push(await listen<{ stage: string; percentage: number; detail: string }>('install-progress', ({ payload }) => {
+          if (joinStep !== 'downloading_mods') return;
+          joinProgress = Number.isFinite(payload.percentage) ? payload.percentage : null;
+          joinStepMessage = payload.detail || payload.stage;
+        }));
+        unlisten.push(await listen<{ state: string; message: string }>('launch-status', ({ payload }) => {
+          if (payload.state === 'preparing' || payload.state === 'launching' || payload.state === 'installing') {
+            joinStep = 'connecting'; joinStepMessage = payload.message; joinProgress = null;
+          }
+        }));
+      }
+      const room = await invoke<LobbyRoom>('prepare_lobby_join', {
+        code: codeToJoin, playerName: effectivePlayerName, version, repair: autoFix === true,
       });
-
-      // Step 2: Compare mods and download if needed
-      joinStep = 'downloading_mods';
-      const mismatchCount = room.mod_mismatch_count || 0;
-      modsToDownloadCount = mismatchCount;
-      modsDownloadedCount = 0;
-      joinProgress = 50;
-
-      if (mismatchCount > 0) {
-        joinStepMessage = t('lobby.step_download_mods', { count: mismatchCount });
-        for (let i = 1; i <= mismatchCount; i++) {
-          await new Promise((r) => setTimeout(r, 60));
-          modsDownloadedCount = i;
-          joinProgress = 50 + Math.round((i / mismatchCount) * 35);
-        }
-      } else {
-        joinStepMessage = t('lobby.mods_identical_desc');
-        joinProgress = 85;
-        await new Promise((r) => setTimeout(r, 50));
+      if (!room || room.mod_mismatch_count > 0) {
+        pendingModSync = Boolean(room && room.mod_mismatch_count > 0);
+        throw new Error(t('lobby.mods_differ_hint'));
       }
-
-      // Step 3: Connecting to host tunnel / game
-      joinStep = 'connecting';
-      joinProgress = 95;
-      joinStepMessage = room.tunnel_address
-        ? t('lobby.tunnel_active', { address: room.tunnel_address })
-        : t('lobby.step_connecting');
-      await new Promise((r) => setTimeout(r, 50));
-
-      if (!room.tunnel_active && room.tunnel_error) {
-        joinStep = 'error';
-        errorMessage = room.tunnel_error;
-        activeRoom = room;
-        return;
+      if (!room.tunnel_active || !room.tunnel_address) {
+        throw new Error(room.tunnel_error || t('lobby.host_not_opened'));
       }
-
-      joinProgress = 100;
-      joinStep = 'idle';
+      await invoke('launch_game', { version, nickname: effectivePlayerName, server: room.tunnel_address });
       activeRoom = room;
-    } catch (e: any) {
-      const msg = typeof e === 'string' ? e : e?.message || t('lobby.join_room_failed');
-      errorMessage = msg;
+      pendingModSync = false;
+      joinStep = 'idle';
+    } catch (e: unknown) {
+      errorMessage = typeof e === 'string' ? e : e instanceof Error ? e.message : t('lobby.join_room_failed');
+      pendingModSync = pendingModSync || errorMessage.includes(t('lobby.mods_differ_hint'));
       joinStep = 'error';
       activeRoom = null;
     } finally {
+      for (const stop of unlisten) stop();
       isConnecting = false;
     }
   }
@@ -567,11 +514,9 @@
     }
   }
 
-  export function handleAutoFixMods() {
-    if (activeRoom) {
-      activeRoom.mod_mismatch_count = 0;
-      activeRoom.players.forEach((p) => (p.mods_synced = true));
-    }
+  export async function handleAutoFixMods() {
+    if (activeRoom) guestCode = activeRoom.code;
+    await handleJoinRoom(true);
   }
 </script>
 
@@ -623,6 +568,9 @@
           <ErrorState
             error={cloudError}
             domain="lobby"
+            title={t('lobby.cloud_error_title')}
+            description={t('lobby.cloud_error_desc')}
+            actionText={t('lobby.cloud_error_retry')}
             onaction={fetchCloudRooms}
           />
         </div>
@@ -839,19 +787,19 @@
           <div class="modsync-text">
             <span class="modsync-title">
               {activeRoom.mod_mismatch_count === 0
-                ? t('lobby.mods_match', { matched: activeRoom.total_mods, total: activeRoom.total_mods })
+                ? ((activeRoom.players || []).find(p => p.name === effectivePlayerName)?.mods_synced ? t('lobby.your_mods_verified') : t('lobby.mods_check_unconfirmed'))
                 : t('lobby.mods_mismatch', { count: activeRoom.mod_mismatch_count })}
             </span>
             <span class="modsync-desc">
               {activeRoom.mod_mismatch_count === 0
-                ? t('lobby.mods_identical_desc')
+                ? t('lobby.mods_check_status_in_list')
                 : t('lobby.mods_different_desc')}
             </span>
           </div>
         </div>
 
         {#if activeRoom.mod_mismatch_count > 0}
-          <Button variant="primary" size="small" onclick={handleAutoFixMods}>
+          <Button variant="secondary" size="small" onclick={handleAutoFixMods}>
             {t('lobby.fix_and_join')}
           </Button>
         {/if}
@@ -859,8 +807,8 @@
 
       <!-- Players in Room List -->
       <div class="players-list-wrap">
-        <List header={t('lobby.players_in_room', { count: activeRoom.players.length })}>
-          {#each activeRoom.players as p (p.name)}
+        <List header={t('lobby.players_in_room', { count: (activeRoom.players || []).length })}>
+          {#each (activeRoom.players || []) as p (p.name)}
             <Row
               title={p.name}
               subtitle={p.is_host ? t('lobby.player_role_host') : t('lobby.player_role_guest')}
@@ -913,84 +861,14 @@
         </div>
 
         <!-- Step-by-Step Join Status Card -->
-        {#if isConnecting || (joinStep !== 'idle' && joinStep !== 'error')}
-          <div class="join-steps-card" data-testid="join-steps-card">
-            <div class="join-steps-header">
-              <span class="join-steps-title">{t('lobby.connecting')}</span>
-              <span class="join-steps-pct">{joinProgress}%</span>
-            </div>
-
-            <div class="join-progress-bar-track">
-              <div class="join-progress-bar-fill" style="width: {joinProgress}%;"></div>
-            </div>
-
-            <div class="join-steps-list">
-              <!-- Step 1: Сверяем моды -->
-              <div
-                class="join-step-item"
-                class:done={joinStep === 'downloading_mods' || joinStep === 'connecting'}
-                class:active={joinStep === 'checking_mods'}
-                data-testid="step-checking-mods"
-              >
-                <div class="step-icon">
-                  {#if joinStep === 'downloading_mods' || joinStep === 'connecting'}
-                    <Icon name="check" size={13} color="var(--color-system-green)" />
-                  {:else if joinStep === 'checking_mods'}
-                    <div class="step-spinner"></div>
-                  {:else}
-                    <span class="step-dot"></span>
-                  {/if}
-                </div>
-                <div class="step-text-wrap">
-                  <span class="step-label">{t('lobby.step_check_mods')}</span>
-                </div>
-              </div>
-
-              <!-- Step 2: Докачиваем N модов -->
-              <div
-                class="join-step-item"
-                class:done={joinStep === 'connecting'}
-                class:active={joinStep === 'downloading_mods'}
-                data-testid="step-downloading-mods"
-              >
-                <div class="step-icon">
-                  {#if joinStep === 'connecting'}
-                    <Icon name="check" size={13} color="var(--color-system-green)" />
-                  {:else if joinStep === 'downloading_mods'}
-                    <div class="step-spinner"></div>
-                  {:else}
-                    <span class="step-dot"></span>
-                  {/if}
-                </div>
-                <div class="step-text-wrap">
-                  <span class="step-label" data-testid="download-mods-label">
-                    {getDownloadingModsLabel(modsToDownloadCount, modsDownloadedCount)}
-                  </span>
-                </div>
-              </div>
-
-              <!-- Step 3: Подключаемся -->
-              <div
-                class="join-step-item"
-                class:active={joinStep === 'connecting'}
-                data-testid="step-connecting"
-              >
-                <div class="step-icon">
-                  {#if joinStep === 'connecting'}
-                    <div class="step-spinner"></div>
-                  {:else}
-                    <span class="step-dot"></span>
-                  {/if}
-                </div>
-                <div class="step-text-wrap">
-                  <span class="step-label">{t('lobby.step_connecting')}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="step-details-message" data-testid="step-message">
-              {joinStepMessage}
-            </div>
+        {#if isConnecting}
+          <div class="join-steps-container" role="status" aria-live="polite" data-testid="join-progress">
+            {#if joinStep !== 'idle'}
+              <p data-testid={joinStep === 'checking_mods' ? 'step-checking-mods' : joinStep === 'downloading_mods' ? 'step-downloading-mods' : 'step-connecting'}>{joinStepMessage}</p>
+            {:else}<p>{joinStepMessage}</p>{/if}
+            {#if joinProgress !== null}
+              <ProgressBar percentage={joinProgress} detail={joinStepMessage} />
+            {/if}
           </div>
         {/if}
 
@@ -1000,7 +878,7 @@
               type="text"
               placeholder="#A7X9"
               bind:value={guestCode}
-              maxlength={6}
+              maxlength={8}
               class="code-input"
               onkeydown={(e) => e.key === 'Enter' && handleJoinRoom()}
               aria-label={t('lobby.room_code_input_aria')}
@@ -1008,6 +886,9 @@
             />
           </div>
 
+          {#if pendingModSync && !isConnecting}
+            <Button variant="secondary" size="small" onclick={handleAutoFixMods}>{t('lobby.sync_pack_btn')}</Button>
+          {/if}
           {#if errorMessage}
             <div class="lobby-error-wrapper">
               <ErrorState
@@ -1054,19 +935,29 @@
         <div class="world-picker">
           <label class="picker-label" for="world-select">{t('lobby.select_world')}</label>
           <div class="world-options" id="world-select" data-testid="world-select" role="radiogroup" aria-label={t('lobby.select_world')}>
+            {#if localWorlds.length === 0}
+              <div class="empty-worlds-callout" role="status">
+                <p class="empty-callout-text">{t('lobby.open_world_lan_empty')}</p>
+              </div>
+            {/if}
             {#each localWorlds as w (w.id || w.name)}
               <button
                 type="button"
                 role="radio"
                 aria-checked={selectedWorldId === w.id}
-                aria-label="{w.name}, {w.version}"
+                aria-label={w.name}
                 class="world-opt-btn"
                 class:selected={selectedWorldId === w.id}
                 onclick={() => (selectedWorldId = w.id)}
                 data-testid="world-opt-{w.id}"
               >
-                <div class="world-opt-title">{w.name}</div>
-                <div class="world-opt-meta">{w.version} • {w.size} • {w.lastPlayed}</div>
+                <div class="world-opt-header">
+                  <div class="world-opt-title">{w.name}</div>
+                  {#if selectedWorldId === w.id}
+                    <span class="world-opt-check" aria-hidden="true">✓</span>
+                  {/if}
+                </div>
+                <div class="world-opt-meta">{w.address}</div>
               </button>
             {/each}
           </div>
@@ -1077,6 +968,7 @@
             variant="primary"
             size="large"
             fullWidth
+            disabled={!selectedWorldId || isHosting}
             onclick={handleCreateRoom}
             loading={isHosting}
           >
@@ -1182,7 +1074,8 @@
   }
 
   .mode-segmented {
-    width: 320px;
+    width: 440px;
+    max-width: 100%;
   }
 
   .room-closed-banner {
@@ -1355,146 +1248,13 @@
     margin: 0;
   }
 
-  /* Guest Join Steps Pipeline (Apple HIG Vertical Stepper) */
-  .join-steps-card {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 16px;
-    border-radius: var(--radius-lg, 12px);
-    background-color: var(--color-secondary-system-fill);
-    border: 1px solid var(--glass-border);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  }
-
-  .join-steps-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .join-steps-title {
-    font-size: var(--text-footnote, 13px);
-    font-weight: 600;
-    color: var(--color-label);
-    margin: 0;
-  }
-
-  .join-steps-pct {
-    font-size: var(--text-caption-1, 12px);
-    font-weight: 700;
-    color: var(--color-system-blue);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .join-progress-bar-track {
-    width: 100%;
-    height: 4px;
-    border-radius: var(--radius-pill);
-    background-color: var(--color-quaternary-system-fill);
-    overflow: hidden;
-  }
-
-  .join-progress-bar-fill {
-    height: 100%;
-    background-color: var(--color-system-blue);
-    border-radius: var(--radius-pill);
-    transition: width var(--motion-duration-short, 160ms) ease;
-  }
-
-  .join-steps-list {
+  .join-steps-container {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    margin-top: 4px;
-    position: relative;
-  }
-
-  .join-step-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: var(--text-callout, 14px);
-    color: var(--color-secondary-label);
-    font-weight: 500;
-    padding: 8px 12px;
+    padding: 12px;
     border-radius: var(--radius-md, 10px);
-    background-color: var(--color-quaternary-system-fill);
-    border: 1px solid transparent;
-    transition: background-color var(--motion-duration-short, 160ms) ease,
-                border-color var(--motion-duration-short, 160ms) ease,
-                color var(--motion-duration-short, 160ms) ease;
-  }
-
-  .join-step-item.active {
-    color: var(--color-label);
-    font-weight: 600;
-    background-color: var(--color-tertiary-system-fill);
-    border-color: rgba(0, 122, 255, 0.25);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  }
-
-  .join-step-item.done {
-    color: var(--color-secondary-label);
-    font-weight: 500;
-  }
-
-  .step-icon {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: var(--color-tertiary-system-fill);
-    flex-shrink: 0;
-    transition: background-color var(--motion-duration-short, 160ms) ease;
-  }
-
-  .join-step-item.active .step-icon {
-    background-color: rgba(0, 122, 255, 0.15);
-  }
-
-  .join-step-item.done .step-icon {
-    background-color: rgba(48, 209, 88, 0.15);
-  }
-
-  .step-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background-color: var(--color-tertiary-label);
-  }
-
-  .step-spinner {
-    width: 12px;
-    height: 12px;
-    border: 2px solid rgba(0, 122, 255, 0.25);
-    border-top-color: var(--color-system-blue);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-
-  .step-text-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .step-label {
-    line-height: 1.3;
-  }
-
-
-  .step-details-message {
-    font-size: var(--text-caption-1, 12px);
-    color: var(--color-secondary-label);
-    padding: 8px 12px;
-    margin-top: 2px;
-    border-radius: var(--radius-sm, 6px);
-    background-color: var(--color-quaternary-system-fill);
-    font-weight: 500;
-    line-height: 1.3;
+    background-color: var(--color-secondary-system-fill);
   }
 
   .join-form {
@@ -1520,7 +1280,6 @@
     font-weight: 700;
     letter-spacing: 0.15em;
     text-align: center;
-    text-transform: uppercase;
     outline: none;
     transition: border-color var(--motion-duration-short) ease;
   }
@@ -1572,8 +1331,36 @@
   }
 
   .world-opt-btn.selected {
-    border-color: var(--color-system-blue);
-    background-color: rgba(0, 122, 255, 0.1);
+    border-color: var(--glass-border);
+    background-color: var(--color-system-fill);
+  }
+
+  .world-opt-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+
+  .world-opt-check {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-system-blue);
+  }
+
+  .empty-worlds-callout {
+    padding: 14px 16px;
+    background-color: var(--color-quaternary-system-fill);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    text-align: center;
+  }
+
+  .empty-callout-text {
+    font-size: var(--text-subheadline);
+    color: var(--color-secondary-label);
+    margin: 0;
+    line-height: 1.4;
   }
 
   .world-opt-title {

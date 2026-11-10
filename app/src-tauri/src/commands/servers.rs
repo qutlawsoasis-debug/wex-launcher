@@ -232,7 +232,10 @@ pub async fn add_server(
     }
 
     let servers_dat_path = get_servers_dat_path(&state.paths, version.as_deref());
-    let mut root = load_servers_dat(&servers_dat_path).unwrap_or_else(|_| {
+    let mut root = if servers_dat_path.exists() {
+        load_servers_dat(&servers_dat_path)
+            .map_err(|e| format!("Не удалось прочитать {}: {}", servers_dat_path.display(), e))?
+    } else {
         NbtTag::Compound(vec![(
             "servers".to_string(),
             NbtTag::List {
@@ -240,7 +243,7 @@ pub async fn add_server(
                 elements: Vec::new(),
             },
         )])
-    });
+    };
 
     let norm = normalize_address(&addr_trimmed);
 
@@ -477,23 +480,40 @@ pub fn import_servers_from_instances_internal(
         paths.root.join("servers.dat"),
     ];
 
+    let mut read_errors = Vec::new();
     for s_path in &paths_to_check {
         if s_path.exists() {
-            if let Ok(root) = load_servers_dat(s_path) {
-                let entries = parse_servers_from_nbt(&root);
-                for entry in entries {
-                    let norm = normalize_address(&entry.address);
-                    if seen_addresses.insert(norm) {
-                        combined_servers.push(PackServerEntry {
-                            id: Some(entry.id),
-                            name: entry.name,
-                            ip: entry.address,
-                            icon: entry.icon,
-                        });
+            match load_servers_dat(s_path) {
+                Ok(root) => {
+                    let entries = parse_servers_from_nbt(&root);
+                    for entry in entries {
+                        let norm = normalize_address(&entry.address);
+                        if seen_addresses.insert(norm) {
+                            combined_servers.push(PackServerEntry {
+                                id: Some(entry.id),
+                                name: entry.name,
+                                ip: entry.address,
+                                icon: entry.icon,
+                            });
+                        }
                     }
+                }
+                Err(e) => {
+                    read_errors.push(format!(
+                        "Не удалось прочитать '{}': {}",
+                        s_path.display(),
+                        e
+                    ));
                 }
             }
         }
+    }
+
+    if !read_errors.is_empty() {
+        return Err(format!(
+            "Ошибка импорта серверов: {}. Файлы сохранены без перезаписи.",
+            read_errors.join("; ")
+        ));
     }
 
     // If completely empty across all files, seed with default official servers
@@ -519,7 +539,8 @@ pub fn import_servers_from_instances_internal(
     // Save unified deduplicated list back to both 1.20.1 and 1.21.1 instances
     for ver in &["1.20.1", "1.21.1"] {
         let p = get_servers_dat_path(paths, Some(ver));
-        let _ = save_servers_dat(&p, &unified_root);
+        save_servers_dat(&p, &unified_root)
+            .map_err(|e| format!("Не удалось сохранить {}: {}", p.display(), e))?;
     }
 
     Ok(parse_servers_from_nbt(&unified_root))
@@ -988,5 +1009,33 @@ mod tests {
         let (reason, msg) = classify_ping_error(&err);
         assert_eq!(reason, PingFailureReason::Offline);
         assert_eq!(msg, "Сервер выключен или недоступен");
+    }
+
+    #[test]
+    fn test_import_servers_from_instances_corrupted_file_preservation() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+
+        let v120_dat = get_servers_dat_path(&paths, Some("1.20.1"));
+        if let Some(parent) = v120_dat.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        let corrupted_bytes = b"CORRUPTED_NBT_FILE_CONTENT_ABCD";
+        std::fs::write(&v120_dat, corrupted_bytes).unwrap();
+
+        // Must return error and not overwrite the corrupted file
+        let res = import_servers_from_instances_internal(&paths);
+        assert!(res.is_err(), "Must return Err on corrupted servers.dat");
+        let err_msg = res.unwrap_err();
+        assert!(
+            err_msg.contains("servers.dat"),
+            "Error must mention servers.dat: {err_msg}"
+        );
+
+        let current = std::fs::read(&v120_dat).unwrap();
+        assert_eq!(
+            current, corrupted_bytes,
+            "Corrupted servers.dat must be preserved without overwrite"
+        );
     }
 }

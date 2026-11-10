@@ -3,6 +3,10 @@ import { mount, unmount, tick } from 'svelte';
 import { network } from '../design/network.svelte';
 import LobbyScreen, { type LobbyRoom, type OnlineFriend } from './LobbyScreen.svelte';
 
+const eventHandlers = vi.hoisted(() => new Map<string, (event: any) => void>());
+vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async (name: string, callback: any) => {
+  eventHandlers.set(name, callback); return () => eventHandlers.delete(name);
+}) }));
 // Mock Tauri IPC invoke
 const invokeMock = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({
@@ -54,9 +58,11 @@ describe('LobbyScreen - Friends Lobby & P2P Multiplayer (wex-lobby-polish)', () 
     };
 
     invokeMock.mockImplementation(async (cmd: string, args: any) => {
-      if (cmd === 'create_lobby_room') {
+      if (cmd === 'list_lan_worlds') return [{ address: '127.0.0.1:54321', motd: 'Выживание в тайге', clean_motd: 'Выживание в тайге', port: 54321 }];
+      if (cmd === 'publish_lan_world') {
         expect(args.playerName).toBe('Alex');
-        expect(args.worldName).toBe('Выживание в тайге');
+        expect(args.motd).toBe('Выживание в тайге');
+        expect(args.port).toBe(54321);
         return mockCreatedRoom;
       }
       if (cmd === 'social_sync') {
@@ -72,7 +78,10 @@ describe('LobbyScreen - Friends Lobby & P2P Multiplayer (wex-lobby-polish)', () 
       },
     });
 
-    await new Promise((r) => setTimeout(r, 20));
+    await vi.waitFor(() => {
+      const selected = target.querySelector('[data-testid="world-select"] [aria-checked="true"]');
+      expect(selected?.textContent).toContain('Выживание в тайге');
+    });
 
     // Verify 1-click button «Создать комнату» is present
     const createBtn = Array.from(target.querySelectorAll('button')).find((b) =>
@@ -82,7 +91,7 @@ describe('LobbyScreen - Friends Lobby & P2P Multiplayer (wex-lobby-polish)', () 
 
     // Click «Создать комнату»
     createBtn?.click();
-    await new Promise((r) => setTimeout(r, 50));
+    await vi.waitFor(() => expect(target.querySelector('[data-testid="active-room-card"]')).not.toBeNull());
 
     // Verify active room rendered
     const activeRoomCard = target.querySelector('[data-testid="active-room-card"]');
@@ -192,71 +201,43 @@ describe('LobbyScreen - Friends Lobby & P2P Multiplayer (wex-lobby-polish)', () 
     unmount(comp);
   });
 
-  it('(2) guest join displays honest step-by-step progress: Сверяем моды → Докачиваем N модов → Подключаемся', async () => {
-    const mockGuestRoom: LobbyRoom = {
-      code: '#A7X9',
-      host_name: 'Charlie',
-      world_name: 'Мир Charlie',
-      tunnel_address: 'charlie.playit.gg:25565',
-      tunnel_active: true,
-      tunnel_error: null,
-      is_host: false,
-      players: [
-        { name: 'Charlie', is_host: true, ping_ms: 0, mods_synced: true },
-        { name: 'Alex', is_host: false, ping_ms: 22, mods_synced: true },
-      ],
-      mod_mismatch_count: 2,
-      total_mods: 142,
-    };
-
-    invokeMock.mockImplementation(async (cmd: string, args: any) => {
-      if (cmd === 'join_lobby_room') {
-        expect(args.code).toBe('A7X9');
-        await new Promise((r) => setTimeout(r, 60));
-        return mockGuestRoom;
+  it('(2) join stages only advance on actual backend events and launch success', async () => {
+    let finishPreparation!: (room: LobbyRoom) => void;
+    let finishLaunch!: () => void;
+    const room: LobbyRoom = { code: '#A7X9', host_name: 'Host', world_name: 'World', is_host: false,
+      tunnel_active: true, tunnel_address: 'test.ply.gg:25565', players: [], mod_mismatch_count: 0, total_mods: 2 };
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'prepare_lobby_join') return new Promise(r => { finishPreparation = r; });
+      if (cmd === 'launch_game') {
+        eventHandlers.get('launch-status')?.({ payload: { state: 'preparing', message: 'Подключаемся к миру' } });
+        return new Promise<void>(r => { finishLaunch = r; });
       }
-      return null;
+      return Promise.resolve(null);
     });
-
-    const comp = mount(LobbyScreen, {
-      target,
-      props: {
-        playerName: 'Alex',
-      },
-    });
-
-    await new Promise((r) => setTimeout(r, 20));
-
-    const codeInput = target.querySelector('input[data-testid="guest-code-input"]') as HTMLInputElement;
-    expect(codeInput).not.toBeNull();
-    codeInput.value = 'A7X9';
-    codeInput.dispatchEvent(new Event('input'));
-
-    await new Promise((r) => setTimeout(r, 30));
-
-    const joinBtn = target.querySelector('[data-testid="join-room-btn"] button') as HTMLButtonElement;
-    expect(joinBtn).not.toBeNull();
-    expect(joinBtn.disabled).toBe(false);
-
-    // Trigger join
-    joinBtn.click();
-
-    // Step 1: Checking mods
-    await new Promise((r) => setTimeout(r, 20));
-    expect(target.querySelector('[data-testid="step-checking-mods"]')?.textContent).toContain('Сверяем моды');
-
-    // Step 2: Downloading mods (after 60ms invoke + step switch)
-    await new Promise((r) => setTimeout(r, 80));
-    expect(target.querySelector('[data-testid="step-downloading-mods"]')?.textContent).toContain('Докачиваем 2');
-
-    // Step 3 & Completion: Wait until steps complete and room connects
-    await new Promise((r) => setTimeout(r, 300));
-
-    // Active room is entered
+    const comp = mount(LobbyScreen, { target, props: { playerName: 'Guest' } });
+    await tick();
+    const input = target.querySelector('[data-testid="guest-code-input"]') as HTMLInputElement;
+    input.value = 'A7X9'; input.dispatchEvent(new Event('input')); await tick();
+    const joining = comp.handleJoinRoom();
+    await vi.waitFor(() => expect(finishPreparation).toBeTypeOf('function'));
+    expect(target.querySelector('[data-testid="step-downloading-mods"]')).toBeNull();
+    eventHandlers.get('lobby-join-progress')?.({ payload: { code: 'A7X9', stage: 'checking_mods', message: 'Сверяем моды' } });
+    await tick();
+    expect(target.querySelector('[data-testid="step-checking-mods"]')?.textContent).toBe('Сверяем моды');
+    eventHandlers.get('lobby-join-progress')?.({ payload: { code: 'A7X9', stage: 'downloading_mods', message: 'Подготовка файлов' } });
+    eventHandlers.get('install-progress')?.({ payload: { percentage: 35, stage: 'Pack', detail: 'Проверено 7 из 20' } });
+    await tick();
+    expect(target.querySelector('[data-testid="step-downloading-mods"]')?.textContent).toBe('Проверено 7 из 20');
+    expect(target.querySelector('[data-testid="active-room-card"]')).toBeNull();
+    finishPreparation(room);
+    await vi.waitFor(() => expect(finishLaunch).toBeTypeOf('function'));
+    await tick();
+    expect(target.querySelector('[data-testid="step-connecting"]')?.textContent).toBe('Подключаемся к миру');
+    expect(target.querySelector('[data-testid="active-room-card"]')).toBeNull();
+    finishLaunch(); await joining; await tick();
     expect(target.querySelector('[data-testid="active-room-card"]')).not.toBeNull();
-    expect(target.textContent).toContain('Мир Charlie');
-    expect(target.textContent).toContain('charlie.playit.gg:25565');
-
+    expect(invokeMock).toHaveBeenCalledWith('launch_game', { version: '1.21.1', nickname: 'Guest', server: 'test.ply.gg:25565' });
+    for (const name of ['lobby-join-progress', 'install-progress', 'launch-status']) expect(eventHandlers.has(name)).toBe(false);
     unmount(comp);
   });
 
@@ -426,6 +407,23 @@ describe('LobbyScreen - Friends Lobby & P2P Multiplayer (wex-lobby-polish)', () 
 
     unmount(comp);
   });
+  it('review_08_never_fakes_mod_download_or_connects_a_mismatched_room', async () => {
+    invokeMock.mockImplementation(async (cmd: string) => cmd === 'prepare_lobby_join' ? ({
+      code: '#ABC123', host_name: 'Host', world_name: 'World', is_host: false,
+      tunnel_active: true, tunnel_address: '127.0.0.1:25565', players: [],
+      mod_mismatch_count: 2, total_mods: 4,
+    }) : null);
+    const comp = mount(LobbyScreen, { target, props: { playerName: 'Guest' } });
+    await tick();
+    const input = target.querySelector('[data-testid="guest-code-input"]') as HTMLInputElement;
+    input.value = 'ABC123'; input.dispatchEvent(new Event('input')); await tick();
+    await comp.handleJoinRoom(); await tick();
+    expect(target.querySelector('[data-testid="active-room-card"]')).toBeNull();
+    expect(invokeMock).not.toHaveBeenCalledWith('launch_game', expect.anything());
+    expect(target.textContent).not.toContain('Все моды совпадают');
+    unmount(comp);
+  });
+
 });
 
 
@@ -539,7 +537,7 @@ describe('LobbyScreen Component Tests', () => {
     cloudTab?.click();
     await new Promise((r) => setTimeout(r, 60));
 
-    expect(target.textContent).toMatch(/Ошибка в (комнате|лобби)/);
+    expect(target.textContent).toMatch(/Не удалось загрузить облачные миры|Ошибка в (комнате|лобби)/);
     const retryBtn = target.querySelector('.error-state-card button');
     expect(retryBtn).not.toBeNull();
     expect(retryBtn?.textContent).toContain('Повторить');
@@ -642,6 +640,7 @@ describe('LobbyScreen Component Tests', () => {
     await new Promise((r) => setTimeout(r, 60));
 
     expect(invokeMock).toHaveBeenCalledWith('connect_lan_world', {
+      version: '1.21.1', nickname: 'Player',
       address: '192.168.1.105:54321',
     });
     expect(target.textContent).toContain('Подключение к 192.168.1.105:54321');

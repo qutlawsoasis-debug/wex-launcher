@@ -49,6 +49,8 @@
 
   // Navigation state
   let currentStep = $state<OnboardingStep>('welcome');
+  let isSaving = $state(false);
+  let saveError = $state('');
   let previouslyFocusedEl: HTMLElement | null = null;
   let modalEl: HTMLElement | undefined = $state();
 
@@ -319,34 +321,27 @@
     }
   }
 
-  export function finishOnboarding(launchImmediately: boolean = false) {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('wex_onboarding_completed', 'true');
+  export async function finishOnboarding(launchImmediately: boolean = false) {
+    if (isSaving) return;
+    isSaving = true;
+    saveError = '';
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('onboarding_complete', {
+        req: { nickname: nickname.trim(), version: selectedVersion, ram_mb: ramMb },
+      });
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('wex_onboarding_completed', 'true');
+      }
+      oncomplete?.({ nickname: nickname.trim(), version: selectedVersion, ramMb,
+        importedFromAura: Boolean(importSuccess), launchImmediately });
+      open = false;
+      onclose?.();
+    } catch (e: unknown) {
+      saveError = typeof e === 'string' ? e : e instanceof Error ? e.message : t('onboarding.save_settings_failed');
+    } finally {
+      isSaving = false;
     }
-
-    oncomplete?.({
-      nickname: nickname.trim(),
-      version: selectedVersion,
-      ramMb,
-      importedFromAura: Boolean(importSuccess),
-      launchImmediately,
-    });
-
-    open = false;
-    onclose?.();
-
-    // Async background sync to persist in Tauri config
-    import('@tauri-apps/api/core')
-      .then(({ invoke }) => {
-        invoke('onboarding_complete', {
-          req: {
-            nickname: nickname.trim(),
-            version: selectedVersion,
-            ram_mb: ramMb,
-          },
-        }).catch(() => {});
-      })
-      .catch(() => {});
   }
 
   export function handleSkip() {
@@ -806,6 +801,7 @@
 
       <!-- Card footer actions with Apple HIG layout -->
       <div class="card-footer">
+        {#if saveError}<p class="validation-msg error" role="alert">{saveError}</p>{/if}
         {#if currentStep === 'welcome'}
           <div class="footer-actions center">
             <Button
@@ -845,6 +841,7 @@
             <Button
               variant="secondary"
               size="regular"
+              disabled={isSaving}
               onclick={() => finishOnboarding(false)}
             >
               <span>{t('onboarding.to_launcher')}</span>
@@ -853,6 +850,8 @@
             <Button
               variant="primary"
               size="large"
+              loading={isSaving}
+              disabled={isSaving}
               onclick={() => finishOnboarding(true)}
             >
               <Icon name="play" size={16} color="white" />

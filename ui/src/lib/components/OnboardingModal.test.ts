@@ -2,6 +2,9 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
 import OnboardingModal from './OnboardingModal.svelte';
 
+const persist = vi.hoisted(() => vi.fn());
+vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => persist(...args) }));
+
 describe('OnboardingModal Component (Apple HIG Onboarding)', () => {
   let target: HTMLElement;
   let comp: any = null;
@@ -11,6 +14,7 @@ describe('OnboardingModal Component (Apple HIG Onboarding)', () => {
     document.body.appendChild(target);
     localStorage.clear();
     vi.clearAllMocks();
+    persist.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -212,7 +216,7 @@ describe('OnboardingModal Component (Apple HIG Onboarding)', () => {
     launchBtn.click();
     await tick();
 
-    expect(completedData).toBeTruthy();
+    await vi.waitFor(() => expect(completedData).toBeTruthy());
     expect(completedData.launchImmediately).toBe(true);
     expect(localStorage.getItem('wex_onboarding_completed')).toBe('true');
   });
@@ -244,4 +248,33 @@ describe('OnboardingModal Component (Apple HIG Onboarding)', () => {
 
     vi.useRealTimers();
   });
+  it('review_16_waits_for_persistence_before_launching', async () => {
+    let release!: () => void;
+    const complete = vi.fn();
+    persist.mockImplementation((cmd) => cmd === 'onboarding_complete' ? new Promise<void>(r => { release = r; }) : Promise.resolve(null));
+    comp = mount(OnboardingModal, { target, props: { open: true, initialStep: 'ready', oncomplete: complete } });
+    await tick();
+    const finishing = comp.finishOnboarding(true);
+    expect(complete).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(persist).toHaveBeenCalledWith('onboarding_complete', expect.anything()));
+    expect(localStorage.getItem('wex_onboarding_completed')).toBeNull();
+    release();
+    await finishing;
+    await vi.waitFor(() => expect(complete).toHaveBeenCalledOnce());
+  });
+
+  it('keeps onboarding open and retryable when saving fails', async () => {
+    const complete = vi.fn();
+    persist.mockImplementation((cmd) => cmd === 'onboarding_complete' ? Promise.reject(new Error('Диск недоступен')) : Promise.resolve(null));
+    comp = mount(OnboardingModal, { target, props: { open: true, initialStep: 'ready', oncomplete: complete } });
+    await tick();
+    await comp.finishOnboarding(true); await tick();
+    expect(complete).not.toHaveBeenCalled();
+    expect(localStorage.getItem('wex_onboarding_completed')).toBeNull();
+    expect(target.querySelector('[role="alert"]')?.textContent).toContain('Диск недоступен');
+    persist.mockResolvedValue(undefined);
+    await comp.finishOnboarding(false); await tick();
+    expect(complete).toHaveBeenCalledOnce();
+  });
+
 });

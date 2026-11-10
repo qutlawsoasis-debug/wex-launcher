@@ -1149,6 +1149,12 @@
           "markdownDescription": "Enables the playtime_get_summary command without any pre-configured scope."
         },
         {
+          "description": "Enables the prepare_lobby_join command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-prepare-lobby-join",
+          "markdownDescription": "Enables the prepare_lobby_join command without any pre-configured scope."
+        },
+        {
           "description": "Enables the publish_lan_world command without any pre-configured scope.",
           "type": "string",
           "const": "allow-publish-lan-world",
@@ -2233,6 +2239,12 @@
           "type": "string",
           "const": "deny-playtime-get-summary",
           "markdownDescription": "Denies the playtime_get_summary command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the prepare_lobby_join command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-prepare-lobby-join",
+          "markdownDescription": "Denies the prepare_lobby_join command without any pre-configured scope."
         },
         {
           "description": "Denies the publish_lan_world command without any pre-configured scope.",

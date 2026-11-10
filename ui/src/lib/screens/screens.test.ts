@@ -696,8 +696,8 @@ describe('Wex Launcher Screens', () => {
     await new Promise((r) => setTimeout(r, 50));
 
     // Must show authentic service unavailable or empty state, strictly zero fake rooms
-    expect(target.textContent).toContain('Сервис недоступен');
-    expect(target.textContent).toContain('Повторить попытку');
+    expect(target.textContent).toContain('Не удалось загрузить облачные миры');
+    expect(target.textContent).toContain('Повторить');
     expect(target.textContent).not.toContain('mc.wexmc.net');
     expect(target.textContent).not.toContain('Aura Official');
 
@@ -736,7 +736,7 @@ describe('Wex Launcher Screens', () => {
     const comp = mount(LobbyScreen, { target });
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(target.textContent).toContain('Локальные миры в сети (LAN)');
+    expect(target.textContent).toContain('Локальные миры в сети');
     expect(target.textContent).toContain('Alex - Creative Studio');
     expect(target.textContent).toContain('192.168.1.105:54321');
 
@@ -756,7 +756,7 @@ describe('Wex Launcher Screens', () => {
     const comp = mount(LobbyScreen, { target });
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(target.textContent).toContain('Локальные миры в сети (LAN)');
+    expect(target.textContent).toContain('Локальные миры в сети');
     expect(target.textContent).toContain('Alex - Creative Studio');
 
     const publishBtn = Array.from(target.querySelectorAll('button')).find(
@@ -900,7 +900,7 @@ describe('Wex Launcher Screens', () => {
   it('renders SettingsScreen with RAM slider, Java options, Discord RPC, graphics presets, and About Wex', async () => {
     const comp = mount(SettingsScreen, { target });
     expect(target.textContent).toContain('Тема оформления');
-    expect(target.textContent).toContain('Цветовой акцент');
+    expect(target.textContent).not.toContain('Цветовой акцент');
     expect(target.textContent).toContain('Уменьшение движения');
     expect(target.textContent).toContain('Уменьшение прозрачности');
     expect(target.textContent).toContain('Выделение оперативной памяти');
@@ -912,7 +912,8 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Скрыть в трей');
     expect(target.textContent).toContain('Выбор исполняемого файла Java');
     expect(target.textContent).toContain('Discord Rich Presence');
-    expect(target.textContent).toContain('Сворачивать в трей при запуске игры');
+    expect(target.textContent).toContain('Поведение окна');
+    expect(target.textContent).not.toContain('Сворачивать в трей при запуске игры');
     expect(target.textContent).toContain('Язык интерфейса');
     expect(target.textContent).toContain('О программе');
     expect(target.textContent).toContain('Windows 10/11, 64-бит');
@@ -920,7 +921,7 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Очистить кэш');
     expect(target.textContent).not.toContain('.minecraft');
     expect(target.textContent).toContain('Wex');
-    expect(target.textContent).toContain('Журнал событий и краш-дампы');
+    expect(target.textContent).toContain('Журнал и отчёты о сбоях');
 
     const openLogsBtn = target.querySelector('[data-testid="btn-open-logs-sheet"]') as HTMLElement;
     expect(openLogsBtn).not.toBeNull();

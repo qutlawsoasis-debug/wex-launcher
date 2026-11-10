@@ -23,6 +23,24 @@ use wex_net::modsync::{
     compare_manifests, compute_manifest_hash, ModManifestEntry, ModMismatchType,
 };
 
+struct FixtureTunnel;
+#[async_trait::async_trait]
+impl wex_app_lib::commands::lobby_tunnel::TunnelRuntime for FixtureTunnel {
+    async fn start(
+        &self,
+        _state: &lobby::LobbyState,
+        config: &wex_net::lobby::TunnelConfigResponse,
+        port: u16,
+    ) -> Result<String, String> {
+        assert!(port > 0);
+        let address = config
+            .public_address
+            .as_deref()
+            .ok_or("fixture has no tunnel address")?;
+        let public_port = config.public_port.ok_or("fixture has no tunnel port")?;
+        Ok(format!("{address}:{public_port}"))
+    }
+}
 struct TestFixture {
     _temp: TempDir,
     _paths: WexPaths,
@@ -49,11 +67,10 @@ impl TestFixture {
                 paths.clone(),
                 wex_social::FriendApiClient::new(server.uri()),
             ))
-            .manage(lobby::LobbyState::new(
-                paths.root.join("tools"),
-                &server.uri(),
-                &server.uri(),
-            ))
+            .manage(
+                lobby::LobbyState::new(paths.root.join("tools"), &server.uri(), &server.uri())
+                    .with_tunnel_runtime(std::sync::Arc::new(FixtureTunnel)),
+            )
             .manage(network::NetworkState::new_with_status(false))
             .manage(AppState::default())
             .build(mock_context(noop_assets()))
