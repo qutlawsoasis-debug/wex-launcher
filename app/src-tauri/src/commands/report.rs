@@ -7,7 +7,7 @@ use tauri::State;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
-use wex_core::config::WexPaths;
+use wex_core::config::{LauncherConfig as CoreConfig, WexPaths};
 use wex_extras::crash::analyze_crash;
 
 /// Anonymizes personal user paths, player nicknames, secret tokens, and friends' IP addresses in text.
@@ -42,12 +42,10 @@ pub fn anonymize_text(text: &str, player_name: Option<&str>) -> String {
     result
 }
 
-/// Masks directory paths containing personal usernames.
+/// Masks directory paths containing personal usernames without corrupting UTF-8 / non-ASCII characters.
 fn mask_user_directories(text: &str) -> String {
     let mut output = String::with_capacity(text.len());
-    let mut i = 0;
-    let bytes = text.as_bytes();
-    let len = bytes.len();
+    let mut remainder = text;
 
     // Support both single backslash and JSON-escaped double backslash, and forward slashes
     let markers = [
@@ -60,47 +58,49 @@ fn mask_user_directories(text: &str) -> String {
         "/home/",
     ];
 
-    while i < len {
-        let mut matched_marker = None;
-        for marker in &markers {
-            let m_bytes = marker.as_bytes();
-            let m_len = m_bytes.len();
-            if i + m_len <= len && &bytes[i..i + m_len] == m_bytes {
-                matched_marker = Some((marker, m_len));
-                break;
+    while !remainder.is_empty() {
+        let mut earliest: Option<(usize, &str)> = None;
+        for &marker in &markers {
+            if let Some(pos) = remainder.find(marker) {
+                if earliest.is_none_or(|(min_pos, _)| pos < min_pos) {
+                    earliest = Some((pos, marker));
+                }
             }
         }
 
-        if let Some((marker, m_len)) = matched_marker {
-            output.push_str(marker);
-            i += m_len;
+        match earliest {
+            Some((pos, marker)) => {
+                output.push_str(&remainder[..pos]);
+                output.push_str(marker);
+                let after_marker = &remainder[pos + marker.len()..];
 
-            // Consume username until next separator (/ or \), quote, newline, or whitespace
-            let mut username_len = 0;
-            while i + username_len < len {
-                let c = bytes[i + username_len];
-                if c == b'\\'
-                    || c == b'/'
-                    || c == b'"'
-                    || c == b'\''
-                    || c == b'\n'
-                    || c == b'\r'
-                    || c == b' '
-                    || c == b':'
-                    || c == b';'
-                {
-                    break;
+                // If already masked (e.g. repeated anonymization passes), preserve *** and advance
+                let username_end = if after_marker.starts_with("***") {
+                    3
+                } else {
+                    // Look for path separator (\ or /) before quotes, newlines, or delimiters
+                    let next_sep = after_marker.find(['\\', '/']);
+                    let next_delim = after_marker.find(['"', '\'', '\n', '\r', '\t', ';', ':']);
+
+                    match (next_sep, next_delim) {
+                        (Some(sep), Some(delim)) if sep < delim && sep <= 64 => sep,
+                        (Some(sep), None) if sep <= 64 => sep,
+                        (_, Some(delim)) => delim,
+                        _ => after_marker
+                            .find([' ', '\n', '\r', '\t'])
+                            .unwrap_or(after_marker.len()),
+                    }
+                };
+
+                if username_end > 0 {
+                    output.push_str("***");
                 }
-                username_len += 1;
+                remainder = &after_marker[username_end..];
             }
-
-            if username_len > 0 {
-                output.push_str("***");
-                i += username_len;
+            None => {
+                output.push_str(remainder);
+                break;
             }
-        } else {
-            output.push(bytes[i] as char);
-            i += 1;
         }
     }
 
@@ -117,6 +117,7 @@ fn mask_user_directories(text: &str) -> String {
                 output = output.replace(&format!("\\\\{}", trimmed), "\\\\***");
                 output = output.replace(&format!("\"{}\"", trimmed), "\"***\"");
                 output = output.replace(&format!("'{}'", trimmed), "'***'");
+                output = output.replace(&format!(" {} ", trimmed), " *** ");
             }
         }
     }
@@ -128,29 +129,73 @@ fn mask_user_directories(text: &str) -> String {
 fn mask_sensitive_tokens(text: &str) -> String {
     let mut res = text.to_string();
 
-    // 1. Key-value pairs anywhere in text or JSON:
-    // e.g. "key": "secret123", key: secret123, key = secret123, with key: secret123
-    let kv_token_re = Regex::new(
-        r#"(?i)(\b(?:x-user-token|usertoken|ownertoken|hosttoken|playitsecret|discordappid|accesstoken|access_token|refreshtoken|refresh_token|authtoken|auth_token|sessiontoken|session_token|secret_key|client_secret|apikey|api_key|api-key|private_key|key|token|secret|password|passwd|credential|auth)\s*[:=]\s*["']?)([^"',\s\r\n\}]+)(["']?)"#,
-    ).expect("valid regex");
-    res = kv_token_re.replace_all(&res, "${1}***${3}").to_string();
-
-    // 2. CLI arguments: --accessToken <token>
+    // 1. CLI arguments: --accessToken <token>
     let cli_token_re =
         Regex::new(r"--(?:accessToken|userProperties)\s+[^\s]+").expect("valid regex");
     res = cli_token_re
         .replace_all(&res, "--accessToken ***")
         .to_string();
 
-    // 3. Bearer tokens: Bearer <token>
-    let bearer_re = Regex::new(r"(?i)Bearer\s+[A-Za-z0-9_\-\.]+").expect("valid regex");
-    res = bearer_re.replace_all(&res, "Bearer ***").to_string();
-
-    // 4. Query parameters: ?token=xxx or &token=xxx, ?secret=xxx, ?key=xxx
+    // 2. Query parameters: ?token=xxx or &token=xxx, ?secret=xxx, ?key=xxx
     let query_re =
         Regex::new(r#"(?i)([?&](?:token|access_token|secret|key|api_key|password)=)[^&\s\r\n"']+"#)
             .expect("valid regex");
     res = query_re.replace_all(&res, "${1}***").to_string();
+
+    // 3. JSON key-value pairs with double-quoted strings (handling spaces in secret values, and Bearer tokens):
+    let json_token_re = Regex::new(
+        r#"(?i)(["'](?:x-user-token|usertoken|ownertoken|hosttoken|playitsecret|discordappid|accesstoken|access_token|refreshtoken|refresh_token|authtoken|auth_token|sessiontoken|session_token|secret_key|client_secret|clientsecret|apikey|api_key|api-key|private_key|key|token|secret|password|passwd|credential|auth|authorization)["']\s*:\s*")((?:Bearer\s+)?[^"\r\n]+)(")"#,
+    ).expect("valid regex");
+    res = json_token_re
+        .replace_all(&res, |caps: &regex::Captures| {
+            let prefix = &caps[1];
+            let val = &caps[2];
+            let suffix = &caps[3];
+            if val.to_lowercase().starts_with("bearer ") {
+                format!("{}Bearer ***{}", prefix, suffix)
+            } else {
+                format!("{}***{}", prefix, suffix)
+            }
+        })
+        .to_string();
+
+    // 4. Single-quoted values in JSON/JS:
+    let json_sq_token_re = Regex::new(
+        r#"(?i)(['](?:x-user-token|usertoken|ownertoken|hosttoken|playitsecret|discordappid|accesstoken|access_token|refreshtoken|refresh_token|authtoken|auth_token|sessiontoken|session_token|secret_key|client_secret|clientsecret|apikey|api_key|api-key|private_key|key|token|secret|password|passwd|credential|auth|authorization)[']\s*:\s*')((?:Bearer\s+)?[^'\r\n]+)(')"#,
+    ).expect("valid regex");
+    res = json_sq_token_re
+        .replace_all(&res, |caps: &regex::Captures| {
+            let prefix = &caps[1];
+            let val = &caps[2];
+            let suffix = &caps[3];
+            if val.to_lowercase().starts_with("bearer ") {
+                format!("{}Bearer ***{}", prefix, suffix)
+            } else {
+                format!("{}***{}", prefix, suffix)
+            }
+        })
+        .to_string();
+
+    // 5. Key-value pairs anywhere in text or CLI/headers (unquoted values, yaml, config):
+    let kv_token_re = Regex::new(
+        r#"(?i)(\b(?:x-user-token|usertoken|ownertoken|hosttoken|playitsecret|discordappid|accesstoken|access_token|refreshtoken|refresh_token|authtoken|auth_token|sessiontoken|session_token|secret_key|client_secret|clientsecret|apikey|api_key|api-key|private_key|key|token|secret|password|passwd|credential|auth|authorization)\s*[:=]\s*["']?)((?:Bearer\s+)?[^"',\s\r\n\}]+)(["']?)"#,
+    ).expect("valid regex");
+    res = kv_token_re
+        .replace_all(&res, |caps: &regex::Captures| {
+            let prefix = &caps[1];
+            let val = &caps[2];
+            let suffix = &caps[3];
+            if val.to_lowercase().starts_with("bearer ") {
+                format!("{}Bearer ***{}", prefix, suffix)
+            } else {
+                format!("{}***{}", prefix, suffix)
+            }
+        })
+        .to_string();
+
+    // 6. Bearer tokens anywhere in free text: Bearer <token>
+    let bearer_re = Regex::new(r"(?i)\bBearer\s+[A-Za-z0-9_\-\.]+").expect("valid regex");
+    res = bearer_re.replace_all(&res, "Bearer ***").to_string();
 
     res
 }
@@ -202,6 +247,13 @@ fn mask_ip_addresses(text: &str) -> String {
     }
 
     output.push_str(&res[last_end..]);
+
+    // 4. Mask IPv6 addresses (full or compressed): e.g. 2001:0db8:85a3:0000:0000:8a2e:0370:7334 or fe80::1ff
+    let ipv6_re = Regex::new(
+        r"(?i)\b(?:[0-9a-f]{1,4}:){3,7}[0-9a-f]{1,4}\b|\b(?:[0-9a-f]{1,4}:){1,6}:[0-9a-f]{1,4}\b|::1\b|\bfe80::[0-9a-f:]{1,16}\b",
+    ).expect("valid regex");
+    output = ipv6_re.replace_all(&output, "[IP]").to_string();
+
     output
 }
 
@@ -410,12 +462,47 @@ pub fn prepare_report_preview_impl(
 
     // 5. System info
     let os_info = get_os_info();
-    let java_version = if ver.starts_with("1.20") {
-        "Java 17 (Mojang Runtime)".to_string()
+    let cfg = CoreConfig::load_or_default(&paths.config_file);
+
+    let memory_info = if cfg.max_memory_mb > 0 {
+        format!("{} MB", cfg.max_memory_mb)
     } else {
-        "Java 21 (Mojang Runtime)".to_string()
+        "Не указано".to_string()
     };
-    let memory_info = "4096 MB (Default)".to_string();
+
+    let java_version = if cfg.java_mode == "custom" {
+        if let Some(custom_path) = &cfg.custom_java_path {
+            let path_str = custom_path.to_string_lossy();
+            let masked = anonymize_text(&path_str, player_name);
+            format!("Пользовательская ({})", masked)
+        } else {
+            "Пользовательская (не указана)".to_string()
+        }
+    } else {
+        let is_17 = ver.starts_with("1.20");
+        let exe_name = if cfg!(target_os = "windows") {
+            "javaw.exe"
+        } else {
+            "java"
+        };
+        let mojang_dir_name = if is_17 {
+            "java-runtime-gamma"
+        } else {
+            "java-runtime-delta"
+        };
+        let mojang_bin = paths
+            .runtime_dir
+            .join(mojang_dir_name)
+            .join("bin")
+            .join(exe_name);
+        let java_tag = if is_17 { "Java 17" } else { "Java 21" };
+
+        if mojang_bin.exists() {
+            format!("{} (Mojang Runtime)", java_tag)
+        } else {
+            format!("{} (автозагрузка / не установлена)", java_tag)
+        }
+    };
 
     let anon_error = error_text.map(|e| anonymize_text(e, player_name));
     let anon_comment = user_comment.map(|c| anonymize_text(c, player_name));
@@ -474,14 +561,69 @@ pub fn prepare_report_preview_impl(
     }
 }
 
-/// Generates a ZIP archive containing all report files and saves it to Desktop or target directory.
-pub fn save_report_zip_impl(
+/// Trait for revealing exported report files in the system file explorer.
+pub trait PathOpener: Send + Sync {
+    fn open_path(&self, path: &Path) -> Result<(), String>;
+}
+
+/// Production opener that reveals the file in the OS explorer on Windows (only when invoked by user action).
+pub struct SystemExplorerOpener;
+
+impl PathOpener for SystemExplorerOpener {
+    fn open_path(&self, path: &Path) -> Result<(), String> {
+        #[cfg(target_os = "windows")]
+        {
+            std::process::Command::new("explorer.exe")
+                .arg(format!("/select,\"{}\"", path.display()))
+                .spawn()
+                .map_err(|e| format!("Не удалось открыть проводник: {}", e))?;
+            Ok(())
+        }
+        #[cfg(target_os = "macos")]
+        {
+            std::process::Command::new("open")
+                .arg("-R")
+                .arg(path)
+                .spawn()
+                .map_err(|e| format!("Не удалось открыть Finder: {}", e))?;
+            Ok(())
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let dir = path.parent().unwrap_or(path);
+            std::process::Command::new("xdg-open")
+                .arg(dir)
+                .spawn()
+                .map_err(|e| format!("Не удалось открыть файловый менеджер: {}", e))?;
+            Ok(())
+        }
+    }
+}
+
+/// Mock opener for automated unit and integration tests (records opened paths without spawning explorer).
+#[derive(Default, Clone)]
+pub struct MockPathOpener {
+    pub opened_paths: std::sync::Arc<std::sync::Mutex<Vec<PathBuf>>>,
+}
+
+impl PathOpener for MockPathOpener {
+    fn open_path(&self, path: &Path) -> Result<(), String> {
+        if let Ok(mut lock) = self.opened_paths.lock() {
+            lock.push(path.to_path_buf());
+        }
+        Ok(())
+    }
+}
+
+/// Generates a ZIP archive with an optional injected opener (to keep tests strictly isolated from explorer).
+pub fn save_report_zip_with_opener<O: PathOpener>(
     paths: &WexPaths,
     version: Option<&str>,
     error_text: Option<&str>,
     user_comment: Option<&str>,
     player_name: Option<&str>,
     custom_dest_dir: Option<&str>,
+    opener: Option<&O>,
 ) -> Result<SaveReportResultDto, String> {
     let preview =
         prepare_report_preview_impl(paths, version, error_text, user_comment, player_name);
@@ -581,13 +723,11 @@ pub fn save_report_zip_impl(
 
     let file_size_bytes = fs::metadata(&zip_path).map(|m| m.len()).unwrap_or(0);
 
-    // Open explorer with file selected on Windows
-    #[cfg(target_os = "windows")]
-    {
-        let _ = std::process::Command::new("explorer.exe")
-            .arg(format!("/select,\"{}\"", zip_path.display()))
-            .spawn();
+    // Call injected opener if provided (never opens in tests by default)
+    if let Some(op) = opener {
+        let _ = op.open_path(&zip_path);
     }
+    reveal_saved_report(&zip_path);
 
     Ok(SaveReportResultDto {
         success: true,
@@ -595,6 +735,38 @@ pub fn save_report_zip_impl(
         file_name: zip_name,
         file_size_bytes,
     })
+}
+
+#[cfg(test)]
+thread_local! {
+    static REVEALED_REPORT: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+fn reveal_saved_report(zip_path: &std::path::Path) {
+    #[cfg(test)]
+    REVEALED_REPORT.with(|path| *path.borrow_mut() = Some(zip_path.to_path_buf()));
+    #[cfg(not(test))]
+    let _ = zip_path;
+}
+
+/// Generates a ZIP archive containing all report files. In tests, does NOT spawn explorer.
+pub fn save_report_zip_impl(
+    paths: &WexPaths,
+    version: Option<&str>,
+    error_text: Option<&str>,
+    user_comment: Option<&str>,
+    player_name: Option<&str>,
+    custom_dest_dir: Option<&str>,
+) -> Result<SaveReportResultDto, String> {
+    save_report_zip_with_opener::<MockPathOpener>(
+        paths,
+        version,
+        error_text,
+        user_comment,
+        player_name,
+        custom_dest_dir,
+        None,
+    )
 }
 
 /// Formats the entire report into clipboard-friendly Markdown text.
@@ -679,13 +851,14 @@ pub async fn report_save_zip(
     player_name: Option<String>,
     custom_dest_dir: Option<String>,
 ) -> Result<SaveReportResultDto, String> {
-    save_report_zip_impl(
+    save_report_zip_with_opener(
         &paths,
         version.as_deref(),
         error_text.as_deref(),
         user_comment.as_deref(),
         player_name.as_deref(),
         custom_dest_dir.as_deref(),
+        Some(&SystemExplorerOpener),
     )
 }
 
@@ -820,6 +993,7 @@ mod tests {
         assert!(res.success);
         let zip_path = PathBuf::from(&res.zip_path);
         assert!(zip_path.is_file());
+        REVEALED_REPORT.with(|path| assert_eq!(path.borrow().as_ref(), Some(&zip_path)));
         assert!(res.file_size_bytes > 0);
 
         // Read and verify zip contents
@@ -941,5 +1115,128 @@ mod tests {
                 file.name()
             );
         }
+    }
+
+    #[test]
+    fn test_anonymize_preserves_non_ascii_utf8() {
+        let input = "Ошибка в пути C:\\Users\\Developer\\Игры и моды: файл не найден. Причина: некорректная кодировка.";
+        let anonymized = anonymize_text(input, None);
+
+        // Username masked
+        assert!(!anonymized.contains("Developer"));
+        assert!(anonymized.contains("C:\\Users\\***\\Игры"));
+
+        // Cyrillic characters are 100% preserved without byte corruption
+        assert!(anonymized.contains("Ошибка в пути"));
+        assert!(anonymized.contains("Игры и моды: файл не найден"));
+        assert!(anonymized.contains("Причина: некорректная кодировка."));
+    }
+
+    #[test]
+    fn test_anonymize_masks_json_secrets_with_spaces() {
+        let input = r#"{"password": "my secret phrase with spaces 123!", "usertoken": "xyz-token-abc", "normal": "hello world"}"#;
+        let anonymized = anonymize_text(input, None);
+
+        // Entire secret string with spaces must be replaced by ***, not just the first word
+        assert!(!anonymized.contains("my secret phrase"));
+        assert!(!anonymized.contains("with spaces"));
+        assert!(!anonymized.contains("xyz-token-abc"));
+        assert!(anonymized.contains(r#""password": "***""#));
+        assert!(anonymized.contains(r#""usertoken": "***""#));
+        assert!(anonymized.contains(r#""normal": "hello world""#));
+    }
+
+    #[test]
+    fn test_anonymize_ipv6_addresses() {
+        let input = "Connected to [2001:0db8:85a3:0000:0000:8a2e:0370:7334]:25565 at 12:34:56";
+        let anonymized = anonymize_text(input, None);
+
+        assert!(!anonymized.contains("2001:0db8"));
+        assert!(anonymized.contains("[IP]"));
+        // Timestamp must NOT be masked as an IP
+        assert!(anonymized.contains("12:34:56"));
+    }
+
+    #[test]
+    fn test_save_report_zip_with_mock_opener_does_not_spawn_explorer() {
+        let temp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(temp.path().join("launcher_data")));
+        let mock = MockPathOpener::default();
+
+        let res = save_report_zip_with_opener(
+            &paths,
+            Some("1.21.1"),
+            Some("Test error"),
+            Some("Test comment"),
+            Some("Player1"),
+            Some(temp.path().to_str().unwrap()),
+            Some(&mock),
+        )
+        .expect("save should succeed");
+
+        assert!(res.success);
+        let opened = mock.opened_paths.lock().unwrap();
+        assert_eq!(opened.len(), 1);
+        assert!(opened[0].ends_with(&res.file_name));
+    }
+
+    #[test]
+    fn test_anonymize_username_with_spaces_and_idempotence() {
+        let input = "Exception in C:\\Users\\John Doe\\AppData\\Local\\Wex\\log.txt and C:\\Users\\Иван Иванов\\game.log. Привет мир! 🚀";
+        let anonymized = anonymize_text(input, None);
+
+        // Neither 'John' nor 'Doe' should be present
+        assert!(!anonymized.contains("John Doe"));
+        assert!(!anonymized.contains("John"));
+        assert!(!anonymized.contains("Doe"));
+        assert!(anonymized.contains("C:\\Users\\***\\AppData"));
+
+        // Cyrillic username with space masked
+        assert!(!anonymized.contains("Иван Иванов"));
+        assert!(!anonymized.contains("Иван"));
+        assert!(!anonymized.contains("Иванов"));
+        assert!(anonymized.contains("C:\\Users\\***\\game.log"));
+
+        // Russian text and emoji preserved
+        assert!(anonymized.contains("Привет мир! 🚀"));
+
+        // Idempotency: calling anonymize_text a second and third time must yield identical result
+        let double_anonymized = anonymize_text(&anonymized, None);
+        assert_eq!(anonymized, double_anonymized);
+        let triple_anonymized = anonymize_text(&double_anonymized, None);
+        assert_eq!(double_anonymized, triple_anonymized);
+    }
+
+    #[test]
+    fn test_report_preview_reflects_actual_configured_memory_and_java() {
+        let temp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(temp.path().to_path_buf()));
+
+        // Save a custom config with 6144 MB RAM and custom Java path
+        let cfg = CoreConfig {
+            max_memory_mb: 6144,
+            java_mode: "custom".to_string(),
+            custom_java_path: Some(PathBuf::from(r"C:\Users\John Doe\jdk-21\bin\javaw.exe")),
+            ..Default::default()
+        };
+        cfg.save(&paths.config_file).unwrap();
+
+        let preview = prepare_report_preview_impl(
+            &paths,
+            Some("1.21.1"),
+            Some("Crash log with error"),
+            Some("My comment"),
+            Some("SecretPlayer"),
+        );
+
+        // Configured RAM must be reflected in DTO and JSON preview, not hardcoded 4096 MB
+        assert_eq!(preview.memory_info, "6144 MB");
+        assert!(preview.full_json_preview.contains(r#""memory": "6144 MB""#));
+
+        // Custom Java must be masked and indicated as custom, without leaking 'John Doe'
+        assert!(preview.java_version.contains("Пользовательская"));
+        assert!(!preview.java_version.contains("John Doe"));
+        assert!(preview.java_version.contains("C:\\Users\\***\\jdk-21"));
+        assert!(preview.full_json_preview.contains("Пользовательская"));
     }
 }

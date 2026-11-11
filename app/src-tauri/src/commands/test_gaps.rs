@@ -9,6 +9,8 @@ mod more;
 #[cfg(windows)]
 #[path = "test_gaps_openers.rs"]
 mod openers;
+#[path = "test_review_settings_lan.rs"]
+mod review_settings_lan;
 #[path = "test_gaps_runtime.rs"]
 mod runtime;
 use super::{
@@ -39,6 +41,25 @@ use wiremock::{
     Mock, MockServer, ResponseTemplate,
 };
 
+struct FixtureTunnel;
+#[async_trait::async_trait]
+impl crate::commands::lobby_tunnel::TunnelRuntime for FixtureTunnel {
+    async fn start(
+        &self,
+        _state: &lobby::LobbyState,
+        config: &wex_net::lobby::TunnelConfigResponse,
+        port: u16,
+    ) -> Result<String, String> {
+        assert!(port > 0);
+        let address = config
+            .public_address
+            .as_deref()
+            .ok_or("fixture has no tunnel address")?;
+        let public_port = config.public_port.ok_or("fixture has no tunnel port")?;
+        Ok(format!("{address}:{public_port}"))
+    }
+}
+
 struct Fixture {
     _temp: TempDir,
     paths: WexPaths,
@@ -64,11 +85,11 @@ impl Fixture {
                 paths.clone(),
                 wex_social::FriendApiClient::new(server.uri()),
             ))
-            .manage(lobby::LobbyState::new(
-                paths.root.join("tools"),
-                &server.uri(),
-                &server.uri(),
-            ))
+            .manage(
+                lobby::LobbyState::new(paths.root.join("tools"), &server.uri(), &server.uri())
+                    .with_tunnel_runtime(Arc::new(FixtureTunnel))
+                    .with_lan_discovery(wex_net::LanDiscoveryService::new_loopback()),
+            )
             .manage(network::NetworkState::new_with_status(false))
             .manage(crate::AppState::default())
             .build(mock_context(noop_assets()))
@@ -1056,9 +1077,7 @@ async fn net_tunnel_status_success_initially_inactive() {
 #[tokio::test]
 async fn net_tunnel_start_error_missing_binary_is_structured() {
     let f = Fixture::new().await;
-    let request = dto(
-        json!({"binary_path":f.paths.root.join("missing.exe"),"secret_key":f.paths.root.join("fixture.secret")}),
-    );
+    let request = dto(json!({}));
     assert_eq!(
         lobby::net_tunnel_start(request, f.room())
             .await

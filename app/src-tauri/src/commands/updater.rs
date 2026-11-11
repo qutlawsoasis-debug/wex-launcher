@@ -3,9 +3,9 @@ use minisign_verify::{PublicKey, Signature};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use wex_social::launcher_update::{
     check_update_from_manifest, check_update_from_url, validate_signature_format,
@@ -15,7 +15,7 @@ use wex_social::launcher_update::{
 use super::launch::PlayState;
 
 pub const DEFAULT_UPDATE_MANIFEST_URL: &str =
-    "https://raw.githubusercontent.com/qutlawsoasis-debug/wex-launcher/main/latest.json";
+    "https://github.com/qutlawsoasis-debug/wex-launcher/releases/latest/download/latest.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LauncherUpdateInfoDto {
@@ -45,12 +45,9 @@ pub struct UpdateProgressPayload {
     pub total_bytes: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StagedUpdate {
-    pub installer_path: PathBuf,
-    pub version: String,
-    pub temp_dir: PathBuf,
-}
+#[path = "updater_stage.rs"]
+mod staging;
+pub use staging::StagedUpdate;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallerExecutionPlan {
@@ -61,6 +58,34 @@ pub struct InstallerExecutionPlan {
 }
 
 static STAGED_UPDATE: Mutex<Option<StagedUpdate>> = Mutex::new(None);
+static UPDATE_BUSY: AtomicBool = AtomicBool::new(false);
+
+struct UpdateOperation;
+
+impl UpdateOperation {
+    fn begin() -> Result<Self, String> {
+        UPDATE_BUSY
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| "Обновление уже выполняется".to_string())?;
+        Ok(Self)
+    }
+}
+
+impl Drop for UpdateOperation {
+    fn drop(&mut self) {
+        UPDATE_BUSY.store(false, Ordering::Release);
+    }
+}
+
+pub fn validate_update_version(version: &str) -> Result<(), String> {
+    let target = semver::Version::parse(version)
+        .map_err(|_| "Некорректная версия обновления".to_string())?;
+    let current = semver::Version::parse(env!("CARGO_PKG_VERSION")).map_err(|e| e.to_string())?;
+    if !target.cmp_precedence(&current).is_gt() {
+        return Err("Версия обновления должна быть новее установленной".into());
+    }
+    Ok(())
+}
 
 pub fn set_staged_update(update: StagedUpdate) {
     if let Ok(mut lock) = STAGED_UPDATE.lock() {
@@ -257,6 +282,7 @@ pub fn build_installer_plan(
     installer_path: &Path,
     target_version: &str,
 ) -> Result<InstallerExecutionPlan, String> {
+    validate_update_version(target_version)?;
     if !installer_path.exists() {
         return Err(format!(
             "Файл установщика не существует: {:?}",
@@ -281,10 +307,13 @@ pub fn build_installer_plan(
             installer_path: installer_path.to_path_buf(),
         })
     } else {
-        // NSIS .exe installer
+        // NSIS .exe installer (Tauri template flags):
+        //   /S      — fully silent, no installer window
+        //   /R      — relaunch Wex when the install finishes
+        //   /UPDATE — keep the existing install settings
         Ok(InstallerExecutionPlan {
             executable: installer_path.to_path_buf(),
-            args: vec!["/UPDATE".to_string(), "/P".to_string()],
+            args: vec!["/S".to_string(), "/R".to_string(), "/UPDATE".to_string()],
             target_version: target_version.to_string(),
             installer_path: installer_path.to_path_buf(),
         })
@@ -301,21 +330,50 @@ where
     handler(&plan.executable, &plan.args)
 }
 
+pub fn check_update_restart_allowed(is_running: bool, is_launching: bool) -> Result<(), String> {
+    if is_running || is_launching {
+        Err("Нельзя применить обновление: игра запущена или запускается. Закройте игру перед перезапуском лаунчера.".to_string())
+    } else {
+        Ok(())
+    }
+}
+
 pub fn apply_staged_update_and_restart(
     app: Option<&AppHandle>,
 ) -> Result<InstallerExecutionPlan, String> {
-    let staged = get_staged_update()
+    let _operation = UpdateOperation::begin()?;
+
+    // Reject update restart if user game is currently running or launching
+    if let Some(h) = app {
+        if let Some(play_state) = h.try_state::<PlayState>() {
+            check_update_restart_allowed(
+                play_state.is_running.load(Ordering::SeqCst),
+                play_state.is_launching.load(Ordering::SeqCst),
+            )?;
+            // Safely stop background prewarm before restarting into the installer
+            tauri::async_runtime::block_on(play_state.cleanup_prewarm());
+        }
+    }
+
+    // Take once: two restart requests cannot execute the same staged package.
+    let staged = STAGED_UPDATE
+        .lock()
+        .map_err(|e| e.to_string())?
+        .take()
         .ok_or_else(|| "Нет подготовленного проверенного обновления для установки".to_string())?;
-
-    let plan = build_installer_plan(&staged.installer_path, &staged.version)?;
-
+    let plan = staged.execute(|executable, args| {
+        #[cfg(target_os = "windows")]
+        std::process::Command::new(executable)
+            .args(args)
+            .spawn()
+            .map_err(|e| format!("Не удалось запустить установщик обновления: {}", e))?;
+        #[cfg(not(target_os = "windows"))]
+        let _ = (executable, args);
+        Ok(())
+    })?;
+    staged.preserve_for_installer();
     #[cfg(target_os = "windows")]
     {
-        let mut cmd = std::process::Command::new(&plan.executable);
-        cmd.args(&plan.args);
-        cmd.spawn()
-            .map_err(|e| format!("Не удалось запустить установщик обновления: {}", e))?;
-
         if let Some(h) = app {
             h.exit(0);
         } else {
@@ -423,6 +481,7 @@ pub async fn download_and_install_internal(
     if is_game_running {
         return Err("Игра сейчас запущена. Закройте игру перед обновлением лаунчера.".to_string());
     }
+    validate_update_version(version)?;
 
     // 2. Guard against missing trusted public key (Architect requirement: без ключа только ссылка)
     let pubkey_str = match trusted_pubkey {
@@ -440,22 +499,16 @@ pub async fn download_and_install_internal(
         }
     };
 
-    // 4. Prepare temporary isolated directory for the downloaded update
-    let temp_dir = std::env::temp_dir()
-        .join("AuraDev")
-        .join(format!("wex-update-{}", version));
-    if let Err(e) = std::fs::create_dir_all(&temp_dir) {
-        return Err(format!(
-            "Не удалось создать временный каталог для обновления: {}",
-            e
-        ));
+    // Use only a supported extension from a parsed URL; never a raw basename.
+    let url = reqwest::Url::parse(download_url).map_err(|e| e.to_string())?;
+    let extension = Path::new(url.path())
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !matches!(extension.as_str(), "exe" | "msi" | "zip") {
+        return Err("Неподдерживаемый формат установщика".into());
     }
-
-    let file_name = download_url
-        .split('/')
-        .next_back()
-        .unwrap_or("wex-update-setup.exe");
-    let target_file = temp_dir.join(file_name);
 
     // 5. Download file with progress reporting
     let emit_progress = |pct: u32, text: &str, downloaded: u64, total: Option<u64>| {
@@ -474,13 +527,13 @@ pub async fn download_and_install_internal(
 
     emit_progress(0, "Подключение к серверу обновлений…", 0, None);
 
-    let mut response = client.get(download_url).send().await.map_err(|e| {
-        let _ = std::fs::remove_dir_all(&temp_dir);
-        format!("Ошибка сети при загрузке обновления: {}", e)
-    })?;
+    let mut response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("Ошибка сети при загрузке обновления: {}", e))?;
 
     if !response.status().is_success() {
-        let _ = std::fs::remove_dir_all(&temp_dir);
         return Err(format!(
             "Сервер вернул ошибку при загрузке обновления: HTTP {}",
             response.status()
@@ -495,13 +548,15 @@ pub async fn download_and_install_internal(
         let chunk_opt = match response.chunk().await {
             Ok(c) => c,
             Err(e) => {
-                let _ = std::fs::remove_dir_all(&temp_dir);
                 return Err(format!("Ошибка загрузки фрагмента обновления: {}", e));
             }
         };
 
         match chunk_opt {
             Some(chunk) => {
+                if downloaded_bytes.len().saturating_add(chunk.len()) > 512 * 1024 * 1024 {
+                    return Err("Файл обновления слишком большой".into());
+                }
                 downloaded_bytes.extend_from_slice(&chunk);
                 downloaded += chunk.len() as u64;
                 let pct = if let Some(tot) = total_size {
@@ -533,38 +588,21 @@ pub async fn download_and_install_internal(
 
     // 6. CRYPTOGRAPHIC SIGNATURE VERIFICATION WITH TRUSTED PUBLIC KEY
     if let Err(err_msg) = verify_artifact_signature(&downloaded_bytes, sig_str, pubkey_str) {
-        // Full rollback on verification failure: delete temp directory and preserve running binary
-        let _ = std::fs::remove_dir_all(&temp_dir);
+        // No temporary filesystem state exists yet; network/signature failures delete nothing.
         return Err(format!(
             "Ошибка проверки цифровой подписи (подмена или повреждение файлов): {}. Прежняя версия сохранена.",
             err_msg
         ));
     }
 
-    // 7. Write verified bytes to disk and extract if zipped
-    if let Err(e) = std::fs::write(&target_file, &downloaded_bytes) {
-        let _ = std::fs::remove_dir_all(&temp_dir);
-        return Err(format!(
-            "Не удалось сохранить проверенный файл обновления: {}",
-            e
-        ));
-    }
-
-    let extract_dir = temp_dir.join("installer");
-    let resolved_installer = match extract_installer_archive_if_needed(&target_file, &extract_dir) {
-        Ok(path) => path,
-        Err(e) => {
-            let _ = std::fs::remove_dir_all(&temp_dir);
-            return Err(e);
-        }
-    };
-
-    // 8. Stage update for execution upon restart
-    set_staged_update(StagedUpdate {
-        installer_path: resolved_installer,
-        version: version.to_string(),
-        temp_dir: temp_dir.clone(),
-    });
+    // Own a random TempDir and retain signed-package verification metadata until restart.
+    set_staged_update(StagedUpdate::new(
+        &downloaded_bytes,
+        sig_str,
+        pubkey_str,
+        version,
+        &extension,
+    )?);
 
     emit_progress(
         100,
@@ -618,6 +656,8 @@ pub async fn updater_install(
     signature: Option<String>,
     version: String,
 ) -> Result<UpdateInstallStatusDto, String> {
+    let _operation = UpdateOperation::begin()?;
+    clear_staged_update();
     let is_running = state.is_running.load(Ordering::SeqCst);
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(60))
@@ -639,32 +679,40 @@ pub async fn updater_install(
 }
 
 #[tauri::command]
-pub fn updater_restart(app: AppHandle) -> Result<(), String> {
+pub async fn updater_restart(app: AppHandle, state: State<'_, PlayState>) -> Result<(), String> {
+    check_update_restart_allowed(
+        state.is_running.load(Ordering::SeqCst),
+        state.is_launching.load(Ordering::SeqCst),
+    )?;
+    state.cleanup_prewarm().await;
     let _ = apply_staged_update_and_restart(Some(&app))?;
     Ok(())
 }
 
+// Injecting the OS opener keeps tests from opening the user's browser.
+fn open_download_url_with<F>(url: &str, opener: F) -> Result<(), String>
+where
+    F: FnOnce(&str) -> Result<(), String>,
+{
+    if url.chars().any(|c| c.is_control() || c.is_whitespace()) || url.contains('\\') {
+        return Err("Недопустимые символы в URL".to_string());
+    }
+    let parsed = reqwest::Url::parse(url).map_err(|_| "Некорректный URL".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || !parsed.has_host()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
+        return Err("Разрешены только HTTP и HTTPS ссылки без учётных данных".to_string());
+    }
+    opener(parsed.as_str())
+}
+
 #[tauri::command]
 pub fn updater_open_download_url(url: String) -> Result<(), String> {
-    if url.starts_with("http://") || url.starts_with("https://") {
-        #[cfg(target_os = "windows")]
-        {
-            let _ = std::process::Command::new("cmd")
-                .args(["/c", "start", "", &url])
-                .spawn()
-                .map_err(|e| e.to_string())?;
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let _ = std::process::Command::new("xdg-open")
-                .arg(&url)
-                .spawn()
-                .map_err(|e| e.to_string())?;
-        }
-        Ok(())
-    } else {
-        Err("Некорректный протокол URL".to_string())
-    }
+    open_download_url_with(&url, |url| {
+        tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string())
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -678,10 +726,152 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    #[test]
+    fn security_regression_url_controls_never_reach_opener() {
+        for url in [
+            "https://example.invalid/\n&echo.WEX_TEST",
+            "http://example.invalid/\rtest",
+            "https://example.invalid/\0test",
+            "https://example.invalid/\ttest",
+        ] {
+            let mut called = false;
+            let result = open_download_url_with(url, |_| {
+                called = true;
+                Ok(())
+            });
+            assert!(
+                result.is_err() && !called,
+                "unsafe URL reached opener: {url:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn download_url_opener_treats_metacharacters_as_url_data() {
+        for url in [
+            "https://example.invalid/&echo.WEX_TEST",
+            "http://example.invalid/a?x=1&y=2",
+        ] {
+            let mut received = None;
+            open_download_url_with(url, |value| {
+                received = Some(value.to_string());
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(received.as_deref(), Some(url));
+        }
+    }
+
+    #[test]
+    fn download_url_opener_rejects_other_schemes_and_credentials() {
+        for url in [
+            "file:///C:/payload.exe",
+            "javascript:alert(1)",
+            "wex://join/ABC123",
+            "aura://join/ABC123",
+            "mailto:example@example.invalid",
+            "https://",
+            "https://user:password@example.invalid",
+            "https://example.invalid\\payload",
+        ] {
+            assert!(
+                open_download_url_with(url, |_| panic!("rejected URL reached opener")).is_err()
+            );
+        }
+        let mut opened = String::new();
+        open_download_url_with("HTTPS://EXAMPLE.INVALID/path", |value| {
+            opened = value.into();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(opened, "https://example.invalid/path");
+        assert_eq!(
+            open_download_url_with("https://example.invalid/", |_| Err(
+                "mock opener failed".into()
+            )),
+            Err("mock opener failed".into())
+        );
+    }
+
     // Valid Minisign keypair and signature for data b"test"
     const TEST_PUBKEY: &str = "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3";
     const TEST_DATA: &[u8] = b"test";
     const TEST_VALID_SIG: &str = "untrusted comment: signature from minisign secret key\nRWQf6LRCGA9i59SLOFxz6NxvASXDJeRtuZykwQepbDEGt87ig1BNpWaVWuNrm73YiIiJbq71Wi+dP9eKL8OC351vwIasSSbXxwA=\ntrusted comment: timestamp:1555779966\tfile:test\nQtKMXWyYcwdpZAlPF7tE2ENJkRd1ujvKjlj1m9RtHTBnZPa5WKU5uWRs5GoP5M/VqE81QFuMKI5k/SfNQUaOAA==";
+
+    #[test]
+    fn security_rejects_invalid_update_versions() {
+        let dir = tempfile::tempdir().unwrap();
+        let installer = dir.path().join("setup.exe");
+        std::fs::write(&installer, TEST_DATA).unwrap();
+        for version in [
+            "../outside",
+            "1.0.0\\..\\outside",
+            "C:\\outside",
+            "not-semver",
+            "1.0",
+            "0.0.0",
+        ] {
+            assert!(
+                build_installer_plan(&installer, version).is_err(),
+                "accepted {version}"
+            );
+        }
+    }
+
+    #[test]
+    fn security_rejects_replay_even_with_build_metadata() {
+        let current = env!("CARGO_PKG_VERSION");
+        assert!(validate_update_version(current).is_err());
+        assert!(validate_update_version(&format!("{current}+replay")).is_err());
+    }
+
+    #[test]
+    fn security_serializes_install_and_restart_operations() {
+        let operation = UpdateOperation::begin().unwrap();
+        assert!(UpdateOperation::begin().is_err());
+        drop(operation);
+        assert!(UpdateOperation::begin().is_ok());
+    }
+
+    #[tokio::test]
+    async fn security_malformed_version_cannot_delete_external_sentinel() {
+        let external = tempfile::Builder::new()
+            .prefix("c3-update-sentinel-")
+            .tempdir()
+            .unwrap();
+        let sentinel = external.path().join("sentinel");
+        std::fs::write(&sentinel, b"keep this unrelated directory").unwrap();
+        let name = external.path().file_name().unwrap().to_str().unwrap();
+        let probe = format!("c3-probe-{name}");
+        let version = format!("{probe}/../../{name}");
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/setup.exe"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"tampered".to_vec()))
+            .mount(&server)
+            .await;
+        let result = download_and_install_internal(
+            None,
+            &Client::new(),
+            &format!("{}/setup.exe", server.uri()),
+            Some(TEST_VALID_SIG),
+            &version,
+            Some(TEST_PUBKEY),
+            false,
+        )
+        .await;
+        // The old code creates this empty probe directory while traversing up to
+        // the *owned test TempDir*. Never address or delete a user's directory.
+        let legacy_probe = std::env::temp_dir()
+            .join("AuraDev")
+            .join(format!("wex-update-{probe}"));
+        let _ = std::fs::remove_dir(legacy_probe);
+        assert!(result.is_err());
+        assert_eq!(
+            std::fs::read(&sentinel).ok().as_deref(),
+            Some(b"keep this unrelated directory".as_slice())
+        );
+    }
 
     #[test]
     fn test_verify_signature_valid() {
@@ -801,6 +991,20 @@ mod tests {
         .unwrap_err();
 
         assert!(err.contains("Игра сейчас запущена"));
+    }
+
+    #[test]
+    fn test_updater_restart_blocked_when_game_running_or_launching() {
+        let running_err = check_update_restart_allowed(true, false).unwrap_err();
+        assert!(running_err.contains("игра запущена"));
+
+        let launching_err = check_update_restart_allowed(false, true).unwrap_err();
+        assert!(launching_err.contains("игра запущена"));
+
+        let both_err = check_update_restart_allowed(true, true).unwrap_err();
+        assert!(both_err.contains("игра запущена"));
+
+        assert!(check_update_restart_allowed(false, false).is_ok());
     }
 
     #[tokio::test]
@@ -933,7 +1137,7 @@ mod tests {
         // 1. Plan creation
         let plan = build_installer_plan(&exe_path, "1.2.0").expect("Plan must be built");
         assert_eq!(plan.executable, exe_path);
-        assert_eq!(plan.args, vec!["/UPDATE", "/P"]);
+        assert_eq!(plan.args, vec!["/S", "/R", "/UPDATE"]);
         assert_eq!(plan.target_version, "1.2.0");
 
         // 2. Execution through mock handler to verify command formation and version replacement
@@ -947,7 +1151,8 @@ mod tests {
         let (executed_exe, executed_args) = executed_cmd.unwrap();
         assert_eq!(executed_exe, exe_path);
         assert!(executed_args.contains(&"/UPDATE".to_string()));
-        assert!(executed_args.contains(&"/P".to_string()));
+        assert!(executed_args.contains(&"/S".to_string()));
+        assert!(executed_args.contains(&"/R".to_string()));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
@@ -1030,5 +1235,51 @@ mod tests {
         );
 
         std::env::remove_var("WEX_UPDATER_PUBKEY");
+    }
+
+    #[test]
+    fn test_installer_hooks_nsis_script_safety_and_marker_verification() {
+        let nsh_content = include_str!("../../installer-hooks.nsh");
+
+        // URI handlers must point at the installed binary (wex-app.exe via the
+        // Tauri template define), never at a non-existent Wex.exe.
+        assert!(
+            !nsh_content.contains(r#"$INSTDIR\Wex.exe"#),
+            "wex:// and aura:// must not point at a hard-coded Wex.exe"
+        );
+        for scheme in ["wex", "aura"] {
+            assert!(
+                nsh_content.contains(&format!(
+                    r#"WriteRegStr HKCU "Software\Classes\{scheme}\shell\open\command" "" '"$INSTDIR\${{MAINBINARYNAME}}.exe" "%1"'"#
+                )),
+                "{scheme}:// must open $INSTDIR\\${{MAINBINARYNAME}}.exe"
+            );
+        }
+
+        // Must display actual target directory ($2) in MessageBox prompt rather than hardcoded %APPDATA%\Wex
+        assert!(
+            nsh_content.contains(r#"MessageBox MB_YESNO|MB_DEFBUTTON2|MB_ICONQUESTION "Удалить пользовательские данные и настройки Wex ($2)?" IDNO skip_data_cleanup"#),
+            "NSIS prompt must display the actual resolved target path ($2)"
+        );
+
+        // Must verify Wex ownership marker (config.json or instances directory) for custom paths
+        assert!(
+            nsh_content.contains(r#"IfFileExists "$1\config.json""#),
+            "NSIS script must check for config.json marker in custom WEX_DATA_DIR"
+        );
+        assert!(
+            nsh_content.contains(r#"IfFileExists "$1\instances\*.*""#),
+            "NSIS script must check for instances marker in custom WEX_DATA_DIR"
+        );
+
+        // Must delete target $2 rather than arbitrary unverified $1
+        assert!(
+            nsh_content.contains("RMDir /r \"$2\""),
+            "RMDir must only delete verified target $2"
+        );
+        assert!(
+            !nsh_content.contains("RMDir /r \"$1\""),
+            "RMDir must NEVER delete unverified raw WEX_DATA_DIR $1"
+        );
     }
 }

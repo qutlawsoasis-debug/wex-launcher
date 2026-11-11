@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod ipc;
+mod navigation;
 
 pub use commands::servers::*;
 
@@ -26,6 +27,11 @@ impl Default for AppState {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("navigation-guard")
+                .on_navigation(|_, url| navigation::allowed(url))
+                .build(),
+        )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
@@ -106,8 +112,6 @@ pub fn run() {
             // Startup commands (SPEC 1.1)
             commands::startup::startup_get_info,
             commands::startup::startup_verify_directories,
-            commands::startup::startup_check_update,
-            commands::startup::startup_download_update,
             // Tray & Window behavior commands
             commands::tray::tray_apply_launch_behavior,
             commands::tray::tray_restore_window,
@@ -204,6 +208,7 @@ pub fn run() {
             commands::lobby::net_tunnel_status,
             commands::lobby::create_lobby_room,
             commands::lobby::join_lobby_room,
+            commands::lobby::prepare_lobby_join,
             commands::lobby::get_lobby_status,
             commands::lobby::close_lobby_room,
             commands::lobby::kick_lobby_player,

@@ -7,6 +7,14 @@ name: Release Build
         description: 'Release notes for update manifest'
         required: false
         default: 'Wex Launcher manual release build'
+      publish:
+        description: 'Publish a GitHub Release (vX.Y.Z) so installed launchers can auto-update'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -62,7 +70,8 @@ jobs:
         shell: pwsh
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_KEY_PASSWORD }}
+          # Tauri reads the key password from this exact variable name.
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_KEY_PASSWORD }}
         run: |
           npx --yes @tauri-apps/cli@^2.2.0 build
 
@@ -70,6 +79,15 @@ jobs:
         shell: pwsh
         run: |
           powershell -ExecutionPolicy Bypass -File scripts\generate-latest-json.ps1 -Notes "${{ github.event.inputs.notes || 'Wex Launcher update' }}"
+
+      - name: Verify updater signature matches embedded pubkey
+        if: ${{ steps.signing-check.outputs.signed == 'true' }}
+        shell: pwsh
+        run: |
+          python -m pip install --quiet pynacl
+          $exe = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          python scripts/verify-updater-signature.py app/src-tauri/tauri.conf.json $exe.FullName "$($exe.FullName).sig"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Upload NSIS Installer Artifact
         uses: actions/upload-artifact@v4
@@ -96,3 +114,26 @@ jobs:
           name: Wex-Updater-Manifest
           path: latest.json
           if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: ${{ github.event.inputs.publish == 'true' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNED: ${{ steps.signing-check.outputs.signed }}
+          NOTES: ${{ github.event.inputs.notes }}
+        run: |
+          if ($env:SIGNED -ne 'true') {
+            Write-Error "Refusing to publish an unsigned release: installed launchers could not verify it. Add the TAURI_SIGNING_PRIVATE_KEY secret."
+            exit 1
+          }
+          $version = (Get-Content app/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $tag = "v$version"
+          $files = @(Get-ChildItem target/release/bundle/nsis/*-setup.exe, target/release/bundle/nsis/*-setup.exe.sig, target/release/bundle/msi/*.msi, target/release/bundle/msi/*.msi.sig -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+          $files += (Resolve-Path latest.json).Path
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Error "Release $tag already exists. Bump the version before publishing again."
+            exit 1
+          }
+          gh release create $tag @files --target $env:GITHUB_SHA --title "Wex $version" --notes "$env:NOTES"

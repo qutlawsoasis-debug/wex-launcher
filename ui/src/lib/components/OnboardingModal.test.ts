@@ -2,6 +2,9 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
 import OnboardingModal from './OnboardingModal.svelte';
 
+const persist = vi.hoisted(() => vi.fn());
+vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => persist(...args) }));
+
 describe('OnboardingModal Component (Apple HIG Onboarding)', () => {
   let target: HTMLElement;
   let comp: any = null;
@@ -11,6 +14,7 @@ describe('OnboardingModal Component (Apple HIG Onboarding)', () => {
     document.body.appendChild(target);
     localStorage.clear();
     vi.clearAllMocks();
+    persist.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -212,8 +216,65 @@ describe('OnboardingModal Component (Apple HIG Onboarding)', () => {
     launchBtn.click();
     await tick();
 
-    expect(completedData).toBeTruthy();
+    await vi.waitFor(() => expect(completedData).toBeTruthy());
     expect(completedData.launchImmediately).toBe(true);
     expect(localStorage.getItem('wex_onboarding_completed')).toBe('true');
   });
+  it('does not simulate fake random progress or timer-based readiness without genuine events (wex-review-fake-progress item 15)', async () => {
+    vi.useFakeTimers();
+
+    comp = mount(OnboardingModal, {
+      target,
+      props: {
+        open: true,
+        initialStep: 'welcome',
+      },
+    });
+
+    await tick();
+
+    // Must NOT start with fake 12% progress!
+    const pctEl = target.querySelector('.prewarm-pct');
+    expect(pctEl?.textContent || '').not.toContain('12%');
+
+    // Advancing fake time must NOT randomly increment progress or claim readiness
+    vi.advanceTimersByTime(5000);
+    await tick();
+
+    expect(target.textContent).not.toContain('готов к запуску');
+    // In absence of events, should honestly show "Подготавливаем…" without percentages
+    expect(target.textContent).toContain('Подготавливаем…');
+    expect(target.querySelector('.prewarm-pct')).toBeNull();
+
+    vi.useRealTimers();
+  });
+  it('review_16_waits_for_persistence_before_launching', async () => {
+    let release!: () => void;
+    const complete = vi.fn();
+    persist.mockImplementation((cmd) => cmd === 'onboarding_complete' ? new Promise<void>(r => { release = r; }) : Promise.resolve(null));
+    comp = mount(OnboardingModal, { target, props: { open: true, initialStep: 'ready', oncomplete: complete } });
+    await tick();
+    const finishing = comp.finishOnboarding(true);
+    expect(complete).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(persist).toHaveBeenCalledWith('onboarding_complete', expect.anything()));
+    expect(localStorage.getItem('wex_onboarding_completed')).toBeNull();
+    release();
+    await finishing;
+    await vi.waitFor(() => expect(complete).toHaveBeenCalledOnce());
+  });
+
+  it('keeps onboarding open and retryable when saving fails', async () => {
+    const complete = vi.fn();
+    persist.mockImplementation((cmd) => cmd === 'onboarding_complete' ? Promise.reject(new Error('Диск недоступен')) : Promise.resolve(null));
+    comp = mount(OnboardingModal, { target, props: { open: true, initialStep: 'ready', oncomplete: complete } });
+    await tick();
+    await comp.finishOnboarding(true); await tick();
+    expect(complete).not.toHaveBeenCalled();
+    expect(localStorage.getItem('wex_onboarding_completed')).toBeNull();
+    expect(target.querySelector('[role="alert"]')?.textContent).toContain('Диск недоступен');
+    persist.mockResolvedValue(undefined);
+    await comp.finishOnboarding(false); await tick();
+    expect(complete).toHaveBeenCalledOnce();
+  });
+
 });

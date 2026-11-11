@@ -3,6 +3,7 @@ pub mod deeplink;
 pub mod friends;
 pub mod launch;
 pub mod lobby;
+pub mod lobby_tunnel;
 pub mod logs;
 pub mod mods;
 pub mod music;

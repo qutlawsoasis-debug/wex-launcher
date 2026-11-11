@@ -11,6 +11,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import Button from './Button.svelte';
+  import { t } from '../i18n';
 
   interface Props {
     open?: boolean;
@@ -21,15 +22,15 @@
     showDone?: boolean;
     maxWidth?: string;
     onclose?: () => void;
-    ondone?: () => void;
+    ondone?: () => void | boolean | Promise<void | boolean>;
     children?: Snippet;
   }
 
   let {
     open = $bindable(false),
     title,
-    cancelLabel = 'Отмена',
-    doneLabel = 'Готово',
+    cancelLabel = t('common.cancel'),
+    doneLabel = t('common.done'),
     showCancel = true,
     showDone = true,
     maxWidth = '540px',
@@ -55,8 +56,14 @@
     }
   }
 
-  function handleDone() {
-    ondone?.();
+  async function handleDone() {
+    if (ondone) {
+      const res = await ondone();
+      if (res === false) return;
+    }
+    if (ondone && open) {
+      return;
+    }
     close();
   }
 
@@ -202,6 +209,11 @@
     flex-direction: column;
     animation: sheetSlideUp var(--motion-duration-sheet-enter) var(--motion-curve-spring-system) forwards;
     outline: none;
+  }
+
+  .sheet-card:focus,
+  .sheet-card:focus-visible {
+    outline: none !important;
   }
 
   .grabber-area {

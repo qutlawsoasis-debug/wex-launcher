@@ -93,6 +93,34 @@
   --radius-xl: 18px;
   --radius-sheet: 20px;
   --radius-pill: 9999px;
+
+  /* Aliases: names used by older components that never had a definition, so
+     their cards rendered transparent and text lost contrast. Each one maps to
+     the real token above; new code should use the real token directly. */
+  --color-glass-bg: var(--color-system-thin-material);
+  --glass-card-bg: var(--color-system-thin-material);
+  --color-window-bg: var(--color-system-background);
+  --color-bg-secondary: var(--color-secondary-system-background);
+  --color-secondary-system-grouped-background: var(--color-secondary-system-background);
+  --color-primary-label: var(--color-label);
+  --color-fill-secondary: var(--color-secondary-system-fill);
+  --color-secondary-fill: var(--color-secondary-system-fill);
+  --color-fill-tertiary: var(--color-tertiary-system-fill);
+  --color-tertiary-fill: var(--color-tertiary-system-fill);
+  --color-fill-quaternary: var(--color-quaternary-system-fill);
+  --color-quaternary-fill: var(--color-quaternary-system-fill);
+  --color-system-purple: #AF52DE;
+  --duration-fast: var(--motion-duration-short);
+  --motion-duration-fast: var(--motion-duration-short);
+  --ease-spring: var(--motion-spring-ease);
+  --font-size-caption1: var(--text-caption-1);
+  --font-size-footnote: var(--text-footnote);
+  --font-size-subheadline: var(--text-subheadline);
+  --text-caption: var(--text-caption-1);
+  --font-weight-regular: 400;
+  --radius-medium: var(--radius-md);
+  --radius-large: var(--radius-lg);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 /* Light Theme */
@@ -288,7 +316,9 @@
 :root[data-reduce-motion="true"] *,
 :root[data-reduce-motion="true"] *::before,
 :root[data-reduce-motion="true"] *::after {
-  transform: none !important;
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
 }
 
 :root[data-effects="low"] {

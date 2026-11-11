@@ -195,23 +195,18 @@ async fn close_lobby_room_remote_error_is_currently_suppressed() {
 }
 
 #[tokio::test]
-async fn net_tunnel_start_success_uses_disposable_test_process_and_stop_releases_it() {
+async fn security_regression_net_tunnel_start_rejects_tampered_fixed_binary() {
     let f = Fixture::new().await;
-    // libtest rejects --secret_path before running tests. This exercises child
-    // supervision without a tunnel executable, network, or a game process.
-    let response = lobby::net_tunnel_start(
-        NetTunnelStartRequest {
-            binary_path: std::env::current_exe().unwrap().to_string_lossy().into(),
-            secret_key: f.paths.root.join("fixture-secret").to_string_lossy().into(),
-        },
-        f.room(),
-    )
-    .await
-    .unwrap();
-    assert_eq!(response.pid, 0);
-    assert!(f.room().supervisor.lock().await.is_some());
-    lobby::net_tunnel_stop(f.room()).await.unwrap();
+    let tools = f.room().tools_dir.clone();
+    fs::create_dir_all(&tools).unwrap();
+    let binary = wex_net::tunnel::playit_binary_path(&tools);
+    fs::write(&binary, b"tampered executable").unwrap();
+    let error = lobby::net_tunnel_start(NetTunnelStartRequest {}, f.room())
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "INTERNAL_ERROR");
     assert!(f.room().supervisor.lock().await.is_none());
+    assert_eq!(fs::read(binary).unwrap(), b"tampered executable");
 }
 
 // Commands that use APPDATA run in a separate copy of this test executable.
@@ -413,6 +408,148 @@ async fn start_game_success_and_supervisor_cleanup_both_versions() {
         }
         assert!(cleaned_up);
     }
+}
+// Regression: the startup verification / prewarm installs in the background.
+// Play must wait for it instead of installing the same version at the same time.
+#[tokio::test]
+async fn start_game_waits_for_background_install_both_versions() {
+    for version in ["1.20.1", "1.21.1"] {
+        let f = Fixture::new().await;
+        let background_install = f.play().install_lock.clone().lock_owned().await;
+        let play = f.play();
+        let release = async {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            assert!(
+                !play.is_running.load(Ordering::SeqCst),
+                "Play started while the background install still held the lock"
+            );
+            assert!(play.is_launching.load(Ordering::SeqCst));
+            drop(background_install);
+        };
+        let (response, ()) = tokio::join!(
+            launch::start_game(
+                f.app.handle().clone(),
+                version.into(),
+                "Fixture".into(),
+                None,
+                None,
+                f.play(),
+            ),
+            release
+        );
+        assert!(response.unwrap().success);
+        assert!(f.play().is_running.load(Ordering::SeqCst));
+        assert!(
+            f.play().install_lock.try_lock().is_ok(),
+            "Play must release the install lock"
+        );
+        launch::kill_game(Some(version.into()), f.play())
+            .await
+            .unwrap();
+    }
+}
+#[tokio::test]
+async fn start_game_cancelled_while_waiting_for_background_install_does_not_launch() {
+    let f = Fixture::new().await;
+    let background_install = f.play().install_lock.clone().lock_owned().await;
+    let cancel = async {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        launch::cancel_launch(f.app.handle().clone(), f.play())
+            .await
+            .unwrap();
+        drop(background_install);
+    };
+    let (response, ()) = tokio::join!(
+        launch::start_game(
+            f.app.handle().clone(),
+            "1.21.1".into(),
+            "Fixture".into(),
+            None,
+            None,
+            f.play(),
+        ),
+        cancel
+    );
+    assert!(response.is_err());
+    assert!(!f.play().is_running.load(Ordering::SeqCst));
+    assert!(!f.play().is_launching.load(Ordering::SeqCst));
+}
+/// Starts a game whose instance log contains a GPU crash signature and records
+/// the launch-status and game-crash events emitted after it ends.
+async fn run_session_with_gpu_log(
+    f: &Fixture,
+    version: &str,
+    user_stop: bool,
+) -> (Vec<String>, usize) {
+    use tauri::Listener;
+    let logs = f.paths.instance_dir(version).join("logs");
+    fs::create_dir_all(&logs).unwrap();
+    fs::write(logs.join("latest.log"), "[main/ERROR]: GLFW error 65543\n").unwrap();
+    let statuses = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let crashes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let captured = statuses.clone();
+    f.app.listen(wex_ipc::events::EVT_LAUNCH_STATUS, move |e| {
+        captured.lock().unwrap().push(e.payload().to_owned());
+    });
+    let crash_count = crashes.clone();
+    f.app.listen("game-crash", move |_| {
+        crash_count.fetch_add(1, Ordering::SeqCst);
+    });
+    launch::start_game(
+        f.app.handle().clone(),
+        version.into(),
+        "Fixture".into(),
+        None,
+        None,
+        f.play(),
+    )
+    .await
+    .unwrap();
+    if user_stop {
+        launch::kill_game(Some(version.into()), f.play())
+            .await
+            .unwrap();
+    } else {
+        // The game process ends on its own (crash), without a stop request.
+        f.play().core.kill_game(version).await.unwrap();
+    }
+    // The supervisor polls every 500 ms; wait for its final idle/error status.
+    for _ in 0..40 {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        if statuses
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|s| s.contains("\"idle\"") || s.contains("\"error\""))
+        {
+            break;
+        }
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let statuses = statuses.lock().unwrap().clone();
+    (statuses, crashes.load(Ordering::SeqCst))
+}
+#[tokio::test]
+async fn stop_button_is_not_reported_as_crash_both_versions() {
+    for version in ["1.20.1", "1.21.1"] {
+        let f = Fixture::new().await;
+        let (statuses, crashes) = run_session_with_gpu_log(&f, version, true).await;
+        assert_eq!(
+            crashes, 0,
+            "a user stop must not open the crash sheet: {statuses:?}"
+        );
+        let last = statuses.last().expect("a final launch status");
+        assert!(last.contains("\"idle\""), "{last}");
+        assert!(last.contains("Игра остановлена"), "{last}");
+        assert!(!f.play().stop_requested.load(Ordering::SeqCst));
+    }
+}
+#[tokio::test]
+async fn game_exit_without_stop_still_reports_crash() {
+    let f = Fixture::new().await;
+    let (statuses, crashes) = run_session_with_gpu_log(&f, "1.21.1", false).await;
+    assert_eq!(crashes, 1, "{statuses:?}");
+    assert!(statuses.last().unwrap().contains("\"error\""));
 }
 #[tokio::test]
 async fn start_game_error_duplicate_does_not_launch_core() {
@@ -616,14 +753,13 @@ async fn close_lobby_room_success_without_session_is_idempotent() {
     assert!(f.server.received_requests().await.unwrap().is_empty());
 }
 #[tokio::test]
-async fn net_tunnel_ensure_binary_error_when_destination_is_file_avoids_download() {
+async fn net_tunnel_ensure_binary_error_when_backend_tools_is_file_avoids_download() {
     let f = Fixture::new().await;
-    let destination = f.paths.root.join("blocked-tools");
+    let destination = f.room().tools_dir.clone();
     fs::write(&destination, b"keep").unwrap();
-    let error =
-        lobby::net_tunnel_ensure_binary(dto(json!({"destination_path":destination})), f.room())
-            .await
-            .unwrap_err();
+    let error = lobby::net_tunnel_ensure_binary(NetTunnelEnsureBinaryRequest {}, f.room())
+        .await
+        .unwrap_err();
     assert_eq!(error.code, "INTERNAL_ERROR");
     assert_eq!(fs::read(&destination).unwrap(), b"keep");
 }
@@ -655,4 +791,37 @@ async fn workshop_restore_world_backup_error_missing_archive_preserves_existing_
     .await
     .is_err());
     assert_eq!(fs::read(target.join("sentinel")).unwrap(), b"keep");
+}
+
+#[tokio::test]
+async fn review_09_lan_respects_shared_launch_guard() {
+    let f = Fixture::new().await;
+    f.play().is_launching.store(true, Ordering::SeqCst);
+    assert!(lobby::connect_lan_world(
+        f.app.handle().clone(),
+        "127.0.0.1:54321".into(),
+        Some("1.21.1".into()),
+        Some("Guest".into()),
+        f.play()
+    )
+    .await
+    .is_err());
+    assert!(!f.play().is_running.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn review_26_failed_lan_bind_does_not_publish_running_state() {
+    let occupied = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    let service = wex_net::LanDiscoveryService::new_with_bind(
+        std::time::Duration::from_secs(1),
+        occupied.local_addr().unwrap(),
+        None,
+    );
+    let _ = service.start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+    assert!(!service.is_running().await);
+    drop(occupied);
+    let _ = service.start().await;
+    assert!(service.is_running().await);
+    service.stop().await;
 }

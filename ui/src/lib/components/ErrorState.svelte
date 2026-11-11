@@ -10,6 +10,7 @@
 <script lang="ts">
   import Button from './Button.svelte';
   import Icon from './icons/Icon.svelte';
+  import { t } from '../i18n';
   import {
     formatError,
     type ErrorDomain,
@@ -61,7 +62,7 @@
 
   // Resolved actions
   let resolvedPrimaryLabel = $derived(
-    propActionText || formatted.primaryAction?.label || 'Повторить'
+    propActionText || formatted.primaryAction?.label || t('common.repeat')
   );
   let resolvedPrimaryType = $derived(
     propActionType || formatted.primaryAction?.type || 'retry'
@@ -136,7 +137,7 @@
         type="button"
         class="dismiss-btn"
         onclick={onclose}
-        aria-label="Закрыть уведомление"
+        aria-label={t('common.close_notification')}
       >
         <Icon name="close" size={14} color="var(--color-secondary-label)" />
       </button>
@@ -191,7 +192,7 @@
           <Icon name="chevron-right" size={12} color="var(--color-secondary-label)" />
         </div>
         <span class="disclosure-label">
-          {isDetailsOpen ? 'Скрыть подробности' : 'Подробнее'}
+          {isDetailsOpen ? t('error_state.hide_details') : t('common.details')}
         </span>
       </button>
 
@@ -203,14 +204,14 @@
               type="button"
               class="copy-btn"
               onclick={handleCopyTechnical}
-              title="Скопировать сведения об ошибке"
+              title={t('error_state.copy_title')}
             >
               <Icon
                 name={isCopied ? 'check' : 'copy'}
                 size={12}
                 color={isCopied ? 'var(--color-system-green, #30d158)' : 'var(--color-secondary-label)'}
               />
-              <span class="copy-label">{isCopied ? 'Скопировано' : 'Копировать'}</span>
+              <span class="copy-label">{isCopied ? t('common.copied') : t('common.copy')}</span>
             </button>
           </div>
 

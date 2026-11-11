@@ -163,8 +163,8 @@
     if (!file.name.endsWith('.jar')) {
       modError = {
         code: 'MODS_INVALID_FILE',
-        message: 'Неподдерживаемый файл мода',
-        technical: `Выбран файл «${file.name}». Лаунчер принимает только архивы модификаций .jar.`,
+        message: t('mods.unsupported_file_title'),
+        technical: t('mods.unsupported_file_desc', { name: file.name }),
       };
       return;
     }
@@ -189,7 +189,7 @@
           id: file.name.replace('.jar', '').toLowerCase(),
           name: file.name.replace('.jar', ''),
           version: '1.0.0',
-          description: 'Пользовательский файл мода',
+          description: t('mods.custom_mod_desc'),
           file_name: file.name,
           enabled: true,
           is_pack_mod: false,
@@ -208,7 +208,7 @@
           id: file.name.replace('.jar', '').toLowerCase(),
           name: file.name.replace('.jar', ''),
           version: '1.0.0',
-          description: 'Пользовательский файл мода',
+          description: t('mods.custom_mod_desc'),
           file_name: file.name,
           enabled: true,
           is_pack_mod: false,
@@ -225,8 +225,8 @@
     if (mod.is_pack_mod) {
       modError = {
         code: 'MODS_PROTECTED_PACK_MOD',
-        message: 'Мод защищён от удаления',
-        technical: `Мод «${mod.name}» (${mod.file_name}) входит в официальный пак Wex и не может быть удалён из клиента.`,
+        message: t('mods.protected_title'),
+        technical: t('mods.protected_desc', { name: mod.name, file: mod.file_name }),
       };
       return;
     }
@@ -278,7 +278,7 @@
         <div class="offline-banner-text">
           <span class="offline-banner-title">{t('offline.title')}</span>
           <span class="offline-banner-desc">
-            {i18n.locale === 'en' ? 'Installed mods management and folder are available offline.' : 'Управление установленными модами и папка инстанса доступны офлайн.'}
+            {t('mods.offline_banner_desc')}
           </span>
         </div>
       </div>
@@ -286,7 +286,7 @@
         variant="secondary"
         size="small"
         onclick={() => network.check()}
-        title="Проверить подключение к сети"
+        title={t('mods.check_connection_title')}
       >
         <Icon name="refresh" size={12} color="var(--color-secondary-label)" />
         <span>{t('offline.retry')}</span>
@@ -344,7 +344,7 @@
       <SearchField placeholder={t('mods.search_placeholder')} bind:value={searchQuery} />
     </div>
     <div class="tabs-wrap">
-      <SegmentedControl options={filterTabs} bind:value={filterTab} size="small" />
+      <SegmentedControl options={filterTabs} bind:value={filterTab} />
     </div>
   </div>
 
@@ -365,7 +365,7 @@
 
   <!-- Mods List Area -->
   <div class="mods-content">
-    <List header={i18n.locale === 'en' ? `Installed Mods — Minecraft ${selectedVersion} · ${filteredMods.length} of ${mods.length}` : `Установленные моды (версия ${selectedVersion}) • ${filteredMods.length} из ${mods.length}`}>
+    <List header={i18n.locale === 'en' ? `Installed Mods — Minecraft ${selectedVersion} · ${filteredMods.length} of ${mods.length}` : `Установленные моды — Minecraft ${selectedVersion} • ${filteredMods.length} из ${mods.length}`}>
       {#if loading}
         <Skeleton variant="row" count={5} />
       {:else if loadError && mods.length === 0}
@@ -381,8 +381,8 @@
         {#each filteredMods as m, idx (m.file_name)}
           <Row
             index={idx}
-            title="{m.name} {m.version}"
-            subtitle={m.description || m.file_name}
+            title={m.name}
+            subtitle={m.description ? `${m.version} • ${m.description}` : `${m.version} • ${m.file_name}`}
           >
             {#snippet leading()}
               <div class="mod-icon">
@@ -397,7 +397,7 @@
             {#snippet trailing()}
               <div class="mod-controls">
                 {#if m.is_pack_mod}
-                  <span class="pack-badge" title="Мод входит в официальную сборку Wex и защищён от удаления">{t('mods.pack_badge')}</span>
+                  <span class="pack-badge" title={t('mods.pack_badge_title')}>{t('mods.pack_badge')}</span>
                 {:else}
                   <button
                     type="button"
@@ -411,7 +411,7 @@
                 {/if}
 
                 <Toggle
-                  ariaLabel={`Включить мод ${m.name}`}
+                  ariaLabel={t('mods.enable_label', { name: m.name })}
                   checked={m.enabled}
                   onchange={(checked) => handleToggleMod(m, checked)}
                 />
@@ -423,7 +423,7 @@
         <EmptyState
           icon="mods"
           title={searchQuery ? t('mods.empty_search', { query: searchQuery }) : t('mods.empty_title')}
-          description={searchQuery ? (i18n.locale === 'en' ? 'Try a different search or filter.' : 'Попробуйте изменить поисковый запрос или категорию') : t('mods.empty_default')}
+          description={searchQuery ? t('mods.empty_filter_hint') : t('mods.empty_default')}
         />
       {/if}
     </List>

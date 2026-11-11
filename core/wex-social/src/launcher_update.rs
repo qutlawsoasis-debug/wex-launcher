@@ -130,7 +130,7 @@ pub async fn check_update_from_url(
     target_platform: &str,
     manifest_url: &str,
 ) -> Result<UpdateCheckResult, UpdateError> {
-    let res = client.get(manifest_url).send().await?;
+    let res = client.get(manifest_url).send().await?.error_for_status()?;
     let text = res.text().await?;
     check_update_from_manifest(current_version, target_platform, &text)
 }

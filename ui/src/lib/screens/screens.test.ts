@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
 import PlayScreen from './PlayScreen.svelte';
+import UpdateCard from '../components/UpdateCard.svelte';
 import Mockup1 from './mockups/Mockup1.svelte';
 import Mockup2 from './mockups/Mockup2.svelte';
 import Mockup3 from './mockups/Mockup3.svelte';
@@ -457,17 +458,14 @@ describe('Wex Launcher Screens', () => {
   });
 
   it('renders unobtrusive update notification banner when update is available and allows dismissing it', async () => {
-    const comp = mount(PlayScreen, {
+    const comp = mount(UpdateCard, {
       target,
       props: {
-        selectedVersion: '1.21.1',
-        playerName: 'Steve',
-        initialNews: [],
-        initialUpdateInfo: {
-          update_available: true,
-          current_version: '1.0.0',
-          latest_version: '1.1.0',
-          notes: 'Исправления ошибок и оптимизация',
+        initialInfo: {
+        update_available: true,
+        current_version: '1.0.0',
+        latest_version: '1.1.0',
+        notes: 'Исправления ошибок и оптимизация',
         },
       },
     });
@@ -489,21 +487,18 @@ describe('Wex Launcher Screens', () => {
   });
 
   it('renders auto-update flow: "Обновить" button for signed release and transitions to "Перезапуск"', async () => {
-    const comp = mount(PlayScreen, {
+    const comp = mount(UpdateCard, {
       target,
       props: {
-        selectedVersion: '1.21.1',
-        playerName: 'Steve',
-        initialNews: [],
-        initialUpdateInfo: {
-          update_available: true,
-          current_version: '0.1.0',
-          latest_version: '0.2.0',
-          notes: 'Релиз с новыми возможностями',
-          download_url: 'https://example.com/wex-update.exe',
-          signature: 'untrusted comment: signature\nRWSomeBase64SignatureString1234567890==',
-          is_signed: true,
-          can_auto_update: true,
+        initialInfo: {
+        update_available: true,
+        current_version: '0.1.0',
+        latest_version: '0.2.0',
+        notes: 'Релиз с новыми возможностями',
+        download_url: 'https://example.com/wex-update.exe',
+        signature: 'untrusted comment: signature\nRWSomeBase64SignatureString1234567890==',
+        is_signed: true,
+        can_auto_update: true,
         },
       },
     });
@@ -533,22 +528,51 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  // The update UI lives in the sidebar UpdateCard since 0.9.2 (it is no longer part of PlayScreen).
+  it('security regression: rejected update URL never falls back to window.open', async () => {
+    const invokeSpy = defaultInvoke;
+    const originalImplementation = invokeSpy.getMockImplementation()!;
+    invokeSpy.mockImplementation(async (cmd, args, options) => {
+      if (cmd === 'updater_open_download_url') throw new Error('URL rejected by backend');
+      return originalImplementation(cmd, args, options);
+    });
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    const url = 'javascript:alert(1)';
+    const comp = mount(UpdateCard, { target, props: {
+      initialInfo: { update_available: true, current_version: '0.1.0', latest_version: '0.2.0',
+        download_url: url, signature: null, is_signed: false, can_auto_update: false },
+    } });
+    try {
+      const button = Array.from(target.querySelectorAll('.update-banner button')).find((b) =>
+        b.textContent?.includes('Перейти к загрузке')
+      ) as HTMLButtonElement | undefined;
+      expect(button).not.toBeUndefined();
+      button!.click();
+      await vi.waitFor(() => expect(invokeSpy).toHaveBeenCalledWith('updater_open_download_url', { url }));
+      await tick();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(openSpy).not.toHaveBeenCalled();
+      expect(target.querySelector('.update-banner')?.textContent).toContain('Не удалось открыть ссылку загрузки');
+    } finally {
+      await unmount(comp);
+      openSpy.mockRestore();
+      invokeSpy.mockImplementation(originalImplementation);
+    }
+  });
+
   it('renders unsigned release mode: only notify with download link button', async () => {
-    const comp = mount(PlayScreen, {
+    const comp = mount(UpdateCard, {
       target,
       props: {
-        selectedVersion: '1.21.1',
-        playerName: 'Steve',
-        initialNews: [],
-        initialUpdateInfo: {
-          update_available: true,
-          current_version: '0.1.0',
-          latest_version: '0.2.0',
-          notes: 'Неподписанный билд',
-          download_url: 'https://example.com/wex-unsigned.exe',
-          signature: null,
-          is_signed: false,
-          can_auto_update: false,
+        initialInfo: {
+        update_available: true,
+        current_version: '0.1.0',
+        latest_version: '0.2.0',
+        notes: 'Неподписанный билд',
+        download_url: 'https://example.com/wex-unsigned.exe',
+        signature: null,
+        is_signed: false,
+        can_auto_update: false,
         },
       },
     });
@@ -565,21 +589,18 @@ describe('Wex Launcher Screens', () => {
   });
 
   it('renders rollback error state when update installation fails and allows retry', async () => {
-    const comp = mount(PlayScreen, {
+    const comp = mount(UpdateCard, {
       target,
       props: {
-        selectedVersion: '1.21.1',
-        playerName: 'Steve',
-        initialNews: [],
-        initialUpdateInfo: {
-          update_available: true,
-          current_version: '0.1.0',
-          latest_version: '0.2.0',
-          notes: 'Тест ошибки',
-          download_url: 'https://example.com/fail-download.exe',
-          signature: 'untrusted comment: signature\nRWSomeBase64SignatureString1234567890==',
-          is_signed: true,
-          can_auto_update: true,
+        initialInfo: {
+        update_available: true,
+        current_version: '0.1.0',
+        latest_version: '0.2.0',
+        notes: 'Тест ошибки',
+        download_url: 'https://example.com/fail-download.exe',
+        signature: 'untrusted comment: signature\nRWSomeBase64SignatureString1234567890==',
+        is_signed: true,
+        can_auto_update: true,
         },
       },
     });
@@ -609,7 +630,7 @@ describe('Wex Launcher Screens', () => {
     const comp = mount(SettingsScreen, { target });
     await tick();
 
-    expect(target.textContent).toContain('Самообновление лаунчера');
+    expect(target.textContent).toContain('Обновление лаунчера');
     const checkBtn = Array.from(target.querySelectorAll('button')).find((b) =>
       b.textContent?.includes('Проверить')
     );
@@ -649,7 +670,7 @@ describe('Wex Launcher Screens', () => {
 
   it('renders LobbyScreen with LAN/Cloud mode switch, guest code input, and world picker', () => {
     const comp = mount(LobbyScreen, { target });
-    expect(target.textContent).toContain('LAN и Туннели');
+    expect(target.textContent).toContain('Локальная сеть и туннели');
     expect(target.textContent).toContain('Облачные миры');
     expect(target.textContent).toContain('Присоединиться по коду');
     expect(target.textContent).toContain('Открыть локальный мир');
@@ -675,8 +696,8 @@ describe('Wex Launcher Screens', () => {
     await new Promise((r) => setTimeout(r, 50));
 
     // Must show authentic service unavailable or empty state, strictly zero fake rooms
-    expect(target.textContent).toContain('Сервис недоступен');
-    expect(target.textContent).toContain('Повторить попытку');
+    expect(target.textContent).toContain('Не удалось загрузить облачные миры');
+    expect(target.textContent).toContain('Повторить');
     expect(target.textContent).not.toContain('mc.wexmc.net');
     expect(target.textContent).not.toContain('Aura Official');
 
@@ -715,7 +736,7 @@ describe('Wex Launcher Screens', () => {
     const comp = mount(LobbyScreen, { target });
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(target.textContent).toContain('Локальные миры в сети (LAN)');
+    expect(target.textContent).toContain('Локальные миры в сети');
     expect(target.textContent).toContain('Alex - Creative Studio');
     expect(target.textContent).toContain('192.168.1.105:54321');
 
@@ -735,7 +756,7 @@ describe('Wex Launcher Screens', () => {
     const comp = mount(LobbyScreen, { target });
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(target.textContent).toContain('Локальные миры в сети (LAN)');
+    expect(target.textContent).toContain('Локальные миры в сети');
     expect(target.textContent).toContain('Alex - Creative Studio');
 
     const publishBtn = Array.from(target.querySelectorAll('button')).find(
@@ -872,14 +893,14 @@ describe('Wex Launcher Screens', () => {
     await new Promise((r) => setTimeout(r, 20));
 
     expect(target.textContent).toContain('Моды не найдены');
-    expect(target.textContent).toContain('В папке инстанса пока нет модов');
+    expect(target.textContent).toContain('В папке игры пока нет модов');
     unmount(comp);
   });
 
   it('renders SettingsScreen with RAM slider, Java options, Discord RPC, graphics presets, and About Wex', async () => {
     const comp = mount(SettingsScreen, { target });
     expect(target.textContent).toContain('Тема оформления');
-    expect(target.textContent).toContain('Цветовой акцент');
+    expect(target.textContent).not.toContain('Цветовой акцент');
     expect(target.textContent).toContain('Уменьшение движения');
     expect(target.textContent).toContain('Уменьшение прозрачности');
     expect(target.textContent).toContain('Выделение оперативной памяти');
@@ -891,7 +912,8 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Скрыть в трей');
     expect(target.textContent).toContain('Выбор исполняемого файла Java');
     expect(target.textContent).toContain('Discord Rich Presence');
-    expect(target.textContent).toContain('Сворачивать в трей при запуске игры');
+    expect(target.textContent).toContain('Поведение окна');
+    expect(target.textContent).not.toContain('Сворачивать в трей при запуске игры');
     expect(target.textContent).toContain('Язык интерфейса');
     expect(target.textContent).toContain('О программе');
     expect(target.textContent).toContain('Windows 10/11, 64-бит');
@@ -899,7 +921,7 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Очистить кэш');
     expect(target.textContent).not.toContain('.minecraft');
     expect(target.textContent).toContain('Wex');
-    expect(target.textContent).toContain('Журнал событий и краш-дампы');
+    expect(target.textContent).toContain('Журнал и отчёты о сбоях');
 
     const openLogsBtn = target.querySelector('[data-testid="btn-open-logs-sheet"]') as HTMLElement;
     expect(openLogsBtn).not.toBeNull();
@@ -998,7 +1020,7 @@ describe('Wex Launcher Screens', () => {
   it('renders SettingsScreen with actual Discord RPC status preview card and no mock fakes', async () => {
     const comp = mount(SettingsScreen, { target });
     expect(target.textContent).toContain('Discord Rich Presence');
-    expect(target.textContent).toContain('Превью статуса Discord');
+    expect(target.textContent).toContain('Просмотр статуса в Discord');
     expect(target.textContent).toContain('Wex Launcher');
     expect(target.textContent).toContain('В главном меню');
     expect(target.textContent).toContain('Выбирает режим игры');
@@ -1019,8 +1041,8 @@ describe('Wex Launcher Screens', () => {
 
     // Check preview and model controls
     expect(target.querySelector('canvas.character-canvas')).not.toBeNull();
-    expect(target.textContent).toContain('Классическая (4 px)');
-    expect(target.textContent).toContain('Тонкая (3 px)');
+    expect(target.textContent).toContain('Классическая (4 пикселя)');
+    expect(target.textContent).toContain('Тонкая (3 пикселя)');
     expect(target.textContent).toContain('Спереди');
     expect(target.textContent).toContain('Сзади');
 
@@ -1032,7 +1054,7 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Стандартный скин');
 
     // Check action buttons
-    expect(target.textContent).toContain('Загрузить скин (PNG)');
+    expect(target.textContent).toContain('Загрузить скин (.png)');
     expect(target.textContent).toContain('Сбросить на стандартный');
     expect(target.textContent).toContain('Применить к игре');
 
@@ -1218,8 +1240,8 @@ describe('Wex Launcher Screens', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(target.textContent).toContain('Ресурс-паков пока нет');
-    expect(target.textContent).toContain('Поместите ZIP-архив с ресурс-паком');
-    expect(target.textContent).toContain('Добавить ZIP…');
+    expect(target.textContent).toContain('Поместите архив с ресурс-паком');
+    expect(target.textContent).toContain('Добавить архив…');
     expect(target.textContent).toContain('Папка паков');
 
     unmount(comp);
@@ -1241,8 +1263,8 @@ describe('Wex Launcher Screens', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(target.textContent).toContain('Шейдер-паков пока нет');
-    expect(target.textContent).toContain('Поместите ZIP-архив с шейдерами');
-    expect(target.textContent).toContain('Добавить ZIP…');
+    expect(target.textContent).toContain('Поместите архив с шейдерами');
+    expect(target.textContent).toContain('Добавить архив…');
     expect(target.textContent).toContain('Папка шейдеров');
 
     unmount(comp);
@@ -1323,6 +1345,37 @@ describe('Wex Launcher Screens', () => {
     theme.setReduceMotion(false);
     unmount(comp);
   });
+
+  // wex-review-fake-progress item 14. Since 0.9.1 the splash never checks or downloads launcher
+  // updates (the sidebar UpdateCard owns that), so it must not show any update progress at all.
+  it('SplashScreen never checks for updates or shows fake download progress', async () => {
+    const tauriWindow = window as unknown as { __TAURI_INTERNALS__?: unknown };
+    const hadInternals = '__TAURI_INTERNALS__' in tauriWindow;
+    const previousInternals = tauriWindow.__TAURI_INTERNALS__;
+    tauriWindow.__TAURI_INTERNALS__ = {};
+    defaultInvoke.mockClear();
+    const oncomplete = vi.fn();
+    const comp = mount(SplashScreen, {
+      target,
+      props: { initialVersion: 'v0.1.0', autoStart: false, oncomplete },
+    });
+    try {
+      await tick();
+      await (comp as any).startInitialization();
+      await vi.waitFor(() => expect(oncomplete).toHaveBeenCalledOnce(), { timeout: 3000 });
+
+      const commands = defaultInvoke.mock.calls.map(([cmd]) => cmd);
+      expect(commands).not.toContain('startup_check_update');
+      expect(commands).not.toContain('startup_download_update');
+      expect(target.querySelector('[role="progressbar"], .download-container')).toBeNull();
+      expect(target.textContent).not.toMatch(/\d+\s?%/);
+      expect(target.textContent).not.toContain('МБ/с');
+    } finally {
+      unmount(comp);
+      if (hadInternals) tauriWindow.__TAURI_INTERNALS__ = previousInternals;
+      else delete tauriWindow.__TAURI_INTERNALS__;
+    }
+  });
   it('renders ImportWizardSheet with found old launcher data, non-destructive notice, and transfer toggles', () => {
     const comp = mount(ImportWizardSheet, {
       target,
@@ -1360,8 +1413,8 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('AuraVeteran');
     expect(target.textContent).toContain('6 ГБ (6144 МБ)');
     expect(target.textContent).toContain('1.20.1');
-    expect(target.textContent).toContain('2 сервер(-ов) найдено');
-    expect(target.textContent).toContain('1 скин(-ов) найдено');
+    expect(target.textContent).toContain('Найдено серверов: 2');
+    expect(target.textContent).toContain('Найдено скинов: 1');
 
     // Transfer buttons
     expect(target.textContent).toContain('Перенести');

@@ -79,7 +79,7 @@ describe('WorkshopScreen Resource Packs and Shaders (SPEC 1.7)', () => {
     // Official pack must have «В сборке» badge and NO delete button
     const auraCard = target.querySelector('[data-testid="pack-row-Aura-Pack.zip"]');
     expect(auraCard).not.toBeNull();
-    expect(auraCard?.textContent).toContain('В сборке');
+    expect(auraCard?.textContent).toContain('В паке');
     expect(auraCard?.textContent).toContain('Включён');
     expect(auraCard?.querySelector('button.destructive')).toBeNull();
 

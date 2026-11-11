@@ -15,20 +15,31 @@ class ThemeManager {
   systemIsDark = $state<boolean>(true);
 
   constructor() {
-    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-      const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      this.systemIsDark = darkQuery.matches;
-      darkQuery.addEventListener('change', (e) => {
-        this.systemIsDark = e.matches;
-        this.applyDom();
-      });
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('wex_theme');
+        if (saved === 'dark' || saved === 'light' || saved === 'auto') {
+          this.appearance = saved;
+        }
+      } catch {}
 
-      const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-      this.reduceMotion = motionQuery.matches;
-      motionQuery.addEventListener('change', (e) => {
-        this.reduceMotion = e.matches;
-        this.applyDom();
-      });
+      if (typeof window.matchMedia === 'function') {
+        const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        this.systemIsDark = darkQuery.matches;
+        darkQuery.addEventListener('change', (e) => {
+          this.systemIsDark = e.matches;
+          this.applyDom();
+        });
+
+        const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+        this.reduceMotion = motionQuery.matches;
+        motionQuery.addEventListener('change', (e) => {
+          this.reduceMotion = e.matches;
+          this.applyDom();
+        });
+      }
+
+      this.applyDom();
     }
   }
 
@@ -51,6 +62,11 @@ class ThemeManager {
 
   setAppearance(mode: AppearanceMode) {
     this.appearance = mode;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('wex_theme', mode);
+      } catch {}
+    }
     this.applyDom();
   }
 

@@ -39,7 +39,10 @@ pub enum TunnelError {
 
 /// Computes SHA-256 hex string of a file
 pub fn compute_file_sha256<P: AsRef<Path>>(path: P) -> Result<String, io::Error> {
-    let mut file = fs::File::open(path)?;
+    hash_open_file(&mut fs::File::open(path)?)
+}
+
+fn hash_open_file(file: &mut fs::File) -> Result<String, io::Error> {
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 65536];
 
@@ -55,6 +58,32 @@ pub fn compute_file_sha256<P: AsRef<Path>>(path: P) -> Result<String, io::Error>
     Ok(hex::encode(hasher.finalize()))
 }
 
+/// The executable location is chosen by the backend, never by IPC input.
+pub fn playit_binary_path(tools_dir: &Path) -> PathBuf {
+    tools_dir.join(format!("playit-{PLAYIT_VERSION}.exe"))
+}
+
+// Keep the checked file open until CreateProcess completes. On Windows denying
+// write/delete sharing prevents modification or replacement after verification.
+fn open_verified_binary(path: &Path, expected: &str) -> Result<fs::File, TunnelError> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.share_mode(1); // FILE_SHARE_READ, no WRITE or DELETE sharing
+    }
+    let mut file = options.open(path)?;
+    let actual = hash_open_file(&mut file)?;
+    if !actual.eq_ignore_ascii_case(expected) {
+        return Err(TunnelError::ChecksumMismatch {
+            expected: expected.into(),
+            actual,
+        });
+    }
+    Ok(file)
+}
+
 /// Ensures the official playit-agent binary exists and is verified by SHA-256.
 pub async fn ensure_binary_downloaded(
     tools_dir: &Path,
@@ -62,7 +91,7 @@ pub async fn ensure_binary_downloaded(
 ) -> Result<PathBuf, TunnelError> {
     fs::create_dir_all(tools_dir)?;
     let binary_name = format!("playit-{PLAYIT_VERSION}.exe");
-    let target_path = tools_dir.join(&binary_name);
+    let target_path = playit_binary_path(tools_dir);
 
     if target_path.exists() {
         if let Ok(hash) = compute_file_sha256(&target_path) {
@@ -259,6 +288,38 @@ impl PlayitSupervisor {
         binary_path: &Path,
         secret_path: &Path,
     ) -> Result<(), TunnelError> {
+        self.start_options(binary_path, secret_path, None).await
+    }
+
+    pub async fn start_mapped(
+        &mut self,
+        binary_path: &Path,
+        secret_path: &Path,
+        tunnel_id: &str,
+        local_port: u16,
+    ) -> Result<(), TunnelError> {
+        self.start_options(
+            binary_path,
+            secret_path,
+            Some(format!("{tunnel_id}=127.0.0.1:{local_port}")),
+        )
+        .await
+    }
+
+    pub async fn is_alive(&self) -> bool {
+        let mut child = self.child.lock().await;
+        child
+            .as_mut()
+            .is_some_and(|c| matches!(c.try_wait(), Ok(None)))
+    }
+
+    async fn start_options(
+        &mut self,
+        binary_path: &Path,
+        secret_path: &Path,
+        mapping: Option<String>,
+    ) -> Result<(), TunnelError> {
+        let verified_binary = open_verified_binary(binary_path, PLAYIT_EXPECTED_SHA256)?;
         self.stop().await;
 
         if let Some(bus) = &self.events {
@@ -279,9 +340,14 @@ impl PlayitSupervisor {
             cmd.creation_flags(0x08000000);
         }
 
+        cmd.kill_on_drop(true);
+        if let Some(mapping) = mapping {
+            cmd.args(["--stdout", "run", &mapping]);
+        }
         let mut child = cmd
             .spawn()
             .map_err(|e| TunnelError::ProcessSpawn(e.to_string()))?;
+        drop(verified_binary);
 
         #[cfg(windows)]
         {
@@ -307,9 +373,12 @@ impl PlayitSupervisor {
             let mut found_address = false;
 
             loop {
+                if stdout_reader.is_none() && stderr_reader.is_none() {
+                    break;
+                }
                 tokio::select! {
                     _ = stop_rx.changed() => {
-                        if *stop_rx.borrow() {
+                        if stop_rx.has_changed().is_err() || *stop_rx.borrow() {
                             break;
                         }
                     }
@@ -331,7 +400,7 @@ impl PlayitSupervisor {
                                     }
                                 }
                             }
-                        }
+                        } else { stdout_reader = None; }
                     }
                     err_line = async {
                         if let Some(reader) = &mut stderr_reader {
@@ -351,7 +420,7 @@ impl PlayitSupervisor {
                                     }
                                 }
                             }
-                        }
+                        } else { stderr_reader = None; }
                     }
                 }
             }
@@ -384,6 +453,33 @@ impl PlayitSupervisor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn verified_binary_guard_prevents_write_and_replacement() {
+        let temp = tempfile::tempdir().unwrap();
+        let executable = playit_binary_path(temp.path());
+        fs::write(&executable, b"fixture checked bytes").unwrap();
+        let expected = compute_file_sha256(&executable).unwrap();
+        let guard = open_verified_binary(&executable, &expected).unwrap();
+        assert!(fs::write(&executable, b"replacement").is_err());
+        assert!(fs::rename(&executable, temp.path().join("moved.exe")).is_err());
+        drop(guard);
+        fs::write(&executable, b"replacement").unwrap();
+    }
+
+    #[tokio::test]
+    async fn security_regression_tunnel_rejects_tampered_binary_before_spawn() {
+        let temp = tempfile::tempdir().unwrap();
+        let executable = temp.path().join(format!("playit-{PLAYIT_VERSION}.exe"));
+        fs::write(&executable, b"tampered executable").unwrap();
+        let mut supervisor = PlayitSupervisor::new(None);
+        let result = supervisor
+            .start(&executable, &temp.path().join("secret.toml"))
+            .await;
+        assert!(matches!(result, Err(TunnelError::ChecksumMismatch { .. })));
+        assert!(supervisor.child.lock().await.is_none());
+    }
 
     #[test]
     fn test_parse_tunnel_address_formats() {

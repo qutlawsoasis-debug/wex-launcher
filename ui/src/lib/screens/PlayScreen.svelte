@@ -39,18 +39,6 @@
     items?: ReleaseNoteItem[];
   }
 
-  interface UpdateInfo {
-    update_available: boolean;
-    current_version: string;
-    latest_version?: string | null;
-    notes?: string | null;
-    download_url?: string | null;
-    signature?: string | null;
-    is_signed?: boolean;
-    can_auto_update?: boolean;
-    mode?: 'auto' | 'notify_only';
-  }
-
   interface PlaytimeSummary {
     total_seconds: number;
     total_formatted: string;
@@ -73,7 +61,6 @@
     progressSpeed?: string;
     launchError?: unknown;
     initialNews?: ReleaseNoteVersion[];
-    initialUpdateInfo?: UpdateInfo | null;
     initialShowImportWizard?: boolean;
     initialScreenshots?: Array<{ file_name: string; file_path: string; preview_data_url?: string; created_at?: string }>;
     initialAchievements?: { achievements: any[]; progress: any[] } | null;
@@ -97,12 +84,11 @@
     isLaunching = false,
     isRunning = false,
     progressPercentage = 0,
-    progressStage = 'Готов к запуску',
-    progressDetail = 'Нажмите «Играть» для старта',
+    progressStage = t('play.status_ready'),
+    progressDetail = t('play.status_click_to_start'),
     progressSpeed = '',
     launchError = $bindable<unknown>(null),
     initialNews = undefined,
-    initialUpdateInfo = null,
     initialShowImportWizard = false,
     initialScreenshots = undefined,
     initialAchievements = undefined,
@@ -160,17 +146,13 @@
 
   let buttonTitle = $derived.by(() => {
     if (effectiveState === 'running') {
-      return i18n.locale === 'en' ? 'Stop Minecraft' : 'Остановить процесс Minecraft';
+      return t('play.stop_minecraft_title');
     }
     if (effectiveState === 'prewarming') {
-      return i18n.locale === 'en'
-        ? `Game prewarming: ${Math.round(currentPrewarmProgress)}%`
-        : `Игра догружается: ${Math.round(currentPrewarmProgress)}%`;
+      return t('play.prewarming_title_progress', { pct: Math.round(currentPrewarmProgress) });
     }
     if (effectiveState === 'ready') {
-      return i18n.locale === 'en'
-        ? 'Ready to launch (prewarm complete)'
-        : 'Готово к запуску (прогрев завершён)';
+      return t('play.ready_to_launch_prewarm');
     }
     return t('play.launch');
   });
@@ -208,27 +190,27 @@
       if (cat === 'new' || raw.startsWith('[Новое]')) {
         return {
           categoryClass: 'new',
-          badgeText: 'Новое',
-          text: item.text.replace(/^\[Новое\]\s*/, ''),
+          badgeText: t('play.badge_new'),
+          text: item.text.replace(/^\[(?:Новое|New)\]\s*/i, ''),
         };
       }
       if (cat === 'improved' || raw.startsWith('[Улучшено]')) {
         return {
           categoryClass: 'improved',
-          badgeText: 'Улучшено',
-          text: item.text.replace(/^\[Улучшено\]\s*/, ''),
+          badgeText: t('play.badge_improved'),
+          text: item.text.replace(/^\[(?:Улучшено|Improved)\]\s*/i, ''),
         };
       }
       if (cat === 'fixed' || raw.startsWith('[Исправлено]')) {
         return {
           categoryClass: 'fixed',
-          badgeText: 'Исправлено',
-          text: item.text.replace(/^\[Исправлено\]\s*/, ''),
+          badgeText: t('play.badge_fixed'),
+          text: item.text.replace(/^\[(?:Исправлено|Fixed)\]\s*/i, ''),
         };
       }
       return {
         categoryClass: 'general',
-        badgeText: 'Инфо',
+        badgeText: t('play.badge_info'),
         text: item.text,
       };
     });
@@ -273,88 +255,6 @@
       loadLatestScreenshot();
     }
   });
-
-  // Unobtrusive update notification banner state
-  let fetchedUpdateInfo = $state<UpdateInfo | null>(null);
-  let updateInfo = $derived(initialUpdateInfo !== null ? initialUpdateInfo : fetchedUpdateInfo);
-  let updateBannerDismissed = $state(false);
-  let isClosingBanner = $state(false);
-  let showUpdateBanner = $derived(Boolean(updateInfo?.update_available) && !updateBannerDismissed);
-
-  function dismissUpdateBanner() {
-    if (theme.reduceMotion || import.meta.env?.MODE === 'test') {
-      updateBannerDismissed = true;
-      return;
-    }
-    isClosingBanner = true;
-    setTimeout(() => {
-      updateBannerDismissed = true;
-      isClosingBanner = false;
-    }, 240);
-  }
-
-  // Auto-updater lifecycle: 'available' -> 'downloading' -> 'ready_to_restart' | 'error'
-  let updateStage = $state<'available' | 'downloading' | 'ready_to_restart' | 'error'>('available');
-  let updateProgressPct = $state(0);
-  let updateProgressText = $state('');
-  let updateErrorMessage = $state('');
-
-  let canAutoUpdate = $derived.by(() => {
-    if (!updateInfo) return false;
-    if (typeof updateInfo.can_auto_update === 'boolean') return updateInfo.can_auto_update;
-    if (typeof updateInfo.is_signed === 'boolean') return updateInfo.is_signed;
-    return Boolean(updateInfo.signature && updateInfo.signature.trim().length >= 32);
-  });
-
-  async function handleStartUpdate() {
-    if (!updateInfo) return;
-    updateStage = 'downloading';
-    updateProgressPct = 0;
-    updateProgressText = 'Подключение к серверу обновлений…';
-    updateErrorMessage = '';
-
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const res = await invoke<{ status: string; message: string }>('updater_install', {
-        downloadUrl: updateInfo.download_url || '',
-        signature: updateInfo.signature || null,
-        version: updateInfo.latest_version || 'latest',
-      });
-      if (res && res.status === 'ready_to_restart') {
-        updateStage = 'ready_to_restart';
-      } else {
-        updateStage = 'error';
-        updateErrorMessage = res?.message || 'Не удалось завершить обновление';
-      }
-    } catch (err: any) {
-      updateStage = 'error';
-      const msg = typeof err === 'string' ? err : err?.message || 'Ошибка загрузки обновления';
-      updateErrorMessage = msg.includes('Прежняя версия')
-        ? msg
-        : `${msg}. Прежняя версия сохранена.`;
-    }
-  }
-
-  async function handleRestart() {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('updater_restart');
-    } catch {
-      if (typeof window !== 'undefined') window.location.reload();
-    }
-  }
-
-  async function handleOpenDownloadUrl() {
-    const url =
-      updateInfo?.download_url ||
-      'https://github.com/qutlawsoasis-debug/wex-launcher/releases';
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('updater_open_download_url', { url });
-    } catch {
-      if (typeof window !== 'undefined') window.open(url, '_blank');
-    }
-  }
 
   // Import wizard sheet state
   let manualImportWizardOpen = $state(false);
@@ -449,7 +349,7 @@
       list.push({
         type: 'playtime',
         totalSeconds: playtimeData.total_seconds,
-        formattedPlayTime: playtimeData.formatted_play_time || `${Math.floor(playtimeData.total_seconds / 60)} мин.`,
+        formattedPlayTime: playtimeData.formatted_play_time || t('play.minutes_short', { minutes: Math.floor(playtimeData.total_seconds / 60) }),
         totalLaunches: playtimeData.total_launches,
         lastPlayed: playtimeData.last_played_utc ? new Date(playtimeData.last_played_utc).toLocaleDateString() : undefined,
       });
@@ -507,7 +407,6 @@
   });
 
   onMount(() => {
-    let unlistenProgress: (() => void) | undefined;
     let unlistenPrewarm: (() => void) | undefined;
 
     function checkHash() {
@@ -518,7 +417,7 @@
         if (state === 'prewarming' || state === 'downloading') {
           currentPrewarmState = 'prewarming';
           currentPrewarmProgress = progress ? parseInt(progress, 10) : 48;
-          currentPrewarmDetail = 'Синхронизация библиотек (1.2 МБ / 2.4 МБ)';
+          currentPrewarmDetail = t('play.prewarm_sync_libraries');
         } else if (state === 'ready' || state === 'prewarmed') {
           currentPrewarmState = 'ready';
           currentPrewarmProgress = 100;
@@ -549,24 +448,17 @@
       // 1. Listen to updater download progress and prewarm status
       try {
         const { listen } = await import('@tauri-apps/api/event');
-        unlistenProgress = await listen<any>('updater-progress', (event) => {
-          if (event.payload) {
-            updateProgressPct = event.payload.percentage ?? 0;
-            updateProgressText = event.payload.status_text ?? '';
-          }
-        });
-
         unlistenPrewarm = await listen<any>('prewarm-status', (event) => {
           if (event.payload) {
             const s = event.payload.state;
             if (s === 'prewarming') {
               currentPrewarmState = 'prewarming';
               currentPrewarmProgress = event.payload.progress ?? 48;
-              currentPrewarmDetail = event.payload.message ?? 'Игра догружается…';
+              currentPrewarmDetail = event.payload.message ?? t('play.btn_prewarming');
             } else if (s === 'ready') {
               currentPrewarmState = 'ready';
               currentPrewarmProgress = 100;
-              currentPrewarmDetail = event.payload.message ?? 'Готово к запуску';
+              currentPrewarmDetail = event.payload.message ?? t('play.btn_ready_title');
             } else if (s === 'idle') {
               currentPrewarmState = 'idle';
               currentPrewarmProgress = 0;
@@ -601,17 +493,6 @@
               .catch(() => {
                 fetchedNews = [];
               })
-          : Promise.resolve();
-
-        const fetchUpdates = initialUpdateInfo === null
-          ? invoke<UpdateInfo>('updater_check')
-              .catch(() => invoke<UpdateInfo>('overview_check_update'))
-              .then((res) => {
-                if (res && res.update_available) {
-                  fetchedUpdateInfo = res;
-                }
-              })
-              .catch(() => {})
           : Promise.resolve();
 
         const checkOldLauncher = (typeof localStorage !== 'undefined' && !localStorage.getItem('wex_import_checked'))
@@ -667,7 +548,6 @@
       await Promise.allSettled([
         fetchServers,
         fetchNews,
-        fetchUpdates,
         checkOldLauncher,
         fetchScreenshots,
         fetchAchievements,
@@ -683,7 +563,6 @@
   })();
 
   return () => {
-    if (unlistenProgress) unlistenProgress();
     if (unlistenPrewarm) unlistenPrewarm();
     if (typeof window !== 'undefined') {
       window.removeEventListener('hashchange', checkHash);
@@ -702,14 +581,6 @@ async function loadOnlineData() {
           fetchedNews = res;
         } else if (res?.versions && Array.isArray(res.versions) && res.versions.length > 0) {
           fetchedNews = res.versions;
-        }
-      } catch {}
-    }
-    if (initialUpdateInfo === null) {
-      try {
-        const res = await invoke<UpdateInfo>('updater_check').catch(() => invoke<UpdateInfo>('overview_check_update'));
-        if (res && res.update_available) {
-          fetchedUpdateInfo = res;
         }
       } catch {}
     }
@@ -762,7 +633,7 @@ $effect(() => {
             {t('offline.title')}
           </span>
           <span class="offline-banner-subtext">
-            {t('play.offline_launch_note')} — {i18n.locale === 'en' ? 'Game launches from local files' : 'Доступен запуск уже скачанной версии'}
+            {t('play.offline_launch_note')}
           </span>
         </div>
         <div class="offline-banner-action">
@@ -770,146 +641,11 @@ $effect(() => {
             variant="glass"
             size="small"
             onclick={() => network.check()}
-            title="Проверить подключение к сети"
+            title={t('mods.check_connection_title')}
           >
             <Icon name="refresh" size={12} color="rgba(255, 255, 255, 0.9)" />
             <span>{t('offline.retry')}</span>
           </Button>
-        </div>
-      </div>
-    {/if}
-
-    <!-- Unobtrusive Update Notification Banner (Apple HIG Banners & Alerts) -->
-    {#if showUpdateBanner && updateInfo}
-      <div class="update-banner" class:closing={isClosingBanner} role="status" aria-live="polite">
-        <div class="update-banner-icon {updateStage}">
-          {#if updateStage === 'ready_to_restart'}
-            <Icon name="check" size={16} color="var(--color-system-green)" />
-          {:else if updateStage === 'error'}
-            <Icon name="error" size={16} color="var(--color-system-red)" />
-          {:else if updateStage === 'downloading'}
-            <Icon name="refresh" size={16} color="var(--color-system-blue)" />
-          {:else}
-            <Icon name="info" size={16} color="var(--color-system-blue)" />
-          {/if}
-        </div>
-        <div class="update-banner-body">
-          {#if updateStage === 'available'}
-            <div class="update-banner-headline-row">
-              <span class="update-banner-headline">
-                Доступна новая версия Wex {updateInfo.latest_version || ''}
-              </span>
-              {#if !canAutoUpdate}
-                <span class="badge badge-general">Неподписанная сборка</span>
-              {/if}
-            </div>
-            {#if updateInfo.notes}
-              <span class="update-banner-subtext">{updateInfo.notes}</span>
-            {:else if !canAutoUpdate}
-              <span class="update-banner-subtext">
-                Автоматическая установка недоступна без цифровой подписи. Доступна ручная загрузка.
-              </span>
-            {/if}
-          {:else if updateStage === 'downloading'}
-            <span class="update-banner-headline">
-              Загрузка обновления Wex {updateInfo.latest_version || ''}
-            </span>
-            <span class="update-banner-subtext">
-              {updateProgressText || `Скачиваем обновление… ${updateProgressPct}%`}
-            </span>
-            <div class="update-banner-progress">
-              <ProgressBar percentage={updateProgressPct} height={4} />
-            </div>
-          {:else if updateStage === 'ready_to_restart'}
-            <span class="update-banner-headline">
-              Обновление готово к установке
-            </span>
-            <span class="update-banner-subtext">
-              Перезапустите лаунчер, чтобы применить версию {updateInfo.latest_version || ''}
-            </span>
-          {:else if updateStage === 'error'}
-            <span class="update-banner-headline update-banner-headline-error">
-              Не удалось обновить лаунчер
-            </span>
-            <span class="update-banner-subtext">
-              {updateErrorMessage || 'Ошибка при загрузке. Прежняя версия сохранена и готова к работе.'}
-            </span>
-          {/if}
-        </div>
-        <div class="update-banner-actions">
-          {#if updateStage === 'available'}
-            {#if canAutoUpdate}
-              <Button
-                variant="primary"
-                size="small"
-                onclick={handleStartUpdate}
-                title="Скачать и установить обновление"
-              >
-                <Icon name="refresh" size={14} color="#ffffff" />
-                <span>Обновить</span>
-              </Button>
-            {:else}
-              <Button
-                variant="secondary"
-                size="small"
-                onclick={handleOpenDownloadUrl}
-                title="Перейти к загрузке установщика"
-              >
-                <Icon name="folder" size={14} color="var(--color-secondary-label)" />
-                <span>Перейти к загрузке</span>
-              </Button>
-            {/if}
-            <div class="update-banner-close">
-              <Button
-                variant="ghost"
-                size="small"
-                onclick={dismissUpdateBanner}
-                title="Закрыть уведомление"
-              >
-                <Icon name="close" size={14} color="var(--color-secondary-label)" />
-              </Button>
-            </div>
-          {:else if updateStage === 'ready_to_restart'}
-            <Button
-              variant="primary"
-              size="small"
-              onclick={handleRestart}
-              title="Перезапустить лаунчер сейчас"
-            >
-              <Icon name="refresh" size={14} color="#ffffff" />
-              <span>Перезапуск</span>
-            </Button>
-            <div class="update-banner-close">
-              <Button
-                variant="ghost"
-                size="small"
-                onclick={dismissUpdateBanner}
-                title="Отложить перезапуск"
-              >
-                <span>Позже</span>
-              </Button>
-            </div>
-          {:else if updateStage === 'error'}
-            <Button
-              variant="secondary"
-              size="small"
-              onclick={handleStartUpdate}
-              title="Повторить попытку обновления"
-            >
-              <Icon name="refresh" size={14} color="var(--color-secondary-label)" />
-              <span>Повторить</span>
-            </Button>
-            <div class="update-banner-close">
-              <Button
-                variant="ghost"
-                size="small"
-                onclick={dismissUpdateBanner}
-                title="Закрыть уведомление"
-              >
-                <Icon name="close" size={14} color="var(--color-secondary-label)" />
-              </Button>
-            </div>
-          {/if}
         </div>
       </div>
     {/if}
@@ -922,7 +658,7 @@ $effect(() => {
           <p class="game-subheading">
             {t('play.client_title')} • {t('play.version_label')} {selectedVersion}
             {#if playtimeSummary && playtimeSummary.total_seconds > 0}
-              <span class="header-playtime-meta">• {playtimeSummary.version_seconds > 0 ? (i18n.locale === 'en' ? `${playtimeSummary.version_formatted} on this version` : `${playtimeSummary.version_formatted} на этой версии`) : (i18n.locale === 'en' ? `${playtimeSummary.total_formatted} total` : `${playtimeSummary.total_formatted} всего`)}</span>
+              <span class="header-playtime-meta">• {playtimeSummary.version_seconds > 0 ? t('play.on_this_version', { time: playtimeSummary.version_formatted }) : t('play.total_time', { time: playtimeSummary.total_formatted })}</span>
             {/if}
           </p>
         </div>
@@ -931,7 +667,7 @@ $effect(() => {
             variant="glass"
             size="small"
             onclick={() => (manualImportWizardOpen = true)}
-            title="Мастер импорта данных из старого лаунчера"
+            title={t('play.import_wizard_title')}
           >
             <Icon name="folder" size={14} color="rgba(255, 255, 255, 0.90)" />
             <span>{t('import.action_import')}</span>
@@ -957,7 +693,7 @@ $effect(() => {
             <Icon name="wifi-off" size={24} color="var(--color-secondary-label)" />
             <span class="offline-card-title">{t('offline.title')}</span>
             <span class="offline-card-desc">
-              {i18n.locale === 'en' ? 'News and updates are unavailable offline. Local game launch is ready.' : 'Новости и обновления недоступны без сети. Доступен запуск уже скачанной версии.'}
+              {t('play.offline_news_note')}
             </span>
           </div>
         </div>
@@ -967,29 +703,22 @@ $effect(() => {
       <div class="glass-card status-card">
         <div class="card-title-row">
           <Icon name="server" size={15} color="var(--color-secondary-label)" />
-          <span class="card-title">Последний сервер</span>
+          <span class="card-title">{t('play.card_last_server')}</span>
         </div>
 
         {#if recentServer}
           <div class="recent-server-item">
-            <span class="status-indicator-green"></span>
+            <span class="status-indicator" class:online={typeof recentServer.ping_ms === 'number' && recentServer.ping_ms >= 0}></span>
             <div class="server-text-wrap">
               <span class="server-display-name">{recentServer.name}</span>
               <span class="server-network-meta">
-                {recentServer.address}{recentServer.ping_ms !== undefined ? ` • ${recentServer.ping_ms} мс` : ''}
+                {recentServer.address}{typeof recentServer.ping_ms === 'number' && recentServer.ping_ms >= 0 ? ` • ${recentServer.ping_ms} мс` : ''}
               </span>
             </div>
           </div>
         {:else}
-          <div class="empty-status-text">Вы ещё не играли на серверах</div>
+          <div class="empty-status-text">{t('play.no_servers_played')}</div>
         {/if}
-
-        <div class="shelf-card-divider"></div>
-
-        <div class="friends-glance-row">
-          <Icon name="friends" size={15} color="var(--color-tertiary-label)" />
-          <span class="friends-status-label">Нет друзей в игре</span>
-        </div>
       </div>
 
       <!-- Recent Screenshot Glance (Parity Item 10) -->
@@ -997,7 +726,7 @@ $effect(() => {
         <div class="glass-card screenshot-glance-card" data-testid="latest-screenshot-card">
           <div class="card-title-row">
             <Icon name="sun" size={15} color="var(--color-system-orange)" />
-            <span class="card-title">Свежий скриншот</span>
+            <span class="card-title">{t('stories.latest_screenshot')}</span>
             <span class="card-meta">
               {latestScreenshot.file_name}
             </span>
@@ -1011,8 +740,8 @@ $effect(() => {
                 onopenworkshop('screenshots');
               }
             }}
-            title="Нажмите, чтобы открыть в Мастерской"
-            aria-label="Последний скриншот. Нажмите, чтобы открыть в Мастерской"
+            title={t('workshop.click_to_open_workshop')}
+            aria-label={t('workshop.latest_screenshot_aria')}
           >
             <div class="glance-img-container">
               <img
@@ -1023,7 +752,7 @@ $effect(() => {
               />
               <div class="glance-hover-hint">
                 <Icon name="folder" size={15} color="#ffffff" />
-                <span>Открыть в Мастерской</span>
+                <span>{t('workshop.open_in_workshop')}</span>
               </div>
             </div>
           </button>
@@ -1101,12 +830,12 @@ $effect(() => {
           <!-- Java Environment & Core Status -->
           <div class="dock-block tech-block">
             <span class="dock-caption">
-              {isRunning ? (i18n.locale === 'en' ? 'Session Status' : 'Статус сессии') : (i18n.locale === 'en' ? 'Java Runtime' : 'Среда выполнения')}
+              {isRunning ? t('play.session_status') : t('play.runtime_env')}
             </span>
             <div class="tech-runtime-box">
               <span class="tech-runtime-text">{javaRuntime}</span>
               {#if isRunning}
-                <span class="tech-status-badge running">({i18n.locale === 'en' ? 'Playing' : 'В игре'})</span>
+                <span class="tech-status-badge running">({t('play.status_in_game')})</span>
               {:else if !network.isOnline}
                 <span class="tech-status-badge offline">• {t('play.offline_launch_note')}</span>
               {:else if clientStatus}
@@ -1114,10 +843,10 @@ $effect(() => {
               {/if}
             </div>
             {#if playtimeSummary && playtimeSummary.total_seconds > 0}
-              <div class="tech-playtime-line" title="Суммарно: {playtimeSummary.total_formatted} • Запусков: {playtimeSummary.total_launches}">
+              <div class="tech-playtime-line" title={t('play.playtime_tooltip', { total: playtimeSummary.total_formatted, launches: playtimeSummary.total_launches })}>
                 <Icon name="clock" size={11} color="var(--color-tertiary-label)" />
                 <span class="tech-playtime-label">
-                  {playtimeSummary.version_seconds > 0 ? `В игре: ${playtimeSummary.version_formatted}` : `В игре: ${playtimeSummary.total_formatted}`}
+                  {playtimeSummary.version_seconds > 0 ? t('play.in_game_label', { time: playtimeSummary.version_formatted }) : t('play.in_game_label', { time: playtimeSummary.total_formatted })}
                 </span>
               </div>
             {/if}
@@ -1147,21 +876,21 @@ $effect(() => {
                 ></div>
                 <div class="prewarm-btn-content">
                   <div class="prewarm-spinner" aria-hidden="true"></div>
-                  <span class="prewarm-btn-title">Игра догружается…</span>
+                  <span class="prewarm-btn-title">{t('play.btn_prewarming')}</span>
                   <span class="prewarm-btn-pct">{Math.round(currentPrewarmProgress)}%</span>
                 </div>
               {:else if effectiveState === 'ready'}
                 <div class="ready-btn-content">
                   <Icon name="play" size={17} color="#ffffff" />
                   <div class="ready-btn-text">
-                    <span class="ready-title">Готово к запуску</span>
-                    <span class="ready-sub">Прогрев готов</span>
+                    <span class="ready-title">{t('play.btn_ready_title')}</span>
+                    <span class="ready-sub">{t('play.btn_ready_sub')}</span>
                   </div>
                 </div>
               {:else if effectiveState === 'running'}
                 <div class="running-btn-content">
                   <span class="running-icon-stop" aria-hidden="true"></span>
-                  <span class="running-title">В игре • Остановить</span>
+                  <span class="running-title">{t('play.btn_playing_stop')}</span>
                 </div>
               {:else}
                 <!-- Idle State: Play -->
@@ -1206,27 +935,6 @@ $effect(() => {
     height: 100%;
     padding: 24px 44px 28px;
     box-sizing: border-box;
-  }
-
-  /* Unobtrusive Update Banner (Apple HIG Banners) */
-  .update-banner {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 16px;
-    background: var(--color-system-thin-material);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid var(--color-separator);
-    border-radius: var(--radius-lg);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-    margin-bottom: 12px;
-    animation: updateBannerSlideDown var(--motion-duration-normal, 300ms) var(--motion-curve-spring-gentle, cubic-bezier(0.16, 1, 0.3, 1)) both;
-    overflow: hidden;
-  }
-
-  .update-banner.closing {
-    animation: updateBannerCollapse 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
   .offline-banner {
@@ -1316,139 +1024,6 @@ $effect(() => {
     }
   }
 
-  @keyframes updateBannerSlideDown {
-    0% {
-      opacity: 0;
-      transform: translateY(-8px) scale(0.98);
-      max-height: 0;
-      margin-bottom: 0;
-      padding-top: 0;
-      padding-bottom: 0;
-    }
-    40% {
-      opacity: 0.6;
-      max-height: 70px;
-      padding-top: 10px;
-      padding-bottom: 10px;
-    }
-    100% {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-      max-height: 120px;
-      margin-bottom: 12px;
-    }
-  }
-
-  @keyframes updateBannerCollapse {
-    0% {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-      max-height: 100px;
-      margin-bottom: 12px;
-    }
-    100% {
-      opacity: 0;
-      transform: translateY(-6px) scale(0.97);
-      max-height: 0;
-      margin-bottom: 0;
-      padding-top: 0;
-      padding-bottom: 0;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .update-banner,
-    .update-banner.closing {
-      animation: none !important;
-      transform: none !important;
-    }
-  }
-
-  :global([data-reduce-motion='true']) .update-banner,
-  :global([data-reduce-motion='true']) .update-banner.closing {
-    animation: none !important;
-    transform: none !important;
-  }
-
-  .update-banner-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: rgba(0, 145, 255, 0.12);
-    flex-shrink: 0;
-  }
-
-  .update-banner-body {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .update-banner-headline {
-    font-size: var(--text-footnote);
-    font-weight: 600;
-    color: var(--color-label);
-  }
-
-  .update-banner-subtext {
-    font-size: var(--text-caption-1);
-    color: var(--color-secondary-label);
-  }
-
-  .update-banner-headline-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .update-banner-headline-error {
-    color: var(--color-system-red);
-  }
-
-  .update-banner-progress {
-    margin-top: 6px;
-    width: 100%;
-    max-width: 320px;
-  }
-
-  .update-banner-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-
-  .update-banner-icon.ready_to_restart {
-    background: rgba(48, 209, 88, 0.16);
-  }
-
-  .update-banner-icon.error {
-    background: rgba(255, 69, 58, 0.16);
-  }
-
-  .update-banner-icon.downloading {
-    background: rgba(0, 145, 255, 0.16);
-    animation: spinSlow 3s linear infinite;
-  }
-
-  @keyframes spinSlow {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  .update-banner-close {
-    flex-shrink: 0;
-  }
-
   /* Header Area: Apple Large Title */
   .app-header-area {
     display: flex;
@@ -1529,7 +1104,8 @@ $effect(() => {
     flex: 0 1 300px;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
+    align-self: flex-start;
   }
 
   .screenshot-glance-card {
@@ -1615,12 +1191,17 @@ $effect(() => {
     margin: 2px 0;
   }
 
-  .status-indicator-green {
+  /* Green only when a ping actually answered; neutral otherwise. */
+  .status-indicator {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background-color: var(--color-system-green);
+    background-color: var(--color-tertiary-label);
     flex-shrink: 0;
+  }
+
+  .status-indicator.online {
+    background-color: var(--color-system-green);
   }
 
   .server-text-wrap {
@@ -1725,7 +1306,8 @@ $effect(() => {
   }
 
   .nickname-block {
-    flex: 1 1 200px;
+    flex: 0 1 200px;
+    min-width: 120px;
     max-width: 260px;
   }
 
@@ -1756,10 +1338,15 @@ $effect(() => {
     font-family: var(--font-system);
     font-size: var(--text-footnote);
     width: 100%;
+    min-width: 0;
   }
 
+  /* The status text is the only part of the dock that may shrink, so the
+     Play button always stays inside the dock at the minimum window width. */
   .tech-block {
-    flex-shrink: 0;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
   }
 
   .tech-runtime-box {
@@ -1768,9 +1355,17 @@ $effect(() => {
     gap: 4px;
     height: 34px;
     white-space: nowrap;
+    min-width: 0;
+  }
+
+  .tech-runtime-box .tech-status-badge {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .tech-runtime-text {
+    flex-shrink: 0;
     font-size: var(--text-footnote);
     color: var(--color-secondary-label);
     font-family: var(--font-mono);

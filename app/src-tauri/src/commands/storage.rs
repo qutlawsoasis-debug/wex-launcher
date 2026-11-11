@@ -437,22 +437,10 @@ pub async fn verify_game_files_impl<E: EventHandler>(
             return Err(format!("Ошибка перекачки повреждённых файлов: {}", e));
         }
 
-        // Verify repaired files on disk
-        for file in &manifest.files {
-            let clean_path = file.path.replace('\\', "/");
-            let target_path = instance_dir.join(&clean_path);
-            if target_path.exists() {
-                if let Ok(meta) = fs::metadata(&target_path) {
-                    if meta.len() == file.size {
-                        if let Ok(hash) = compute_file_hash(&target_path, HashType::Sha256) {
-                            if hash.eq_ignore_ascii_case(&file.sha256) {
-                                repaired_files += 1;
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        // The pool returns success only after every initially corrupted task has
+        // passed its expected size/hash checks and been installed on disk.
+        // Healthy, default-mode and disabled files were never repair tasks.
+        repaired_files = corrupted_files;
     }
 
     let status = if corrupted_files == 0 {
@@ -482,7 +470,7 @@ pub async fn verify_game_files_impl<E: EventHandler>(
         total_files,
         checked_files,
         corrupted_files,
-        repaired_files: corrupted_files,
+        repaired_files,
         status,
         message,
     })
@@ -566,6 +554,13 @@ pub async fn verify_game_files(
     }
 
     let handler = AppEventHandler { app };
+    // Repairs write instance files: never overlap a background install or Play.
+    // A running game is rejected inside the impl, so only wait when it may repair.
+    let _install = if is_running {
+        None
+    } else {
+        Some(state.install_lock.lock().await)
+    };
     verify_game_files_impl(&state.paths, &target_version, is_running, &client, &handler).await
 }
 
@@ -703,6 +698,79 @@ mod tests {
         assert!(screenshot.exists(), "Screenshots must be preserved!");
         assert!(user_options.exists(), "options.txt must be preserved!");
         assert!(user_skin.exists(), "User skins must be preserved!");
+    }
+
+    #[tokio::test]
+    async fn integrity_repair_counts_only_initially_corrupted_both_versions() {
+        for version in ["1.20.1", "1.21.1"] {
+            let tmp = tempdir().unwrap();
+            let paths = WexPaths::new(Some(tmp.path().to_path_buf()));
+            let instance = paths.instance_dir(version);
+            fs::create_dir_all(instance.join("mods")).unwrap();
+            let server = MockServer::start().await;
+            let content = b"verified content";
+            fs::write(instance.join("mods/healthy.jar"), content).unwrap();
+            let hash =
+                compute_file_hash(&instance.join("mods/healthy.jar"), HashType::Sha256).unwrap();
+            fs::write(instance.join("mods/broken.jar"), b"broken").unwrap();
+            fs::write(instance.join("mods/disabled.jar.disabled"), content).unwrap();
+            fs::write(instance.join("options.txt"), content).unwrap();
+            Mock::given(method("GET"))
+                .and(path("/broken"))
+                .respond_with(ResponseTemplate::new(200).set_body_bytes(content.to_vec()))
+                .expect(1)
+                .mount(&server)
+                .await;
+            let files = [
+                "mods/broken.jar",
+                "mods/healthy.jar",
+                "mods/disabled.jar",
+                "options.txt",
+            ]
+            .into_iter()
+            .map(|path| ManifestFileEntry {
+                path: path.to_string(),
+                sha256: hash.clone(),
+                size: content.len() as u64,
+                mode: if path == "options.txt" {
+                    "default"
+                } else {
+                    "sync"
+                }
+                .to_string(),
+                url: Some(format!("{}/broken", server.uri())),
+            })
+            .collect();
+            let manifest = Manifest {
+                name: "test".to_string(),
+                pack_version: "test".to_string(),
+                minecraft: version.to_string(),
+                fabric_loader: "0.19.5".to_string(),
+                servers: None,
+                files,
+            };
+            fs::write(
+                instance.join("manifest.json"),
+                serde_json::to_vec(&manifest).unwrap(),
+            )
+            .unwrap();
+            let client = reqwest::Client::builder().no_proxy().build().unwrap();
+            let result = verify_game_files_impl(&paths, version, false, &client, &NoopEventHandler)
+                .await
+                .unwrap();
+            assert_eq!(result.total_files, 4);
+            assert_eq!(result.checked_files, 4);
+            assert_eq!(result.corrupted_files, 1);
+            assert_eq!(result.repaired_files, 1);
+            assert!(
+                result.message.contains("Успешно восстановлено: 1 из 4"),
+                "{version}: {}",
+                result.message
+            );
+            assert_eq!(fs::read(instance.join("mods/broken.jar")).unwrap(), content);
+            assert!(!instance.join("mods/disabled.jar").exists());
+            server.verify().await;
+        }
     }
 
     #[tokio::test]

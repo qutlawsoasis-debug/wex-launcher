@@ -73,20 +73,20 @@
 
   // Achievements state
   let achievements = $state<AchievementItem[]>([
-    { id: 'first_launch', title: 'Искра', description: 'Первый запуск игры', target: 1, current: 0, unlocked: false },
-    { id: 'ten_launches', title: 'Постоялец', description: '10 запусков игры', target: 10, current: 0, unlocked: false },
-    { id: 'hundred_hours', title: 'Сто часов', description: '100 часов в игре', target: 100, current: 0, unlocked: false },
-    { id: 'marathon', title: 'Марафон', description: '5 часов в одной сессии', target: 5, current: 0, unlocked: false },
-    { id: 'night_shift', title: 'Ночная смена', description: 'Запуск с 03:00 до 05:00', target: 1, current: 0, unlocked: false },
-    { id: 'first_lobby', title: 'Хост', description: 'Первое созданное лобби', target: 1, current: 0, unlocked: false },
-    { id: 'full_table', title: 'Полный стол', description: '4 игрока в твоём лобби', target: 4, current: 0, unlocked: false },
-    { id: 'reconnected', title: 'Вернулся', description: 'Нажал «Переподключиться»', target: 1, current: 0, unlocked: false },
-    { id: 'first_friend', title: 'Свой человек', description: 'Первый друг в списке', target: 1, current: 0, unlocked: false },
-    { id: 'five_friends', title: 'Компания', description: '5 друзей в списке', target: 5, current: 0, unlocked: false },
-    { id: 'first_backup', title: 'Страховка', description: 'Первый созданный бэкап мира', target: 1, current: 0, unlocked: false },
-    { id: 'ten_backups', title: 'Параноик', description: '10 бэкапов миров', target: 10, current: 0, unlocked: false },
-    { id: 'photographer', title: 'Фотограф', description: '10 скриншотов в галерее', target: 10, current: 0, unlocked: false },
-    { id: 'own_style', title: 'Свой стиль', description: 'Установлен кастомный скин', target: 1, current: 0, unlocked: false },
+    { id: 'first_launch', title: t('friends.ach_first_launch_title'), description: t('friends.ach_first_launch_desc'), target: 1, current: 0, unlocked: false },
+    { id: 'ten_launches', title: t('friends.ach_ten_launches_title'), description: t('friends.ach_ten_launches_desc'), target: 10, current: 0, unlocked: false },
+    { id: 'hundred_hours', title: t('friends.ach_hundred_hours_title'), description: t('friends.ach_hundred_hours_desc'), target: 100, current: 0, unlocked: false },
+    { id: 'marathon', title: t('friends.ach_marathon_title'), description: t('friends.ach_marathon_desc'), target: 5, current: 0, unlocked: false },
+    { id: 'night_shift', title: t('friends.ach_night_shift_title'), description: t('friends.ach_night_shift_desc'), target: 1, current: 0, unlocked: false },
+    { id: 'first_lobby', title: t('friends.ach_first_lobby_title'), description: t('friends.ach_first_lobby_desc'), target: 1, current: 0, unlocked: false },
+    { id: 'full_table', title: t('friends.ach_full_table_title'), description: t('friends.ach_full_table_desc'), target: 4, current: 0, unlocked: false },
+    { id: 'reconnected', title: t('friends.ach_reconnected_title'), description: t('friends.ach_reconnected_desc'), target: 1, current: 0, unlocked: false },
+    { id: 'first_friend', title: t('friends.ach_first_friend_title'), description: t('friends.ach_first_friend_desc'), target: 1, current: 0, unlocked: false },
+    { id: 'five_friends', title: t('friends.ach_five_friends_title'), description: t('friends.ach_five_friends_desc'), target: 5, current: 0, unlocked: false },
+    { id: 'first_backup', title: t('friends.ach_first_backup_title'), description: t('friends.ach_first_backup_desc'), target: 1, current: 0, unlocked: false },
+    { id: 'ten_backups', title: t('friends.ach_ten_backups_title'), description: t('friends.ach_ten_backups_desc'), target: 10, current: 0, unlocked: false },
+    { id: 'photographer', title: t('friends.ach_photographer_title'), description: t('friends.ach_photographer_desc'), target: 10, current: 0, unlocked: false },
+    { id: 'own_style', title: t('friends.ach_own_style_title'), description: t('friends.ach_own_style_desc'), target: 1, current: 0, unlocked: false },
   ]);
 
   // Local Toast notifications
@@ -180,9 +180,9 @@
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('social_send_friend_request', { target_friend_code: code });
+      await invoke('social_send_friend_request', { targetFriendCode: code });
       friendCodeInput = '';
-      addToast('success', 'Заявка отправлена', `Заявка в друзья по коду ${code} успешно передана`);
+      addToast('success', t('friends.request_sent_title'), t('friends.request_sent_desc', { code }));
       socialError = null;
     } catch (e: any) {
       const formatted = formatError(e, 'friends');
@@ -207,7 +207,7 @@
           status: 'online',
         },
       ];
-      addToast('success', 'Заявка принята', `${request.from_nick} теперь в списке ваших друзей`);
+      addToast('success', t('friends.request_accepted_title'), t('friends.request_accepted_desc', { nick: request.from_nick }));
       socialError = null;
     } catch (e: any) {
       const formatted = formatError(e, 'friends');
@@ -222,7 +222,7 @@
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('social_decline_friend_request', { request_id: request.id });
       requests = requests.filter((r) => r.id !== request.id);
-      addToast('info', 'Заявка отклонена', `Заявка от ${request.from_nick} отклонена`);
+      addToast('info', t('friends.request_declined_title'), t('friends.request_declined_desc', { nick: request.from_nick }));
       socialError = null;
     } catch (e: any) {
       const formatted = formatError(e, 'friends');
@@ -239,9 +239,9 @@
         target_user_id: friend.id,
         lobby_code: '#A7X9',
       });
-      addToast('success', 'Приглашение отправлено', `${friend.nick} получил приглашение в ваше лобби`);
+      addToast('success', t('friends.invite_sent_title'), t('friends.invite_sent_desc', { nick: friend.nick }));
     } catch (e: any) {
-      addToast('info', 'Приглашение отправлено', `Приглашение для ${friend.nick} отправлено`);
+      addToast('info', t('friends.invite_sent_title'), t('friends.invite_sent_desc', { nick: friend.nick }));
     }
   }
 
@@ -269,7 +269,7 @@
 
         if (res.unlocked) {
           const ach = achievements.find((a) => a.id === achievementId);
-          addToast('success', `Достижение разблокировано: «${ach?.title || achievementId}»`, ach?.description);
+          addToast('success', t('friends.ach_unlocked_title', { title: ach?.title || achievementId }), ach?.description);
         }
       }
     } catch {
@@ -279,7 +279,7 @@
           const nextVal = a.current + increment;
           const unlocked = nextVal >= a.target;
           if (unlocked && !a.unlocked) {
-            addToast('success', `Достижение разблокировано: «${a.title}»`, a.description);
+            addToast('success', t('friends.ach_unlocked_title', { title: a.title }), a.description);
           }
           return {
             ...a,
@@ -327,7 +327,7 @@
             'social-achievement-toast',
             (event) => {
               const a = event.payload;
-              addToast('success', `Достижение разблокировано: «${a.title}»`, a.description);
+              addToast('success', t('friends.ach_unlocked_title', { title: a.title }), a.description);
               // Refresh achievements list
               loadAchievements();
             }
@@ -337,8 +337,8 @@
 
           listen<LobbyInviteItem>('social-lobby-invite', (event) => {
             const inv = event.payload;
-            addToast('info', `Приглашение в лобби ${inv.lobby_code}`, `${inv.from_nick} зовёт вас в игру`, {
-              label: 'Присоединиться',
+            addToast('info', t('friends.lobby_invite_title', { code: inv.lobby_code }), t('friends.lobby_invite_desc', { nick: inv.from_nick }), {
+              label: t('deeplink.action_join'),
               onClick: () => {
                 void friendsLive.handleJoin(inv.lobby_code);
               },
@@ -375,7 +375,7 @@
       <input
         type="text"
         class="friend-code-input"
-        placeholder={i18n.locale === 'en' ? 'Friend code (for example, #A7X9)' : 'Код друга (#A7X9)...'}
+        placeholder={t('friends.add_friend_placeholder')}
         bind:value={friendCodeInput}
         onkeydown={(e) => e.key === 'Enter' && handleSendRequest()}
         aria-label={t('friends.add_friend_placeholder')}
@@ -421,7 +421,7 @@
         </div>
 
         {#if filteredFriends.length > 0}
-          <List header="{i18n.locale === 'en' ? 'Friends' : 'Список друзей'} ({filteredFriends.length})">
+          <List header="{t('friends.tab_friends')} ({filteredFriends.length})">
             {#each filteredFriends as friend, idx (friend.id)}
               <Row
                 index={idx}
@@ -429,10 +429,10 @@
                 subtitle={
                   friend.status === 'playing'
                     ? (friend.world_name
-                        ? (i18n.locale === 'en' ? `Playing on server ${friend.world_name}` : `В игре на сервере ${friend.world_name}`)
-                        : (i18n.locale === 'en' ? `Playing ${friend.game_version || 'Minecraft'}` : `В игре: ${friend.game_version || 'Minecraft'}`))
+                        ? t('friends.in_game_server', { server: friend.world_name })
+                        : t('friends.in_game_status', { version: friend.game_version || 'Minecraft' }))
                     : friend.status === 'in_lobby'
-                      ? (i18n.locale === 'en' ? `In lobby ${friend.lobby_code || ''}` : `В лобби ${friend.lobby_code || ''}`)
+                      ? t('friends.in_lobby_status', { code: friend.lobby_code || '' })
                       : friend.status === 'online'
                         ? t('friends.status_online')
                         : t('friends.status_offline')
@@ -464,7 +464,7 @@
                       onclick={() => handleSendLobbyInvite(friend)}
                     >
                       <Icon name="lobby" size={13} color="var(--color-system-blue)" />
-                      <span>{i18n.locale === 'en' ? 'Invite to Lobby' : 'Пригласить в лобби'}</span>
+                      <span>{t('friends.invite_to_lobby')}</span>
                     </Button>
                   {/if}
                 {/snippet}
@@ -476,8 +476,8 @@
             icon="friends"
             title={t('friends.empty_friends_title')}
             description={searchQuery
-              ? (i18n.locale === 'en' ? `No friends match “${searchQuery}”.` : `По запросу «${searchQuery}» ни одного игрока не найдено.`)
-              : (i18n.locale === 'en' ? 'Enter a friend code above to send a friend request.' : 'У вас пока нет добавленных друзей. Введите код друга в поле выше, чтобы отправить первое приглашение.')}
+              ? t('friends.no_players_found', { query: searchQuery })
+              : t('friends.empty_friends_desc')}
           />
         {/if}
       </div>
@@ -490,12 +490,12 @@
     {:else}
       <div class="tab-pane">
         {#if requests.length > 0}
-          <List header="{i18n.locale === 'en' ? 'Incoming Friend Requests' : 'Входящие заявки в друзья'} ({requests.length})">
+          <List header={t('friends.incoming_requests_header', { count: requests.length })}>
             {#each requests as req, idx (req.id)}
               <Row
                 index={idx}
                 title={req.from_nick}
-                subtitle={i18n.locale === 'en' ? 'Wants to add you as a friend' : 'Хочет добавить вас в список друзей'}
+                subtitle={t('friends.incoming_request_subtitle')}
               >
                 {#snippet leading()}
                   <div class="avatar-capsule">
@@ -540,7 +540,7 @@
           <EmptyState
             icon="friends"
             title={t('friends.empty_requests_title')}
-            description={i18n.locale === 'en' ? 'Friend requests will appear here.' : 'Когда другие игроки отправят вам заявку по вашему коду дружбы, она появится в этом разделе.'}
+            description={t('friends.empty_requests_desc')}
           />
         {/if}
       </div>
@@ -553,16 +553,16 @@
       <div class="achievements-summary-card">
         <div class="summary-info">
           <span class="summary-label">{t('friends.achievements_header')}</span>
-          <span class="summary-count">{unlockedCount} {i18n.locale === 'en' ? 'of' : 'из'} {achievements.length} {i18n.locale === 'en' ? 'unlocked' : 'получено'}</span>
+          <span class="summary-count">{t('friends.of_unlocked', { unlocked: unlockedCount, total: achievements.length })}</span>
         </div>
         <div class="summary-progress">
-          <ProgressBar percentage={overallPercentage} label="Общий прогресс достижений" height={8} />
+          <ProgressBar percentage={overallPercentage} label={t('friends.overall_ach_progress')} height={8} />
         </div>
       </div>
 
       <List
         header={t('friends.achievements_list')}
-        footer={i18n.locale === 'en' ? 'Your progress is saved automatically in Wex.' : 'Прогресс отслеживается автоматически и сохраняется в каталоге лаунчера.'}
+        footer={t('friends.achievements_footer')}
       >
         {#each achievements as ach (ach.id)}
           {@const pct = Math.min(100, Math.round((ach.current / ach.target) * 100))}
@@ -581,14 +581,14 @@
               <div class="ach-header">
                 <span class="ach-title">{ach.title}</span>
                 <span class="ach-status" class:unlocked={ach.unlocked}>
-                  {ach.unlocked ? 'Получено' : `${ach.current} / ${ach.target}`}
+                  {ach.unlocked ? t('friends.unlocked_badge') : `${ach.current} / ${ach.target}`}
                 </span>
               </div>
               <p class="ach-desc">{ach.description}</p>
 
               {#if !ach.unlocked}
                 <div class="ach-progress-bar">
-                  <ProgressBar percentage={pct} label={ach.title} height={4} />
+                  <ProgressBar percentage={pct} label={ach.title} hideInfo={true} height={4} />
                 </div>
               {/if}
             </div>
@@ -601,8 +601,8 @@
   <!-- Floating Toast Notifications Stack -->
   {#if localToasts.length > 0}
     <div class="screen-toast-stack" aria-live="polite">
-      {#each localToasts as t (t.id)}
-        <Toast toast={t} ondismiss={dismissToast} />
+      {#each localToasts as toastItem (toastItem.id)}
+        <Toast toast={toastItem} ondismiss={dismissToast} />
       {/each}
     </div>
   {/if}

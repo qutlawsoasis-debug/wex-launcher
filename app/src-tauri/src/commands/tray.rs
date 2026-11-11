@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tauri::menu::MenuItem;
 use tauri::{AppHandle, Manager, State, Wry};
@@ -113,14 +112,7 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 tauri::async_runtime::spawn(async move {
                     if let Some(state) = app_clone.try_state::<crate::commands::launch::PlayState>()
                     {
-                        let ver = {
-                            let v = state.running_version.lock().await;
-                            v.clone()
-                        };
-                        if let Some(ver) = ver {
-                            let _ = state.core.kill_game(&ver).await;
-                        }
-                        state.is_running.store(false, Ordering::SeqCst);
+                        state.stop_active_game(None).await;
                         restore_window(&app_clone);
                         update_tray_game_running(&app_clone, false);
                     }
@@ -186,7 +178,7 @@ pub fn tray_get_window_behavior(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
 
     #[test]
