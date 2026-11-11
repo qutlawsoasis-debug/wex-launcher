@@ -1,0 +1,1276 @@
+<title>Wex Лаунчер</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap">
+<style>
+/* Hallmark · shape: app screen · genre: atmospheric · theme: custom
+ * paper: system background, light and dark · accent: oklch(0.58 0.19 255) systemBlue · display: Onest 800 · body: Onest
+ * nav: sidebar with a build library, persistent launch bar · signature: the launch bar that becomes the install progress · states: ready, launching, running, stopped, empty search, no worlds
+ * axes: world/Onest/systemBlue · posture: library · contrast: pass · v2.0.0 */
+/* Hallmark · pre-emit critique: P5 H4 E5 S4 R5 V4 · weakest: S, a sidebar plus pages is a familiar shell; kept because it is what makes a launcher fast to use, character comes from the build covers set in type */
+/* Hallmark · waive 12 · springs only on indicators, toggles, toasts and the build pair · Apple system controls use spring motion and AGENTS.md makes Apple the spec */
+/* WEX — референс v8. Схема профессиональных лаунчеров: боковая панель с библиотекой сборок, страницы, постоянная панель запуска.
+   Без игровой графики и без стиля старого лаунчера: системные цвета и материалы Apple, обложки сборок из цвета и типографики (AGENTS.md: systemBlue на главном действии, systemGreen у переключателей, systemRed для остановки). */
+:root {
+  /* Светлая тема (системные цвета Apple) */
+  --blue: #0064d2; --blue-hi: #0a6fe0; --blue-text: #0066d6; --blue-ink: #ffffff; --blue-tint: rgba(0, 122, 255, 0.12);
+  --green: #34c759; --red: #ff3b30; --orange: #ff9500;
+  --label: #1d1d1f; --label-2: rgba(60, 60, 67, 0.72); --label-3: rgba(60, 60, 67, 0.5);
+  --fill: rgba(120, 120, 128, 0.2); --fill-2: rgba(120, 120, 128, 0.14); --fill-3: rgba(118, 118, 128, 0.08);
+  --separator: rgba(60, 60, 67, 0.14);
+  --base: #f5f5f7;                         /* фон окна */
+  --side: rgba(236, 236, 240, 0.86);       /* боковая панель */
+  --bar: rgba(250, 250, 252, 0.9);         /* панель запуска */
+  --card: #ffffff;                         /* группы, карточки */
+  --card-hover: #fbfbfd;
+  --edge: rgba(0, 0, 0, 0.08);
+  --shade: rgba(0, 0, 0, 0.08);
+  --veil: rgba(245, 245, 247, 0.72);
+  --veil-strong: rgba(255, 255, 255, 0.97);
+  --cover-ink: #ffffff;
+  --cover-1211: #1e5fd8;                   /* цвет сборки 1.21.1 */
+  --cover-1201: #1f8a5b;                   /* цвет сборки 1.20.1 */
+  --cover-new: rgba(120, 120, 128, 0.14);
+  --hero-btn: rgba(255, 255, 255, 0.2); --hero-btn-hi: rgba(255, 255, 255, 0.28);
+  --pal-0: #1e5fd8; --pal-1: #1f8a5b; --pal-2: #d9681e; --pal-3: #d6336c; --pal-4: #0f8f9c; --pal-5: #4a4f5c;
+  --cape-0: #0a6fe0; --cape-0-t: #9fd0ff; --cape-1: #9aa0a8; --cape-1-t: #e6e8eb; --cape-2: rgba(120, 120, 128, 0.4); --cape-2-t: rgba(120, 120, 128, 0.6); --cape-3: transparent; --cape-3-t: transparent;
+  --stage-a: rgba(0, 122, 255, 0.10); --stage-b: rgba(120, 120, 128, 0.06); --floor: rgba(0, 0, 0, 0.18); --warn-fill: rgba(255, 149, 0, 0.9);
+  --mwl-bg: #e8e8ed; --mwl-a: #ffffff; --mwl-b: #dcdce1; --mwl-c: #007aff; --mwd-bg: #1c1c1f; --mwd-a: #2a2a2e; --mwd-b: #232327; --mwd-c: #0a84ff; --mws-a: rgba(140, 140, 150, 0.5); --mws-b: rgba(140, 140, 150, 0.35);
+  --av-1: #ff9500; --av-2: #5ac8fa; --av-3: #34c759; --av-4: #ff2d55; --av-5: #8e8e93;
+  --font: "Onest", -apple-system, "SF Pro Text", system-ui, sans-serif;
+  --t-cap: 12px; --t-foot: 13px; --t-sub: 15px; --t-body: 16px; --t-t3: 20px; --t-t2: 24px; --t-t1: 32px; --t-hero: 56px;
+  --r-s: 8px; --r-m: 12px; --r-l: 16px; --r-pill: 999px;
+  --ease: cubic-bezier(.32, .72, 0, 1); --dur-micro: 120ms; --dur-short: 240ms;
+  --spring: cubic-bezier(.34, 1.32, .64, 1); --dur-ind: 420ms; --dur-page: 380ms; --dur-pair: 640ms;
+  --lift: 0 10px 30px rgba(0, 0, 0, 0.12); --sweep: rgba(255, 255, 255, 0.45);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  color-scheme: dark;
+  --blue: #0a6fe0; --blue-hi: #1a7ef0; --blue-text: #4ba3ff; --blue-tint: rgba(10, 132, 255, 0.18);
+  --green: #30d158; --red: #ff453a; --orange: #ff9f0a;
+  --label: #f5f5f7; --label-2: rgba(235, 235, 245, 0.64); --label-3: rgba(235, 235, 245, 0.4);
+  --fill: rgba(120, 120, 128, 0.32); --fill-2: rgba(120, 120, 128, 0.22); --fill-3: rgba(118, 118, 128, 0.14);
+  --separator: rgba(84, 84, 88, 0.5);
+  --base: #161618; --side: rgba(30, 30, 33, 0.9); --bar: rgba(28, 28, 31, 0.92); --card: #1f1f22; --card-hover: #26262a;
+  --edge: rgba(255, 255, 255, 0.08); --shade: rgba(0, 0, 0, 0.4); --veil: rgba(10, 10, 12, 0.6); --veil-strong: rgba(30, 30, 33, 0.98);
+  --cover-1211: #2a6ae6; --cover-1201: #239a66;
+} }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --blue: #0a6fe0; --blue-hi: #1a7ef0; --blue-text: #4ba3ff; --blue-tint: rgba(10, 132, 255, 0.18);
+  --green: #30d158; --red: #ff453a; --orange: #ff9f0a;
+  --label: #f5f5f7; --label-2: rgba(235, 235, 245, 0.64); --label-3: rgba(235, 235, 245, 0.4);
+  --fill: rgba(120, 120, 128, 0.32); --fill-2: rgba(120, 120, 128, 0.22); --fill-3: rgba(118, 118, 128, 0.14);
+  --separator: rgba(84, 84, 88, 0.5);
+  --base: #161618; --side: rgba(30, 30, 33, 0.9); --bar: rgba(28, 28, 31, 0.92); --card: #1f1f22; --card-hover: #26262a;
+  --edge: rgba(255, 255, 255, 0.08); --shade: rgba(0, 0, 0, 0.4); --veil: rgba(10, 10, 12, 0.6); --veil-strong: rgba(30, 30, 33, 0.98);
+  --cover-1211: #2a6ae6; --cover-1201: #239a66;
+}
+[hidden] { display: none !important; }
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; overflow-x: clip; }
+body { margin: 0; background: var(--base); color: var(--label); font-family: var(--font); font-size: var(--t-body); line-height: 1.4; padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: 0; padding: 0; }
+a { color: inherit; text-decoration: none; }
+:focus-visible { outline: 3px solid var(--blue-text); outline-offset: 2px; transition: none; }
+h1, h2, h3 { margin: 0; text-wrap: balance; overflow-wrap: break-word; min-width: 0; }
+canvas.px { image-rendering: pixelated; display: block; }
+img { display: block; max-width: 100%; }
+
+/* ── Окно ─────────────────────────────── */
+.app { position: relative; height: 100%; max-width: 1480px; margin: 0 auto; border-radius: 12px; overflow: hidden; isolation: isolate; display: grid; grid-template-columns: 248px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; box-shadow: 0 0 0 1px var(--edge), 0 30px 80px var(--shade); }
+.app { background: var(--base); }
+
+/* ── Боковая панель ───────────────────── */
+.side { grid-row: 1 / 3; background: var(--side); backdrop-filter: blur(30px) saturate(160%); -webkit-backdrop-filter: blur(30px) saturate(160%); border-right: 1px solid var(--edge); display: flex; flex-direction: column; padding: 20px 12px 12px; gap: 4px; min-height: 0; }
+.brand { display: flex; align-items: center; gap: 12px; padding: 0 8px 16px; font-weight: 800; font-size: 20px; letter-spacing: -.01em; }
+.brand-mark { display: flex; gap: 4px; align-items: flex-end; height: 24px; }
+.brand-mark i { width: 8px; border-radius: 3px; display: block; }
+.brand-mark i:first-child { height: 24px; background: var(--cover-1211); }
+.brand-mark i:last-child { height: 16px; background: var(--cover-1201); }
+.nav a, .lib a { display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: var(--r-s); color: var(--label-2); font-weight: 500; transition: background-color var(--dur-micro), color var(--dur-micro); }
+.nav a:hover, .lib a:hover { background: var(--fill-3); color: var(--label); }
+.nav a[aria-current="page"], .lib a[aria-current="page"] { background: var(--fill); color: var(--label); }
+.nav svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.nav .count { margin-left: auto; font-size: var(--t-foot); color: var(--label-3); }
+.side-h { display: flex; align-items: center; justify-content: space-between; padding: 20px 12px 8px; font-size: var(--t-foot); font-weight: 600; color: var(--label-3); }
+.side-h button { width: 24px; height: 24px; border-radius: 6px; color: var(--label-2); font-size: 18px; line-height: 1; transition: background-color var(--dur-micro); }
+.side-h button:hover { background: var(--fill-2); color: var(--label); }
+.lib a { height: 52px; padding: 0 8px; }
+.lib img { width: 48px; height: 36px; border-radius: 6px; object-fit: cover; flex: none; }
+.lib b { display: block; font-weight: 600; color: var(--label); font-size: var(--t-sub); }
+.lib span { font-size: var(--t-cap); color: var(--label-3); }
+.lib .sel { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: var(--blue-text); flex: none; }
+.me { margin-top: auto; display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: var(--r-m); transition: background-color var(--dur-micro); }
+.me:hover { background: var(--fill-3); }
+.me canvas { width: 36px; height: 36px; border-radius: var(--r-s); }
+.me b { display: block; font-weight: 600; }
+.me span { font-size: var(--t-cap); color: var(--green); }
+
+/* ── Страница ─────────────────────────── */
+.main { position: relative; min-width: 0; min-height: 0; overflow: auto; }
+.topline { position: sticky; top: 0; z-index: 3; background: var(--base); display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 24px; }
+.crumbs { display: flex; gap: 4px; }
+.crumbs button { width: 32px; height: 32px; border-radius: var(--r-s); color: var(--label-2); display: grid; place-items: center; transition: background-color var(--dur-micro); }
+.crumbs button:hover:not([disabled]) { background: var(--fill-2); color: var(--label); }
+.crumbs button[disabled] { color: var(--label-3); background: transparent; cursor: not-allowed; }
+.crumbs svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+.search-top { margin-left: 8px; flex: 0 1 360px; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: var(--r-s); background: var(--fill-3); color: var(--label-3); }
+.search-top input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--label); }
+.search-top:focus-within { box-shadow: inset 0 0 0 2px var(--blue); }
+.search-top svg, .search svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; flex: none; }
+.winctl { margin-left: auto; display: flex; gap: 4px; }
+.winctl button { width: 36px; height: 28px; border-radius: 6px; color: var(--label-3); display: grid; place-items: center; transition: background-color var(--dur-micro), color var(--dur-micro); }
+.winctl button:hover { background: var(--fill-2); color: var(--label); }
+.winctl button.close:hover { background: var(--red); color: var(--label); }
+.winctl svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.4; }
+.page { padding: 0 24px 32px; display: flex; flex-direction: column; gap: 28px; }
+
+.h-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.h-row h2 { font-size: var(--t-t3); font-weight: 700; }
+.h-row button, .h-row a { font-size: var(--t-sub); color: var(--blue-text); font-weight: 500; }
+.h-row button:hover, .h-row a:hover { text-decoration: underline; }
+.page-title h1 { font-size: var(--t-t1); font-weight: 800; letter-spacing: -.02em; }
+.page-title p { margin: 4px 0 0; color: var(--label-2); }
+
+/* Баннер сборки */
+.hero { position: relative; border-radius: var(--r-l); overflow: hidden; min-height: 360px; display: flex; align-items: flex-end; isolation: isolate; box-shadow: inset 0 0 0 1px var(--edge); }
+.hero > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; transition: transform 1.2s var(--ease); }
+.hero::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(0deg, var(--img-shade), transparent 62%); }
+.hero-in { width: 100%; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 32px; flex-wrap: wrap; }
+.hero h1 { font-size: var(--t-hero); font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+.hero p { margin: 8px 0 0; color: var(--label-2); max-width: 54ch; }
+.hero-actions { display: flex; gap: 8px; align-items: center; }
+
+/* Кнопки */
+.btn { height: 40px; padding: 0 16px; border-radius: var(--r-s); background: var(--fill-2); font-weight: 600; font-size: var(--t-sub); display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; transition: background-color var(--dur-micro); }
+.btn:hover { background: var(--fill); }
+.btn:active, .mini:active, .play:active { transform: scale(.97); }
+.btn.blue { background: var(--blue); color: var(--blue-ink); }
+.btn.blue:hover { background: var(--blue-hi); }
+.btn.big { height: 52px; padding: 0 28px; font-size: 17px; border-radius: var(--r-m); }
+.btn svg { width: 14px; height: 14px; fill: currentColor; }
+
+/* Сетки и карточки */
+.grid-3 { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; }
+.tile { position: relative; border-radius: var(--r-l); overflow: hidden; background: var(--card); box-shadow: inset 0 0 0 1px var(--edge); transition: background-color var(--dur-short); }
+.tile:hover { background: var(--card-hover); }
+.tile-img { position: relative; aspect-ratio: 16 / 7; overflow: hidden; }
+.tile-img img { width: 100%; height: 100%; object-fit: cover; transition: transform var(--dur-world) var(--ease); }
+.tile-body { padding: 16px; display: flex; flex-direction: column; gap: 4px; }
+.tile-body b { font-weight: 600; }
+.tile-body span { font-size: var(--t-foot); color: var(--label-2); }
+.continue { display: grid; grid-template-columns: 160px minmax(0, 1fr) auto; align-items: center; gap: 20px; padding: 12px 16px 12px 12px; }
+.continue img { width: 160px; height: 96px; border-radius: var(--r-m); object-fit: cover; }
+.continue b { font-size: var(--t-t3); font-weight: 700; display: block; }
+.continue span { color: var(--label-2); font-size: var(--t-sub); }
+.live { display: inline-flex; align-items: center; gap: 8px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex: none; }
+.news { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+
+.panel { color: var(--label); border-radius: var(--r-l); background: var(--card); box-shadow: inset 0 0 0 1px var(--edge); padding: 8px; }
+.prow { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px; border-radius: var(--r-m); transition: background-color var(--dur-micro); }
+.prow:hover { background: var(--fill-3); }
+.prow canvas { width: 36px; height: 36px; border-radius: var(--r-s); }
+.prow > div { min-width: 0; }
+.prow b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prow span { display: flex; align-items: center; gap: 8px; font-size: var(--t-foot); color: var(--label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prow.off { opacity: .5; }
+.prow.off canvas { filter: grayscale(1); }
+.mini { height: 32px; padding: 0 12px; border-radius: var(--r-s); background: var(--fill-2); font-size: var(--t-foot); font-weight: 600; transition: background-color var(--dur-micro); white-space: nowrap; }
+.mini:hover { background: var(--fill); }
+.mini.blue { background: var(--blue); color: var(--blue-ink); }
+.mini.blue:hover { background: var(--blue-hi); }
+
+/* Страница сборки */
+.build-head { position: relative; margin: 0 -24px; min-height: 300px; display: flex; align-items: flex-end; isolation: isolate; }
+.build-head > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; }
+.build-head::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(0deg, var(--veil-strong), transparent 70%); }
+.build-head .hero-in { padding: 0 24px 24px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--separator); margin-top: -8px; }
+.tabs button { height: 44px; padding: 0 16px; color: var(--label-2); font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color var(--dur-micro), border-color var(--dur-micro); }
+.tabs button:hover { color: var(--label); }
+.tabs button[aria-selected="true"] { color: var(--label); border-bottom-color: var(--blue-text); }
+.facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.fact { padding: 16px; border-radius: var(--r-m); background: var(--card); box-shadow: inset 0 0 0 1px var(--edge); }
+.fact b { display: block; font-size: var(--t-t2); font-weight: 700; }
+.fact span { font-size: var(--t-foot); color: var(--label-2); }
+
+/* Списки */
+.list { border-radius: var(--r-l); background: var(--card); box-shadow: inset 0 0 0 1px var(--edge); overflow: hidden; }
+.lrow { display: grid; align-items: center; gap: 16px; min-height: 64px; padding: 8px 16px; border-bottom: 1px solid var(--separator); transition: background-color var(--dur-micro); }
+.lrow:last-child { border-bottom: 0; }
+.lrow:hover { background: var(--fill-3); }
+.lrow > div { min-width: 0; }
+.lrow b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lrow span { font-size: var(--t-foot); color: var(--label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.lrow-mod { grid-template-columns: 40px minmax(0, 1fr) auto auto; }
+.lrow-mod canvas { width: 40px; height: 40px; border-radius: var(--r-s); }
+.lrow-world { grid-template-columns: 96px minmax(0, 1fr) auto; }
+.lrow-world img { width: 96px; height: 54px; border-radius: var(--r-s); object-fit: cover; }
+.lrow-srv { grid-template-columns: 120px minmax(0, 1fr) 140px auto; }
+.lrow-srv img { width: 120px; height: 68px; border-radius: var(--r-s); object-fit: cover; }
+.meter { display: grid; gap: 8px; font-size: var(--t-foot); color: var(--label-2); }
+.meter i { display: block; height: 4px; border-radius: 2px; background: var(--fill-2); overflow: hidden; }
+.meter i::after { content: ""; display: block; height: 100%; background: var(--green); transform: scaleX(var(--w)); transform-origin: left; }
+.tag { font-size: var(--t-cap); font-weight: 600; padding: 4px 8px; border-radius: 6px; background: var(--fill-3); color: var(--label-2); white-space: nowrap; }
+.tag.up { background: var(--blue-tint); color: var(--blue-text); }
+.switch { width: 51px; height: 31px; border-radius: var(--r-pill); background: var(--fill); position: relative; flex: none; transition: background-color var(--dur-short); }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: var(--label); box-shadow: 0 3px 8px var(--shade); transition: transform var(--dur-short) var(--ease); }
+.switch[aria-checked="true"] { background: var(--green); }
+.switch[aria-checked="true"]::after { transform: translateX(20px); }
+.switch[disabled] { opacity: .4; cursor: not-allowed; }
+.tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.search { flex: 1 1 260px; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: var(--r-s); background: var(--fill-3); color: var(--label-3); }
+.search input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--label); }
+.search:focus-within { box-shadow: inset 0 0 0 2px var(--blue); }
+.seg { display: inline-flex; padding: 2px; border-radius: var(--r-s); background: var(--fill-3); }
+.seg button { height: 32px; padding: 0 12px; border-radius: 6px; font-size: var(--t-sub); font-weight: 500; color: var(--label-2); transition: background-color var(--dur-micro), color var(--dur-micro); white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--fill); color: var(--label); }
+.empty { padding: 24px 16px; color: var(--label-2); }
+.empty b { color: var(--label); }
+
+/* Настройки */
+.form { border-radius: var(--r-l); background: var(--card); box-shadow: inset 0 0 0 1px var(--edge); }
+.frow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 24px; align-items: center; min-height: 64px; padding: 12px 16px; border-bottom: 1px solid var(--separator); }
+.frow:last-child { border-bottom: 0; }
+.frow.full { grid-template-columns: 1fr; }
+.frow .l { font-weight: 500; }
+.frow .d { font-size: var(--t-foot); color: var(--label-2); }
+.mem { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; align-items: center; }
+.mem b { font-size: var(--t-t2); font-weight: 700; min-width: 5ch; text-align: right; }
+input[type="range"] { width: 100%; accent-color: var(--blue); }
+select { height: 36px; border-radius: var(--r-s); padding: 0 12px; background: var(--fill-2); border: 0; }
+.group-t { font-size: var(--t-foot); font-weight: 600; color: var(--label-3); margin: 0 0 8px 4px; }
+
+/* Гардероб */
+.wd { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.stand { position: relative; height: 460px; border-radius: var(--r-l); overflow: hidden; display: grid; place-items: center; perspective: 900px; cursor: grab; touch-action: pan-y; user-select: none; isolation: isolate; box-shadow: inset 0 0 0 1px var(--edge); }
+.stand > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; filter: blur(4px) brightness(.6); }
+.stand:active { cursor: grabbing; }
+.figure { position: relative; height: 340px; aspect-ratio: 1 / 2; transform-style: preserve-3d; transition: transform 600ms var(--ease); }
+.figure.drag { transition: none; }
+.figure canvas { position: absolute; inset: 0; width: 100%; height: 100%; backface-visibility: hidden; filter: drop-shadow(0 20px 24px var(--shade)); }
+.figure canvas.back { transform: rotateY(180deg); }
+.stand small { position: absolute; bottom: 12px; color: var(--label-2); font-size: var(--t-cap); }
+.capes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.cape { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 4px 12px; border-radius: var(--r-m); background: var(--card); box-shadow: inset 0 0 0 1px var(--edge); font-size: var(--t-foot); font-weight: 600; color: var(--label-2); transition: background-color var(--dur-micro); }
+.cape:hover { background: var(--card-hover); }
+.cape i { width: 18px; height: 28px; border-radius: 3px; display: block; box-shadow: inset 0 0 0 1px var(--edge); }
+.cape[aria-pressed="true"] { background: var(--blue-tint); color: var(--label); box-shadow: inset 0 0 0 1px var(--blue-text); }
+
+/* ── Панель запуска ───────────────────── */
+.bar { grid-column: 2; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 24px; padding: 12px 16px 12px 24px; background: var(--bar); backdrop-filter: blur(30px) saturate(160%); -webkit-backdrop-filter: blur(30px) saturate(160%); border-top: 1px solid var(--edge); }
+.status { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.status img { width: 72px; height: 44px; border-radius: var(--r-s); object-fit: cover; flex: none; }
+.status-t { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.status-t b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status-t span { font-size: var(--t-foot); color: var(--label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.track { height: 4px; border-radius: 2px; background: var(--fill-2); overflow: hidden; max-width: 520px; }
+.track i { display: block; height: 100%; background: var(--blue-text); transform: scaleX(0); transform-origin: left; transition: transform 200ms linear; }
+.play { height: 52px; min-width: 180px; padding: 0 28px; border-radius: var(--r-m); background: var(--blue); color: var(--blue-ink); font-weight: 700; font-size: 17px; display: inline-flex; align-items: center; justify-content: center; gap: 12px; transition: background-color var(--dur-micro); white-space: nowrap; }
+.play:hover { background: var(--blue-hi); }
+.play:active { opacity: .85; }
+.play svg { width: 14px; height: 14px; fill: currentColor; }
+.play.cancel { background: var(--fill-2); color: var(--label); }
+.play.cancel:hover { background: var(--fill); }
+.play.stop { background: var(--fill-2); color: var(--red); }
+.play.stop:hover { background: var(--fill); }
+.stage-tick { animation: tick 320ms var(--ease); }
+@keyframes tick { from { transform: translateY(50%); opacity: 0; } }
+
+.toast { position: absolute; left: 50%; bottom: 96px; z-index: 9; transform: translateX(-50%); padding: 12px 16px; border-radius: var(--r-m); background: var(--veil-strong); box-shadow: inset 0 0 0 1px var(--edge), 0 12px 30px var(--shade); font-size: var(--t-sub); font-weight: 500; transition: opacity var(--dur-short), transform var(--dur-short) var(--ease); white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; }
+.js .toast:not(.show) { opacity: 0; transform: translate(-50%, 8px); pointer-events: none; }
+
+.spec-bg { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: var(--veil); padding: 24px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px)); }
+.spec { width: min(820px, 100%); max-height: 100%; overflow: auto; border-radius: var(--r-l); padding: 28px 32px 32px; background: var(--veil-strong); box-shadow: inset 0 0 0 1px var(--edge); }
+.spec h2 { font-size: var(--t-t1); font-weight: 800; }
+.spec h3 { font-size: var(--t-t3); font-weight: 700; margin: 24px 0 8px; }
+.spec p, .spec li { color: var(--label-2); font-size: var(--t-sub); max-width: 72ch; }
+.spec b { color: var(--label); font-weight: 600; }
+.spec ul { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+
+
+/* Обложки сборок и монограммы */
+.cover { position: relative; display: grid; place-items: end start; overflow: hidden; color: var(--cover-ink); border-radius: var(--r-s); flex: none; }
+.cover b { font-weight: 800; letter-spacing: -.04em; line-height: .8; }
+.lib .cover { width: 40px; height: 40px; padding: 4px; }
+.lib .cover b { font-size: 11px; }
+.mono { display: grid; place-items: center; color: var(--cover-ink); font-weight: 700; border-radius: 50%; flex: none; width: 36px; height: 36px; font-size: 15px; }
+.mono.sq { border-radius: var(--r-s); width: 40px; height: 40px; }
+.mono.lg { border-radius: var(--r-m); width: 56px; height: 56px; font-size: 22px; }
+.me .mono { width: 36px; height: 36px; }
+.bar .cover { width: 48px; height: 48px; padding: 8px; border-radius: var(--r-s); }
+.bar .cover b { font-size: 13px; }
+/* Баннер: обложка сборки, набранная крупно */
+.hero { background: var(--hero-c); min-height: 340px; box-shadow: none; color: var(--cover-ink); }
+.hero::after { display: none; }
+.hero .big-ver { position: absolute; right: -0.04em; bottom: -0.2em; font-size: clamp(160px, 22vw, 300px); font-weight: 800; letter-spacing: -.06em; line-height: 1; opacity: .16; pointer-events: none; user-select: none; }
+.hero p { color: var(--cover-ink); opacity: .82; }
+.hero .btn:not(.blue) { background: var(--hero-btn); color: var(--cover-ink); }
+.hero .btn:not(.blue):hover { background: var(--hero-btn-hi); }
+.hero .btn.blue { background: var(--cover-ink); color: var(--hero-c); }
+.hero .btn.blue:hover { opacity: .92; }
+.build-head { margin: 0; border-radius: var(--r-l); overflow: hidden; background: var(--hero-c); color: var(--cover-ink); min-height: 260px; }
+.build-head::after { display: none; }
+.build-head .hero-in { padding: 28px 32px; }
+.build-head p { color: var(--cover-ink) !important; opacity: .82; }
+.build-head .btn:not(.blue) { background: var(--hero-btn); color: var(--cover-ink); }
+.build-head .btn.blue { background: var(--cover-ink); color: var(--hero-c); }
+.continue { grid-template-columns: 56px minmax(0, 1fr) auto; padding: 16px; }
+.news-card { padding: 20px; display: flex; flex-direction: column; gap: 8px; cursor: pointer; }
+.news-card time { font-size: var(--t-foot); color: var(--label-3); }
+.news-card b { font-size: var(--t-body); font-weight: 600; }
+.news-card span { font-size: var(--t-sub); color: var(--label-2); }
+.lrow-srv { grid-template-columns: 40px minmax(0, 1fr) 160px auto; }
+.lrow-world { grid-template-columns: 40px minmax(0, 1fr) auto; }
+.stand { background: var(--fill-3); }
+.side { backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+
+.app span.mono { display: grid; place-items: center; color: var(--cover-ink); font-size: 15px; font-weight: 700; line-height: 1; overflow: visible; white-space: normal; gap: 0; }
+.app span.mono.sq { font-size: 16px; }
+.app span.mono.lg { font-size: 22px; }
+.app span.cover { display: grid; place-items: end start; color: var(--cover-ink); }
+
+
+/* Пара сборок на главной: выбранная раскрыта, вторая стоит колонкой */
+.pair { display: flex; gap: 12px; height: 380px; }
+.pane { position: relative; flex: 0 0 104px; border-radius: var(--r-l); overflow: hidden; isolation: isolate; background: var(--hero-c); color: var(--cover-ink); transition: flex-grow 560ms var(--ease); cursor: pointer; }
+.pane.open { flex-grow: 1; cursor: default; }
+.pane:not(.open):hover { filter: brightness(1.06); }
+.pane-ver { position: absolute; right: -0.04em; bottom: -0.2em; z-index: -1; font-size: clamp(160px, 22vw, 300px); font-weight: 800; letter-spacing: -.06em; line-height: 1; opacity: .16; pointer-events: none; user-select: none; white-space: nowrap; transition: opacity var(--dur-short); }
+.pane:not(.open) .pane-ver { opacity: 0; }
+.pane-side { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 24px 0; transition: opacity var(--dur-short); }
+.pane-side b { order: 2; font-size: 40px; font-weight: 800; letter-spacing: -.03em; writing-mode: vertical-rl; transform: rotate(180deg); }
+.pane-side span { order: 1; font-size: var(--t-foot); font-weight: 600; opacity: .8; }
+.pane.open .pane-side { opacity: 0; pointer-events: none; }
+.pane-body { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 28px 32px; min-width: 520px; transition: opacity var(--dur-short) 160ms; }
+.js .pane:not(.open) .pane-body { opacity: 0; pointer-events: none; transition-delay: 0s; }
+.pane-top { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.pane-chip { font-size: var(--t-foot); font-weight: 600; padding: 4px 12px; border-radius: var(--r-pill); background: var(--hero-btn); }
+.pane-link { font-size: var(--t-sub); font-weight: 600; opacity: .9; }
+.pane-link:hover { text-decoration: underline; }
+.pane h1 { font-size: var(--t-hero); font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+.pane p { margin: 8px 0 0; opacity: .85; max-width: 52ch; }
+.pane-actions { display: flex; align-items: center; gap: 16px; }
+.pane .pane-play { background: var(--cover-ink); color: var(--hero-c); }
+.pane .pane-play:hover { opacity: .92; background: var(--cover-ink); }
+.pane-note { font-size: var(--t-sub); opacity: .8; }
+@media (max-width: 760px) { .pair { flex-direction: column; height: auto; } .pane { flex: 0 0 64px; } .pane.open { flex: 0 0 340px; } .pane-body { min-width: 0; padding: 20px; } .pane-side { flex-direction: row; padding: 0 20px; } .pane-side b { writing-mode: horizontal-tb; transform: none; font-size: 24px; } .pane h1 { font-size: var(--t-t1); } }
+
+
+/* Логотип, готовность, метка версии у друга */
+.ready { display: inline-flex; align-items: center; gap: 8px; font-size: var(--t-sub); font-weight: 500; }
+.ready i { width: 8px; height: 8px; border-radius: 50%; display: block; background: var(--cover-ink); }
+.ready.upd i { background: var(--orange); }
+.vtag { display: inline-block; vertical-align: 1px; margin-left: 4px; padding: 0 8px; border-radius: var(--r-pill); font-size: 11px; font-weight: 700; line-height: 18px; color: var(--cover-ink); background: var(--c); }
+.app .prow span.vtag { display: inline-block; width: auto; overflow: visible; font-size: 11px; color: var(--cover-ink); gap: 0; }
+/* Кнопка поиска в верхней строке */
+button.search-top { cursor: pointer; text-align: left; font-size: var(--t-sub); transition: background-color var(--dur-micro); }
+button.search-top:hover { background: var(--fill-2); }
+button.search-top span { flex: 1; }
+button.search-top kbd, .cmd kbd { font: 600 11px var(--font); padding: 2px 8px; border-radius: 6px; background: var(--fill-2); color: var(--label-2); }
+/* Командная строка */
+.cmd-bg { position: absolute; inset: 0; z-index: 20; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; background: var(--veil); }
+.cmd { width: min(620px, calc(100% - 32px)); border-radius: var(--r-l); background: var(--veil-strong); box-shadow: inset 0 0 0 1px var(--edge), 0 30px 80px var(--shade); overflow: hidden; animation: cmdIn var(--dur-short) var(--ease); }
+@keyframes cmdIn { from { opacity: 0; transform: translateY(-8px) scale(.98); } }
+.cmd-in { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 20px; border-bottom: 1px solid var(--separator); color: var(--label-3); }
+.cmd-in svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; }
+.cmd-in input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; font-size: var(--t-t3); color: var(--label); }
+.cmd-list { max-height: 380px; overflow: auto; padding: 8px; }
+.cmd-g { padding: 8px 12px 4px; font-size: var(--t-cap); font-weight: 600; color: var(--label-3); }
+.cmd-row { display: flex; align-items: center; gap: 12px; width: 100%; height: 40px; padding: 0 12px; border-radius: var(--r-s); text-align: left; }
+.cmd-row b { font-weight: 500; white-space: nowrap; }
+.cmd-row span { color: var(--label-3); font-size: var(--t-foot); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.cmd-row kbd { margin-left: auto; }
+.cmd-row:hover { background: var(--fill-3); }
+.cmd-row[aria-selected="true"] { background: var(--blue); color: var(--blue-ink); }
+.cmd-row[aria-selected="true"] span { color: var(--blue-ink); opacity: .8; }
+.cmd-empty { padding: 20px 12px; color: var(--label-2); }
+.cmd-foot { display: flex; gap: 16px; padding: 12px 20px; border-top: 1px solid var(--separator); font-size: var(--t-cap); color: var(--label-3); }
+.cmd-foot kbd { margin-right: 4px; }
+
+
+/* ═══ Движение ═══
+   Каждая анимация отвечает на действие или показывает, что изменилось. Всё отключается при «Уменьшить движение». */
+.btn, .mini, .play, .cape, .side-h button { transition: background-color var(--dur-micro), transform var(--dur-micro) var(--ease), opacity var(--dur-micro); }
+/* Появление страницы: блоки поднимаются по очереди */
+.page.stagger > * { animation: rise var(--dur-page) var(--ease) both; animation-delay: calc(var(--i, 0) * 60ms); }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+/* Смена страницы через View Transitions: старая уходит, новая приходит */
+.page { view-transition-name: page; }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+::view-transition-old(page) { animation: vt-out 180ms var(--ease) both; }
+::view-transition-new(page) { animation: none; }
+@keyframes vt-out { to { opacity: 0; transform: translateY(-6px); } }
+/* Плавающие индикаторы: раздел в боковой панели, вкладки, сегменты */
+.nav, .lib, .tabs, .seg { position: relative; }
+.ind { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; transform-origin: 0 0; transition: transform var(--dur-ind) var(--spring), opacity var(--dur-short); }
+.nav > .ind, .lib > .ind { border-radius: var(--r-s); background: var(--fill); }
+.tabs > .ind { top: auto; bottom: -1px; height: 2px; background: var(--blue-text); border-radius: 2px; }
+.seg > .ind { border-radius: 6px; background: var(--fill); }
+.nav a, .lib a, .tabs button, .seg button { position: relative; z-index: 1; }
+.nav a[aria-current="page"], .lib a[aria-current="page"], .seg button[aria-pressed="true"] { background: transparent; }
+.tabs button[aria-selected="true"] { border-bottom-color: transparent; }
+/* Пара сборок: перетекание с пружиной, содержимое выходит по очереди, крупная цифра следует за курсором */
+.pane { transition: flex-grow var(--dur-pair) var(--spring), filter var(--dur-short); }
+.pane.open .pane-body > * { animation: rise 520ms var(--ease) both; }
+.pane.open .pane-body > :nth-child(2) { animation-delay: 70ms; }
+.pane.open .pane-body > :nth-child(3) { animation-delay: 140ms; }
+.pane-ver { transform: translate(calc(var(--px, 0) * -18px), calc(var(--py, 0) * -10px)); transition: opacity var(--dur-short), transform 900ms var(--ease); }
+.pane.open .pane-ver { animation: ver-in 900ms var(--ease) both; }
+@keyframes ver-in { from { opacity: 0; translate: 60px 0; } }
+.pane:not(.open):hover .pane-side b { transform: rotate(180deg) translateY(4px); }
+.pane-side b { transition: transform var(--dur-short) var(--spring); }
+/* Карточки приподнимаются под курсором */
+.tile, .fact { transition: background-color var(--dur-short), transform var(--dur-short) var(--ease), box-shadow var(--dur-short); }
+.tile:hover { transform: translateY(-2px); box-shadow: inset 0 0 0 1px var(--edge), var(--lift); }
+/* Счётчики досчитываются */
+.count-up { display: inline-block; }
+/* Панель запуска: бегущий блик по полосе загрузки, вспышка при старте игры, смена кнопки */
+.track { position: relative; }
+.track::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, var(--sweep), transparent); transform: translateX(-100%); animation: sweep 1.4s var(--ease) infinite; }
+@keyframes sweep { to { transform: translateX(100%); } }
+.bar { position: relative; }
+.bar.started::before { content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 2px; background: var(--green); transform-origin: left; animation: started 900ms var(--ease) both; }
+@keyframes started { from { transform: scaleX(0); } 70% { opacity: 1; } to { transform: scaleX(1); opacity: 0; } }
+.play.swap { animation: swap 360ms var(--spring); }
+@keyframes swap { 0% { transform: scale(.94); opacity: .6; } }
+#barCover .cover { animation: cover-in 420ms var(--spring); }
+@keyframes cover-in { from { transform: scale(.8) rotate(-6deg); opacity: 0; } }
+/* Уведомление и командная строка — пружиной */
+.toast { transition: opacity var(--dur-short), transform var(--dur-ind) var(--spring); }
+.cmd { animation: cmdIn 360ms var(--spring); }
+.cmd-row { transition: background-color var(--dur-micro), color var(--dur-micro); }
+/* Переключатель — пружиной, как системный */
+.switch::after { transition: transform var(--dur-ind) var(--spring); }
+/* Модалка спецификации */
+.spec { animation: cmdIn 360ms var(--spring); }
+
+
+/* ═══ Гардероб ═══ */
+.wd2 { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, 1fr); gap: 20px; align-items: start; }
+.stage3d { position: relative; height: 560px; border-radius: var(--r-l); overflow: hidden; background: radial-gradient(60% 50% at 50% 42%, var(--stage-a), transparent 70%), var(--card); box-shadow: inset 0 0 0 1px var(--edge); cursor: grab; touch-action: pan-y; user-select: none; perspective: 1400px; }
+.stage3d:active { cursor: grabbing; }
+.rig-wrap { position: absolute; left: 50%; top: 53%; transform-style: preserve-3d; transform: rotateX(-8deg); }
+.rig { position: relative; transform-style: preserve-3d; transform: rotateY(var(--turn, 0deg)); transition: transform 700ms var(--spring); }
+.rig.now { transition: none; }
+.joint { position: absolute; left: 0; top: 0; transform-style: preserve-3d; }
+.swing { transform-style: preserve-3d; transform-origin: 0 0; }
+.box, .box-group { position: absolute; left: 0; top: 0; transform-style: preserve-3d; }
+.box-group > .box { transform: none !important; }
+.face { position: absolute; left: 0; top: 0; image-rendering: pixelated; backface-visibility: hidden; }
+.hat .face { backface-visibility: visible; }
+.floor { position: absolute; left: 50%; top: calc(53% + 16 * 11px); width: 224px; height: 40px; margin-left: -112px; margin-top: -20px; border-radius: 50%; background: radial-gradient(var(--floor), transparent 70%); pointer-events: none; }
+.nametag { position: absolute; left: 50%; top: calc(53% - 16 * 11px - 48px); transform: translateX(-50%); padding: 4px 12px; border-radius: 6px; background: var(--veil-strong); box-shadow: inset 0 0 0 1px var(--edge); font-weight: 600; font-size: var(--t-sub); white-space: nowrap; z-index: 2; }
+.stage-top { position: absolute; left: 20px; top: 16px; display: flex; flex-direction: column; gap: 2px; }
+.stage-top b { font-weight: 700; }
+.stage-top span { font-size: var(--t-foot); color: var(--label-2); }
+.stage-bar { position: absolute; left: 16px; right: 16px; bottom: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; z-index: 2; }
+.stage-bar .seg { background: var(--veil-strong); box-shadow: inset 0 0 0 1px var(--edge); }
+.stage-tools { display: flex; gap: 4px; padding: 4px; border-radius: var(--r-s); background: var(--veil-strong); box-shadow: inset 0 0 0 1px var(--edge); }
+.icon-b { width: 32px; height: 32px; border-radius: 6px; display: grid; place-items: center; color: var(--label-2); transition: background-color var(--dur-micro), color var(--dur-micro); }
+.icon-b:hover { background: var(--fill-2); color: var(--label); }
+.icon-b[aria-pressed="true"] { background: var(--blue-tint); color: var(--blue-text); }
+.icon-b svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+/* Позы: суставы качаются вокруг плеча и бедра */
+.pose-idle .j-armR .swing { animation: idleR 3.2s ease-in-out infinite; }
+.pose-idle .j-armL .swing { animation: idleL 3.2s ease-in-out infinite; }
+@keyframes idleR { 50% { transform: rotateZ(4deg); } }
+@keyframes idleL { 50% { transform: rotateZ(-4deg); } }
+.pose-walk .j-armR .swing, .pose-walk .j-legL .swing { animation: swingA 1s ease-in-out infinite; }
+.pose-walk .j-armL .swing, .pose-walk .j-legR .swing { animation: swingB 1s ease-in-out infinite; }
+.pose-run .j-armR .swing, .pose-run .j-legL .swing { animation: swingA2 .56s ease-in-out infinite; }
+.pose-run .j-armL .swing, .pose-run .j-legR .swing { animation: swingB2 .56s ease-in-out infinite; }
+@keyframes swingA { 0%, 100% { transform: rotateX(32deg); } 50% { transform: rotateX(-32deg); } }
+@keyframes swingB { 0%, 100% { transform: rotateX(-32deg); } 50% { transform: rotateX(32deg); } }
+@keyframes swingA2 { 0%, 100% { transform: rotateX(58deg); } 50% { transform: rotateX(-58deg); } }
+@keyframes swingB2 { 0%, 100% { transform: rotateX(-58deg); } 50% { transform: rotateX(58deg); } }
+.pose-walk .j-cape .swing { transform: rotateX(-16deg); }
+.pose-run .j-cape .swing { transform: rotateX(-38deg); }
+.pose-idle .j-cape .swing { transform: rotateX(-6deg); }
+.pose-wave .j-armR .swing { animation: wave 1.1s ease-in-out infinite; }
+@keyframes wave { 0%, 100% { transform: rotateZ(150deg); } 50% { transform: rotateZ(118deg); } }
+.pose-wave .j-cape .swing { transform: rotateX(-6deg); }
+.j-cape .swing { transition: transform 600ms var(--ease); }
+.wd-panel { border-radius: var(--r-l); background: var(--card); box-shadow: inset 0 0 0 1px var(--edge); padding: 4px 20px 20px; min-height: 560px; }
+.wd-panel .tabs { margin: 0 -4px; }
+.wd-body { padding-top: 16px; display: flex; flex-direction: column; gap: 16px; }
+.drop { display: flex; flex-direction: column; gap: 4px; padding: 20px; border-radius: var(--r-m); border: 1.5px dashed var(--separator); background: var(--fill-3); cursor: pointer; transition: border-color var(--dur-micro), background-color var(--dur-micro), transform var(--dur-short) var(--spring); }
+.drop b { font-weight: 600; }
+.drop span { font-size: var(--t-foot); color: var(--label-2); }
+.drop:hover, .drop.over { border-color: var(--blue-text); background: var(--blue-tint); }
+.drop.over { transform: scale(1.02); }
+.skin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.skin-card { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px 8px; border-radius: var(--r-m); background: var(--fill-3); transition: background-color var(--dur-micro), transform var(--dur-short) var(--ease); }
+.skin-card canvas { width: 40px; height: 80px; margin-bottom: 4px; transition: transform var(--dur-short) var(--spring); }
+.skin-card:hover { background: var(--fill-2); }
+.skin-card:hover canvas { transform: translateY(-3px); }
+.skin-card b { font-size: var(--t-foot); font-weight: 600; }
+.skin-card span { font-size: var(--t-cap); color: var(--label-3); }
+.skin-card[aria-pressed="true"] { background: var(--blue-tint); box-shadow: inset 0 0 0 2px var(--blue-text); }
+.skin-card[aria-pressed="true"] span { color: var(--blue-text); font-weight: 600; }
+.wrow { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-top: 16px; border-top: 1px solid var(--separator); }
+.wrow.col { flex-direction: column; align-items: stretch; gap: 8px; border-top: 0; padding-top: 0; }
+.wrow .l { font-weight: 500; }
+.wrow .d, .hint { font-size: var(--t-foot); color: var(--label-2); margin: 0; }
+.d.bad { color: var(--red); }
+.field { height: 40px; padding: 0 12px; border-radius: var(--r-s); border: 0; background: var(--fill-3); color: var(--label); box-shadow: inset 0 0 0 1px var(--edge); outline: 0; transition: box-shadow var(--dur-micro); }
+.field:focus { box-shadow: inset 0 0 0 2px var(--blue); }
+.field.bad { box-shadow: inset 0 0 0 2px var(--red); }
+textarea.field { height: auto; padding: 8px 12px; resize: vertical; line-height: 1.5; width: 100%; }
+.code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: var(--t-foot); }
+.cape-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.cape-card { display: grid; grid-template-columns: 32px 1fr; grid-template-rows: auto auto; column-gap: 12px; align-items: center; text-align: left; padding: 12px; border-radius: var(--r-m); background: var(--fill-3); transition: background-color var(--dur-micro); }
+.cape-card:hover { background: var(--fill-2); }
+.cape-card[aria-pressed="true"] { background: var(--blue-tint); box-shadow: inset 0 0 0 2px var(--blue-text); }
+.cape-sw { grid-row: 1 / 3; width: 24px; height: 36px; border-radius: 3px; background: var(--c); box-shadow: inset 0 0 0 1px var(--edge); }
+.cape-card b { font-weight: 600; font-size: var(--t-sub); }
+.cape-card span:last-child { font-size: var(--t-cap); color: var(--label-3); }
+
+/* ═══ Настройки ═══ */
+.set2 { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 24px; align-items: start; }
+.subnav { position: sticky; top: 64px; display: flex; flex-direction: column; gap: 2px; }
+.subnav a { position: relative; z-index: 1; height: 36px; display: flex; align-items: center; padding: 0 12px; border-radius: var(--r-s); color: var(--label-2); font-weight: 500; font-size: var(--t-sub); transition: color var(--dur-micro); }
+.subnav a:hover { color: var(--label); }
+.subnav a[aria-current="true"] { color: var(--label); }
+.subnav > .ind { border-radius: var(--r-s); background: var(--fill); }
+.set-main { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+.set-search { flex: none; position: sticky; top: 64px; z-index: 2; background: var(--card); box-shadow: inset 0 0 0 1px var(--edge), 0 8px 24px var(--shade); }
+.sgroup { scroll-margin-top: 120px; }
+.sgroup h2 { font-size: var(--t-t3); font-weight: 700; margin: 0 0 12px 4px; }
+.srow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 24px; align-items: center; min-height: 64px; padding: 12px 16px; border-bottom: 1px solid var(--separator); }
+.srow:last-child { border-bottom: 0; }
+.srow.col { grid-template-columns: 1fr; }
+.srow-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.srow .l { font-weight: 500; }
+.srow .d { font-size: var(--t-foot); color: var(--label-2); }
+.val { font-size: var(--t-t3); font-weight: 700; white-space: nowrap; }
+.ram { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--fill-3); gap: 2px; }
+.ram i { display: block; flex: 0 0 auto; width: calc(var(--f) * 100%); }
+.ram .sys, .ram-legend .sys { background: var(--label-3); }
+.ram .mc, .ram-legend .mc { background: var(--blue); }
+.ram .mc.warn { background: var(--orange); }
+.ram .free, .ram-legend .free { background: var(--fill); }
+.ram-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: var(--t-foot); color: var(--label-2); }
+.ram-legend span { display: inline-flex; align-items: center; gap: 8px; }
+.ram-legend i { width: 10px; height: 10px; border-radius: 3px; display: block; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { height: 32px; padding: 0 12px; border-radius: var(--r-pill); background: var(--fill-3); font-size: var(--t-foot); font-weight: 600; color: var(--label-2); transition: background-color var(--dur-micro), color var(--dur-micro); }
+.chip:hover { background: var(--fill-2); color: var(--label); }
+.chip[aria-pressed="true"] { background: var(--blue); color: var(--blue-ink); }
+.presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.preset { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 16px; border-radius: var(--r-m); background: var(--card); box-shadow: inset 0 0 0 1px var(--edge); text-align: left; transition: background-color var(--dur-micro), transform var(--dur-short) var(--ease); }
+.preset:hover { transform: translateY(-2px); }
+.preset b { font-weight: 700; }
+.preset span:last-child { font-size: var(--t-cap); color: var(--label-2); }
+.preset[aria-pressed="true"] { background: var(--blue-tint); box-shadow: inset 0 0 0 2px var(--blue-text); }
+.bars { display: flex; gap: 4px; align-items: flex-end; height: 16px; margin-bottom: 4px; }
+.bars i { width: 5px; border-radius: 2px; background: var(--fill); display: block; }
+.bars i:nth-child(1) { height: 6px; } .bars i:nth-child(2) { height: 9px; } .bars i:nth-child(3) { height: 12px; } .bars i:nth-child(4) { height: 16px; }
+.bars i.on { background: var(--blue-text); }
+.themes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.theme-card { display: flex; flex-direction: column; gap: 8px; padding: 8px 8px 12px; border-radius: var(--r-m); background: var(--fill-3); text-align: left; transition: background-color var(--dur-micro); }
+.theme-card b { font-size: var(--t-foot); font-weight: 600; padding-left: 4px; }
+.theme-card[aria-pressed="true"] { background: var(--blue-tint); box-shadow: inset 0 0 0 2px var(--blue-text); }
+.mini-win { display: grid; grid-template-columns: 30% 1fr; grid-template-rows: 1fr 22%; gap: 4px; height: 64px; padding: 4px; border-radius: 6px; background: var(--mw-bg); }
+.mini-win i { border-radius: 3px; background: var(--mw-a); display: block; }
+.mini-win i:first-child { grid-row: 1 / 3; background: var(--mw-b); }
+.mini-win i:last-child { background: var(--mw-c); }
+.theme-card.light { --mw-bg: var(--mwl-bg); --mw-a: var(--mwl-a); --mw-b: var(--mwl-b); --mw-c: var(--mwl-c); }
+.theme-card.dark { --mw-bg: var(--mwd-bg); --mw-a: var(--mwd-a); --mw-b: var(--mwd-b); --mw-c: var(--mwd-c); }
+.theme-card.system { --mw-bg: linear-gradient(90deg, var(--mwl-bg) 50%, var(--mwd-bg) 50%); --mw-a: var(--mws-a); --mw-b: var(--mws-b); --mw-c: var(--mwd-c); }
+.mini-win { background: var(--mw-bg); }
+.swatches { display: flex; gap: 8px; }
+.sw { width: 28px; height: 28px; border-radius: 50%; background: var(--c); box-shadow: inset 0 0 0 1px var(--edge); transition: transform var(--dur-short) var(--spring), box-shadow var(--dur-micro); }
+.sw:hover { transform: scale(1.12); }
+.sw[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--c); }
+.keys { display: inline-flex; gap: 4px; }
+.keys kbd { min-width: 28px; height: 28px; padding: 0 8px; display: inline-grid; place-items: center; border-radius: 6px; background: var(--fill-2); box-shadow: inset 0 -1px 0 var(--edge); font: 600 var(--t-foot) var(--font); color: var(--label); }
+.btn.danger { color: var(--red); }
+.btn[disabled] { color: var(--label-3); background: var(--fill-3); cursor: not-allowed; }
+/* Компактный режим и выключенные анимации */
+.app.compact .srow, .app.compact .lrow { min-height: 48px; padding-top: 8px; padding-bottom: 8px; }
+.app.compact .page { gap: 20px; }
+.app.compact .pair { height: 320px; }
+.no-motion *, .no-motion *::before, .no-motion *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+.no-motion .track::after { display: none; }
+@media (max-width: 1100px) { .wd2, .set2 { grid-template-columns: 1fr; } .subnav { position: static; flex-direction: row; flex-wrap: wrap; } .presets { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+@media (max-width: 1100px) { .grid-3 { grid-template-columns: 1fr; } .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .wd { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  body { padding-block: 0; }
+  .app { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; border-radius: 0; height: 100%; }
+  .side { grid-row: auto; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 12px 0; gap: 4px; border-right: 0; border-bottom: 1px solid var(--edge); }
+  .brand { padding: 0 8px 0 0; } .side-h, .lib, .me, .winctl, .search-top { display: none; }
+  .nav { display: flex; flex-wrap: wrap; gap: 2px; } .nav a { height: 36px; padding: 0 12px; } .nav a span:not(.count) { display: none; } .nav .count { display: none; }
+  .bar { grid-column: 1; padding: 12px 0; gap: 12px; } .status img { display: none; } .play { min-width: 120px; padding: 0 20px; }
+  .page { padding: 0 0 24px; } .topline { padding: 0; } .build-head { margin: 0; }
+  .news, .facts { grid-template-columns: 1fr; } .continue { grid-template-columns: 1fr; } .continue img { width: 100%; height: auto; aspect-ratio: 16 / 9; }
+  .lrow-srv { grid-template-columns: minmax(0, 1fr) auto; } .lrow-srv img, .lrow-srv .meter { display: none; }
+  .capes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } .track::after { display: none; } }
+@media (prefers-reduced-transparency: reduce) { .side, .bar { background: var(--veil-strong); backdrop-filter: none; -webkit-backdrop-filter: none; } }
+</style>
+
+<div class="app" id="app" data-component="LauncherWindow">
+
+  <!-- component: Sidebar -->
+  <aside class="side" data-component="Sidebar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span>Wex</div>
+    <nav class="nav" id="nav" aria-label="Разделы"></nav>
+    <div class="side-h">Сборки<button data-note="Откроется создание сборки: версия игры, загрузчик, моды" aria-label="Новая сборка">+</button></div>
+    <nav class="lib" id="lib" aria-label="Сборки"></nav>
+    <a class="me" href="#wardrobe" aria-label="Профиль и гардероб"><span class="mono" id="meMono" style="background:var(--av-2)" aria-hidden="true">P</span><div><b id="meName">Player</b><span>В сети</span></div></a>
+  </aside>
+
+  <!-- component: Main -->
+  <main class="main" id="main" data-component="Main">
+    <div class="topline" data-component="TopLine">
+      <div class="crumbs"><button id="backBtn" aria-label="Назад"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3L5 8l5 5"/></svg></button><button id="fwdBtn" aria-label="Вперёд"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg></button></div>
+      <button class="search-top" id="cmdOpen" aria-haspopup="dialog"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg><span>Поиск и команды</span><kbd>Ctrl K</kbd></button>
+      <div class="winctl" aria-label="Окно"><button id="specBtn" aria-label="Спецификация для агентов" title="Спецификация для агентов"><svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.6"/><path d="M6 8.4v.1M4.8 4.6a1.3 1.3 0 1 1 1.9 1.1c-.4.2-.7.5-.7 1"/></svg></button><button aria-label="Свернуть" data-note="В приложении окно свернётся"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8"/></svg></button><button aria-label="Развернуть" data-note="В приложении окно развернётся"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7"/></svg></button><button class="close" aria-label="Закрыть" data-note="В приложении окно закроется или уйдёт в трей"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg></button></div>
+    </div>
+    <div class="page" id="page"></div>
+  </main>
+
+  <!-- component: LaunchBar -->
+  <footer class="bar" data-component="LaunchBar">
+    <div class="status"><span id="barCover"></span><div class="status-t"><b id="barTitle"></b><span id="barSub"></span><div class="track" id="track" hidden><i id="trackFill"></i></div></div></div>
+    <button class="play" id="play"></button>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="cmd-bg" id="cmdBg" hidden><div class="cmd" role="dialog" aria-modal="true" aria-label="Поиск и команды" data-component="CommandPalette">
+    <label class="cmd-in"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg><input id="cmdQ" type="text" placeholder="Сборка, мод, сервер, друг или действие" aria-label="Поиск и команды" autocomplete="off"></label>
+    <div class="cmd-list" id="cmdList" role="listbox"></div>
+    <div class="cmd-foot"><span><kbd>↑</kbd><kbd>↓</kbd> выбрать</span><span><kbd>Enter</kbd> выполнить</span><span><kbd>Esc</kbd> закрыть</span></div>
+  </div></div>
+</div>
+<div class="spec-bg" id="spec" hidden></div>
+
+<script>
+(() => {
+  "use strict";
+  document.documentElement.classList.add("js");
+
+  /* Данные (в приложении — команды и события Rust). Серверы кроме Aura Official, друзья и миры — примеры. */
+  const BUILDS = [
+    { id: "1211", ready: { ok: true, text: "Всё скачано, можно играть" }, ver: "1.21.1", loader: "Fabric 0.19.5", mods: 132, java: "Java 21", img: "b-1211.jpg", last: "сегодня", size: "4,1 ГБ", worlds: [] },
+    { id: "1201", ready: { ok: false, text: "При запуске обновятся 2 мода, 34 МБ" }, ver: "1.20.1", loader: "Fabric", mods: 130, java: "Java 17", img: "b-1201.jpg", last: "три дня назад", size: "3,8 ГБ",
+      worlds: [{ n: "Выживание с kotya", d: "Хардкор выключен, 214 дней в игре", w: "три дня назад", img: "w-valley.jpg" }, { n: "Северная база", d: "Творческий режим", w: "неделю назад", img: "b-1201.jpg" }, { n: "Остров", d: "Выживание", w: "в октябре", img: "n-island.jpg" }] },
+  ];
+  const SERVERS = [
+    { name: "Aura Official", about: "Выживание и PvP, mc.auramc.net", on: 214, max: 500, ping: 23, img: "s-official.jpg" },
+    { name: "Aura Creative", about: "Плоские миры и WorldEdit", on: 41, max: 200, ping: 27, img: "s-creative.jpg" },
+    { name: "Aura Minigames", about: "BedWars, SkyWars и дуэли", on: 96, max: 300, ping: 31, img: "s-mini.jpg" },
+  ];
+  const FRIENDS = [
+    { n: "kotya_mur", s: "Играет на Aura Official", st: "game", k: 1, build: 1, srv: 0 },
+    { n: "Lisichka", s: "В лаунчере", st: "online", k: 2 },
+    { n: "ded_inside", s: "В одиночном мире", st: "game", k: 3, build: 0 },
+    { n: "Snowfall", s: "Был(а) два часа назад", st: "off", k: 2 },
+    { n: "MaxPvP", s: "Был(а) вчера", st: "off", k: 0 },
+  ];
+  const MODS = [["Fabric API", "0.110.0", "FabricMC", 1, 0, 1, "#c9b37e"], ["Sodium", "0.6.5", "CaffeineMC", 1, 0, 0, "#7fc79a"], ["Iris Shaders", "1.8.1", "coderbot", 1, "1.8.2", 0, "#a99ad6"], ["Lithium", "0.14.3", "CaffeineMC", 1, 0, 0, "#8fb7e0"], ["Distant Horizons", "2.3.0", "James Seibel", 1, 0, 0, "#d9b46a"], ["Simple Voice Chat", "2.5.26", "henkelmax", 1, 0, 0, "#6fc3c9"], ["FerriteCore", "7.0.2", "malte0811", 0, 0, 0, "#d09a6e"], ["Xaero's Minimap", "24.6.1", "xaero96", 1, "24.7.0", 0, "#7fb3c4"], ["Continuity", "3.0.0", "PepperCode1", 0, 0, 0, "#9aa3ad"], ["Mod Menu", "11.0.3", "Prospector", 1, 0, 0, "#e09a9a"]]
+    .map(([name, ver, by, on, upd, lib, c]) => ({ name, ver, by, on: !!on, upd, lib: !!lib, c }));
+  const SKINS = [
+    { hood: "#33597d", trim: "#9fd0ff", skin: "#c99a74", hair: "#3b2a20", eye: "#18222e", pants: "#2a2f3a", shoes: "#16181d" },
+    { hood: "#c4632e", trim: "#efe6da", skin: "#d8a780", hair: "#7a3b1a", eye: "#2b1d14", pants: "#3a2f2a", shoes: "#1e1814", ears: 1 },
+    { hood: "#c6c9ce", trim: "#7f97b0", skin: "#e0b694", hair: "#a9adb4", eye: "#34496a", pants: "#59626e", shoes: "#2a2f36", ears: 1 },
+    { hood: "#5b4636", trim: "#a07e52", skin: "#ad7a57", hair: "#2a1e17", eye: "#1a1410", pants: "#38312b", shoes: "#1a1613" },
+  ];
+  const CAPES = [{ name: "Wex", c: "#0a6fe0", t: "#9fd0ff" }, { name: "Серебряный", c: "#9aa0a8", t: "#e6e8eb" }, { name: "Свой" }, { name: "Без плаща" }];
+  const ICONS = {
+    home: '<path d="M3.5 9.5L10 4l6.5 5.5V16a1 1 0 0 1-1 1H12v-4.5H8V17H4.5a1 1 0 0 1-1-1z"/>',
+    servers: '<rect x="3" y="3.5" width="14" height="5.5" rx="1.5"/><rect x="3" y="11" width="14" height="5.5" rx="1.5"/><path d="M6.5 6.25h.01M6.5 13.75h.01"/>',
+    friends: '<circle cx="7.5" cy="7" r="3"/><path d="M2.5 16.5c0-2.8 2.2-5 5-5s5 2.2 5 5"/><path d="M13 4.3a3 3 0 0 1 0 5.4M14.8 11.8c1.6.8 2.7 2.5 2.7 4.7"/>',
+    wardrobe: '<path d="M7 3.5L3.5 6l1.7 3.2 1.6-.8v8.1h6.4V8.4l1.6.8L16.5 6 13 3.5a3 3 0 0 1-6 0z"/>',
+    options: '<circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2.2M10 15.3v2.2M3.5 6.2l1.9 1.1M14.6 12.7l1.9 1.1M3.5 13.8l1.9-1.1M14.6 7.3l1.9-1.1"/>',
+  };
+  const NAV = [["home", "Главная"], ["servers", "Серверы"], ["friends", "Друзья"], ["wardrobe", "Гардероб"], ["options", "Настройки"]];
+
+  const keep = { get(k, d) { try { const v = localStorage.getItem("wex8." + k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem("wex8." + k, JSON.stringify(v)); } catch {} } };
+  const S = { route: "", build: Math.min(keep.get("build", 0), BUILDS.length - 1), btab: "mods", q: "", mf: "all", ff: "all", cape: keep.get("cape", 0), turn: 0, mem: keep.get("mem", 6), after: keep.get("after", "hide"), run: null, hist: [], fwd: [] };
+  const $ = s => document.querySelector(s);
+  const page = $("#page"), main = $("#main");
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const pl = (n, a, b, c) => { const m = n % 10, h = n % 100; return m === 1 && h !== 11 ? a : m >= 2 && m <= 4 && (h < 10 || h >= 20) ? b : c; };
+  const mods = n => `${n} ${pl(n, "мод", "мода", "модов")}`;
+  const sysReduced = matchMedia("(prefers-reduced-motion: reduce)").matches; let reduced = sysReduced;
+  const $$ = s => [...document.querySelectorAll(s)];
+
+  /* Пиксельная графика: головы, скин, значки модов */
+  const rgb = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+  const rng = s => () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+  const sh = (h, k) => { const [r, g, b] = rgb(h); return `rgb(${Math.min(255, r * k) | 0},${Math.min(255, g * k) | 0},${Math.min(255, b * k) | 0})`; };
+  const hash = s => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
+  function skin(cv, s, { back = false, cape = null, seed = 7 } = {}) {
+    cv.width = 16; cv.height = 32; const c = cv.getContext("2d"), r = rng(seed); c.clearRect(0, 0, 16, 32);
+    const p = (x, y, col, k = 1) => { c.fillStyle = sh(col, k * (.93 + r() * .14)); c.fillRect(x, y, 1, 1); };
+    for (let y = 0; y < 8; y++) for (let x = 4; x < 12; x++) {
+      if (back) { p(x, y, s.hair, y === 7 ? .85 : 1); continue; }
+      const f = x >= 5 && x <= 10 && y >= 2;
+      if (!f || y === 2) p(x, y, s.hair); else if (y === 4 && (x === 6 || x === 9)) p(x, y, s.eye); else if (y === 4 && (x === 5 || x === 10)) p(x, y, "#ece6da");
+      else if (y === 6 && (x === 7 || x === 8)) p(x, y, s.skin, .78); else p(x, y, s.skin, y === 7 ? .9 : 1);
+    }
+    if (s.ears) { p(4, 0, s.trim); p(11, 0, s.trim); }
+    for (let y = 8; y < 20; y++) for (let x = 4; x < 12; x++) p(x, y, (!back && y === 8 && x > 4 && x < 11) ? s.trim : s.hood, !back && (x === 7 || x === 8) ? 1.1 : 1);
+    for (const a of [0, 12]) for (let y = 8; y < 20; y++) for (let x = a; x < a + 4; x++) p(x, y, y >= 17 ? s.skin : s.hood, x === a || x === a + 3 ? .87 : 1);
+    for (let y = 20; y < 32; y++) for (let x = 4; x < 12; x++) p(x, y, y >= 30 ? s.shoes : s.pants, x === 7 || x === 8 ? .82 : 1);
+    if (back && cape && cape.c) for (let y = 8; y < 26; y++) for (let x = 4; x < 12; x++) { const e = x === 4 || x === 11 || y === 25; p(x, y, e ? cape.t : cape.c, e ? .9 : 1); }
+  }
+  function head(cv, s, seed) { const t = document.createElement("canvas"); skin(t, s, { seed }); cv.width = 8; cv.height = 8; cv.getContext("2d").drawImage(t, 4, 0, 8, 8, 0, 0, 8, 8); }
+  function glyph(cv, name, col) { cv.width = 7; cv.height = 7; const c = cv.getContext("2d"), r = rng(hash(name)); c.fillStyle = sh(col, .3); c.fillRect(0, 0, 7, 7); for (let y = 1; y < 6; y++) for (let x = 1; x < 4; x++) if (r() > .45) { c.fillStyle = sh(col, .85 + r() * .3); c.fillRect(x, y, 1, 1); c.fillRect(6 - x, y, 1, 1); } }
+  function paint(root) {
+    root.querySelectorAll("[data-head]").forEach(c => head(c, SKINS[+c.dataset.head], 11 + +c.dataset.head));
+    root.querySelectorAll("[data-glyph]").forEach(c => glyph(c, c.dataset.glyph, c.dataset.c));
+  }
+
+  /* Обложки и монограммы вместо картинок */
+  const cover = (b, cls = "") => `<span class="cover ${cls}" style="background:var(--cover-${b.id})" aria-hidden="true"><b>${b.ver}</b></span>`;
+  const mono = (t, i, cls = "") => `<span class="mono ${cls}" style="background:var(--av-${(i % 5) + 1})" aria-hidden="true">${esc(t.replace(/[^A-Za-zА-Яа-я0-9]/g, "").slice(0, 1).toUpperCase())}</span>`;
+
+  /* Боковая панель */
+  function side() {
+    const on = FRIENDS.filter(f => f.st !== "off").length;
+    $("#nav").innerHTML = NAV.map(([id, l]) => `<a href="#${id}" ${S.route === id ? 'aria-current="page"' : ""}><svg viewBox="0 0 20 20" aria-hidden="true">${ICONS[id]}</svg><span>${l}</span>${id === "friends" ? `<span class="count">${on}</span>` : ""}</a>`).join("");
+    $("#lib").innerHTML = BUILDS.map((b, i) => `<a href="#build-${b.id}" ${S.route === "build-" + b.id ? 'aria-current="page"' : ""}>${cover(b)}<div><b>Wex ${b.ver}</b><span>${mods(b.mods)}</span></div>${i === S.build ? '<span class="sel" aria-label="Выбрана для запуска"></span>' : ""}</a>`).join("");
+  }
+
+  /* Страницы */
+  const TRI = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1v8l7-4z"/></svg>';
+  const V = {
+    home() {
+      const b = BUILDS[S.build], srv = SERVERS[0], on = FRIENDS.filter(f => f.st !== "off");
+      return `<section class="pair" data-component="BuildPair" aria-label="Сборки">${BUILDS.map((x, i) => {
+          const sel = i === S.build;
+          return `<div class="pane ${sel ? "open" : ""}" style="--hero-c:var(--cover-${x.id})" data-pane="${i}" ${sel ? "" : `role="button" tabindex="0" aria-label="Выбрать Wex ${x.ver}"`}>
+            <span class="pane-ver" aria-hidden="true">${x.ver}</span>
+            <div class="pane-side" aria-hidden="true"><b>${x.ver}</b><span>${x.mods} модов</span></div>
+            <div class="pane-body">
+              <div class="pane-top"><span class="pane-chip">${sel ? "Выбрана для запуска" : "Нажмите, чтобы выбрать"}</span><a class="pane-link" href="#build-${x.id}">Открыть сборку</a></div>
+              <div><h1>Wex ${x.ver}</h1><p>${mods(x.mods)} на ${x.loader}, ${x.java}. ${x.worlds.length ? `${x.worlds.length} ${pl(x.worlds.length, "мир", "мира", "миров")}. ` : "Миров пока нет. "}Последний запуск ${x.last}.</p></div>
+              <div class="pane-actions"><button class="btn big pane-play" data-play-build="${i}">${TRI}Играть</button><span class="ready ${x.ready.ok ? "ok" : "upd"}"><i aria-hidden="true"></i>${x.ready.text}</span></div>
+            </div>
+          </div>`;
+        }).join("")}</section>
+        <div class="grid-3">
+          <div style="display:flex;flex-direction:column;gap:28px;min-width:0">
+            <section><div class="h-row"><h2>Продолжить</h2></div>
+              <div class="tile continue" data-component="ContinueCard">${mono(srv.name, 3, "lg")}<div><b>${esc(srv.name)}</b><span class="live"><span class="dot"></span><span><span data-live>${srv.on}</span> ${pl(srv.on, "игрок", "игрока", "игроков")} сейчас, пинг ${srv.ping} мс</span></span></div><button class="btn blue" data-join="0">Зайти</button></div></section>
+            <section><div class="h-row"><h2>Новости</h2></div>
+              <div class="news">
+                <article class="tile news-card" data-note="Откроется полный список изменений"><time>Сегодня</time><b>Wex 0.9.3 готов к установке</b><span>Исправления безопасности и установщика. Лаунчер обновится сам.</span></article>
+                <article class="tile news-card" data-note="Откроется список изменений 0.9.2"><time>10 ноября</time><b>Что нового в 0.9.2</b><span>Обновление ставится без окна установщика, кнопка «Играть» не уезжает в маленьком окне.</span></article>
+              </div></section>
+          </div>
+          <section><div class="h-row"><h2>Друзья в сети</h2><a href="#friends">Все друзья</a></div>
+            <div class="panel" data-component="FriendsPanel">${on.map(f => friendRow(f)).join("")}</div></section>
+        </div>`;
+    },
+    build() {
+      const b = BUILDS.find(x => "build-" + x.id === S.route), i = BUILDS.indexOf(b), sel = i === S.build;
+      const tab = (id, l) => `<button role="tab" aria-selected="${S.btab === id}" data-btab="${id}">${l}</button>`;
+      let body = "";
+      if (S.btab === "mods") {
+        const f = (id, l) => `<button aria-pressed="${S.mf === id}" data-mf="${id}">${l}</button>`;
+        body = `<div class="tools"><label class="search"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg><input id="q" type="search" placeholder="Поиск в модах сборки" value="${esc(S.q)}" aria-label="Поиск модов"></label><div class="seg">${f("all", "Все")}${f("on", "Включённые")}${f("upd", "С обновлением")}</div><button class="btn" data-note="Откроется каталог модов">Добавить мод</button></div><div class="list" id="modList">${modRows()}</div>`;
+      } else if (S.btab === "worlds") {
+        body = b.worlds.length ? `<div class="list">${b.worlds.map(w => `<div class="lrow lrow-world">${mono(w.n, 2, "sq")}<div><b>${esc(w.n)}</b><span>${esc(w.d)}, последний вход ${w.w}</span></div><button class="mini" data-play-world>Играть</button></div>`).join("")}</div>`
+          : `<div class="list"><div class="empty"><b>В этой сборке ещё нет миров.</b> Создайте мир в игре или перенесите папку мира в saves. <button class="mini" data-note="Откроется папка saves" style="margin-left:8px">Открыть saves</button></div></div>`;
+      } else {
+        body = `<div class="form"><div class="frow full"><div><div class="l">Память для этой сборки</div><div class="d">Для ${mods(b.mods)} хватает 6 ГБ.</div></div><div class="mem"><input id="mem" type="range" min="2" max="16" value="${S.mem}" aria-label="Память, ГБ"><b id="memV">${S.mem} ГБ</b></div></div>
+          <div class="frow"><div class="l">Java</div><select aria-label="Java"><option>${b.java}, встроенная</option><option>Указать путь</option></select></div>
+          <div class="frow"><div><div class="l">Папка сборки</div><div class="d">${b.size} на диске</div></div><button class="btn" data-note="Откроется папка сборки">Открыть</button></div>
+          <div class="frow"><div><div class="l">Проверить файлы</div><div class="d">Найдёт и докачает повреждённые файлы</div></div><button class="btn" data-note="Проверяем файлы сборки">Проверить</button></div></div>`;
+      }
+      return `<section class="build-head hero" data-component="BuildHeader" style="--hero-c:var(--cover-${b.id})"><span class="big-ver" aria-hidden="true">${b.ver}</span><div class="hero-in"><div><h1 style="font-size:var(--t-hero);font-weight:800;letter-spacing:-.03em;line-height:1">Wex ${b.ver}</h1><p style="margin:8px 0 0;color:var(--label-2)">${b.loader}, ${b.java}, ${b.size}</p></div>
+          <div class="hero-actions">${sel ? "" : `<button class="btn" data-select="${i}">Выбрать для запуска</button>`}<button class="btn blue big" data-play-build="${i}">${TRI}Играть</button></div></div></section>
+        <div class="facts"><div class="fact"><b data-count="${b.mods}">${b.mods}</b><span>${pl(b.mods, "мод", "мода", "модов")}</span></div><div class="fact"><b data-count="${b.worlds.length}">${b.worlds.length}</b><span>${pl(b.worlds.length, "мир", "мира", "миров")}</span></div><div class="fact"><b>${S.mem} ГБ</b><span>памяти</span></div><div class="fact"><b>${b.last}</b><span>последний запуск</span></div></div>
+        <div><div class="tabs" role="tablist">${tab("mods", "Моды")}${tab("worlds", "Миры")}${tab("bset", "Настройки сборки")}</div><div style="margin-top:16px">${body}</div></div>`;
+    },
+    servers() {
+      return `<div class="page-title"><h1>Серверы</h1><p>Подключение через Wex ${BUILDS[S.build].ver}. Сборку можно поменять в списке слева.</p></div>
+        <div class="list">${SERVERS.map((s, i) => `<div class="lrow lrow-srv">${mono(s.name, i + 3, "sq")}<div><b>${esc(s.name)}</b><span>${esc(s.about)}</span></div><div class="meter"><span>${s.on} из ${s.max}, пинг ${s.ping} мс</span><i style="--w:${(s.on / s.max).toFixed(3)}"></i></div><button class="btn${i === 0 ? " blue" : ""}" data-join="${i}">Зайти</button></div>`).join("")}</div>
+        <div><button class="btn" data-note="Откроется форма: название и адрес">Добавить сервер</button></div>
+        <p style="color:var(--label-3);font-size:var(--t-foot);margin:0">Кроме Aura Official, серверы, друзья и миры здесь — примеры для макета.</p>`;
+    },
+    friends() {
+      const list = FRIENDS.filter(f => S.ff === "all" || (S.ff === "game" && f.st === "game") || (S.ff === "online" && f.st !== "off"));
+      const f = (id, l) => `<button aria-pressed="${S.ff === id}" data-ff="${id}">${l}</button>`;
+      return `<div class="page-title"><h1>Друзья</h1><p>Ваш код для друзей: <b style="color:var(--label)">WEX-7821-X9M2</b> <button class="mini" data-copy="WEX-7821-X9M2" style="margin-left:8px">Скопировать</button></p></div>
+        <div class="tools"><div class="seg">${f("all", "Все")}${f("game", "В игре")}${f("online", "В сети")}</div><button class="btn" data-note="Откроется поиск по нику или коду">Добавить друга</button></div>
+        <div class="panel">${list.map(x => friendRow(x)).join("")}</div>`;
+    },
+    wardrobe() {
+      const sk = WD.lib[WD.active], tab = (id, l) => `<button role="tab" aria-selected="${WD.tab === id}" data-wtab="${id}">${l}</button>`;
+      const pose = (id, l) => `<button aria-pressed="${WD.pose === id}" data-wpose="${id}">${l}</button>`;
+      let panel = "";
+      if (WD.tab === "skins") {
+        panel = `<label class="drop" id="drop" for="skinFile" data-component="SkinDrop"><b>Перетащите PNG скина сюда</b><span>или нажмите, чтобы выбрать файл. Подойдёт 64×64 или старый 64×32.</span></label><input type="file" id="skinFile" accept="image/png" hidden>
+          <div class="skin-grid">${WD.lib.map((x, i) => `<button class="skin-card" aria-pressed="${i === WD.active}" data-wskin="${i}"><canvas class="px" data-thumb="${i}" aria-hidden="true"></canvas><b>${esc(x.name)}</b><span>${i === WD.active ? "Надет" : x.slim ? "Узкая модель" : "Широкая модель"}</span></button>`).join("")}</div>
+          <div class="wrow"><div><div class="l">Модель рук</div><div class="d">Узкая — руки в 3 пикселя, как у Alex</div></div><div class="seg"><button aria-pressed="${!sk.slim}" data-wslim="0">Широкая</button><button aria-pressed="${sk.slim}" data-wslim="1">Узкая</button></div></div>`;
+      } else if (WD.tab === "capes") {
+        panel = `<div class="cape-grid">${CAPES.map((c, i) => `<button class="cape-card" aria-pressed="${i === WD.cape}" data-wcape="${i}"><span class="cape-sw" style="--c:var(--cape-${i})" aria-hidden="true"></span><b>${esc(c.name)}</b><span>${c.note}</span></button>`).join("")}</div>
+          <p class="hint">Плащ видно со спины: при выборе модель повернётся сама.</p>`;
+      } else {
+        panel = `<div class="wrow col"><label class="l" for="nick">Ник</label><input id="nick" class="field" value="${esc(WD.nick)}" maxlength="16" autocomplete="off" spellcheck="false"><div class="d" id="nickHint">3–16 символов: латиница, цифры и _. Ник видно над головой.</div></div>
+          <div class="wrow"><div><div class="l">Показывать плащ друзьям</div><div class="d">Другие игроки с Wex увидят ваш плащ</div></div><button class="switch" role="switch" aria-checked="true" aria-label="Показывать плащ" data-flip></button></div>
+          <div class="wrow"><div><div class="l">Скачать текущий скин</div><div class="d">PNG 64×64</div></div><button class="btn" data-note="В приложении скин сохранится в файл">Скачать</button></div>`;
+      }
+      return `<div class="page-title"><h1>Гардероб</h1><p>Так вас видят игроки на серверах с Wex.</p></div>
+        <div class="wd2">
+          <section class="stage3d" id="stage3d" data-component="SkinStage" aria-label="Персонаж, можно повернуть">
+            <div class="nametag" id="nametag">${esc(WD.nick)}</div>
+            <div class="rig-wrap"><div class="rig pose-${WD.pose}" id="rig"></div></div>
+            <div class="floor" aria-hidden="true"></div>
+            <div class="stage-top"><b>${esc(sk.name)}</b><span>${sk.slim ? "Узкая" : "Широкая"} модель${WD.cape ? `, плащ ${esc(CAPES[WD.cape].name)}` : ""}</span></div>
+            <div class="stage-bar"><div class="seg" role="group" aria-label="Поза">${pose("idle", "Стоит")}${pose("walk", "Идёт")}${pose("run", "Бежит")}${pose("wave", "Машет")}</div>
+              <div class="stage-tools"><button class="icon-b" data-wturn="-90" aria-label="Повернуть влево"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 4H2.5V1.5M2.8 4A6 6 0 1 1 2 8"/></svg></button><button class="icon-b" data-wturn="90" aria-label="Повернуть вправо"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11 4h2.5V1.5M13.2 4A6 6 0 1 0 14 8"/></svg></button><button class="icon-b" aria-pressed="${WD.auto}" data-wauto aria-label="Автоповорот"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5"/></svg></button></div></div>
+          </section>
+          <section class="wd-panel"><div class="tabs" role="tablist">${tab("skins", "Скины")}${tab("capes", "Плащи")}${tab("profile", "Профиль")}</div><div class="wd-body">${panel}</div></section>
+        </div>`;
+    },
+    options() {
+      const sw = (k, label, d) => `<div class="srow" data-k="${esc(label + " " + (d || ""))}"><div><div class="l">${label}</div>${d ? `<div class="d">${d}</div>` : ""}</div><button class="switch" role="switch" aria-checked="${!!ST[k]}" aria-label="${esc(label)}" data-st-flip="${k}"></button></div>`;
+      const seg = (k, opts) => `<div class="seg" role="group">${opts.map(([v, l]) => `<button aria-pressed="${ST[k] === v}" data-st="${k}" data-v="${v}">${l}</button>`).join("")}</div>`;
+      const range = (k, label, min, max, step, fmt, d) => `<div class="srow col" data-k="${esc(label + " " + (d || ""))}"><div class="srow-h"><div><div class="l">${label}</div>${d ? `<div class="d">${d}</div>` : ""}</div><b class="val" id="v-${k}">${fmt(ST[k])}</b></div><input type="range" min="${min}" max="${max}" step="${step}" value="${ST[k]}" data-st-range="${k}" aria-label="${esc(label)}"></div>`;
+      const free = 16 - 4 - ST.mem;
+      const PRE = [["low", "Слабая", "6 чанков, без шейдеров"], ["mid", "Средняя", "12 чанков, лёгкие шейдеры"], ["high", "Высокая", "18 чанков, шейдеры"], ["ultra", "Ультра", "32 чанка, шейдеры и Distant Horizons"]];
+      return `<div class="page-title"><h1>Настройки</h1><p>Всё применяется сразу.</p></div>
+        <div class="set2" id="setRoot">
+          <nav class="subnav" id="subnav" aria-label="Разделы настроек">${SETSECTIONS.map(([id, l], i) => `<a href="#options" data-jump="${id}" aria-current="${i === 0}">${l}</a>`).join("")}</nav>
+          <div class="set-main">
+            <label class="search set-search"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg><input id="setQ" type="search" placeholder="Поиск по настройкам" aria-label="Поиск по настройкам"></label>
+            <p class="empty" id="setEmpty" hidden><b>Такой настройки нет.</b> Попробуйте другое слово, например «память» или «тема».</p>
+
+            <section class="sgroup" id="sec-game" data-group><h2>Игра</h2><div class="form">
+              <div class="srow col" data-k="память оперативная ram озу"><div class="srow-h"><div><div class="l">Память для игры</div><div class="d" id="memHint">${ST.mem > 12 ? "Оставьте системе хотя бы 4 ГБ, иначе Windows начнёт тормозить" : "Для 130 модов хватает 6 ГБ"}</div></div><b class="val" id="v-mem">${ST.mem} ГБ</b></div>
+                <div class="ram" aria-hidden="true"><i class="sys" style="--f:${4 / 16}"></i><i class="mc ${ST.mem > 12 ? "warn" : ""}" id="ramMc" style="--f:${ST.mem / 16}"></i><i class="free" id="ramFree" style="--f:${Math.max(0, free) / 16}"></i></div>
+                <div class="ram-legend"><span><i class="sys"></i>Windows и программы, 4 ГБ</span><span><i class="mc"></i>Minecraft, <b id="ramMcT">${ST.mem}</b> ГБ</span><span><i class="free"></i>Свободно, <b id="ramFreeT">${Math.max(0, free)}</b> ГБ</span></div>
+                <input type="range" min="2" max="14" step="1" value="${ST.mem}" data-st-range="mem" aria-label="Память для игры"></div>
+              <div class="srow col" data-k="разрешение окно экран полноэкранный"><div class="l">Окно игры</div><div class="chips">${["Как у экрана", "1920 × 1080", "1600 × 900", "1280 × 720"].map(r => `<button class="chip" aria-pressed="${ST.res === r}" data-st="res" data-v="${r}">${r}</button>`).join("")}</div></div>
+              ${sw("full", "Полноэкранный режим", "Игра откроется на весь экран")}
+              <div class="srow col" data-k="аргументы java jvm флаги"><div class="srow-h"><div><div class="l">Аргументы Java</div><div class="d">Для опытных: флаги сборщика мусора и прочее</div></div><div class="chips"><button class="chip" data-jvm="rec">Рекомендуемые</button><button class="chip" data-jvm="clear">Очистить</button></div></div><textarea class="field code" id="jvm" rows="2" spellcheck="false" aria-label="Аргументы Java">${esc(ST.jvm)}</textarea></div>
+            </div></section>
+
+            <section class="sgroup" id="sec-gfx" data-group><h2>Графика</h2>
+              <div class="presets" data-k="графика пресет качество слабая средняя высокая ультра">${PRE.map(([v, l, d]) => `<button class="preset" aria-pressed="${ST.preset === v}" data-preset="${v}"><span class="bars" aria-hidden="true">${[1, 2, 3, 4].map(n => `<i class="${n <= ["low", "mid", "high", "ultra"].indexOf(v) + 1 ? "on" : ""}"></i>`).join("")}</span><b>${l}</b><span>${d}</span></button>`).join("")}</div>
+              <div class="form">${range("dist", "Дальность прорисовки", 2, 32, 1, v => v + " " + pl(v, "чанк", "чанка", "чанков"), "Чем дальше, тем больше нагрузка")}
+              ${range("fps", "Ограничение кадров", 30, 260, 10, v => v >= 260 ? "Без ограничения" : v + " FPS", "Снижает нагрев ноутбука")}
+              ${sw("shaders", "Шейдеры", "Пак Builders QoL")}
+              ${sw("dh", "Distant Horizons", "Дальние горы без нагрузки на чанки")}</div></section>
+
+            <section class="sgroup" id="sec-look" data-group><h2>Внешний вид</h2><div class="form">
+              <div class="srow col" data-k="тема светлая тёмная системная"><div class="l">Тема</div><div class="themes">${[["system", "Как в системе"], ["light", "Светлая"], ["dark", "Тёмная"]].map(([v, l]) => `<button class="theme-card ${v}" aria-pressed="${ST.theme === v}" data-st="theme" data-v="${v}"><span class="mini-win" aria-hidden="true"><i></i><i></i><i></i></span><b>${l}</b></button>`).join("")}</div></div>
+              ${BUILDS.map(b => `<div class="srow" data-k="цвет сборки обложка ${b.ver}"><div><div class="l">Цвет Wex ${b.ver}</div><div class="d">Обложка, логотип и баннер</div></div><div class="swatches" role="group" aria-label="Цвет Wex ${b.ver}">${PALETTE.map((c, i) => `<button class="sw" style="--c:var(--pal-${i})" aria-pressed="${ST["c" + b.id] === i}" data-color="${b.id}" data-i="${i}" aria-label="${c}"></button>`).join("")}</div></div>`).join("")}
+              <div class="srow" data-k="плотность компактный интерфейс"><div><div class="l">Плотность интерфейса</div><div class="d">Компактная вмещает больше строк</div></div>${seg("density", [["normal", "Обычная"], ["compact", "Компактная"]])}</div>
+              ${sw("motion", "Анимации", "Переходы, индикаторы и пружины")}
+            </div></section>
+
+            <section class="sgroup" id="sec-launcher" data-group><h2>Лаунчер и загрузки</h2><div class="form">
+              <div class="srow" data-k="после запуска свернуть закрыть"><div class="l">Когда игра запустилась</div>${seg("after", [["hide", "Свернуть"], ["close", "Закрыть"], ["keep", "Оставить"]])}</div>
+              ${sw("autostart", "Запускать вместе с Windows")}
+              ${sw("tray", "Сворачивать в трей при закрытии", "Друзья и обновления продолжат приходить")}
+              <div class="srow" data-k="обновления канал бета стабильный"><div><div class="l">Канал обновлений</div><div class="d">Бета приходит раньше, но может ломаться</div></div>${seg("channel", [["stable", "Стабильный"], ["beta", "Бета"]])}</div>
+              ${range("par", "Одновременных загрузок", 1, 8, 1, v => v, "Больше — быстрее на хорошем интернете")}
+            </div></section>
+
+            <section class="sgroup" id="sec-data" data-group><h2>Данные</h2><div class="form">
+              <div class="srow" data-k="папка данные путь"><div><div class="l">Папка Wex</div><div class="d code">%APPDATA%\\Wex</div></div><div class="chips"><button class="btn" data-note="Откроется проводник">Открыть</button><button class="btn" data-note="Откроется выбор папки, данные переедут сами">Изменить</button></div></div>
+              <div class="srow" data-k="кэш очистить"><div><div class="l">Кэш загрузок</div><div class="d" id="cacheT">${ST.cache ? "1,2 ГБ: старые версии и временные файлы" : "Пусто"}</div></div><button class="btn" data-cache ${ST.cache ? "" : "disabled"}>Очистить</button></div>
+              <div class="srow" data-k="сброс по умолчанию"><div><div class="l">Сбросить настройки</div><div class="d">Сборки, миры и скины не пострадают</div></div><button class="btn danger" data-reset>Сбросить</button></div>
+            </div></section>
+
+            <section class="sgroup" id="sec-keys" data-group><h2>Горячие клавиши</h2><div class="form">
+              ${[["Поиск и команды", "Ctrl K"], ["Играть в выбранную сборку", "Enter"], ["Выбрать Wex 1.21.1", "Ctrl 1"], ["Выбрать Wex 1.20.1", "Ctrl 2"], ["Назад", "Alt ←"], ["Закрыть окно поверх", "Esc"]].map(([l, k]) => `<div class="srow" data-k="клавиши ${l}"><div class="l">${l}</div><span class="keys">${k.split(" ").map(x => `<kbd>${x}</kbd>`).join("")}</span></div>`).join("")}
+            </div></section>
+          </div>
+        </div>`;
+    },
+  };
+  function friendRow(f) {
+    const b = f.build != null ? BUILDS[f.build] : null;
+    const tag = b ? `<span class="vtag" style="--c:var(--cover-${b.id})">${b.ver}</span>` : "";
+    const act = f.st === "game" && f.srv != null ? `<button class="mini blue" data-join-friend="${FRIENDS.indexOf(f)}">Зайти</button>` : f.st === "online" ? `<button class="mini" data-note="Приглашение отправлено: ${esc(f.n)}">Позвать</button>` : "<span></span>";
+    return `<div class="prow ${f.st === "off" ? "off" : ""}">${mono(f.n, f.k)}<div><b>${esc(f.n)} ${tag}</b><span>${f.st === "game" ? '<span class="dot"></span>' : ""}${esc(f.s)}</span></div>${act}</div>`;
+  }
+  function modRows() {
+    const q = S.q.toLowerCase(), list = MODS.filter(m => (S.mf === "all" || (S.mf === "on" && m.on) || (S.mf === "upd" && m.upd)) && (!q || (m.name + m.by).toLowerCase().includes(q)));
+    return list.length ? list.map(m => `<div class="lrow lrow-mod">${mono(m.name, m.name.length, "sq")}<div><b>${esc(m.name)}</b><span>${esc(m.ver)}, ${esc(m.by)}</span></div>${m.upd ? `<span class="tag up">Есть ${esc(m.upd)}</span>` : m.lib ? `<span class="tag">Нужен другим модам</span>` : "<span></span>"}<button class="switch" role="switch" aria-checked="${m.on}" aria-label="${esc(m.name)}" data-mod="${esc(m.name)}" ${m.lib ? "disabled" : ""}></button></div>`).join("")
+      : `<div class="empty"><b>Такого мода в сборке нет.</b> Проверьте название или найдите его в каталоге.</div>`;
+  }
+
+  /* ═══ Гардероб: скин 64×64, объёмная модель, позы, загрузка своего файла ═══ */
+  const UV = {
+    head: { top: [8, 0, 8, 8], bottom: [16, 0, 8, 8], right: [0, 8, 8, 8], front: [8, 8, 8, 8], left: [16, 8, 8, 8], back: [24, 8, 8, 8] },
+    hat: { top: [40, 0, 8, 8], bottom: [48, 0, 8, 8], right: [32, 8, 8, 8], front: [40, 8, 8, 8], left: [48, 8, 8, 8], back: [56, 8, 8, 8] },
+    body: { top: [20, 16, 8, 4], bottom: [28, 16, 8, 4], right: [16, 20, 4, 12], front: [20, 20, 8, 12], left: [28, 20, 4, 12], back: [32, 20, 8, 12] },
+    armR: { top: [44, 16, 4, 4], bottom: [48, 16, 4, 4], right: [40, 20, 4, 12], front: [44, 20, 4, 12], left: [48, 20, 4, 12], back: [52, 20, 4, 12] },
+    armL: { top: [36, 48, 4, 4], bottom: [40, 48, 4, 4], right: [32, 52, 4, 12], front: [36, 52, 4, 12], left: [40, 52, 4, 12], back: [44, 52, 4, 12] },
+    armRs: { top: [44, 16, 3, 4], bottom: [47, 16, 3, 4], right: [40, 20, 4, 12], front: [44, 20, 3, 12], left: [47, 20, 4, 12], back: [51, 20, 3, 12] },
+    armLs: { top: [36, 48, 3, 4], bottom: [39, 48, 3, 4], right: [32, 52, 4, 12], front: [36, 52, 3, 12], left: [39, 52, 4, 12], back: [43, 52, 3, 12] },
+    legR: { top: [4, 16, 4, 4], bottom: [8, 16, 4, 4], right: [0, 20, 4, 12], front: [4, 20, 4, 12], left: [8, 20, 4, 12], back: [12, 20, 4, 12] },
+    legL: { top: [20, 48, 4, 4], bottom: [24, 48, 4, 4], right: [16, 52, 4, 12], front: [20, 52, 4, 12], left: [24, 52, 4, 12], back: [28, 52, 4, 12] },
+  };
+  function gen64(p, seed) {
+    const cv = document.createElement("canvas"); cv.width = 64; cv.height = 64; const c = cv.getContext("2d"), r = rng(seed);
+    const fill = (x, y, w, h, col, k = 1) => { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { c.fillStyle = sh(col, k * (.92 + r() * .16)); c.fillRect(x + i, y + j, 1, 1); } };
+    const part = (uv, col) => Object.values(uv).forEach(([x, y, w, h]) => fill(x, y, w, h, col));
+    part(UV.head, p.hair); const [fx, fy] = UV.head.front;
+    fill(fx + 1, fy + 2, 6, 6, p.skin); fill(fx + 1, fy + 2, 6, 1, p.hair);
+    fill(fx + 1, fy + 4, 1, 1, "#ece6da"); fill(fx + 2, fy + 4, 1, 1, p.eye); fill(fx + 5, fy + 4, 1, 1, p.eye); fill(fx + 6, fy + 4, 1, 1, "#ece6da"); fill(fx + 3, fy + 6, 2, 1, p.skin, .78);
+    ["right", "left"].forEach(f => { const [x, y] = UV.head[f]; fill(x + 2, y + 3, 4, 5, p.skin, .95); });
+    part(UV.body, p.hood); const [bx, by] = UV.body.front; fill(bx + 1, by, 6, 1, p.trim); fill(bx + 3, by + 1, 2, 11, p.hood, 1.12);
+    [UV.armR, UV.armL].forEach(uv => { part(uv, p.hood); ["right", "front", "left", "back"].forEach(f => { const [x, y, w] = uv[f]; fill(x, y + 8, w, 4, p.skin); fill(x, y + 7, w, 1, p.trim); }); fill(...uv.bottom, p.skin); });
+    [UV.legR, UV.legL].forEach(uv => { part(uv, p.pants); ["right", "front", "left", "back"].forEach(f => { const [x, y, w] = uv[f]; fill(x, y + 10, w, 2, p.shoes); }); fill(...uv.bottom, p.shoes); });
+    return cv;
+  }
+  const WD = {
+    lib: [["Синяя куртка", 0, false], ["Лис", 1, false], ["Снег", 2, true], ["Кузнец", 3, false]].map(([name, i, slim]) => ({ name, slim, tex: gen64(SKINS[i], 40 + i) })),
+    active: 0, cape: keep.get("wcape", 1), pose: "idle", tab: "skins", turn: -24, auto: false, nick: keep.get("nick", "Player"),
+  };
+  CAPES.forEach((c, i) => { c.note = ["Цвет Wex", "Для тестеров 0.9", "Загрузить PNG", "Плащ не виден"][i]; });
+  function thumb(cv, tex, slim) {
+    cv.width = 16; cv.height = 32; const c = cv.getContext("2d"); c.imageSmoothingEnabled = false; c.clearRect(0, 0, 16, 32);
+    const d = (uv, dx, dy) => { const [x, y, w, h] = uv.front; c.drawImage(tex, x, y, w, h, dx, dy, w, h); };
+    const aw = slim ? 3 : 4;
+    d(UV.head, 4, 0); d(UV.hat, 4, 0); d(UV.body, 4, 8); d(slim ? UV.armRs : UV.armR, 4 - aw, 8); d(slim ? UV.armLs : UV.armL, 12, 8); d(UV.legR, 4, 20); d(UV.legL, 8, 20);
+  }
+  const U = 11;
+  function box(uv, w, h, d, tex, extra = "") {
+    const faces = { front: [w, h, `translateZ(${d * U / 2}px)`], back: [w, h, `rotateY(180deg) translateZ(${d * U / 2}px)`], right: [d, h, `rotateY(-90deg) translateZ(${w * U / 2}px)`], left: [d, h, `rotateY(90deg) translateZ(${w * U / 2}px)`], top: [w, d, `rotateX(90deg) translateZ(${h * U / 2}px)`], bottom: [w, d, `rotateX(-90deg) translateZ(${h * U / 2}px)`] };
+    const el = document.createElement("div"); el.className = "box " + extra;
+    for (const [f, [fw, fh, tr]] of Object.entries(faces)) {
+      const cv = document.createElement("canvas"); cv.width = fw; cv.height = fh; cv.className = "face";
+      const ctx = cv.getContext("2d"); ctx.imageSmoothingEnabled = false;
+      if (uv) { const [x, y, sw, shh] = uv[f]; ctx.drawImage(tex, x, y, sw, shh, 0, 0, fw, fh); } else { ctx.fillStyle = tex[0]; ctx.fillRect(0, 0, fw, fh); if (f === "back" || f === "front") { ctx.fillStyle = tex[1]; ctx.fillRect(0, 0, fw, 1); ctx.fillRect(0, fh - 1, fw, 1); ctx.fillRect(0, 0, 1, fh); ctx.fillRect(fw - 1, 0, 1, fh); } }
+      cv.style.width = fw * U + "px"; cv.style.height = fh * U + "px"; cv.style.marginLeft = -fw * U / 2 + "px"; cv.style.marginTop = -fh * U / 2 + "px"; cv.style.transform = tr;
+      el.appendChild(cv);
+    }
+    return el;
+  }
+  function joint(name, px, py, pz, child, cx, cy, cz) {
+    const j = document.createElement("div"); j.className = "joint " + name; j.style.transform = `translate3d(${px * U}px, ${py * U}px, ${pz * U}px)`;
+    const inner = document.createElement("div"); inner.className = "swing";
+    child.style.transform = `translate3d(${cx * U}px, ${cy * U}px, ${cz * U}px)`; inner.appendChild(child); j.appendChild(inner); return j;
+  }
+  function buildRig() {
+    const rig = $("#rig"); if (!rig) return; rig.innerHTML = "";
+    const sk = WD.lib[WD.active], t = sk.tex, aw = sk.slim ? 3 : 4;
+    const off = -16; // центр модели по высоте
+    rig.appendChild(joint("j-head", 0, off + 8, 0, (() => { const g = document.createElement("div"); g.className = "box-group"; g.appendChild(box(UV.head, 8, 8, 8, t)); const hat = box(UV.hat, 8.5, 8.5, 8.5, t, "hat"); g.appendChild(hat); return g; })(), 0, -4, 0));
+    rig.appendChild(joint("j-body", 0, off + 8, 0, box(UV.body, 8, 12, 4, t), 0, 6, 0));
+    rig.appendChild(joint("j-armR", -(4 + aw / 2), off + 8, 0, box(sk.slim ? UV.armRs : UV.armR, aw, 12, 4, t), 0, 5, 0));
+    rig.appendChild(joint("j-armL", 4 + aw / 2, off + 8, 0, box(sk.slim ? UV.armLs : UV.armL, aw, 12, 4, t), 0, 5, 0));
+    rig.appendChild(joint("j-legR", -2, off + 20, 0, box(UV.legR, 4, 12, 4, t), 0, 6, 0));
+    rig.appendChild(joint("j-legL", 2, off + 20, 0, box(UV.legL, 4, 12, 4, t), 0, 6, 0));
+    const cp = CAPES[WD.cape];
+    if (cp.c) { const cs = getComputedStyle(document.documentElement); rig.appendChild(joint("j-cape", 0, off + 8, -2.6, box(null, 10, 16, 0.6, [cs.getPropertyValue(`--cape-${WD.cape}`).trim(), cs.getPropertyValue(`--cape-${WD.cape}-t`).trim()]), 0, 8, 0)); }
+    setTurn(WD.turn, true);
+  }
+  function setTurn(deg, instant) { WD.turn = deg; const r = $("#rig"); if (!r) return; if (instant) r.classList.add("now"); r.style.setProperty("--turn", deg + "deg"); if (instant) { void r.offsetWidth; r.classList.remove("now"); } }
+  let autoRaf = 0;
+  function autoSpin() { cancelAnimationFrame(autoRaf); if (!WD.auto || !$("#rig")) return; let last = performance.now(); const step = t => { if (!WD.auto || !$("#rig")) return; setTurn(WD.turn + (t - last) * 0.03, true); last = t; autoRaf = requestAnimationFrame(step); }; autoRaf = requestAnimationFrame(step); }
+  function mountWardrobe() {
+    buildRig(); $$("[data-thumb]").forEach(c => { const s = WD.lib[+c.dataset.thumb]; thumb(c, s.tex, s.slim); });
+    const st = $("#stage3d"); let x0 = 0, base = 0, drag = false;
+    st.addEventListener("pointerdown", e => { if (e.target.closest("button")) return; drag = true; x0 = e.clientX; base = WD.turn; $("#rig").classList.add("now"); st.setPointerCapture(e.pointerId); });
+    st.addEventListener("pointermove", e => { if (drag) setTurn(base + (e.clientX - x0) * .6, true); });
+    const end = () => { if (!drag) return; drag = false; $("#rig").classList.remove("now"); };
+    st.addEventListener("pointerup", end); st.addEventListener("pointercancel", end);
+    const file = $("#skinFile"), drop = $("#drop");
+    if (file) file.addEventListener("change", () => file.files[0] && loadSkin(file.files[0]));
+    if (drop) {
+      ["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+      ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+      drop.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if (f) loadSkin(f); });
+    }
+    const nick = $("#nick");
+    if (nick) nick.addEventListener("input", () => {
+      const v = nick.value, ok = /^[A-Za-z0-9_]{3,16}$/.test(v);
+      $("#nickHint").textContent = ok ? "Ник свободен на серверах Wex. Видно над головой." : "Нужно 3–16 символов: латиница, цифры и _.";
+      $("#nickHint").classList.toggle("bad", !ok); nick.classList.toggle("bad", !ok);
+      if (ok) { WD.nick = v; keep.set("nick", v); $("#nametag").textContent = v; $("#meName").textContent = v; }
+    });
+    autoSpin();
+  }
+  function loadSkin(f) {
+    if (f.type !== "image/png") return toast("Нужен файл PNG");
+    const rd = new FileReader();
+    rd.onload = () => { const img = new Image(); img.onload = () => {
+      if (img.width !== 64 || (img.height !== 64 && img.height !== 32)) return toast(`Скин должен быть 64×64 или 64×32, а этот ${img.width}×${img.height}`);
+      const cv = document.createElement("canvas"); cv.width = 64; cv.height = 64; const c = cv.getContext("2d"); c.imageSmoothingEnabled = false; c.drawImage(img, 0, 0);
+      if (img.height === 32) { c.drawImage(img, 0, 16, 16, 16, 16, 48, 16, 16); c.drawImage(img, 40, 16, 16, 16, 32, 48, 16, 16); }
+      WD.lib.unshift({ name: f.name.replace(/\.png$/i, "").slice(0, 18), slim: false, tex: cv }); WD.active = 0; render(); toast("Скин надет");
+    }; img.onerror = () => toast("Не получилось прочитать картинку"); img.src = rd.result; };
+    rd.readAsDataURL(f);
+  }
+  function wardrobeClick(t, d) {
+    if (d.wtab) { WD.tab = d.wtab; render(); return true; }
+    if (d.wskin) { WD.active = +d.wskin; render(); return true; }
+    if (d.wslim) { WD.lib[WD.active].slim = d.wslim === "1"; render(); return true; }
+    if (d.wcape) { WD.cape = +d.wcape; keep.set("wcape", WD.cape); const back = Math.round((WD.turn - 180) / 360) * 360 + 180; WD.turn = CAPES[WD.cape].c ? back : WD.turn; render(); return true; }
+    if (d.wpose) { WD.pose = d.wpose; const b = snapInds(); $("#rig").className = "rig pose-" + WD.pose; $$("[data-wpose]").forEach(x => x.setAttribute("aria-pressed", String(x === t))); placeInds(b); return true; }
+    if (d.wturn) { setTurn(WD.turn + +d.wturn); return true; }
+    if ("wauto" in d) { WD.auto = !WD.auto; t.setAttribute("aria-pressed", String(WD.auto)); autoSpin(); return true; }
+    return false;
+  }
+
+  /* ═══ Настройки: всё применяется сразу ═══ */
+  const SETSECTIONS = [["sec-game", "Игра"], ["sec-gfx", "Графика"], ["sec-look", "Внешний вид"], ["sec-launcher", "Лаунчер"], ["sec-data", "Данные"], ["sec-keys", "Клавиши"]];
+  const PALETTE = ["Синий", "Зелёный", "Оранжевый", "Розовый", "Бирюзовый", "Графит"];
+  const DEF = { mem: 6, res: "Как у экрана", full: false, jvm: "-XX:+UseG1GC -XX:MaxGCPauseMillis=50", preset: "mid", dist: 12, fps: 144, shaders: true, dh: false, theme: "system", c1211: 0, c1201: 1, density: "normal", motion: true, after: "hide", autostart: false, tray: true, channel: "stable", par: 4, cache: true };
+  const ST = Object.assign({}, DEF, keep.get("st", {}));
+  const PRESETS = { low: { dist: 6, shaders: false, dh: false, fps: 60 }, mid: { dist: 12, shaders: true, dh: false, fps: 144 }, high: { dist: 18, shaders: true, dh: false, fps: 144 }, ultra: { dist: 32, shaders: true, dh: true, fps: 260 } };
+  function saveST() { keep.set("st", ST); S.mem = ST.mem; S.after = ST.after; }
+  function applyLook() {
+    const root = document.documentElement;
+    if (ST.theme === "system") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", ST.theme);
+    root.style.setProperty("--cover-1211", `var(--pal-${ST.c1211})`); root.style.setProperty("--cover-1201", `var(--pal-${ST.c1201})`);
+    $("#app").classList.toggle("compact", ST.density === "compact");
+    root.classList.toggle("no-motion", !ST.motion); reduced = sysReduced || !ST.motion;
+  }
+  function mountSettings() {
+    const q = $("#setQ");
+    q.addEventListener("input", () => {
+      const v = q.value.trim().toLowerCase(); let any = false;
+      $$("#setRoot .sgroup").forEach(g => { let n = 0; g.querySelectorAll("[data-k]").forEach(r => { const hit = !v || r.dataset.k.toLowerCase().includes(v) || g.querySelector("h2").textContent.toLowerCase().includes(v); r.hidden = !hit; n += hit; }); g.hidden = !n; any = any || n > 0; });
+      $("#setEmpty").hidden = any;
+    });
+    $$("[data-st-range]").forEach(inp => inp.addEventListener("input", () => {
+      const k = inp.dataset.stRange, v = +inp.value; ST[k] = v; saveST();
+      if (k === "mem") { $("#v-mem").textContent = v + " ГБ"; const free = Math.max(0, 12 - v); $("#ramMc").style.setProperty("--f", v / 16); $("#ramFree").style.setProperty("--f", free / 16); $("#ramMcT").textContent = v; $("#ramFreeT").textContent = free; $("#ramMc").classList.toggle("warn", v > 12); $("#memHint").textContent = v > 12 ? "Оставьте системе хотя бы 4 ГБ, иначе Windows начнёт тормозить" : "Для 130 модов хватает 6 ГБ"; bar(); }
+      else $("#v-" + k).textContent = k === "dist" ? v + " " + pl(v, "чанк", "чанка", "чанков") : k === "fps" ? (v >= 260 ? "Без ограничения" : v + " FPS") : v;
+      if (k === "dist" || k === "fps") { ST.preset = "custom"; $$("[data-preset]").forEach(x => x.setAttribute("aria-pressed", "false")); }
+    }));
+    $("#jvm").addEventListener("input", e => { ST.jvm = e.target.value; saveST(); });
+    const main2 = $("#main"), links = $$("#subnav [data-jump]");
+    main2.addEventListener("scroll", spy, { passive: true });
+    function spy() { if (!$("#subnav")) return main2.removeEventListener("scroll", spy); let cur = SETSECTIONS[0][0]; SETSECTIONS.forEach(([id]) => { const el = $("#" + id); if (el && !el.hidden && el.getBoundingClientRect().top < 220) cur = id; }); const b = snapInds(); links.forEach(a => a.setAttribute("aria-current", String(a.dataset.jump === cur))); placeInds(b); }
+  }
+  function settingsClick(t, d) {
+    if (d.jump) { $("#" + d.jump)?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" }); return true; }
+    if (d.stFlip) { ST[d.stFlip] = !ST[d.stFlip]; t.setAttribute("aria-checked", String(ST[d.stFlip])); saveST(); if (d.stFlip === "motion") applyLook(); if (d.stFlip === "shaders" || d.stFlip === "dh") { ST.preset = "custom"; $$("[data-preset]").forEach(x => x.setAttribute("aria-pressed", "false")); } return true; }
+    if (d.st) { const b = snapInds(); ST[d.st] = d.v; saveST(); t.parentElement.querySelectorAll(`[data-st="${d.st}"]`).forEach(x => x.setAttribute("aria-pressed", String(x === t))); if (d.st === "theme" || d.st === "density") applyLook(); requestAnimationFrame(() => placeInds(b)); return true; }
+    if (d.preset) { Object.assign(ST, PRESETS[d.preset], { preset: d.preset }); saveST(); render(); return true; }
+    if (d.color) { ST["c" + d.color] = +d.i; saveST(); applyLook(); t.parentElement.querySelectorAll("[data-color]").forEach(x => x.setAttribute("aria-pressed", String(x === t))); return true; }
+    if (d.jvm) { ST.jvm = d.jvm === "rec" ? DEF.jvm + " -XX:+ParallelRefProcEnabled -XX:+UnlockExperimentalVMOptions" : ""; saveST(); $("#jvm").value = ST.jvm; return true; }
+    if ("cache" in d) { ST.cache = false; saveST(); $("#cacheT").textContent = "Пусто"; t.disabled = true; toast("Кэш очищен, освободилось 1,2 ГБ"); return true; }
+    if ("reset" in d) {
+      if (t.dataset.armed) { Object.assign(ST, DEF); saveST(); applyLook(); render(); toast("Настройки сброшены"); return true; }
+      t.dataset.armed = "1"; t.textContent = "Нажмите ещё раз"; setTimeout(() => { if (t.isConnected) { delete t.dataset.armed; t.textContent = "Сбросить"; } }, 3000); return true;
+    }
+    return false;
+  }
+
+  /* Роутинг */
+  function routeOk(r) { return NAV.some(n => n[0] === r) || BUILDS.some(b => "build-" + b.id === r); }
+  function go(r, push = true) {
+    if (!routeOk(r)) r = "home";
+    if (r === S.route) return;
+    if (push && S.route) { S.hist.push(S.route); S.fwd = []; }
+    S.route = r;
+    const h = r === "home" ? "" : "#" + r; if (location.hash !== h) history.replaceState(null, "", h || location.pathname + location.search);
+    const apply = () => { render(true); main.scrollTop = 0; };
+    if (document.startViewTransition && !reduced && page.childElementCount) document.startViewTransition(apply); else apply();
+  }
+  function render(animate) {
+    side();
+    const key = S.route.startsWith("build-") ? "build" : S.route;
+    const before = snapInds();
+    page.innerHTML = V[key]();
+    if (animate && !reduced) { [...page.children].forEach((el, i) => el.style.setProperty("--i", i)); page.classList.remove("stagger"); void page.offsetWidth; page.classList.add("stagger"); } else page.classList.remove("stagger");
+    requestAnimationFrame(() => placeInds(before));
+    if (animate) page.querySelectorAll("[data-count]").forEach(countUp);
+    paint(page);
+    $("#backBtn").disabled = !S.hist.length; $("#fwdBtn").disabled = !S.fwd.length;
+    if ($("#stage3d")) mountWardrobe(); else cancelAnimationFrame(autoRaf);
+    if ($("#setRoot")) mountSettings();
+    const mem = $("#mem"); if (mem) mem.addEventListener("input", () => { S.mem = +mem.value; keep.set("mem", S.mem); $("#memV").textContent = mem.value + " ГБ"; bar(); });
+    const q = $("#q"); if (q) q.addEventListener("input", () => { S.q = q.value; $("#modList").innerHTML = modRows(); paint($("#modList")); });
+    const af = $("#after"); if (af) af.addEventListener("change", () => { S.after = af.value; keep.set("after", S.after); });
+    bar();
+  }
+  $("#backBtn").addEventListener("click", () => { if (!S.hist.length) return; S.fwd.push(S.route); go(S.hist.pop(), false); });
+  $("#fwdBtn").addEventListener("click", () => { if (!S.fwd.length) return; S.hist.push(S.route); go(S.fwd.pop(), false); });
+
+
+
+  /* ═══ Движение: плавающие индикаторы, счётчики, параллакс ═══ */
+  const IND = [["#subnav", 'a[aria-current="true"]'], ["#nav", 'a[aria-current="page"]'], ["#lib", 'a[aria-current="page"]'], [".tabs", '[aria-selected="true"]'], [".seg", '[aria-pressed="true"]']];
+  function eachInd(fn) { IND.forEach(([sel, act]) => document.querySelectorAll(sel).forEach((box, n) => fn(box, act, sel + n))); }
+  function geom(box, act) { const a = box.querySelector(act); if (!a) return null; return { x: a.offsetLeft, y: a.offsetTop, w: a.offsetWidth, h: a.offsetHeight }; }
+  function snapInds() { const m = {}; eachInd((box, act, key) => { const g = geom(box, act); if (g) m[key] = g; }); return m; }
+  function placeInds(before = {}) {
+    eachInd((box, act, key) => {
+      let ind = box.querySelector(":scope > .ind");
+      if (!ind) { ind = document.createElement("span"); ind.className = "ind"; ind.setAttribute("aria-hidden", "true"); box.prepend(ind); }
+      const g = geom(box, act);
+      if (!g) { ind.style.opacity = "0"; return; }
+      const stretch = box.matches(".tabs, .seg");
+      const set = (q) => {
+        if (stretch) { ind.style.width = "100px"; if (!box.matches(".tabs")) ind.style.height = q.h + "px"; ind.style.transform = `translate(${q.x}px, ${box.matches(".tabs") ? 0 : q.y}px) scaleX(${(q.w / 100).toFixed(4)})`; }
+        else { ind.style.width = q.w + "px"; ind.style.height = q.h + "px"; ind.style.transform = `translate(${q.x}px, ${q.y}px)`; }
+      };
+      const from = before[key];
+      if (from && !reduced) { ind.style.transition = "none"; set(from); void ind.offsetWidth; ind.style.transition = ""; }
+      ind.style.opacity = "1"; set(g);
+    });
+  }
+  function countUp(el) {
+    const to = +el.dataset.count; if (reduced || !to) return;
+    const t0 = performance.now(), dur = 700;
+    const step = t => { const k = Math.min(1, (t - t0) / dur); el.textContent = Math.round(to * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(step); };
+    el.textContent = "0"; requestAnimationFrame(step);
+  }
+  if (!reduced) page.addEventListener("pointermove", e => {
+    const pane = e.target.closest(".pane.open"); if (!pane) return;
+    const r = pane.getBoundingClientRect();
+    pane.style.setProperty("--px", ((e.clientX - r.left) / r.width - .5).toFixed(3));
+    pane.style.setProperty("--py", ((e.clientY - r.top) / r.height - .5).toFixed(3));
+  });
+  addEventListener("resize", () => placeInds());
+  document.fonts?.ready.then(() => placeInds());
+
+  /* Выбор сборки для запуска */
+  function select(i) { if (S.run || i === S.build) return; S.build = i; keep.set("build", i); render(); toast(`Для запуска выбрана Wex ${BUILDS[i].ver}`); }
+
+  /* Панель запуска */
+  const STEPS = [["Проверяем файлы", 0, 900], ["Готовим Java", 0, 700], ["Скачиваем библиотеки", 70, 2200], ["Скачиваем ресурсы игры", 3412, 2600], ["Открываем игру", 0, 1300]];
+  let lastStep = -1;
+  function bar() {
+    const b = BUILDS[S.build], R = S.run, play = $("#play");
+    if ($("#barCover").dataset.b !== b.id) { $("#barCover").innerHTML = cover(b); $("#barCover").dataset.b = b.id; }
+    if (!R) {
+      $("#barTitle").textContent = `Wex ${b.ver}`; $("#barSub").textContent = `Готово к запуску, ${S.mem} ГБ памяти, ${b.java}`; $("#track").hidden = true;
+      play.className = "play"; play.innerHTML = `${TRI}Играть`; play.setAttribute("aria-label", `Играть в Wex ${b.ver}`); lastStep = -1; return;
+    }
+    if (R.live) {
+      const s = Math.floor((Date.now() - R.at) / 1000);
+      $("#barTitle").innerHTML = `<span class="live"><span class="dot"></span>Игра идёт${R.server ? ", " + esc(R.server) : ""}</span>`;
+      const here = R.server ? FRIENDS.filter(f => f.st === "game" && f.srv != null && SERVERS[f.srv].name === R.server) : [];
+      $("#barSub").textContent = `Wex ${b.ver}, ${String(s / 60 | 0).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}${here.length ? `, ${here.map(f => f.n).join(", ")} тоже ${here.length > 1 ? "здесь" : "здесь"}` : ""}`; $("#track").hidden = true;
+      if (!play.classList.contains("stop")) { play.classList.remove("swap"); void play.offsetWidth; }
+      play.className = "play stop swap"; play.textContent = "Остановить"; play.setAttribute("aria-label", "Остановить игру"); return;
+    }
+    const [label, total, ms] = STEPS[Math.min(R.step, STEPS.length - 1)];
+    const pct = Math.round((R.step + (total ? R.done / total : Math.min(1, (performance.now() - R.t0) / ms))) / STEPS.length * 100);
+    const t = $("#barTitle");
+    if (R.step !== lastStep) { t.textContent = label; t.classList.remove("stage-tick"); void t.offsetWidth; t.classList.add("stage-tick"); lastStep = R.step; }
+    $("#barSub").textContent = `${total ? `${R.done} из ${total}, ` : ""}${pct}%, шаг ${R.step + 1} из ${STEPS.length}`;
+    $("#track").hidden = false; $("#trackFill").style.transform = `scaleX(${pct / 100})`;
+    if (!play.classList.contains("cancel")) { play.classList.add("x"); void play.offsetWidth; }
+    play.className = "play cancel" + (lastStep === 0 && R.step === 0 ? " swap" : ""); play.textContent = "Отменить"; play.setAttribute("aria-label", "Отменить запуск");
+  }
+  function launch(server) {
+    if (S.run) return;
+    S.run = { step: 0, done: 0, t0: performance.now(), live: false, at: 0, server: server || null };
+    if (server) toast(`Заходим на ${server}`); tick();
+  }
+  function tick() {
+    const R = S.run; if (!R) return;
+    if (!R.live) {
+      const [, total, ms] = STEPS[R.step], k = Math.min(1, (performance.now() - R.t0) / ms);
+      R.done = Math.round(total * k);
+      if (k >= 1) { R.step++; R.t0 = performance.now(); if (R.step >= STEPS.length) { R.live = true; R.at = Date.now(); const bb = document.querySelector(".bar"); bb.classList.remove("started"); void bb.offsetWidth; bb.classList.add("started"); toast(S.after === "hide" ? "Minecraft запущен. В приложении лаунчер свернётся" : "Minecraft запущен"); } }
+    }
+    bar(); R.timer = setTimeout(tick, R.live ? 1000 : 60);
+  }
+  function stop() { if (!S.run) return; clearTimeout(S.run.timer); const was = S.run.live; S.run = null; toast(was ? "Игра остановлена" : "Запуск отменён"); bar(); }
+  $("#play").addEventListener("click", () => S.run ? stop() : launch());
+
+  /* Гардероб */
+  /* Действия */
+  const press = (btn, attr) => btn.parentElement.querySelectorAll(`[${attr}]`).forEach(b => b.setAttribute("aria-pressed", String(b === btn)));
+  document.addEventListener("click", e => {
+    const t = e.target.closest("button,[data-note],a[data-jump]"); if (!t || t.id === "play" || t.id === "backBtn" || t.id === "fwdBtn") return;
+    const d = t.dataset;
+    if (wardrobeClick(t, d) || settingsClick(t, d)) { if (d.jump) e.preventDefault(); return; }
+    if ("play" in d || "playWorld" in d) return S.run ? stop() : launch();
+    if (d.playBuild) { const i = +d.playBuild; if (i !== S.build) select(i); return launch(); }
+    if (d.select) return select(+d.select);
+    if (d.join) return launch(SERVERS[+d.join].name);
+    if (d.joinFriend) { const f = FRIENDS[+d.joinFriend]; if (f.build !== S.build) { S.build = f.build; keep.set("build", f.build); render(); toast(`Переключили на Wex ${BUILDS[f.build].ver}, как у ${f.n}`); } return launch(SERVERS[f.srv].name); }
+    if (d.btab) { S.btab = d.btab; return render(); }
+    if (d.mf) { S.mf = d.mf; return render(); }
+    if (d.ff) { S.ff = d.ff; return render(); }
+    if (d.mod) { const m = MODS.find(x => x.name === d.mod); m.on = !m.on; t.setAttribute("aria-checked", String(m.on)); return; }
+    if ("flip" in d) return t.setAttribute("aria-checked", String(t.getAttribute("aria-checked") !== "true"));
+    if (d.cape) { S.cape = +d.cape; keep.set("cape", S.cape); press(t, "data-cape"); figure(); if (CAPES[S.cape].c) { S.turn = Math.round(S.turn / 360) * 360 + 180; $("#figure").style.transform = `rotateY(${S.turn}deg)`; } return; }
+    if ("model" in d) { const b = snapInds(); press(t, "data-model"); return placeInds(b); }
+    if (d.copy) { try { navigator.clipboard.writeText(d.copy).then(() => toast("Код скопирован"), () => toast("Выделите код и скопируйте вручную")); } catch { toast("Выделите код и скопируйте вручную"); } return; }
+    if (d.note) return toast(d.note);
+  });
+  addEventListener("keydown", e => {
+    if (!$("#spec").hidden) { if (e.key === "Escape") $("#spec").hidden = true; return; }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openCmd(); }
+    if ((e.ctrlKey || e.metaKey) && (e.key === "1" || e.key === "2")) { e.preventDefault(); select(+e.key - 1); }
+    if (e.altKey && e.key === "ArrowLeft") { e.preventDefault(); $("#backBtn").click(); }
+  });
+
+
+  /* Командная строка: поиск по всему и действия с клавиатуры */
+  let cmdItems = [], cmdIdx = 0;
+  function cmdSource() {
+    const b = BUILDS[S.build], other = BUILDS[1 - S.build];
+    return [
+      { g: "Действия", t: S.run ? (S.run.live ? "Остановить игру" : "Отменить запуск") : `Играть в Wex ${b.ver}`, k: "Enter", run: () => S.run ? stop() : launch() },
+      { g: "Действия", t: `Сменить сборку на Wex ${other.ver}`, run: () => select(1 - S.build) },
+      { g: "Действия", t: "Открыть папку сборки", run: () => toast("Откроется папка сборки") },
+      { g: "Действия", t: "Проверить файлы сборки", run: () => toast("Проверяем файлы сборки") },
+      ...BUILDS.map(x => ({ g: "Сборки", t: `Wex ${x.ver}`, s: mods(x.mods), run: () => go("build-" + x.id) })),
+      ...SERVERS.map((x, i) => ({ g: "Серверы", t: x.name, s: `${x.on} игроков`, run: () => launch(x.name) })),
+      ...FRIENDS.map(x => ({ g: "Друзья", t: x.n, s: x.s, run: () => go("friends") })),
+      ...MODS.map(x => ({ g: "Моды", t: x.name, s: `${x.ver}, ${x.on ? "включён" : "выключен"}`, run: () => { S.q = x.name; S.btab = "mods"; go("build-" + b.id); render(); } })),
+      ...NAV.map(([id, l]) => ({ g: "Разделы", t: l, run: () => go(id) })),
+    ];
+  }
+  function cmdRender() {
+    const q = $("#cmdQ").value.trim().toLowerCase();
+    cmdItems = cmdSource().filter(x => !q || (x.t + " " + (x.s || "") + " " + x.g).toLowerCase().includes(q)).slice(0, 12);
+    cmdIdx = Math.min(cmdIdx, Math.max(0, cmdItems.length - 1));
+    let g = "";
+    $("#cmdList").innerHTML = cmdItems.length ? cmdItems.map((x, i) => `${x.g !== g ? `<div class="cmd-g">${(g = x.g)}</div>` : ""}<button class="cmd-row" role="option" aria-selected="${i === cmdIdx}" data-cmd="${i}"><b>${esc(x.t)}</b>${x.s ? `<span>${esc(x.s)}</span>` : ""}${x.k ? `<kbd>${x.k}</kbd>` : ""}</button>`).join("")
+      : `<div class="cmd-empty">Ничего не нашлось. Попробуйте название мода, сервера или ник друга.</div>`;
+    $("#cmdList").querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+  }
+  function openCmd() { $("#cmdBg").hidden = false; $("#cmdQ").value = ""; cmdIdx = 0; cmdRender(); $("#cmdQ").focus(); }
+  function closeCmd() { $("#cmdBg").hidden = true; $("#cmdOpen").focus(); }
+  function runCmd(i) { const x = cmdItems[i]; if (!x) return; $("#cmdBg").hidden = true; x.run(); }
+  $("#cmdOpen").addEventListener("click", openCmd);
+  $("#cmdQ").addEventListener("input", () => { cmdIdx = 0; cmdRender(); });
+  $("#cmdQ").addEventListener("keydown", e => {
+    if (e.key === "ArrowDown") { e.preventDefault(); cmdIdx = Math.min(cmdItems.length - 1, cmdIdx + 1); cmdRender(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); cmdIdx = Math.max(0, cmdIdx - 1); cmdRender(); }
+    else if (e.key === "Enter") { e.preventDefault(); runCmd(cmdIdx); }
+    else if (e.key === "Escape") { e.preventDefault(); closeCmd(); }
+  });
+  $("#cmdList").addEventListener("click", e => { const r = e.target.closest("[data-cmd]"); if (r) runCmd(+r.dataset.cmd); });
+  $("#cmdBg").addEventListener("click", e => { if (e.target.id === "cmdBg") closeCmd(); });
+
+  /* Живой онлайн */
+  setInterval(() => { const s = SERVERS[0]; s.on = Math.max(150, s.on + Math.round((Math.random() - .45) * 6)); document.querySelectorAll("[data-live]").forEach(el => el.textContent = s.on); }, 5000);
+  let tt; function toast(m) { const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 2600); }
+
+  /* Спецификация */
+  $("#specBtn").addEventListener("click", () => {
+    $("#spec").innerHTML = `<div class="spec" role="dialog" aria-modal="true" aria-label="Спецификация"><div style="display:flex;justify-content:space-between;gap:16px;align-items:center"><h2>Спецификация</h2><button class="btn" id="specX">Закрыть</button></div>
+      <h3>Структура</h3><ul><li><b>Sidebar</b>: разделы (Главная, Серверы, Друзья, Гардероб, Настройки), ниже <b>библиотека сборок</b> с обложками; точка у сборки, выбранной для запуска. Внизу профиль.</li><li><b>Main</b>: строка с «назад/вперёд», поиском (Ctrl K) и кнопками окна; под ней страница.</li><li><b>LaunchBar</b>: всегда внизу. Обложка и название выбранной сборки, статус, во время запуска этап, счётчик и полоса; справа «Играть» → «Отменить» → «Остановить».</li></ul>
+      <h3>Страницы</h3><ul><li><b>Главная</b>: баннер выбранной сборки с «Играть», «Продолжить» (последний сервер, живой онлайн), новости, друзья в сети.</li><li><b>Страница сборки</b>: шапка с рендером, «Выбрать для запуска», «Играть», четыре факта, вкладки Моды / Миры / Настройки сборки. Пустые миры объясняют, как добавить мир.</li><li><b>Серверы, Друзья, Гардероб, Настройки</b>: списки и формы в карточках-группах, как в системных настройках.</li></ul>
+      <h3>Движение</h3><ul><li><b>Индикаторы</b> раздела, сборки, вкладок и сегментов плавают к выбранному пункту пружиной (420 мс).</li><li><b>Смена страницы</b>: старая уходит через View Transitions, блоки новой поднимаются по очереди с шагом 60 мс.</li><li><b>Пара сборок</b> перетекает пружиной (640 мс), содержимое раскрытой выходит по очереди, крупная цифра въезжает и слегка следует за курсором.</li><li><b>Панель запуска</b>: блик бежит по полосе загрузки, при старте игры по верхнему краю проходит зелёная линия, кнопка меняется с лёгким «пружинным» нажатием.</li><li><b>Карточки</b> приподнимаются на 2 px, кнопки при нажатии сжимаются до 97%, переключатели и всплывающие окна — пружиной.</li><li>При «Уменьшить движение» всё мгновенно и блик выключен.</li></ul><h3>Фирменные детали</h3><ul><li><b>Пара сборок</b> на главной: выбранная раскрыта, вторая стоит колонкой. Логотип — те же две полоски.</li><li><b>Готовность к запуску</b> в раскрытой сборке: «Всё скачано» или «При запуске обновятся 2 мода, 34 МБ».</li><li><b>Командная строка</b> (Ctrl K): поиск по сборкам, серверам, друзьям, модам и действиям; стрелки и Enter.</li><li><b>Метка версии у друга</b>; «Зайти» сам переключает сборку.</li><li><b>Живая сессия</b>: в панели запуска видно, кто из друзей на том же сервере.</li></ul><h3>Визуальные правила</h3><ul><li>Никакой игровой графики в оформлении: у сборки обложка из её цвета и номера версии, набранного крупно; у серверов, друзей и модов — монограммы (в приложении у модов и серверов будут их настоящие иконки). Скин показывается только в гардеробе, потому что это и есть функция.</li><li>Светлая и тёмная тема по системе.</li><li>Боковая панель и панель запуска — системные материалы (Apple Materials). При «Уменьшить прозрачность» они сплошные.</li><li>Цвета — системные Apple: systemBlue только на главных действиях, systemGreen у переключателей и «в игре», systemRed у «Остановить». Выбор — заливкой.</li><li>Onest во всём интерфейсе. Скругления: 8 у кнопок, 12 у крупных кнопок и строк, 16 у карточек и баннеров.</li><li>Движение только в ответ на действие; при «Уменьшить движение» всё мгновенно.</li></ul></div>`;
+    $("#spec").hidden = false; $("#specX").focus();
+  });
+  $("#spec").addEventListener("click", e => { if (e.target.id === "spec" || e.target.id === "specX") $("#spec").hidden = true; });
+
+  /* Старт */
+    S.mem = ST.mem; S.after = ST.after; applyLook(); $("#meName").textContent = WD.nick;
+  addEventListener("hashchange", () => go(location.hash.slice(1) || "home"));
+  go(location.hash.slice(1) || "home", false);
+})();
+</script>
