@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, unmount } from 'svelte';
 import Sheet from './lib/components/Sheet.svelte';
-import Sidebar from './lib/components/Sidebar.svelte';
 import OnboardingModal from './lib/components/OnboardingModal.svelte';
 import WorkshopScreen from './lib/screens/WorkshopScreen.svelte';
 import ServersScreen from './lib/screens/ServersScreen.svelte';
@@ -108,33 +107,6 @@ describe('Apple HIG Fixes Verification', () => {
     expect(shadersDesc).not.toBeNull();
     expect(shadersDesc?.textContent).not.toContain('{version}');
     expect(shadersDesc?.textContent).toContain('1.21.1');
-
-    unmount(comp);
-  });
-
-  it('4. Sidebar renders active navigation icon with Apple systemBlue, not cyan', () => {
-    const items = [
-      { id: 'play', label: 'Главная', icon: 'play' as const },
-      { id: 'servers', label: 'Серверы', icon: 'server' as const },
-    ];
-
-    const comp = mount(Sidebar, {
-      target,
-      props: {
-        items,
-        activeId: 'play',
-      },
-    });
-
-    const activeItem = target.querySelector('.nav-item.active');
-    expect(activeItem).not.toBeNull();
-
-    const iconSvg = activeItem?.querySelector('svg');
-    expect(iconSvg).not.toBeNull();
-    // System color should be system-blue, not system-cyan
-    const stroke = iconSvg?.getAttribute('stroke') || '';
-    expect(stroke).toContain('var(--color-system-blue)');
-    expect(stroke).not.toContain('var(--color-system-cyan)');
 
     unmount(comp);
   });

@@ -2,9 +2,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
 import PlayScreen from './PlayScreen.svelte';
 import UpdateCard from '../components/UpdateCard.svelte';
-import Mockup1 from './mockups/Mockup1.svelte';
-import Mockup2 from './mockups/Mockup2.svelte';
-import Mockup3 from './mockups/Mockup3.svelte';
 import ServersScreen from './ServersScreen.svelte';
 import LobbyScreen from './LobbyScreen.svelte';
 import FriendsScreen from './FriendsScreen.svelte';
@@ -357,42 +354,6 @@ describe('Wex Launcher Screens', () => {
 
     // Shows session status
     expect(target.textContent).toContain('В игре');
-
-    unmount(comp);
-  });
-
-  it('renders Mockup 2 (Editorial) with showcase banner, changelog, and servers', () => {
-    const comp = mount(Mockup2, {
-      target,
-      props: {
-        selectedVersion: '1.21.1',
-        playerName: 'Alex',
-      },
-    });
-
-    expect(target.textContent).toContain('Wex 1.21.1');
-    expect(target.textContent).toContain('Новое в сборке');
-    expect(target.textContent).toContain('Журнал изменений');
-    expect(target.textContent).toContain('Быстрый вход');
-    expect(target.querySelector('.strip-right button')?.textContent).toContain('Играть');
-
-    unmount(comp);
-  });
-
-  it('renders Mockup 3 (Minimalist) with player capsule and quiet feed', () => {
-    const comp = mount(Mockup3, {
-      target,
-      props: {
-        selectedVersion: '1.20.1',
-        playerName: 'Steve',
-      },
-    });
-
-    expect(target.textContent).toContain('Minecraft');
-    expect(target.textContent).toContain('Клиент Wex • Fabric');
-    expect(target.textContent).toContain('Последние изменения');
-    expect(target.textContent).toContain('Java 17 • 64-bit');
-    expect(target.querySelector('.launch-btn-wrap button')?.textContent).toContain('Играть');
 
     unmount(comp);
   });

@@ -35,24 +35,6 @@ export interface GuardViolation {
  * Explicit allowlist of permissible exceptions with required architectural reasons.
  */
 export const ALLOWED_EXCEPTIONS: GuardException[] = [
-  // 1. Design Mockups & Component Showcase
-  {
-    file: 'lib/screens/mockups/Mockup1.svelte',
-    reason: 'Initial design prototype mockup for visual QA and HIG comparison, not part of production launcher navigation',
-  },
-  {
-    file: 'lib/screens/mockups/Mockup2.svelte',
-    reason: 'Initial design prototype mockup for visual QA and HIG comparison, not part of production launcher navigation',
-  },
-  {
-    file: 'lib/screens/mockups/Mockup3.svelte',
-    reason: 'Initial design prototype mockup for visual QA and HIG comparison, not part of production launcher navigation',
-  },
-  {
-    file: 'lib/screens/ShowcaseScreen.svelte',
-    reason: 'Component showcase gallery for manual visual QA of Apple HIG tokens and states, excluded from user navigation',
-  },
-
   // 2. Universal Proper Names and Brand Terms (invariant across all languages)
   {
     file: '*',

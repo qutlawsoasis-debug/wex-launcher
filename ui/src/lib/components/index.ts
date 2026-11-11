@@ -4,8 +4,6 @@ export { default as Slider } from './Slider.svelte';
 export { default as SegmentedControl } from './SegmentedControl.svelte';
 export { default as List } from './List.svelte';
 export { default as Row } from './Row.svelte';
-export { default as Sidebar } from './Sidebar.svelte';
-export { default as Toolbar } from './Toolbar.svelte';
 export { default as SearchField } from './SearchField.svelte';
 export { default as Sheet } from './Sheet.svelte';
 export { default as Popover } from './Popover.svelte';

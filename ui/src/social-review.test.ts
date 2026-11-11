@@ -32,7 +32,8 @@ beforeEach(() => {
     if (cmd === 'social_sync') return { friends: [], incoming_requests: [], incoming_invites: [] };
     if (cmd === 'shell_get_profile') return { nickname: 'Alice', is_online: true };
     if (cmd === 'shell_check_network') return { is_online: true };
-    if (cmd === 'get_launcher_settings') return {};
+    if (cmd === 'get_launcher_settings') return { player_name: 'Alice', selected_version: '1.21.1' };
+    if (cmd === 'get_installed_versions') return [{ id: '1.21.1', name: '1.21.1', is_installed: true, required_java: 21 }, { id: '1.20.1', name: '1.20.1', is_installed: true, required_java: 17 }];
     if (cmd === 'is_game_running') return false;
     if (cmd === 'join_lobby_room') return room;
     if (cmd === 'social_send_friend_request') {
