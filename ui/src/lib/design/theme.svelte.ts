@@ -1,53 +1,70 @@
 /**
- * Svelte 5 Reactive Theme & Design System State.
- * Controls Appearance (Dark/Light/Auto), Accent color, Reduce Motion, and Reduce Transparency.
+ * Svelte 5 reactive theme state.
+ *
+ * appearance: 'auto' follows Windows (HIG › Dark Mode), 'light'/'dark' force one
+ *   (aura-knowledge: Своя настройка темы, confirmed by the owner).
+ * reduceMotion / reduceTransparency: the app's own switches, saved in the config.
+ *   The system settings are tracked separately and always win (HIG › Accessibility,
+ *   Motion: "Make motion optional").
+ *
+ * DOM contract read by wex.css and tokens.css:
+ *   data-theme="light|dark"            resolved theme
+ *   data-reduce-motion="true|false"    system OR app OR effects off
+ *   data-reduce-transparency="true|false"
  */
 
 import { type AppearanceMode, type AccentColor, AccentPresets } from './colors';
 import { motionState, type EffectsMode } from '../motion';
 
 class ThemeManager {
-  appearance = $state<AppearanceMode>('dark');
+  appearance = $state<AppearanceMode>('auto');
   accent = $state<AccentColor>('blue');
+  /** The app's Animations switch turned off (saved as reduce_motion). */
   reduceMotion = $state<boolean>(false);
+  /** The app's Reduce Transparency switch (saved as reduce_transparency). */
   reduceTransparency = $state<boolean>(false);
   effectsMode = $state<EffectsMode>('full');
   systemIsDark = $state<boolean>(true);
+  systemReduceMotion = $state<boolean>(false);
+  systemReduceTransparency = $state<boolean>(false);
 
   constructor() {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('wex_theme');
-        if (saved === 'dark' || saved === 'light' || saved === 'auto') {
-          this.appearance = saved;
-        }
-      } catch {}
-
-      if (typeof window.matchMedia === 'function') {
-        const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
-        this.systemIsDark = darkQuery.matches;
-        darkQuery.addEventListener('change', (e) => {
-          this.systemIsDark = e.matches;
-          this.applyDom();
-        });
-
-        const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-        this.reduceMotion = motionQuery.matches;
-        motionQuery.addEventListener('change', (e) => {
-          this.reduceMotion = e.matches;
-          this.applyDom();
-        });
+    if (typeof window === 'undefined') return;
+    try {
+      const saved = localStorage.getItem('wex_theme');
+      if (saved === 'dark' || saved === 'light' || saved === 'auto') {
+        this.appearance = saved;
       }
+    } catch {}
 
-      this.applyDom();
+    if (typeof window.matchMedia === 'function') {
+      const watch = (query: string, set: (v: boolean) => void) => {
+        const mq = window.matchMedia(query);
+        set(mq.matches);
+        mq.addEventListener?.('change', (e) => {
+          set(e.matches);
+          this.applyDom();
+        });
+      };
+      watch('(prefers-color-scheme: dark)', (v) => (this.systemIsDark = v));
+      watch('(prefers-reduced-motion: reduce)', (v) => (this.systemReduceMotion = v));
+      watch('(prefers-reduced-transparency: reduce)', (v) => (this.systemReduceTransparency = v));
     }
+    this.applyDom();
   }
 
   get isDark(): boolean {
-    if (this.appearance === 'auto') {
-      return this.systemIsDark;
-    }
-    return this.appearance === 'dark';
+    return this.appearance === 'auto' ? this.systemIsDark : this.appearance === 'dark';
+  }
+
+  /** Motion is reduced by the system, by the app's switch, or by effects off. */
+  get motionReduced(): boolean {
+    return this.systemReduceMotion || this.reduceMotion || this.effectsMode === 'off';
+  }
+
+  /** Materials are solid: system setting or the app's switch. */
+  get transparencyReduced(): boolean {
+    return this.systemReduceTransparency || this.reduceTransparency;
   }
 
   get currentAccentHex(): string {
@@ -62,11 +79,9 @@ class ThemeManager {
 
   setAppearance(mode: AppearanceMode) {
     this.appearance = mode;
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('wex_theme', mode);
-      } catch {}
-    }
+    try {
+      localStorage.setItem('wex_theme', mode);
+    } catch {}
     this.applyDom();
   }
 
@@ -77,7 +92,6 @@ class ThemeManager {
 
   setReduceMotion(enabled: boolean) {
     this.reduceMotion = enabled;
-    motionState.systemReduceMotion = enabled;
     this.applyDom();
   }
 
@@ -98,10 +112,9 @@ class ThemeManager {
     root.setAttribute('data-theme', this.isDark ? 'dark' : 'light');
     root.setAttribute('data-accent', this.accent);
     root.setAttribute('data-effects', this.effectsMode);
-    root.setAttribute('data-reduce-motion', String(this.reduceMotion || this.effectsMode === 'off'));
-    root.setAttribute('data-reduce-transparency', String(this.reduceTransparency));
-
-    // Update dynamic accent CSS variable
+    root.setAttribute('data-reduce-motion', String(this.motionReduced));
+    root.setAttribute('data-reduce-transparency', String(this.transparencyReduced));
+    motionState.systemReduceMotion = this.motionReduced;
     root.style.setProperty('--color-accent', this.currentAccentHex);
     root.style.setProperty('--color-on-accent', this.currentOnAccentHex);
   }

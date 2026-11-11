@@ -95,7 +95,7 @@
   {:else}
     <div
       class="apple-skeleton {variant} {className}"
-      class:reduce-motion={theme.reduceMotion}
+      class:reduce-motion={theme.motionReduced}
       role="progressbar"
       aria-label={t('common.loading')}
       style:width={computedWidth}

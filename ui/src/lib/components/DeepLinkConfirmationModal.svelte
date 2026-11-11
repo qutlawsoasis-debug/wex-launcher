@@ -104,7 +104,7 @@
 {#if open && action}
   <div
     class="deeplink-scrim"
-    class:reduce-motion={theme.reduceMotion}
+    class:reduce-motion={theme.motionReduced}
     role="presentation"
     onclick={(e) => {
       if (e.target === e.currentTarget) handleCancel();
@@ -113,7 +113,7 @@
   >
     <div
       class="deeplink-dialog"
-      class:reduce-motion={theme.reduceMotion}
+      class:reduce-motion={theme.motionReduced}
       role="dialog"
       aria-modal="true"
       aria-labelledby="deeplink-title"

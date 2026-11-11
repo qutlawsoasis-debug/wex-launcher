@@ -4,7 +4,7 @@
 
 :root {
   /* Fonts */
-  --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF Pro", "Onest", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-system: "Onest Variable", "Onest", -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF Pro", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", Consolas, monospace;
 
   /* Typography scale */

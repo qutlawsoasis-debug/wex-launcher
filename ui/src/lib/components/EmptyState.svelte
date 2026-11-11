@@ -41,7 +41,7 @@
 <div
   class="apple-empty-state"
   class:compact
-  class:reduce-motion={theme.reduceMotion}
+  class:reduce-motion={theme.motionReduced}
   role="region"
   aria-label={title}
   data-testid="empty-state"

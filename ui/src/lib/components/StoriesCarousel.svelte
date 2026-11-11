@@ -121,7 +121,7 @@
     const increment = TICK_STEP_MS / intervalMs;
 
     timerInterval = setInterval(() => {
-      if (isPaused || theme.reduceMotion) return;
+      if (isPaused || theme.motionReduced) return;
 
       progress += increment;
       if (progress >= 1) {
@@ -191,7 +191,7 @@
     isDragging = false;
     isPaused = false;
 
-    if (theme.reduceMotion) {
+    if (theme.motionReduced) {
       if (dragOffset < -40 || pointerVelocity < -0.3) {
         nextSlide();
       } else if (dragOffset > 40 || pointerVelocity > 0.3) {
@@ -313,7 +313,7 @@
             <div class="indicator-track">
               <div
                 class="indicator-fill"
-                style="width: {theme.reduceMotion ? (isActive || idx < activeIndex ? '100%' : '0%') : `${effectiveProgress * 100}%`}; transition: {theme.reduceMotion || isPaused || isDragging ? 'none' : 'width 0.05s linear'};"
+                style="width: {theme.motionReduced ? (isActive || idx < activeIndex ? '100%' : '0%') : `${effectiveProgress * 100}%`}; transition: {theme.motionReduced || isPaused || isDragging ? 'none' : 'width 0.05s linear'};"
               ></div>
             </div>
           </button>
@@ -326,7 +326,7 @@
       class="slide-viewport"
       class:springing={isSpringing}
       class:dragging={isDragging}
-      style="transform: {theme.reduceMotion ? 'none' : `translateX(${dragOffset}px)`};"
+      style="transform: {theme.motionReduced ? 'none' : `translateX(${dragOffset}px)`};"
     >
       <!-- SLIDE: NEWS / CHANGELOG -->
       {#if currentSlide.type === 'news'}

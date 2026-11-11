@@ -69,7 +69,7 @@
     const dt = Math.min(timestamp - lastTimestamp, 64);
     lastTimestamp = timestamp;
 
-    if (theme.reduceMotion) {
+    if (theme.motionReduced) {
       angularVelocity = 0;
       isCoasting = false;
       animFrameId = null;
@@ -664,7 +664,7 @@
         <div
           class="vinyl-platter"
           class:spinning={isPlaying || isCoasting}
-          style={theme.reduceMotion ? '' : `transform: rotate(${vinylAngle.toFixed(2)}deg);`}
+          style={theme.motionReduced ? '' : `transform: rotate(${vinylAngle.toFixed(2)}deg);`}
           aria-hidden="true"
         >
           <div class="vinyl-disc">
