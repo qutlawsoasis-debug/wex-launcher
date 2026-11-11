@@ -3,6 +3,9 @@ import { mount, unmount, tick } from 'svelte';
 import MusicDiskWidget from './MusicDiskWidget.svelte';
 import SettingsScreen from '../screens/SettingsScreen.svelte';
 
+// Vitest 4: a dynamic import of a mocked module that races another in-flight import
+// of it can resolve to the real module, so each test waits for the imports started
+// in onMount (vi.dynamicImportSettled) before driving the widget.
 vi.mock('@tauri-apps/api/core', () => {
   return {
     invoke: vi.fn(async (cmd: string, args?: Record<string, any>) => {
@@ -106,6 +109,7 @@ describe('MusicDiskWidget and Background Music', () => {
     });
 
     await tick();
+    await vi.dynamicImportSettled();
 
     expect(target.textContent).toContain('Нет музыки');
     expect(target.textContent).toContain('Папка Wex/music пуста');
@@ -127,6 +131,7 @@ describe('MusicDiskWidget and Background Music', () => {
     });
 
     await tick();
+    await vi.dynamicImportSettled();
 
     expect(target.textContent).toContain('Музыка отключена');
     unmount(comp);
@@ -161,6 +166,7 @@ describe('MusicDiskWidget and Background Music', () => {
     });
 
     await tick();
+    await vi.dynamicImportSettled();
 
     expect(target.textContent).toContain('Subwoofer Lullaby');
     expect(target.textContent).toContain('C418');
@@ -210,6 +216,7 @@ describe('MusicDiskWidget and Background Music', () => {
     });
 
     await tick();
+    await vi.dynamicImportSettled();
     expect(target.textContent).toContain('Track A');
 
     // Click next track
@@ -262,6 +269,7 @@ describe('MusicDiskWidget and Background Music', () => {
     });
 
     await tick();
+    await vi.dynamicImportSettled();
 
     // Verify SMTC metadata registered
     expect(mockMediaSession.metadata).not.toBeNull();
@@ -308,6 +316,7 @@ describe('MusicDiskWidget and Background Music', () => {
     });
 
     await tick();
+    await vi.dynamicImportSettled();
     expect(target.textContent).toContain('Track One');
 
     // Test SMTC nexttrack action
@@ -321,6 +330,7 @@ describe('MusicDiskWidget and Background Music', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'MediaTrackPrevious' }));
     await tick();
     expect(target.textContent).toContain('Track One');
+    await vi.dynamicImportSettled();
 
     // Test hardware keyboard media key: MediaPlayPause
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'MediaPlayPause' }));
@@ -361,6 +371,7 @@ describe('MusicDiskWidget and Background Music', () => {
     });
 
     await tick();
+    await vi.dynamicImportSettled();
 
     // Start playing
     await comp.play();
@@ -421,6 +432,7 @@ describe('MusicDiskWidget and Background Music', () => {
     });
 
     await tick();
+    await vi.dynamicImportSettled();
 
     const audio = target.querySelector('audio') as HTMLAudioElement;
     if (audio) {
@@ -462,6 +474,7 @@ describe('MusicDiskWidget and Background Music', () => {
     });
 
     await tick();
+    await vi.dynamicImportSettled();
 
     const vinyl = target.querySelector('.vinyl-disc') as HTMLElement;
     expect(vinyl).not.toBeNull();

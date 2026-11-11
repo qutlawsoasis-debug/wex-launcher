@@ -17,7 +17,7 @@ url = "2.5"
 regex = "1.10"
 tracing = "0.1"
 futures-util = "0.3"
-hickory-resolver = { version = "0.24", features = ["tokio-runtime"] }
+hickory-resolver = { version = "0.26.3", features = ["tokio"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

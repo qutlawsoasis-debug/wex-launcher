@@ -243,7 +243,10 @@ pub fn extract_installer_archive_if_needed(
             let mut file = archive
                 .by_index(i)
                 .map_err(|e| format!("Ошибка чтения файла из архива: {}", e))?;
-            let outpath = extract_dir.join(file.mangled_name());
+            let entry_path = file
+                .mangled_name()
+                .map_err(|e| format!("Некорректное имя файла в архиве обновления: {}", e))?;
+            let outpath = extract_dir.join(entry_path);
 
             if file.is_dir() {
                 std::fs::create_dir_all(&outpath).map_err(|e| e.to_string())?;

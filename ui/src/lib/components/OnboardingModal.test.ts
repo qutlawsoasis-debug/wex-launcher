@@ -4,6 +4,9 @@ import OnboardingModal from './OnboardingModal.svelte';
 
 const persist = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => persist(...args) }));
+// Vitest 4: a dynamic import of a mocked module that races another in-flight import
+// of it can resolve to the real module. Tests that call finishOnboarding() first wait
+// for the imports started in onMount with vi.dynamicImportSettled().
 
 describe('OnboardingModal Component (Apple HIG Onboarding)', () => {
   let target: HTMLElement;
@@ -206,6 +209,7 @@ describe('OnboardingModal Component (Apple HIG Onboarding)', () => {
     });
 
     await tick();
+    await vi.dynamicImportSettled();
 
     expect(target.textContent).toContain('Всё готово к игре');
     const launchBtn = Array.from(target.querySelectorAll('.footer-actions button')).find(
@@ -254,6 +258,7 @@ describe('OnboardingModal Component (Apple HIG Onboarding)', () => {
     persist.mockImplementation((cmd) => cmd === 'onboarding_complete' ? new Promise<void>(r => { release = r; }) : Promise.resolve(null));
     comp = mount(OnboardingModal, { target, props: { open: true, initialStep: 'ready', oncomplete: complete } });
     await tick();
+    await vi.dynamicImportSettled();
     const finishing = comp.finishOnboarding(true);
     expect(complete).not.toHaveBeenCalled();
     await vi.waitFor(() => expect(persist).toHaveBeenCalledWith('onboarding_complete', expect.anything()));
@@ -268,6 +273,7 @@ describe('OnboardingModal Component (Apple HIG Onboarding)', () => {
     persist.mockImplementation((cmd) => cmd === 'onboarding_complete' ? Promise.reject(new Error('Диск недоступен')) : Promise.resolve(null));
     comp = mount(OnboardingModal, { target, props: { open: true, initialStep: 'ready', oncomplete: complete } });
     await tick();
+    await vi.dynamicImportSettled();
     await comp.finishOnboarding(true); await tick();
     expect(complete).not.toHaveBeenCalled();
     expect(localStorage.getItem('wex_onboarding_completed')).toBeNull();

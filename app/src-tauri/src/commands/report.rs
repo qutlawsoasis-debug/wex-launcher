@@ -1080,6 +1080,7 @@ mod tests {
 
         for i in 0..archive.len() {
             let mut file = archive.by_index(i).unwrap();
+            let name = file.name().unwrap().to_string();
             let mut content = String::new();
             file.read_to_string(&mut content).unwrap();
 
@@ -1087,32 +1088,32 @@ mod tests {
             assert!(
                 !content.contains("aq08"),
                 "Leaked Windows username in {}",
-                file.name()
+                name
             );
             assert!(
                 !content.contains("192.168.1.100"),
                 "Leaked friend IP in {}",
-                file.name()
+                name
             );
             assert!(
                 !content.contains("147.185.221.16"),
                 "Leaked external IP in {}",
-                file.name()
+                name
             );
             assert!(
                 !content.contains("SuperSecretUserToken"),
                 "Leaked user token in {}",
-                file.name()
+                name
             );
             assert!(
                 !content.contains("secret_api_key_42"),
                 "Leaked secret key in {}",
-                file.name()
+                name
             );
             assert!(
                 !content.contains("SecretGamerNick"),
                 "Leaked player nickname in {}",
-                file.name()
+                name
             );
         }
     }

@@ -379,7 +379,7 @@ fn extract_native_dlls(jar_path: &Path, dest_dir: &Path) -> Result<()> {
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        let name = file.name().to_string();
+        let name = file.name()?.to_string();
 
         if (name.ends_with(".dll") || name.ends_with(".so") || name.ends_with(".dylib"))
             && !name.starts_with("META-INF/")
