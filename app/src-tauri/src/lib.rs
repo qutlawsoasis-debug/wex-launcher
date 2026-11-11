@@ -1,12 +1,14 @@
 pub mod commands;
 pub mod ipc;
+mod navigation;
 
-use std::path::PathBuf;
+pub use commands::servers::*;
+
 use std::sync::Mutex;
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager};
 
 use commands::launch::PlayState;
-use ipc::{LobbyRoomModel, ServerEntryModel, ServerPingResult};
+use ipc::{LobbyRoomModel, ServerEntryModel};
 use wex_core::config::WexPaths;
 
 pub struct AppState {
@@ -17,162 +19,36 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            servers: Mutex::new(vec![
-                ServerEntryModel {
-                    id: "aura-main".to_string(),
-                    name: "Aura Official — Survival & PvP".to_string(),
-                    address: "mc.auramc.net".to_string(),
-                    icon: None,
-                    ping_ms: None,
-                    online: None,
-                    max_players: None,
-                    motd: Some("Официальный сервер Aura Client • 1.20.1 & 1.21.1".to_string()),
-                    version: Some("1.21.1 / 1.20.1".to_string()),
-                },
-                ServerEntryModel {
-                    id: "aura-modded".to_string(),
-                    name: "Aura Pack Community Server".to_string(),
-                    address: "pack.auramc.net".to_string(),
-                    icon: None,
-                    ping_ms: None,
-                    online: None,
-                    max_players: None,
-                    motd: Some("Сервер сообщества Aura-Pack".to_string()),
-                    version: Some("1.21.1".to_string()),
-                },
-            ]),
+            servers: Mutex::new(Vec::new()),
             active_lobby: Mutex::new(None),
         }
     }
 }
 
-// ---------------------------------------------------------------------------
-// Servers Management (powered by core/wex-net)
-// ---------------------------------------------------------------------------
-
-#[tauri::command]
-fn list_servers(state: State<'_, AppState>) -> Result<Vec<ServerEntryModel>, String> {
-    state
-        .servers
-        .lock()
-        .map(|s| s.clone())
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn ping_server(address: String) -> Result<ServerPingResult, String> {
-    let pinger = wex_net::ServerPinger::new(2500, 2500, 763);
-    match pinger.ping(&address).await {
-        Ok(res) => Ok(ServerPingResult {
-            latency_ms: res.latency_ms,
-            online: res.players.online,
-            max_players: res.players.max,
-            motd: res.description,
-            version: res.version.name,
-            favicon: res.favicon,
-        }),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-#[tauri::command]
-async fn add_server(
-    name: String,
-    address: String,
-    state: State<'_, AppState>,
-) -> Result<ServerEntryModel, String> {
-    let new_server = ServerEntryModel {
-        id: format!(
-            "server-{}",
-            std::time::SystemTime::now()
-                .elapsed()
-                .unwrap_or_default()
-                .as_millis()
-        ),
-        name: name.clone(),
-        address: address.clone(),
-        icon: None,
-        ping_ms: None,
-        online: None,
-        max_players: None,
-        motd: None,
-        version: None,
-    };
-
-    let mut list = state.servers.lock().map_err(|e| e.to_string())?;
-    list.push(new_server.clone());
-
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        let servers_dat_path = PathBuf::from(appdata).join("Wex").join("servers.dat");
-        if let Some(parent) = servers_dat_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let pack_servers: Vec<wex_net::PackServerEntry> = list
-            .iter()
-            .map(|s| wex_net::PackServerEntry {
-                id: Some(s.id.clone()),
-                name: s.name.clone(),
-                ip: s.address.clone(),
-                icon: s.icon.clone(),
-            })
-            .collect();
-
-        let mut root = wex_net::load_servers_dat(&servers_dat_path).unwrap_or_else(|_| {
-            wex_net::NbtTag::Compound(vec![(
-                "servers".to_string(),
-                wex_net::NbtTag::List {
-                    tag_id: 10,
-                    elements: Vec::new(),
-                },
-            )])
-        });
-        wex_net::merge_pack_servers(&mut root, &pack_servers);
-        let _ = wex_net::save_servers_dat(&servers_dat_path, &root);
-    }
-
-    Ok(new_server)
-}
-
-#[tauri::command]
-fn remove_server(address: String, state: State<'_, AppState>) -> Result<(), String> {
-    let mut list = state.servers.lock().map_err(|e| e.to_string())?;
-    list.retain(|s| s.address != address);
-
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        let servers_dat_path = PathBuf::from(appdata).join("Wex").join("servers.dat");
-        let mut root = wex_net::load_servers_dat(&servers_dat_path).unwrap_or_else(|_| {
-            wex_net::NbtTag::Compound(vec![(
-                "servers".to_string(),
-                wex_net::NbtTag::List {
-                    tag_id: 10,
-                    elements: Vec::new(),
-                },
-            )])
-        });
-        if let Some(wex_net::NbtTag::List { elements, .. }) = root.get_mut("servers") {
-            elements.retain(|elem| {
-                if let wex_net::NbtTag::Compound(fields) = elem {
-                    !fields.iter().any(|(k, v)| {
-                        k == "ip"
-                            && matches!(v, wex_net::NbtTag::String(ip_str) if ip_str == &address)
-                    })
-                } else {
-                    true
-                }
-            });
-        }
-        let _ = wex_net::save_servers_dat(&servers_dat_path, &root);
-    }
-
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Tauri Application Runner
-// ---------------------------------------------------------------------------
-
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("navigation-guard")
+                .on_navigation(|_, url| navigation::allowed(url))
+                .build(),
+        )
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            commands::tray::restore_window(app);
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+                for arg in argv {
+                    if arg.starts_with("wex://") || arg.starts_with("aura://") {
+                        let _ = w.emit("deep-link://url", vec![arg]);
+                        break;
+                    }
+                }
+            }
+        }))
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();
@@ -180,8 +56,10 @@ pub fn run() {
             network_state.start_supervisor(app.handle().clone());
             let play_state =
                 PlayState::new_real(paths.clone(), app.handle().clone(), network_state.clone());
+            let startup_state = commands::startup::StartupState::new(paths.clone());
             app.manage(play_state);
             app.manage(network_state);
+            app.manage(startup_state);
             app.manage(commands::friends::FriendsState::new(paths.clone()));
             app.manage(AppState::default());
             let lobby_state = commands::lobby::LobbyState::new(
@@ -190,9 +68,60 @@ pub fn run() {
                 commands::lobby::DEFAULT_OLD_BACKEND_URL,
             );
             app.manage(lobby_state);
+            app.manage(commands::tray::TrayState::default());
+            let _ = commands::tray::setup_tray(app);
+            app.manage(commands::deeplink::DeepLinkState::new());
+
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let _ = app.deep_link().register_all();
+
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        let url_str = url.as_str();
+                        if let Some(state) = handle.try_state::<commands::deeplink::DeepLinkState>()
+                        {
+                            let _ = commands::deeplink::handle_incoming_deep_link(
+                                handle.clone(),
+                                url_str.to_string(),
+                                state,
+                            );
+                        }
+                    }
+                });
+
+                if let Ok(Some(urls)) = app.deep_link().get_current() {
+                    for url in urls {
+                        let url_str = url.as_str();
+                        if let Some(state) = app.try_state::<commands::deeplink::DeepLinkState>() {
+                            let _ = commands::deeplink::handle_incoming_deep_link(
+                                app.handle().clone(),
+                                url_str.to_string(),
+                                state,
+                            );
+                        }
+                    }
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Startup commands (SPEC 1.1)
+            commands::startup::startup_get_info,
+            commands::startup::startup_verify_directories,
+            // Tray & Window behavior commands
+            commands::tray::tray_apply_launch_behavior,
+            commands::tray::tray_restore_window,
+            commands::tray::tray_get_window_behavior,
+            // Deep link commands (commands/deeplink.rs)
+            commands::deeplink::parse_deep_link_uri,
+            commands::deeplink::get_pending_deep_link,
+            commands::deeplink::clear_pending_deep_link,
+            commands::deeplink::handle_incoming_deep_link,
+            commands::deeplink::register_deep_link_schemes,
             // Network & Connectivity commands
             commands::network::get_network_status,
             // Standard wex-ipc commands
@@ -203,6 +132,9 @@ pub fn run() {
             commands::launch::cancel_launch,
             commands::launch::is_game_running,
             commands::launch::kill_game,
+            commands::launch::get_playtime_summary,
+            commands::launch::playtime_get_summary,
+            commands::launch::get_prewarm_status,
             // UI compatibility aliases
             commands::launch::launch_game,
             commands::launch::set_config,
@@ -216,6 +148,15 @@ pub fn run() {
             commands::settings::get_launcher_config,
             commands::settings::save_launcher_config,
             commands::settings::open_data_dir,
+            commands::settings::verify_instance_files,
+            commands::settings::settings_verify_files,
+            commands::settings::cleanup_cache,
+            commands::settings::settings_cleanup_cache,
+            commands::settings::get_discord_rpc_preview,
+            // Storage commands (commands/storage.rs)
+            commands::storage::get_storage_cache_info,
+            commands::storage::clear_storage_cache,
+            commands::storage::verify_game_files,
             // Mods commands (commands/mods.rs)
             commands::mods::list_mods,
             commands::mods::toggle_mod,
@@ -227,14 +168,29 @@ pub fn run() {
             commands::overview::overview_get_news,
             commands::overview::social_check_launcher_update,
             commands::overview::overview_check_update,
+            commands::updater::updater_check,
+            commands::updater::updater_install,
+            commands::updater::updater_restart,
+            commands::updater::updater_open_download_url,
             commands::overview::extras_detect_old_launcher,
             commands::overview::extras_import_old_launcher,
             commands::overview::extras_apply_import,
-            // Servers commands
-            list_servers,
-            ping_server,
-            add_server,
-            remove_server,
+            commands::overview::overview_get_playtime,
+            commands::overview::overview_record_playtime,
+            // Servers commands (commands/servers.rs)
+            commands::servers::list_servers,
+            commands::servers::ping_server,
+            commands::servers::ping_server_details,
+            commands::servers::add_server,
+            commands::servers::edit_server,
+            commands::servers::remove_server,
+            commands::servers::import_servers_both_versions,
+            commands::servers::get_friend_hosted_servers,
+            commands::servers::net_load_servers,
+            commands::servers::net_save_servers,
+            commands::servers::net_merge_servers,
+            commands::servers::net_ping_server,
+            commands::servers::net_resolve_address,
             // Lobby commands (from commands::lobby)
             commands::lobby::net_lobby_create,
             commands::lobby::net_lobby_join,
@@ -252,14 +208,22 @@ pub fn run() {
             commands::lobby::net_tunnel_status,
             commands::lobby::create_lobby_room,
             commands::lobby::join_lobby_room,
+            commands::lobby::prepare_lobby_join,
             commands::lobby::get_lobby_status,
             commands::lobby::close_lobby_room,
             commands::lobby::kick_lobby_player,
             commands::lobby::list_open_rooms,
             commands::lobby::net_lan_list_discovered,
+            commands::lobby::net_lan_publish,
             commands::lobby::list_lan_worlds,
             commands::lobby::record_lan_world,
             commands::lobby::connect_lan_world,
+            commands::lobby::net_lan_start_discovery,
+            commands::lobby::net_lan_stop_discovery,
+            commands::lobby::net_lan_is_discovering,
+            commands::lobby::publish_lan_world,
+            commands::lobby::retry_lobby_tunnel,
+            commands::lobby::net_compare_manifests,
             // Wardrobe commands
             commands::wardrobe::extras_validate_skin,
             commands::wardrobe::extras_convert_skin,
@@ -267,8 +231,19 @@ pub fn run() {
             commands::wardrobe::extras_list_skin_history,
             commands::wardrobe::extras_generate_csl_config,
             commands::wardrobe::wardrobe_delete_history,
+            commands::wardrobe::wardrobe_get_skin,
             commands::wardrobe::wardrobe_get_state,
             commands::wardrobe::wardrobe_apply,
+            // Music commands
+            commands::music::music_get_playlist,
+            commands::music::music_get_track_data,
+            commands::music::music_open_folder,
+            commands::music::music_get_settings,
+            commands::music::music_set_settings,
+            commands::music::music_sync_smtc,
+            commands::music::music_get_smtc_state,
+            commands::music::music_update_session,
+            commands::music::music_check_command,
             // Friends & Social commands
             commands::friends::social_login,
             commands::friends::social_get_friends,
@@ -294,6 +269,8 @@ pub fn run() {
             commands::workshop::workshop_list_screenshots,
             commands::workshop::social_list_screenshots,
             commands::workshop::workshop_open_path,
+            commands::workshop::workshop_open_screenshots_folder,
+            commands::workshop::workshop_copy_screenshot_image,
             // Workshop packs and shaders commands (SPEC 1.7)
             commands::workshop_packs::workshop_list_resource_packs,
             commands::workshop_packs::workshop_toggle_resource_pack,
@@ -308,6 +285,10 @@ pub fn run() {
             commands::crash::crash_get_last_diagnosis,
             commands::crash::crash_open_log_file,
             commands::crash::crash_disable_mod,
+            // Logs commands (SPEC 2.10)
+            commands::logs::logs_list_files,
+            commands::logs::logs_read_file,
+            commands::logs::logs_open_folder,
             // Shell commands (SPEC 1.2)
             commands::shell::shell_check_network,
             commands::shell::shell_get_profile,
@@ -316,6 +297,23 @@ pub fn run() {
             commands::shell::shell_minimize_window,
             commands::shell::shell_toggle_maximize_window,
             commands::shell::shell_close_window,
+            // Report commands (SPEC 2.10)
+            commands::report::report_get_preview,
+            commands::report::report_save_zip,
+            commands::report::report_copy_text,
+            // Window & Tray commands (SPEC wex-window)
+            commands::window::window_get_state,
+            commands::window::window_save_state,
+            commands::window::window_restore_saved_state,
+            commands::window::window_get_minimize_to_tray,
+            commands::window::window_set_minimize_to_tray,
+            commands::window::window_on_game_launch,
+            commands::window::window_on_game_exit,
+            commands::window::window_raise_and_focus,
+            // Onboarding commands (SPEC 1.1 / Apple HIG Onboarding)
+            commands::onboarding::onboarding_get_specs,
+            commands::onboarding::onboarding_complete,
+            commands::onboarding::onboarding_prewarm_game,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

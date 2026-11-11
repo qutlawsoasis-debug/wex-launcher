@@ -10,6 +10,7 @@
 <script lang="ts">
   import Button from './Button.svelte';
   import Icon from './icons/Icon.svelte';
+  import { t } from '../i18n';
   import {
     formatError,
     type ErrorDomain,
@@ -61,7 +62,7 @@
 
   // Resolved actions
   let resolvedPrimaryLabel = $derived(
-    propActionText || formatted.primaryAction?.label || 'Повторить'
+    propActionText || formatted.primaryAction?.label || t('common.repeat')
   );
   let resolvedPrimaryType = $derived(
     propActionType || formatted.primaryAction?.type || 'retry'
@@ -136,7 +137,7 @@
         type="button"
         class="dismiss-btn"
         onclick={onclose}
-        aria-label="Закрыть уведомление"
+        aria-label={t('common.close_notification')}
       >
         <Icon name="close" size={14} color="var(--color-secondary-label)" />
       </button>
@@ -191,7 +192,7 @@
           <Icon name="chevron-right" size={12} color="var(--color-secondary-label)" />
         </div>
         <span class="disclosure-label">
-          {isDetailsOpen ? 'Скрыть подробности' : 'Подробнее'}
+          {isDetailsOpen ? t('error_state.hide_details') : t('common.details')}
         </span>
       </button>
 
@@ -203,14 +204,14 @@
               type="button"
               class="copy-btn"
               onclick={handleCopyTechnical}
-              title="Скопировать сведения об ошибке"
+              title={t('error_state.copy_title')}
             >
               <Icon
                 name={isCopied ? 'check' : 'copy'}
                 size={12}
                 color={isCopied ? 'var(--color-system-green, #30d158)' : 'var(--color-secondary-label)'}
               />
-              <span class="copy-label">{isCopied ? 'Скопировано' : 'Копировать'}</span>
+              <span class="copy-label">{isCopied ? t('common.copied') : t('common.copy')}</span>
             </button>
           </div>
 
@@ -233,7 +234,7 @@
     text-align: left;
     width: 100%;
     box-sizing: border-box;
-    animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: fadeIn var(--motion-duration-modal-enter) var(--motion-curve-spring-system);
   }
 
   .error-state-card.compact {
@@ -258,7 +259,7 @@
     align-items: center;
     justify-content: center;
     color: var(--color-secondary-label);
-    transition: background-color 0.15s ease;
+    transition: background-color var(--motion-duration-short) ease;
   }
 
   .dismiss-btn:hover {
@@ -345,7 +346,7 @@
     font-size: 12px;
     color: var(--color-secondary-label);
     font-family: inherit;
-    transition: color 0.15s ease;
+    transition: color var(--motion-duration-short) ease;
   }
 
   .disclosure-toggle-btn:hover {
@@ -356,7 +357,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform var(--motion-duration-modal-enter) var(--motion-curve-spring-system);
   }
 
   .disclosure-chevron.open {
@@ -400,7 +401,7 @@
     color: var(--color-secondary-label);
     font-size: 11px;
     font-family: inherit;
-    transition: background-color 0.15s ease, color 0.15s ease;
+    transition: background-color var(--motion-duration-short) ease, color var(--motion-duration-short) ease;
   }
 
   .copy-btn:hover {

@@ -4,29 +4,42 @@
  */
 
 import { type AppearanceMode, type AccentColor, AccentPresets } from './colors';
+import { motionState, type EffectsMode } from '../motion';
 
 class ThemeManager {
   appearance = $state<AppearanceMode>('dark');
   accent = $state<AccentColor>('blue');
   reduceMotion = $state<boolean>(false);
   reduceTransparency = $state<boolean>(false);
+  effectsMode = $state<EffectsMode>('full');
   systemIsDark = $state<boolean>(true);
 
   constructor() {
-    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-      const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      this.systemIsDark = darkQuery.matches;
-      darkQuery.addEventListener('change', (e) => {
-        this.systemIsDark = e.matches;
-        this.applyDom();
-      });
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('wex_theme');
+        if (saved === 'dark' || saved === 'light' || saved === 'auto') {
+          this.appearance = saved;
+        }
+      } catch {}
 
-      const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-      this.reduceMotion = motionQuery.matches;
-      motionQuery.addEventListener('change', (e) => {
-        this.reduceMotion = e.matches;
-        this.applyDom();
-      });
+      if (typeof window.matchMedia === 'function') {
+        const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        this.systemIsDark = darkQuery.matches;
+        darkQuery.addEventListener('change', (e) => {
+          this.systemIsDark = e.matches;
+          this.applyDom();
+        });
+
+        const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+        this.reduceMotion = motionQuery.matches;
+        motionQuery.addEventListener('change', (e) => {
+          this.reduceMotion = e.matches;
+          this.applyDom();
+        });
+      }
+
+      this.applyDom();
     }
   }
 
@@ -49,6 +62,11 @@ class ThemeManager {
 
   setAppearance(mode: AppearanceMode) {
     this.appearance = mode;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('wex_theme', mode);
+      } catch {}
+    }
     this.applyDom();
   }
 
@@ -59,6 +77,13 @@ class ThemeManager {
 
   setReduceMotion(enabled: boolean) {
     this.reduceMotion = enabled;
+    motionState.systemReduceMotion = enabled;
+    this.applyDom();
+  }
+
+  setEffectsMode(mode: EffectsMode) {
+    this.effectsMode = mode;
+    motionState.setMode(mode);
     this.applyDom();
   }
 
@@ -72,7 +97,8 @@ class ThemeManager {
     const root = document.documentElement;
     root.setAttribute('data-theme', this.isDark ? 'dark' : 'light');
     root.setAttribute('data-accent', this.accent);
-    root.setAttribute('data-reduce-motion', String(this.reduceMotion));
+    root.setAttribute('data-effects', this.effectsMode);
+    root.setAttribute('data-reduce-motion', String(this.reduceMotion || this.effectsMode === 'off'));
     root.setAttribute('data-reduce-transparency', String(this.reduceTransparency));
 
     // Update dynamic accent CSS variable

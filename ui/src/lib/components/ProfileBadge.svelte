@@ -9,16 +9,20 @@
   - Human Interface Guidelines: Toolbars & Windows
 -->
 <script lang="ts">
+  import { t, i18n } from '../i18n';
+
   interface Props {
     playerName?: string;
     isOnline?: boolean;
     skinHeadUrl?: string;
+    playtimeFormatted?: string;
   }
 
   let {
     playerName = 'Player',
     isOnline = false,
     skinHeadUrl,
+    playtimeFormatted,
   }: Props = $props();
 
   let imageError = $state(false);
@@ -50,7 +54,11 @@
 <div
   class="apple-profile-badge"
   role="status"
-  aria-label="Профиль игрока: {playerName}, {isOnline ? 'в сети' : 'не в сети'}"
+  aria-label="{t('toolbar.profile_aria', {
+    player: playerName,
+    status: isOnline ? t('toolbar.status_online') : t('toolbar.status_offline'),
+  })}{playtimeFormatted ? (i18n.locale === 'en' ? `, playtime: ${playtimeFormatted}` : `, время в игре: ${playtimeFormatted}`) : ''}"
+  title={playtimeFormatted ? (i18n.locale === 'en' ? `${playerName} • Playtime: ${playtimeFormatted}` : `${playerName} • В игре: ${playtimeFormatted}`) : undefined}
   data-tauri-drag-region="false"
 >
   <!-- Avatar: Head skin or initial letter -->
@@ -83,7 +91,7 @@
   <div class="profile-info-text">
     <span class="profile-nickname">{playerName}</span>
     <span class="profile-status-caption" class:online={isOnline}>
-      {isOnline ? 'В сети' : 'Офлайн'}
+      {isOnline ? 'В сети' : 'Офлайн'}{playtimeFormatted ? ` • ${playtimeFormatted}` : ''}
     </span>
   </div>
 </div>

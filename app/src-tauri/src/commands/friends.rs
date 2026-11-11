@@ -364,7 +364,10 @@ pub async fn social_set_presence(
     let client = { state.client.lock().await.clone() };
     let wex_auth: UserAuth = auth_dto.into();
     let wex_pres: wex_social::UserPresence = pres_dto.into();
-    let _ = client.sync(&wex_auth, Some(&wex_pres)).await;
+    client
+        .sync(&wex_auth, Some(&wex_pres))
+        .await
+        .map_err(IpcError::from)?;
     Ok(())
 }
 
@@ -421,8 +424,8 @@ pub async fn list_achievements_impl(
 /// Report progress increment on a specific launcher achievement.
 /// Emits social-achievement-toast event when an achievement unlocks.
 #[tauri::command]
-pub async fn social_report_achievement_progress(
-    app: AppHandle,
+pub async fn social_report_achievement_progress<R: tauri::Runtime>(
+    app: AppHandle<R>,
     request: Option<SocialReportAchievementProgressRequest>,
     data_dir: Option<String>,
     achievement_id: Option<String>,
@@ -443,8 +446,8 @@ pub async fn social_report_achievement_progress(
     report_achievement_progress_impl(Some(&app), PathBuf::from(dir_str), &ach_id, inc).await
 }
 
-pub async fn report_achievement_progress_impl(
-    app: Option<&AppHandle>,
+pub async fn report_achievement_progress_impl<R: tauri::Runtime>(
+    app: Option<&AppHandle<R>>,
     data_dir: PathBuf,
     achievement_id: &str,
     increment: u32,
@@ -517,18 +520,20 @@ mod tests {
         let dir = tmp.path().to_path_buf();
 
         // Increment 10_launches target=10
-        let res1 = report_achievement_progress_impl(None, dir.clone(), "ten_launches", 1)
-            .await
-            .unwrap();
+        let res1 =
+            report_achievement_progress_impl::<tauri::Wry>(None, dir.clone(), "ten_launches", 1)
+                .await
+                .unwrap();
 
         assert_eq!(res1.current, 1.0);
         assert_eq!(res1.target, 10);
         assert!(!res1.unlocked);
 
         // Increment again
-        let res2 = report_achievement_progress_impl(None, dir.clone(), "ten_launches", 2)
-            .await
-            .unwrap();
+        let res2 =
+            report_achievement_progress_impl::<tauri::Wry>(None, dir.clone(), "ten_launches", 2)
+                .await
+                .unwrap();
 
         assert_eq!(res2.current, 3.0);
         assert!(!res2.unlocked);
@@ -540,9 +545,10 @@ mod tests {
         let dir = tmp.path().to_path_buf();
 
         // first_launch target is 1
-        let res = report_achievement_progress_impl(None, dir.clone(), "first_launch", 1)
-            .await
-            .unwrap();
+        let res =
+            report_achievement_progress_impl::<tauri::Wry>(None, dir.clone(), "first_launch", 1)
+                .await
+                .unwrap();
 
         assert!(res.unlocked);
         assert_eq!(res.current, 1.0);

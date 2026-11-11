@@ -11,6 +11,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import Icon from './icons/Icon.svelte';
+  import { t } from '../i18n';
 
   interface Props {
     title?: string;
@@ -55,7 +56,9 @@
     {#if center}
       {@render center()}
     {:else if title}
-      <h1 class="toolbar-title" data-tauri-drag-region>{title}</h1>
+      {#key title}
+        <h1 class="toolbar-title" data-tauri-drag-region>{title}</h1>
+      {/key}
     {/if}
   </div>
 
@@ -68,9 +71,9 @@
           <button
             type="button"
             class="window-btn minimize"
-            title="Свернуть"
+            title={t('toolbar.minimize')}
             onclick={onminimize}
-            aria-label="Свернуть окно"
+            aria-label={t('toolbar.minimize')}
           >
             <Icon name="minimize" size={12} color="var(--color-secondary-label)" />
           </button>
@@ -78,9 +81,9 @@
           <button
             type="button"
             class="window-btn maximize"
-            title={isMaximized ? 'Восстановить' : 'Развернуть'}
+            title={isMaximized ? t('toolbar.restore') : t('toolbar.maximize')}
             onclick={onmaximize}
-            aria-label={isMaximized ? 'Восстановить окно' : 'Развернуть окно'}
+            aria-label={isMaximized ? t('toolbar.restore') : t('toolbar.maximize')}
           >
             <Icon name={isMaximized ? 'restore' : 'maximize'} size={11} color="var(--color-secondary-label)" />
           </button>
@@ -88,9 +91,9 @@
           <button
             type="button"
             class="window-btn close"
-            title="Закрыть"
+            title={t('toolbar.close')}
             onclick={onclose}
-            aria-label="Закрыть окно"
+            aria-label={t('toolbar.close')}
           >
             <Icon name="close" size={13} color="var(--color-secondary-label)" />
           </button>
@@ -147,6 +150,24 @@
     overflow: hidden;
     text-overflow: ellipsis;
     margin: 0;
+    animation: titleFadeIn var(--motion-duration-short) var(--motion-curve-spring-system) forwards;
+  }
+
+  @keyframes titleFadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  :global([data-effects="off"]) .toolbar-title,
+  :global([data-reduce-motion="true"]) .toolbar-title {
+    animation: none;
+    transform: none !important;
   }
 
   .toolbar-center.standalone .toolbar-title {
@@ -180,11 +201,22 @@
     border-radius: var(--radius-sm);
     background: transparent;
     cursor: pointer;
-    transition: background-color var(--motion-duration-short) ease;
+    transition:
+      background-color var(--motion-duration-short) ease,
+      transform var(--motion-duration-press) var(--motion-curve-press);
+  }
+
+  .window-btn:active {
+    transform: scale(var(--motion-press-scale, 0.97));
   }
 
   .window-btn:hover {
     background-color: var(--color-quaternary-system-fill);
+  }
+
+  .window-btn:focus-visible {
+    outline: 2px solid var(--color-system-blue);
+    outline-offset: 1px;
   }
 
   .window-btn.close:hover {

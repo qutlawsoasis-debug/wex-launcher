@@ -9,6 +9,7 @@
 -->
 <script lang="ts">
   import Icon from './icons/Icon.svelte';
+  import { t } from '../i18n';
 
   export interface ToastMessage {
     id: string;
@@ -16,6 +17,10 @@
     title: string;
     description?: string;
     duration?: number;
+    action?: {
+      label: string;
+      onClick: () => void;
+    };
   }
 
   interface Props {
@@ -91,12 +96,25 @@
     {/if}
   </div>
 
+  {#if toast.action}
+    <button
+      type="button"
+      class="toast-action-btn"
+      onclick={() => {
+        toast.action?.onClick();
+        ondismiss?.(toast.id);
+      }}
+    >
+      {toast.action.label}
+    </button>
+  {/if}
+
   <button
     type="button"
     class="dismiss-btn"
-    title="Закрыть"
+    title={t('common.close')}
     onclick={() => ondismiss?.(toast.id)}
-    aria-label="Закрыть уведомление"
+    aria-label={t('common.close_notification')}
   >
     <Icon name="close" size={12} color="var(--color-tertiary-label)" />
   </button>
@@ -117,7 +135,10 @@
     user-select: none;
     min-width: 280px;
     max-width: 440px;
-    animation: toastSlideDown var(--motion-duration-normal) var(--motion-spring-ease) forwards;
+    animation: toastSlideDown var(--motion-duration-toast-enter) var(--motion-curve-spring-system) forwards;
+    transition:
+      transform var(--motion-duration-toast-exit) var(--motion-curve-fast-exit),
+      opacity var(--motion-duration-toast-exit) ease;
   }
 
   .toast-icon {
@@ -147,6 +168,29 @@
     line-height: var(--line-footnote);
   }
 
+  .toast-action-btn {
+    appearance: none;
+    background: var(--color-system-blue);
+    color: #ffffff;
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 4px 10px;
+    font-size: var(--text-footnote);
+    font-weight: 500;
+    cursor: pointer;
+    flex-shrink: 0;
+    white-space: nowrap;
+    transition: opacity var(--motion-duration-fast) ease;
+  }
+
+  .toast-action-btn:hover {
+    opacity: 0.88;
+  }
+
+  .toast-action-btn:active {
+    opacity: 0.75;
+  }
+
   .dismiss-btn {
     border: none;
     background: transparent;
@@ -160,7 +204,7 @@
     outline: none;
     transition:
       background-color var(--motion-duration-short) ease,
-      box-shadow var(--motion-duration-short) ease;
+      transform var(--motion-duration-press) var(--motion-curve-press);
     flex-shrink: 0;
   }
 
@@ -170,6 +214,7 @@
 
   .dismiss-btn:active {
     background-color: var(--color-tertiary-system-fill);
+    transform: scale(var(--motion-press-scale, 0.97));
   }
 
   .dismiss-btn:focus-visible {
@@ -188,15 +233,25 @@
     }
   }
 
+  @keyframes toastFadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .apple-toast {
-      animation: none !important;
+      animation: toastFadeIn var(--motion-duration-short) ease forwards !important;
       transform: none !important;
     }
   }
 
+  :global([data-effects="off"]) .apple-toast,
   :global([data-reduce-motion="true"]) .apple-toast {
-    animation: none !important;
+    animation: toastFadeIn var(--motion-duration-short) ease forwards !important;
     transform: none !important;
   }
 </style>

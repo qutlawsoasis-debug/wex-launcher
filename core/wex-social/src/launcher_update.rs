@@ -107,11 +107,11 @@ pub fn check_update_from_manifest(
         .get(target_platform)
         .ok_or_else(|| UpdateError::PlatformNotFound(target_platform.to_string()))?;
 
-    if !validate_signature_format(&plat.signature) {
-        return Err(UpdateError::InvalidSignature(
-            "Некорректный формат сигнатуры minisign".to_string(),
-        ));
-    }
+    let signature = if validate_signature_format(&plat.signature) {
+        Some(plat.signature.clone())
+    } else {
+        None
+    };
 
     Ok(UpdateCheckResult {
         update_available: true,
@@ -119,7 +119,7 @@ pub fn check_update_from_manifest(
         latest_version: Some(manifest.version),
         notes: manifest.notes,
         download_url: Some(plat.url.clone()),
-        signature: Some(plat.signature.clone()),
+        signature,
         pub_date: manifest.pub_date,
     })
 }
@@ -130,7 +130,7 @@ pub async fn check_update_from_url(
     target_platform: &str,
     manifest_url: &str,
 ) -> Result<UpdateCheckResult, UpdateError> {
-    let res = client.get(manifest_url).send().await?;
+    let res = client.get(manifest_url).send().await?.error_for_status()?;
     let text = res.text().await?;
     check_update_from_manifest(current_version, target_platform, &text)
 }
@@ -219,5 +219,28 @@ mod tests {
 
         assert!(res.update_available);
         assert_eq!(res.latest_version.as_deref(), Some("1.5.0"));
+    }
+
+    #[test]
+    fn test_check_update_unsigned_notify_only() {
+        let manifest_json = r#"{
+            "version": "1.6.0",
+            "notes": "Unsigned test release",
+            "platforms": {
+                "windows-x86_64": {
+                    "signature": "",
+                    "url": "https://download.wex.app/1.6.0.zip"
+                }
+            }
+        }"#;
+
+        let res = check_update_from_manifest("1.0.0", "windows-x86_64", manifest_json).unwrap();
+        assert!(res.update_available);
+        assert_eq!(res.latest_version.as_deref(), Some("1.6.0"));
+        assert!(res.signature.is_none());
+        assert_eq!(
+            res.download_url.as_deref(),
+            Some("https://download.wex.app/1.6.0.zip")
+        );
     }
 }

@@ -9,9 +9,12 @@ import List from './List.svelte';
 import SearchField from './SearchField.svelte';
 import ProgressBar from './ProgressBar.svelte';
 import Toast from './Toast.svelte';
+import Logo from './Logo.svelte';
 import ProfileBadge from './ProfileBadge.svelte';
 import Sheet from './Sheet.svelte';
 import Popover from './Popover.svelte';
+import DeepLinkConfirmationModal from './DeepLinkConfirmationModal.svelte';
+import type { DeepLinkActionDto } from '../ipc/generated/models';
 
 describe('Apple HIG Svelte 5 Components', () => {
   let target: HTMLElement;
@@ -144,10 +147,10 @@ describe('Apple HIG Svelte 5 Components', () => {
       },
     });
 
-    const tabs = target.querySelectorAll('[role="tab"]');
-    expect(tabs.length).toBe(2);
-    expect(tabs[1].classList.contains('selected')).toBe(true);
-    expect(tabs[1].getAttribute('aria-selected')).toBe('true');
+    const radios = target.querySelectorAll('[role="radio"]');
+    expect(radios.length).toBe(2);
+    expect(radios[1].classList.contains('selected')).toBe(true);
+    expect(radios[1].getAttribute('aria-checked')).toBe('true');
 
     unmount(comp);
   });
@@ -250,6 +253,22 @@ describe('Apple HIG Svelte 5 Components', () => {
     expect(dismissBtn).not.toBeNull();
     dismissBtn.click();
     expect(dismissedId).toBe('test-toast');
+    unmount(comp);
+  });
+
+  it('renders Logo wordmark with sizes and subtitle', () => {
+    const comp = mount(Logo, {
+      target,
+      props: {
+        size: 'large',
+        showSubtitle: true,
+        subtitle: 'Minecraft Launcher',
+      },
+    });
+
+    expect(target.textContent).toContain('Wex');
+    expect(target.textContent).toContain('Minecraft Launcher');
+    expect(target.querySelector('.wex-brand.large')).not.toBeNull();
     unmount(comp);
   });
 
@@ -450,18 +469,17 @@ describe('Apple HIG Svelte 5 Components', () => {
           { value: 'third', label: 'Третий' },
         ],
         value: current,
-        size: 'small',
         onchange: (val) => {
           current = val;
         },
       },
     });
 
-    expect(target.querySelector('.apple-segmented-control')?.classList.contains('small')).toBe(true);
-    const tabs = target.querySelectorAll('[role="tab"]');
-    expect(tabs.length).toBe(3);
+    expect(target.querySelector('.apple-segmented-control')).not.toBeNull();
+    const radios = target.querySelectorAll('[role="radio"]');
+    expect(radios.length).toBe(3);
 
-    tabs[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    radios[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
     expect(current).toBe('second');
 
     unmount(comp);
@@ -506,5 +524,129 @@ describe('Apple HIG Svelte 5 Components', () => {
     btn.click();
     expect(rowClicked).toBe(true);
     unmount(comp);
+  });
+
+  it('applies staggered cascade-in animation delay capped at 8 items', () => {
+    const comp = mount(Row, {
+      target,
+      props: {
+        title: 'Cascade Row 3',
+        index: 3,
+      },
+    });
+
+    const row = target.querySelector('.apple-row') as HTMLElement;
+    expect(row.classList.contains('cascade-in')).toBe(true);
+    // 3 * 25ms = 75ms
+    expect(row.style.getPropertyValue('--cascade-delay')).toBe('75ms');
+    unmount(comp);
+
+    // Capped at index 7 (item index 12 capped at 7 * 25ms = 175ms)
+    const compCapped = mount(Row, {
+      target,
+      props: {
+        title: 'Cascade Row 12',
+        index: 12,
+      },
+    });
+    const rowCapped = target.querySelector('.apple-row') as HTMLElement;
+    expect(rowCapped.style.getPropertyValue('--cascade-delay')).toBe('175ms');
+    unmount(compCapped);
+  });
+
+  it('renders DeepLinkConfirmationModal and responds to confirm and cancel actions', () => {
+    const action: any = {
+      kind: 'join',
+      target: 'ABCD12',
+      raw_uri: 'wex://join/ABCD12',
+      title: 'Войти в лобби ABCD12?',
+      subtitle: 'Подключиться к игре хоста по ссылке?',
+      confirm_text: 'Войти',
+    };
+
+    let confirmed = false;
+    let cancelled = false;
+
+    const comp = mount(DeepLinkConfirmationModal, {
+      target,
+      props: {
+        open: true,
+        action,
+        onconfirm: (act: any) => {
+          if (act.target === 'ABCD12') confirmed = true;
+        },
+        oncancel: () => {
+          cancelled = true;
+        },
+      },
+    });
+
+    const dialog = target.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(target.textContent).toContain('Войти в лобби ABCD12?');
+    expect(target.textContent).toContain('ABCD12');
+    expect(target.textContent).toContain('Лобби');
+    expect(target.textContent).toContain('wex://join/ABCD12');
+
+    // Test confirm button
+    const buttons = target.querySelectorAll('button');
+    expect(buttons.length).toBe(2);
+    // Button 0: Отмена, Button 1: Войти
+    const confirmBtn = buttons[1] as HTMLButtonElement;
+    expect(confirmBtn.textContent).toContain('Войти');
+    confirmBtn.click();
+    expect(confirmed).toBe(true);
+
+    // Test cancel button
+    const cancelBtn = buttons[0] as HTMLButtonElement;
+    cancelBtn.click();
+    expect(cancelled).toBe(true);
+
+    unmount(comp);
+  });
+
+  it('handles keyboard shortcuts in DeepLinkConfirmationModal', () => {
+    const serverAction: any = {
+      kind: 'server',
+      target: 'mc.hypixel.net',
+      raw_uri: 'wex://server/mc.hypixel.net',
+      title: 'Подключиться к mc.hypixel.net?',
+      subtitle: 'Запустить Minecraft и войти на сервер?',
+      confirm_text: 'Подключиться',
+    };
+
+    let cancelled = false;
+    const comp1 = mount(DeepLinkConfirmationModal, {
+      target,
+      props: {
+        open: true,
+        action: serverAction,
+        oncancel: () => {
+          cancelled = true;
+        },
+      },
+    });
+
+    // Escape triggers cancel
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(cancelled).toBe(true);
+    unmount(comp1);
+
+    let confirmed = false;
+    const comp2 = mount(DeepLinkConfirmationModal, {
+      target,
+      props: {
+        open: true,
+        action: serverAction,
+        onconfirm: () => {
+          confirmed = true;
+        },
+      },
+    });
+
+    // Enter triggers confirm
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(confirmed).toBe(true);
+    unmount(comp2);
   });
 });

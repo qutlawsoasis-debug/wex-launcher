@@ -1,6 +1,7 @@
 pub mod crash;
 pub mod discord;
 pub mod import;
+pub mod music;
 pub mod presets;
 pub mod skins;
 
@@ -9,8 +10,9 @@ pub use discord::{Activity, DiscordRpcClient, DEFAULT_DISCORD_APP_ID};
 pub use image;
 pub use import::{
     import_from_dir, ImportedCape, ImportedServer, ImportedSkin, ImportedWardrobeItem,
-    OldLauncherData,
+    ImportedWorld, OldLauncherData,
 };
+pub use music::{AudioTrack, MediaSessionState, MusicError, MusicManager, MusicSettings};
 pub use presets::{
     apply_preset, get_default_presets, GraphicsPreset, PresetApplyResult, PresetTier,
 };

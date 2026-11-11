@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Wex",
-  "version": "0.1.0",
+  "version": "0.9.2",
   "identifier": "net.auramc.wex",
   "build": {
     "beforeDevCommand": "npm --prefix ui run dev",
@@ -24,12 +24,14 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost https://mc-heads.net; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://ipc.localhost asset: http://asset.localhost https://asset.localhost; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; worker-src 'none'",
+      "devCsp": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost https://mc-heads.net; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://ipc.localhost asset: http://asset.localhost https://asset.localhost ws://localhost:5173 ws://127.0.0.1:5173; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; worker-src 'none'"
     }
   },
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/icon.ico"
     ],
@@ -40,6 +42,19 @@
         "displayLanguageSelector": true,
         "installerHooks": "installer-hooks.nsh"
       }
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["wex", "aura"]
+      }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg1NzVFNTE2RkUyNDVBRjgKUldUNFdpVCtGdVYxaFNqTWpsRWZ6RWt3RURlTHlKNDkvY2QyUjNUWXhOMW9CRDFtaW5qdFNXRVcK",
+      "endpoints": [
+        "https://github.com/qutlawsoasis-debug/wex-launcher/releases/latest/download/latest.json"
+      ]
     }
   }
 }

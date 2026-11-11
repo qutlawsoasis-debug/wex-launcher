@@ -3,41 +3,34 @@
   Specification: docs/SPEC.md 1.4, 2.3, 2.4; docs/IPC.md
   Apple HIG:
   - segmented-controls (Вкладки): переключение «LAN и Туннели» и «Облачные миры»
-  - buttons (Кнопки): systemBlue для создания/входа, systemRed для исключения/закрытия
-  - text-fields (Поля ввода): поле ввода кода #A7X9 с моноширинным шрифтом
+  - buttons (Кнопки): systemBlue для создания/входа, systemRed для закрытия
+  - text-fields (Поля ввода): поле ввода кода #A7X9 с крупным моноширинным шрифтом
   - lists-and-tables (Списки): отображение участников комнаты с ролями и пингом
-  - empty-states: честное состояние «Сервис недоступен» без фейковых комнат
+  - honest progress: пошаговый статус «Сверяем моды → Докачиваем N модов → Подключаемся»
+  - honest diagnostics: понятная причина сбоя Playit-туннеля и кнопка «Повторить»
 -->
-<script lang="ts">
-  import List from '../components/List.svelte';
-  import Row from '../components/Row.svelte';
-  import Button from '../components/Button.svelte';
-  import SegmentedControl from '../components/SegmentedControl.svelte';
-  import Icon from '../components/icons/Icon.svelte';
-  import OfflineState from '../components/OfflineState.svelte';
-  import ErrorState from '../components/ErrorState.svelte';
-  import { network } from '../design/network.svelte';
-
-  interface LobbyPlayer {
+<script module lang="ts">
+  export interface LobbyPlayer {
     name: string;
     is_host: boolean;
     ping_ms: number;
     mods_synced: boolean;
   }
 
-  interface LobbyRoom {
+  export interface LobbyRoom {
     code: string;
     host_name: string;
     world_name: string;
     tunnel_address?: string | null;
     tunnel_active: boolean;
+    tunnel_error?: string | null;
     is_host: boolean;
     players: LobbyPlayer[];
     mod_mismatch_count: number;
     total_mods: number;
   }
 
-  interface OpenRoom {
+  export interface OpenRoom {
     id: string;
     name: string;
     host_name: string;
@@ -48,23 +41,90 @@
     status: string;
   }
 
+  export interface OnlineFriend {
+    id: string;
+    nick: string;
+    status: string;
+    world_name?: string | null;
+    game_version?: string | null;
+  }
+
+  export type JoinStep = 'idle' | 'checking_mods' | 'downloading_mods' | 'connecting' | 'error';
+</script>
+
+<script lang="ts">
+  import List from '../components/List.svelte';
+  import Row from '../components/Row.svelte';
+  import Button from '../components/Button.svelte';
+  import ProgressBar from '../components/ProgressBar.svelte';
+  import SegmentedControl from '../components/SegmentedControl.svelte';
+  import Icon from '../components/icons/Icon.svelte';
+  import OfflineState from '../components/OfflineState.svelte';
+  import ErrorState from '../components/ErrorState.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
+  import { network } from '../design/network.svelte';
+  import { createIdleInterval } from '../design/idleManager';
+  import { t, i18n } from '../i18n';
+
+  interface Props {
+    playerName?: string;
+    initialRoom?: LobbyRoom | null;
+    version?: string;
+    onroomchange?: (room: LobbyRoom | null) => void;
+  }
+
+  let {
+    playerName = 'Player',
+    initialRoom = null,
+    version = '1.21.1',
+    onroomchange,
+  }: Props = $props();
+
+  let effectivePlayerName = $derived(playerName);
+
   let mode = $state('lan'); // 'lan' | 'cloud'
   let guestCode = $state('');
   let isConnecting = $state(false);
   let isHosting = $state(false);
   let errorMessage = $state('');
+  let roomClosedMessage = $state('');
 
-  // Local worlds available for hosting
-  const localWorlds = [
-    { id: 'world-1', name: 'Выживание в тайге', version: '1.21.1', size: '142 МБ', lastPlayed: 'Сегодня' },
-    { id: 'world-2', name: 'Творческий полигон', version: '1.21.1', size: '86 МБ', lastPlayed: 'Вчера' },
-    { id: 'world-3', name: 'Redstone Experiments', version: '1.20.1', size: '45 МБ', lastPlayed: '3 дня назад' },
-  ];
+  // Step-by-step guest connection pipeline state
+  let joinStep = $state<JoinStep>('idle');
+  let joinStepMessage = $state('');
+  let joinProgress = $state<number | null>(null);
+  let pendingModSync = $state(false);
 
-  let selectedWorldId = $state('world-1');
+  function getDownloadingModsLabel(count: number, current: number): string {
+    if (count <= 0) return t('lobby.step_download_mods_many', { count: 0 });
+    const key = count % 10 === 1 && count % 100 !== 11
+      ? 'lobby.step_download_mods_one'
+      : (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20)
+          ? 'lobby.step_download_mods_few'
+          : 'lobby.step_download_mods_many');
+    const base = t(key, { count });
+    return current > 0 ? `${base}${t('lobby.step_download_mods_progress', { current, total: count })}` : base;
+  }
+
+  // Tunnel retry state
+  let isRetryingTunnel = $state(false);
+
+  // Online friends & Invite popover state
+  let showInvitePopover = $state(false);
+  let onlineFriends = $state<OnlineFriend[]>([]);
+  let invitedFriendIds = $state<Set<string>>(new Set());
+  let isLoadingFriends = $state(false);
+
+  let selectedWorldId = $state('');
+
 
   // Active room state (null when not in room)
   let activeRoom = $state<LobbyRoom | null>(null);
+  $effect(() => {
+    activeRoom = initialRoom ?? null;
+  });
+  $effect(() => { onroomchange?.(activeRoom); });
+
 
   // Cloud open rooms state
   let cloudRooms = $state<OpenRoom[]>([]);
@@ -76,12 +136,12 @@
     cloudError = null;
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const rooms = await invoke<OpenRoom[]>('list_open_rooms', { playerName: 'Player' });
+      const rooms = await invoke<OpenRoom[]>('list_open_rooms', { playerName: effectivePlayerName });
       cloudRooms = rooms || [];
     } catch (e: any) {
       cloudRooms = [];
       const msg = typeof e === 'string' ? e : e?.message || '';
-      cloudError = msg || 'Сервис недоступен';
+      cloudError = msg || t('lobby.service_unavailable');
     } finally {
       isLoadingCloudRooms = false;
     }
@@ -94,11 +154,86 @@
   }
 
   let lanWorlds = $state<LanWorld[]>([]);
+  // Only discovered worlds can be published; the IPC DTO supplies motd.
+  const localWorlds = $derived(lanWorlds.map(world => ({
+    id: world.address, name: world.motd, port: world.port,
+    address: world.address,
+  })));
+  $effect(() => {
+    if (localWorlds.length > 0 && !selectedWorldId) {
+      selectedWorldId = localWorlds[0].id;
+    } else if (localWorlds.length === 0 && selectedWorldId) {
+      selectedWorldId = '';
+    }
+  });
   let isLoadingLan = $state(false);
   let isConnectingLan = $state(false);
+  let isPublishingLan = $state(false);
+  let publishingPort = $state<number | null>(null);
   let lanConnectMessage = $state('');
   let copiedTunnel = $state(false);
   let copiedCode = $state(false);
+
+  export async function fetchOnlineFriends() {
+    isLoadingFriends = true;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const resp = await invoke<{ friends: Array<{ id: string; nick: string; status: string; game_version?: string; world_name?: string }> }>('social_sync', {});
+      if (resp && resp.friends) {
+        onlineFriends = resp.friends.filter(
+          (f) => f.status === 'online' || f.status === 'playing' || f.status === 'in_lobby'
+        );
+      }
+    } catch {
+      // Ignored for offline
+    } finally {
+      isLoadingFriends = false;
+    }
+  }
+
+  export function toggleInvitePopover() {
+    showInvitePopover = !showInvitePopover;
+    if (showInvitePopover) {
+      fetchOnlineFriends();
+    }
+  }
+
+  export async function handleInviteFriend(friend: OnlineFriend) {
+    if (!activeRoom) return;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('social_send_lobby_invite', {
+        lobbyCode: activeRoom.code,
+        targetUserId: friend.id,
+        auth: null,
+      });
+    } catch {
+      // Handled
+    }
+    invitedFriendIds = new Set([...invitedFriendIds, friend.id]);
+  }
+
+  export async function handlePublishLanWorld(world: LanWorld) {
+    if (isPublishingLan) return;
+    isPublishingLan = true;
+    publishingPort = world.port;
+    errorMessage = '';
+    lanConnectMessage = '';
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const room = await invoke<LobbyRoom>('publish_lan_world', {
+        motd: world.motd,
+        port: world.port,
+        playerName: effectivePlayerName,
+      });
+      activeRoom = room;
+    } catch (e: any) {
+      errorMessage = typeof e === 'string' ? e : e?.message || t('lobby.lan_connect_failed');
+    } finally {
+      isPublishingLan = false;
+      publishingPort = null;
+    }
+  }
 
   export async function fetchLanWorlds() {
     isLoadingLan = true;
@@ -106,6 +241,7 @@
       const { invoke } = await import('@tauri-apps/api/core');
       const list = await invoke<LanWorld[]>('list_lan_worlds');
       lanWorlds = list || [];
+      if (!selectedWorldId && lanWorlds[0]) selectedWorldId = lanWorlds[0].address;
     } catch {
       lanWorlds = [];
     } finally {
@@ -119,10 +255,10 @@
     lanConnectMessage = '';
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const msg = await invoke<string>('connect_lan_world', { address });
-      lanConnectMessage = msg || 'Подключение запущено...';
+      const msg = await invoke<string>('connect_lan_world', { address, version, nickname: effectivePlayerName });
+      lanConnectMessage = msg || t('lobby.lan_connecting');
     } catch (e: any) {
-      errorMessage = typeof e === 'string' ? e : e?.message || 'Не удалось подключиться к LAN-миру';
+      errorMessage = typeof e === 'string' ? e : e?.message || t('lobby.lan_connect_failed');
     } finally {
       isConnectingLan = false;
     }
@@ -150,57 +286,120 @@
     }
   }
 
+  let prevOnline = network.isOnline;
+  $effect(() => {
+    const currentOnline = network.isOnline;
+    if (currentOnline && !prevOnline) {
+      if (mode === 'cloud') {
+        fetchCloudRooms();
+      }
+    }
+    prevOnline = currentOnline;
+  });
+
   $effect(() => {
     if (mode === 'cloud') {
       fetchCloudRooms();
     } else if (mode === 'lan') {
+      const startLan = async () => {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('net_lan_start_discovery');
+        } catch (e: unknown) {
+          errorMessage = typeof e === 'string' ? e : t('lobby.lan_discover_failed');
+        }
+      };
+
+      const stopLan = async () => {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('net_lan_stop_discovery');
+        } catch {}
+      };
+
+      const isHidden = typeof document !== 'undefined' && document.hidden === true;
+      if (!isHidden) {
+        startLan();
+      }
       fetchLanWorlds();
-      const interval = setInterval(fetchLanWorlds, 3000);
-      return () => clearInterval(interval);
+      const cleanupLan = createIdleInterval(fetchLanWorlds, 3000);
+
+      const onVisibilityChange = () => {
+        if (typeof document !== 'undefined' && document.hidden) {
+          stopLan();
+        } else if (mode === 'lan') {
+          startLan();
+          fetchLanWorlds();
+        }
+      };
+
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', onVisibilityChange);
+      }
+
+      return () => {
+        cleanupLan();
+        if (typeof document !== 'undefined') {
+          document.removeEventListener('visibilitychange', onVisibilityChange);
+        }
+        stopLan();
+      };
     }
   });
 
   // Polling room status while inside an active room session
+  // If host closes room or kicks guest, guest is cleanly evicted with an informative alert
   $effect(() => {
     if (!activeRoom) return;
-    const interval = setInterval(async () => {
+    const cleanupRoom = createIdleInterval(async () => {
       const current = activeRoom;
       if (!current) return;
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const updated = await invoke<LobbyRoom | null>('get_lobby_status', {
           code: current.code,
-          playerName: 'Player',
+          playerName: effectivePlayerName,
         });
-        if (updated) {
-          activeRoom = updated;
+        if (!updated) {
+          activeRoom = null;
+          roomClosedMessage = t('lobby.room_closed_by_host');
+          return;
         }
+        activeRoom = updated;
       } catch (e: any) {
         const msg = typeof e === 'string' ? e : e?.message || '';
-        if (msg.includes('исключены')) {
-          activeRoom = null;
-          errorMessage = 'Вы были исключены из комнаты организатором';
+        activeRoom = null;
+        if (msg.includes('закрыта') || msg.includes('404')) {
+          roomClosedMessage = t('lobby.room_closed_by_host');
+        } else if (msg.includes('исключены')) {
+          roomClosedMessage = t('lobby.kicked_by_host');
+        } else {
+          roomClosedMessage = msg || t('lobby.room_closed_by_host');
         }
       }
-    }, 4000);
-    return () => clearInterval(interval);
+    }, 2500);
+    return () => cleanupRoom();
   });
 
   export async function handleCreateRoom() {
     isHosting = true;
     errorMessage = '';
+    roomClosedMessage = '';
     const world = localWorlds.find((w) => w.id === selectedWorldId);
-    const worldName = world ? world.name : 'Мой мир';
+    const worldName = world?.name || t('lobby.room_default_name', { name: effectivePlayerName });
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const room = await invoke<LobbyRoom>('create_lobby_room', {
-        worldName,
-        playerName: 'Player',
+      if (!world) throw new Error(t('lobby.open_world_lan_hint'));
+      const room = await invoke<LobbyRoom>('publish_lan_world', {
+        motd: worldName, port: world.port, playerName: effectivePlayerName, version,
       });
       activeRoom = room;
+      if (room.is_host) {
+        fetchOnlineFriends();
+      }
     } catch (e: any) {
-      const msg = typeof e === 'string' ? e : e?.message || 'Не удалось создать комнату';
+      const msg = typeof e === 'string' ? e : e?.message || t('lobby.create_room_failed');
       errorMessage = msg;
       activeRoom = null;
     } finally {
@@ -208,28 +407,83 @@
     }
   }
 
-  export async function handleJoinRoom() {
-    const codeToJoin = guestCode.trim();
-    if (!codeToJoin) {
-      errorMessage = 'Введите 4-значный код комнаты';
-      return;
-    }
+  export async function handleJoinRoom(autoFix: boolean | MouseEvent = false) {
+    const codeToJoin = guestCode.trim().replace(/^#/, '').toUpperCase();
+    if (!codeToJoin || isConnecting) return;
     isConnecting = true;
     errorMessage = '';
-
+    roomClosedMessage = '';
+    joinStep = 'idle';
+    joinProgress = null;
+    joinStepMessage = t('lobby.waiting_room_response');
+    const unlisten: Array<() => void> = [];
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const room = await invoke<LobbyRoom>('join_lobby_room', {
-        code: codeToJoin.toUpperCase(),
-        playerName: 'Player',
+      if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+        const { listen } = await import('@tauri-apps/api/event');
+        unlisten.push(await listen<{ code: string; stage: JoinStep; message: string }>('lobby-join-progress', ({ payload }) => {
+          if (payload.code !== codeToJoin) return;
+          joinStep = payload.stage;
+          joinStepMessage = payload.message;
+          joinProgress = null;
+        }));
+        unlisten.push(await listen<{ stage: string; percentage: number; detail: string }>('install-progress', ({ payload }) => {
+          if (joinStep !== 'downloading_mods') return;
+          joinProgress = Number.isFinite(payload.percentage) ? payload.percentage : null;
+          joinStepMessage = payload.detail || payload.stage;
+        }));
+        unlisten.push(await listen<{ state: string; message: string }>('launch-status', ({ payload }) => {
+          if (payload.state === 'preparing' || payload.state === 'launching' || payload.state === 'installing') {
+            joinStep = 'connecting'; joinStepMessage = payload.message; joinProgress = null;
+          }
+        }));
+      }
+      const room = await invoke<LobbyRoom>('prepare_lobby_join', {
+        code: codeToJoin, playerName: effectivePlayerName, version, repair: autoFix === true,
       });
+      if (!room || room.mod_mismatch_count > 0) {
+        pendingModSync = Boolean(room && room.mod_mismatch_count > 0);
+        throw new Error(t('lobby.mods_differ_hint'));
+      }
+      if (!room.tunnel_active || !room.tunnel_address) {
+        throw new Error(room.tunnel_error || t('lobby.host_not_opened'));
+      }
+      await invoke('launch_game', { version, nickname: effectivePlayerName, server: room.tunnel_address });
       activeRoom = room;
-    } catch (e: any) {
-      const msg = typeof e === 'string' ? e : e?.message || 'Не удалось присоединиться к комнате';
-      errorMessage = msg;
+      pendingModSync = false;
+      joinStep = 'idle';
+    } catch (e: unknown) {
+      errorMessage = typeof e === 'string' ? e : e instanceof Error ? e.message : t('lobby.join_room_failed');
+      pendingModSync = pendingModSync || errorMessage.includes(t('lobby.mods_differ_hint'));
+      joinStep = 'error';
       activeRoom = null;
     } finally {
+      for (const stop of unlisten) stop();
       isConnecting = false;
+    }
+  }
+
+  export async function handleRetryTunnel() {
+    if (!activeRoom) return;
+    isRetryingTunnel = true;
+    errorMessage = '';
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const updated = await invoke<LobbyRoom>('retry_lobby_tunnel', { code: activeRoom.code });
+      if (updated) {
+        activeRoom = updated;
+      }
+    } catch (e: any) {
+      const msg =
+        typeof e === 'string'
+          ? e
+          : e?.message || t('lobby.err_tunnel_failed');
+      if (activeRoom) {
+        activeRoom.tunnel_active = false;
+        activeRoom.tunnel_error = msg;
+      }
+    } finally {
+      isRetryingTunnel = false;
     }
   }
 
@@ -256,15 +510,13 @@
       });
       activeRoom.players = activeRoom.players.filter((p) => p.name !== name);
     } catch (e: any) {
-      errorMessage = typeof e === 'string' ? e : e?.message || 'Не удалось исключить игрока';
+      errorMessage = typeof e === 'string' ? e : e?.message || t('lobby.kick_player_failed');
     }
   }
 
-  export function handleAutoFixMods() {
-    if (activeRoom) {
-      activeRoom.mod_mismatch_count = 0;
-      activeRoom.players.forEach((p) => (p.mods_synced = true));
-    }
+  export async function handleAutoFixMods() {
+    if (activeRoom) guestCode = activeRoom.code;
+    await handleJoinRoom(true);
   }
 </script>
 
@@ -274,13 +526,31 @@
     <div class="mode-segmented">
       <SegmentedControl
         options={[
-          { value: 'lan', label: 'LAN и Туннели' },
-          { value: 'cloud', label: 'Облачные миры' },
+          { value: 'lan', label: t('lobby.tab_lan') },
+          { value: 'cloud', label: t('lobby.tab_cloud') },
         ]}
         bind:value={mode}
       />
     </div>
   </div>
+
+  {#if roomClosedMessage}
+    <!-- Alert when host closed the room -->
+    <div class="room-closed-banner" data-testid="room-closed-alert">
+      <div class="room-closed-content">
+        <Icon name="warning" size={16} color="var(--color-system-orange)" />
+        <span class="room-closed-text">{roomClosedMessage}</span>
+      </div>
+      <button
+        type="button"
+        class="room-closed-close"
+        onclick={() => (roomClosedMessage = '')}
+        aria-label={t('common.close')}
+      >
+        <Icon name="close" size={12} />
+      </button>
+    </div>
+  {/if}
 
   {#if !network.isOnline}
     <OfflineState onretry={() => network.check()} />
@@ -290,7 +560,7 @@
       {#if isLoadingCloudRooms}
         <div class="cloud-status-card">
           <div class="loading-spinner"></div>
-          <p class="status-text">Загрузка открытых комнат...</p>
+          <p class="status-text">{t('common.loading')}</p>
         </div>
       {:else if cloudError}
         <!-- Honest Service Error State via ErrorState -->
@@ -298,30 +568,28 @@
           <ErrorState
             error={cloudError}
             domain="lobby"
+            title={t('lobby.cloud_error_title')}
+            description={t('lobby.cloud_error_desc')}
+            actionText={t('lobby.cloud_error_retry')}
             onaction={fetchCloudRooms}
           />
         </div>
       {:else if cloudRooms.length === 0}
-        <div class="cloud-status-card empty">
-          <div class="status-icon-circle neutral">
-            <Icon name="server" size={24} color="var(--color-secondary-label)" />
-          </div>
-          <h2 class="status-title">Нет открытых комнат</h2>
-          <p class="status-desc">
-            В данный момент нет доступных публичных комнат. Вы можете открыть свой мир во вкладке «LAN и Туннели».
-          </p>
-          <div class="status-actions">
-            <Button variant="secondary" size="regular" onclick={fetchCloudRooms} loading={isLoadingCloudRooms}>
-              Обновить
-            </Button>
-          </div>
+        <div class="cloud-empty-wrap">
+          <EmptyState
+            icon="server"
+            title={t('lobby.no_open_rooms')}
+            description={t('lobby.no_cloud_rooms_desc')}
+            actionText={t('lobby.refresh')}
+            onaction={fetchCloudRooms}
+          />
         </div>
       {:else}
-        <List header="Открытые комнаты ({cloudRooms.length})">
+        <List header={t('lobby.open_rooms_header', { count: cloudRooms.length })}>
           {#each cloudRooms as room (room.id)}
             <Row
               title={room.name}
-              subtitle="Организатор: {room.host_name} • Версия {room.game_version}"
+              subtitle={t('lobby.room_subtitle', { host: room.host_name, version: room.game_version })}
             >
               {#snippet leading()}
                 <div class="room-item-icon">
@@ -341,7 +609,7 @@
                       handleJoinRoom();
                     }}
                   >
-                    Войти
+                    {t('lobby.enter_btn')}
                   </Button>
                 </div>
               {/snippet}
@@ -352,49 +620,154 @@
     </div>
   {:else if activeRoom}
     <!-- Active Room Session View -->
-    <div class="room-session-card">
+    <div class="room-session-card" data-testid="active-room-card">
       <div class="room-session-header">
         <div class="room-info">
-          <div class="room-code-badge">
-            <span class="code-label">Код комнаты</span>
-            <span class="code-value">{activeRoom.code}</span>
-            <button
-              type="button"
-              class="copy-badge-btn"
-              onclick={() => handleCopyCode(activeRoom?.code || '')}
-              title="Скопировать код комнаты"
-            >
-              <span>{copiedCode ? 'Скопировано' : 'Копировать код'}</span>
-            </button>
+          <!-- Prominent Large Room Code & Actions -->
+          <div class="room-code-hero">
+            <div class="code-box">
+              <span class="code-label">{t('lobby.code_label')}</span>
+              <span class="code-value-large" data-testid="room-code-display">{activeRoom.code}</span>
+            </div>
+            <div class="code-actions">
+              <span data-testid="copy-code-btn">
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onclick={() => handleCopyCode(activeRoom?.code || '')}
+                  title={t('lobby.copy_code_title')}
+                >
+                  <Icon name="copy" size={13} />
+                  <span>{copiedCode ? t('lobby.copied') : t('lobby.copy_code')}</span>
+                </Button>
+              </span>
+
+              {#if activeRoom.is_host}
+                <span data-testid="invite-friend-btn">
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onclick={toggleInvitePopover}
+                    title={t('friends.invite_to_lobby')}
+                  >
+                    <Icon name="friends" size={13} />
+                    <span>{t('lobby.invite_friend_header')}</span>
+                  </Button>
+                </span>
+              {/if}
+            </div>
           </div>
+
+          {#if showInvitePopover}
+            <!-- Online Friends Invite Popover -->
+            <div class="invite-popover" data-testid="invite-friends-popover">
+              <div class="invite-popover-header">
+                <span class="invite-title">{t('lobby.invite_friend_header')}</span>
+                <button
+                  type="button"
+                  class="invite-close-btn"
+                  onclick={() => (showInvitePopover = false)}
+                  aria-label={t('common.close')}
+                >
+                  <Icon name="close" size={12} />
+                </button>
+              </div>
+
+              {#if isLoadingFriends}
+                <div class="invite-loading">
+                  <div class="step-spinner"></div>
+                  <span>{t('common.loading')}</span>
+                </div>
+              {:else if onlineFriends.length === 0}
+                <div class="invite-empty" data-testid="no-friends-online">
+                  <span>{t('friends.empty_friends_desc')}</span>
+                </div>
+              {:else}
+                <div class="invite-friends-list" data-testid="invite-friends-list">
+                  {#each onlineFriends as friend (friend.id)}
+                    <div class="invite-friend-row" data-testid="friend-row-{friend.id}">
+                      <div class="friend-row-info">
+                        <div class="friend-avatar">
+                          <Icon name="friends" size={14} color="#ffffff" />
+                        </div>
+                        <div class="friend-details">
+                          <span class="friend-nick">{friend.nick}</span>
+                          <span class="friend-sub">
+                            {friend.status === 'playing' ? t('friends.status_playing') : t('friends.status_online')}
+                          </span>
+                        </div>
+                      </div>
+
+                      {#if invitedFriendIds.has(friend.id)}
+                        <span class="invited-badge" data-testid="invited-badge-{friend.id}">{t('lobby.invited_badge')}</span>
+                      {:else}
+                        <span data-testid="send-invite-btn-{friend.id}">
+                          <Button
+                            variant="secondary"
+                            size="small"
+                            onclick={() => handleInviteFriend(friend)}
+                          >
+                            <span>{t('friends.action_invite')}</span>
+                          </Button>
+                        </span>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
 
           <div class="room-meta">
             <h2 class="room-world-title">{activeRoom.world_name}</h2>
             <div class="room-meta-sub">
-              <span>Организатор: <strong>{activeRoom.host_name}</strong></span>
-              <span class="tunnel-pill" class:active={activeRoom.tunnel_active}>
-                <span class="dot"></span>
-                {activeRoom.tunnel_active && activeRoom.tunnel_address
-                  ? `Туннель активен: ${activeRoom.tunnel_address}`
-                  : 'Запуск туннеля...'}
-              </span>
-              {#if activeRoom.tunnel_address}
+              <span>{t('lobby.host_label', { host: activeRoom.host_name })}</span>
+
+              {#if activeRoom.tunnel_active && activeRoom.tunnel_address}
+                <span class="tunnel-pill active" data-testid="tunnel-active-pill">
+                  <span class="dot"></span>
+                  <span>{t('lobby.tunnel_active', { address: activeRoom.tunnel_address })}</span>
+                </span>
                 <button
                   type="button"
                   class="copy-pill-btn"
                   onclick={() => handleCopyTunnelAddress(activeRoom?.tunnel_address || '')}
-                  title="Скопировать адрес Playit-туннеля"
+                  title={t('lobby.copy_tunnel_title')}
                 >
-                  <span>{copiedTunnel ? 'Скопировано!' : 'Копировать адрес туннеля'}</span>
+                  <span>{copiedTunnel ? t('lobby.copied') : t('lobby.copy_tunnel')}</span>
                 </button>
+              {:else}
+                <!-- Honest Diagnostic: Tunnel Down with Plain Error and Retry Button -->
+                <div class="tunnel-error-card" data-testid="tunnel-error-card">
+                  <div class="tunnel-error-info">
+                    <span class="tunnel-pill offline">
+                      <span class="dot error"></span>
+                      <span>{t('lobby.status_offline_title')}</span>
+                    </span>
+                    <span class="tunnel-error-text" data-testid="tunnel-error-reason">
+                      {activeRoom.tunnel_error || t('lobby.err_tunnel_failed')}
+                    </span>
+                  </div>
+                  <span data-testid="retry-tunnel-btn">
+                    <Button
+                      variant="primary"
+                      size="small"
+                      onclick={handleRetryTunnel}
+                      loading={isRetryingTunnel}
+                    >
+                      <Icon name="restore" size={12} />
+                      <span>{t('lobby.retry_button')}</span>
+                    </Button>
+                  </span>
+                </div>
               {/if}
             </div>
           </div>
         </div>
 
-        <div class="room-header-actions">
+        <div class="room-header-actions" data-testid="leave-room-btn">
           <Button variant="destructive" size="small" onclick={handleLeaveRoom}>
-            {activeRoom.is_host ? 'Закрыть комнату' : 'Покинуть'}
+            {activeRoom.is_host ? t('lobby.close_room') : t('lobby.leave_room')}
           </Button>
         </div>
       </div>
@@ -414,31 +787,31 @@
           <div class="modsync-text">
             <span class="modsync-title">
               {activeRoom.mod_mismatch_count === 0
-                ? `Моды совпадают (${activeRoom.total_mods}/${activeRoom.total_mods})`
-                : `Обнаружено расхождений модов: ${activeRoom.mod_mismatch_count}`}
+                ? ((activeRoom.players || []).find(p => p.name === effectivePlayerName)?.mods_synced ? t('lobby.your_mods_verified') : t('lobby.mods_check_unconfirmed'))
+                : t('lobby.mods_mismatch', { count: activeRoom.mod_mismatch_count })}
             </span>
             <span class="modsync-desc">
               {activeRoom.mod_mismatch_count === 0
-                ? 'Все клиенты используют идентичный манифест сборки Wex.'
-                : 'Конфигурация некоторых модов отличается от хоста.'}
+                ? t('lobby.mods_check_status_in_list')
+                : t('lobby.mods_different_desc')}
             </span>
           </div>
         </div>
 
         {#if activeRoom.mod_mismatch_count > 0}
-          <Button variant="primary" size="small" onclick={handleAutoFixMods}>
-            Исправить и войти
+          <Button variant="secondary" size="small" onclick={handleAutoFixMods}>
+            {t('lobby.fix_and_join')}
           </Button>
         {/if}
       </div>
 
       <!-- Players in Room List -->
       <div class="players-list-wrap">
-        <List header="Игроки в комнате ({activeRoom.players.length})">
-          {#each activeRoom.players as p (p.name)}
+        <List header={t('lobby.players_in_room', { count: (activeRoom.players || []).length })}>
+          {#each (activeRoom.players || []) as p (p.name)}
             <Row
               title={p.name}
-              subtitle={p.is_host ? 'Организатор комнаты (Хост)' : 'Гость'}
+              subtitle={p.is_host ? t('lobby.player_role_host') : t('lobby.player_role_guest')}
             >
               {#snippet leading()}
                 <div class="player-avatar" class:host={p.is_host}>
@@ -449,9 +822,9 @@
               {#snippet trailing()}
                 <div class="player-badges">
                   {#if p.mods_synced}
-                    <span class="sync-badge green">Синхронизирован</span>
+                    <span class="sync-badge green">{t('lobby.sync_badge_synced')}</span>
                   {:else}
-                    <span class="sync-badge orange">Не совпадает</span>
+                    <span class="sync-badge orange">{t('lobby.sync_badge_mismatch')}</span>
                   {/if}
 
                   {#if p.ping_ms > 0}
@@ -460,7 +833,7 @@
 
                   {#if activeRoom?.is_host && !p.is_host}
                     <Button variant="destructive" size="small" onclick={() => handleKickPlayer(p.name)}>
-                      Исключить
+                      {t('lobby.kick_player')}
                     </Button>
                   {/if}
                 </div>
@@ -480,10 +853,24 @@
             <Icon name="friends" size={20} color="var(--color-system-blue)" />
           </div>
           <div class="card-headings">
-            <h2 class="card-heading">Присоединиться по коду</h2>
-            <p class="card-caption">Введите код комнаты, полученный от друга</p>
+            <h2 class="card-heading">{t('lobby.title_connect')}</h2>
+            <p class="card-caption">
+              {t('lobby.room_code_friend_hint')}
+            </p>
           </div>
         </div>
+
+        <!-- Step-by-Step Join Status Card -->
+        {#if isConnecting}
+          <div class="join-steps-container" role="status" aria-live="polite" data-testid="join-progress">
+            {#if joinStep !== 'idle'}
+              <p data-testid={joinStep === 'checking_mods' ? 'step-checking-mods' : joinStep === 'downloading_mods' ? 'step-downloading-mods' : 'step-connecting'}>{joinStepMessage}</p>
+            {:else}<p>{joinStepMessage}</p>{/if}
+            {#if joinProgress !== null}
+              <ProgressBar percentage={joinProgress} detail={joinStepMessage} />
+            {/if}
+          </div>
+        {/if}
 
         <div class="join-form">
           <div class="code-input-wrap">
@@ -491,13 +878,17 @@
               type="text"
               placeholder="#A7X9"
               bind:value={guestCode}
-              maxlength={6}
+              maxlength={8}
               class="code-input"
               onkeydown={(e) => e.key === 'Enter' && handleJoinRoom()}
-              aria-label="Код комнаты"
+              aria-label={t('lobby.room_code_input_aria')}
+              data-testid="guest-code-input"
             />
           </div>
 
+          {#if pendingModSync && !isConnecting}
+            <Button variant="secondary" size="small" onclick={handleAutoFixMods}>{t('lobby.sync_pack_btn')}</Button>
+          {/if}
           {#if errorMessage}
             <div class="lobby-error-wrapper">
               <ErrorState
@@ -512,58 +903,79 @@
             </div>
           {/if}
 
-          <Button
-            variant="primary"
-            size="large"
-            fullWidth
-            onclick={handleJoinRoom}
-            loading={isConnecting}
-            disabled={!guestCode.trim()}
-          >
-            <span>Войти в комнату</span>
-          </Button>
+          <span data-testid="join-room-btn">
+            <Button
+              variant="primary"
+              size="large"
+              fullWidth
+              onclick={handleJoinRoom}
+              loading={isConnecting}
+              disabled={!guestCode.trim()}
+            >
+              <span>{t('lobby.btn_join_room')}</span>
+            </Button>
+          </span>
         </div>
       </div>
 
-      <!-- Host Panel: Open World -->
+      <!-- Host Panel: 1-Click World Hosting -->
       <div class="lobby-card host-card">
         <div class="card-icon-header">
           <div class="icon-circle host">
             <Icon name="play" size={20} color="var(--color-system-green)" />
           </div>
           <div class="card-headings">
-            <h2 class="card-heading">Открыть локальный мир</h2>
-            <p class="card-caption">Создайте комнату через автоматический Playit-туннель</p>
+            <h2 class="card-heading">{t('lobby.host_title')}</h2>
+            <p class="card-caption">
+              {t('lobby.create_room_hint')}
+            </p>
           </div>
         </div>
 
         <div class="world-picker">
-          <label class="picker-label" for="world-select">Выберите мир для кооператива</label>
-          <div class="world-options" id="world-select">
+          <label class="picker-label" for="world-select">{t('lobby.select_world')}</label>
+          <div class="world-options" id="world-select" data-testid="world-select" role="radiogroup" aria-label={t('lobby.select_world')}>
+            {#if localWorlds.length === 0}
+              <div class="empty-worlds-callout" role="status">
+                <p class="empty-callout-text">{t('lobby.open_world_lan_empty')}</p>
+              </div>
+            {/if}
             {#each localWorlds as w (w.id || w.name)}
               <button
                 type="button"
+                role="radio"
+                aria-checked={selectedWorldId === w.id}
+                aria-label={w.name}
                 class="world-opt-btn"
                 class:selected={selectedWorldId === w.id}
                 onclick={() => (selectedWorldId = w.id)}
+                data-testid="world-opt-{w.id}"
               >
-                <div class="world-opt-title">{w.name}</div>
-                <div class="world-opt-meta">{w.version} • {w.size} • {w.lastPlayed}</div>
+                <div class="world-opt-header">
+                  <div class="world-opt-title">{w.name}</div>
+                  {#if selectedWorldId === w.id}
+                    <span class="world-opt-check" aria-hidden="true">✓</span>
+                  {/if}
+                </div>
+                <div class="world-opt-meta">{w.address}</div>
               </button>
             {/each}
           </div>
         </div>
 
-        <Button
-          variant="primary"
-          size="large"
-          fullWidth
-          onclick={handleCreateRoom}
-          loading={isHosting}
-        >
-          <Icon name="server" size={16} color="#ffffff" />
-          <span>Открыть мир для друзей</span>
-        </Button>
+        <span data-testid="create-room-btn">
+          <Button
+            variant="primary"
+            size="large"
+            fullWidth
+            disabled={!selectedWorldId || isHosting}
+            onclick={handleCreateRoom}
+            loading={isHosting}
+          >
+            <Icon name="server" size={16} color="#ffffff" />
+            <span>{t('lobby.create_room_btn')}</span>
+          </Button>
+        </span>
       </div>
     </div>
 
@@ -571,8 +983,8 @@
     <div class="lan-worlds-section">
       <div class="section-header-row">
         <div class="section-title-wrap">
-          <h3 class="section-title">Локальные миры в сети (LAN)</h3>
-          <p class="section-subtitle">Миры игроков в вашей локальной сети, открытые через «Открыть для сети»</p>
+          <h3 class="section-title">{t('lobby.lan_section_title')}</h3>
+          <p class="section-subtitle">{t('lobby.lan_section_subtitle')}</p>
         </div>
         <Button
           variant="secondary"
@@ -580,7 +992,7 @@
           onclick={fetchLanWorlds}
           loading={isLoadingLan}
         >
-          <span>Обновить</span>
+          <span>{t('lobby.refresh_btn')}</span>
         </Button>
       </div>
 
@@ -591,11 +1003,11 @@
       {/if}
 
       {#if lanWorlds.length > 0}
-        <List header="Обнаруженные миры ({lanWorlds.length})">
+        <List header={t('lobby.lan_worlds_header', { count: lanWorlds.length })}>
           {#each lanWorlds as world}
             <Row
               title={world.motd}
-              subtitle="Локальный адрес: {world.address}"
+              subtitle={t('lobby.lan_world_address', { address: world.address })}
             >
               {#snippet leading()}
                 <div class="room-item-icon lan">
@@ -604,32 +1016,39 @@
               {/snippet}
 
               {#snippet trailing()}
-                <Button
-                  variant="primary"
-                  size="small"
-                  onclick={() => handleConnectLanWorld(world.address)}
-                  loading={isConnectingLan}
-                >
-                  <span>Подключиться</span>
-                </Button>
+                <div class="lan-world-actions">
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onclick={() => handlePublishLanWorld(world)}
+                    loading={publishingPort === world.port}
+                    disabled={isPublishingLan || isConnectingLan}
+                  >
+                    <span>{t('lobby.btn_open_world_friends')}</span>
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="small"
+                    onclick={() => handleConnectLanWorld(world.address)}
+                    loading={isConnectingLan}
+                    disabled={isPublishingLan}
+                  >
+                    <span>{t('lobby.connect_btn')}</span>
+                  </Button>
+                </div>
               {/snippet}
             </Row>
           {/each}
         </List>
       {:else}
-        <div class="cloud-status-card empty lan-empty">
-          <div class="status-icon-circle neutral">
-            <Icon name="server" size={24} color="var(--color-secondary-label)" />
-          </div>
-          <h3 class="status-title">Локальные миры не найдены</h3>
-          <p class="status-desc">
-            Когда другой игрок в вашей локальной сети откроет одиночный мир для сети, он появится здесь автоматически.
-          </p>
-          <div class="status-actions">
-            <Button variant="secondary" size="regular" onclick={fetchLanWorlds} loading={isLoadingLan}>
-              Обновить
-            </Button>
-          </div>
+        <div class="lan-empty-wrap">
+          <EmptyState
+            icon="server"
+            title={t('lobby.no_lan_worlds_title')}
+            description={t('lobby.no_lan_worlds_desc')}
+            actionText={t('lobby.refresh_btn')}
+            onaction={fetchLanWorlds}
+          />
         </div>
       {/if}
     </div>
@@ -655,7 +1074,40 @@
   }
 
   .mode-segmented {
-    width: 320px;
+    width: 440px;
+    max-width: 100%;
+  }
+
+  .room-closed-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background-color: rgba(255, 159, 10, 0.12);
+    border: 1px solid rgba(255, 159, 10, 0.3);
+    border-radius: var(--radius-md);
+    gap: 12px;
+  }
+
+  .room-closed-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .room-closed-text {
+    font-size: var(--text-subheadline);
+    font-weight: 600;
+    color: var(--color-system-orange);
+  }
+
+  .room-closed-close {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--color-secondary-label);
+    padding: 4px;
+    border-radius: var(--radius-sm);
   }
 
   .cloud-rooms-section {
@@ -689,40 +1141,6 @@
     text-align: center;
     gap: 12px;
     box-sizing: border-box;
-  }
-
-  .status-icon-circle {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 4px;
-  }
-
-  .status-icon-circle.neutral {
-    background-color: var(--color-quaternary-system-fill);
-  }
-
-  .status-title {
-    font-size: var(--text-title-3);
-    font-weight: 600;
-    color: var(--color-label);
-    margin: 0;
-  }
-
-  .status-desc {
-    font-size: var(--text-subheadline);
-    color: var(--color-secondary-label);
-    font-weight: 500;
-    margin: 0;
-    max-width: 420px;
-    line-height: 1.4;
-  }
-
-  .status-actions {
-    margin-top: 8px;
   }
 
   .loading-spinner {
@@ -830,6 +1248,15 @@
     margin: 0;
   }
 
+  .join-steps-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border-radius: var(--radius-md, 10px);
+    background-color: var(--color-secondary-system-fill);
+  }
+
   .join-form {
     display: flex;
     flex-direction: column;
@@ -853,7 +1280,6 @@
     font-weight: 700;
     letter-spacing: 0.15em;
     text-align: center;
-    text-transform: uppercase;
     outline: none;
     transition: border-color var(--motion-duration-short) ease;
   }
@@ -905,8 +1331,36 @@
   }
 
   .world-opt-btn.selected {
-    border-color: var(--color-system-blue);
-    background-color: rgba(0, 122, 255, 0.1);
+    border-color: var(--glass-border);
+    background-color: var(--color-system-fill);
+  }
+
+  .world-opt-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+
+  .world-opt-check {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-system-blue);
+  }
+
+  .empty-worlds-callout {
+    padding: 14px 16px;
+    background-color: var(--color-quaternary-system-fill);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    text-align: center;
+  }
+
+  .empty-callout-text {
+    font-size: var(--text-subheadline);
+    color: var(--color-secondary-label);
+    margin: 0;
+    line-height: 1.4;
   }
 
   .world-opt-title {
@@ -942,33 +1396,156 @@
 
   .room-info {
     display: flex;
-    align-items: center;
-    gap: 18px;
+    flex-direction: column;
+    gap: 14px;
+    flex: 1;
   }
 
-  .room-code-badge {
+  .room-code-hero {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .code-box {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 10px 18px;
-    border-radius: var(--radius-md);
-    background-color: var(--color-system-blue);
-    color: #ffffff;
+    gap: 4px;
+    padding: 12px 18px;
+    border-radius: var(--radius-lg, 12px);
+    background-color: var(--color-secondary-system-fill);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    min-width: 140px;
   }
 
   .code-label {
-    font-size: 10px;
+    font-size: var(--text-caption-2, 11px);
     font-weight: 600;
-    letter-spacing: 0.05em;
-    opacity: 0.9;
+    color: var(--color-secondary-label);
+    line-height: 1.2;
+    letter-spacing: 0;
   }
 
-  .code-value {
-    font-family: var(--font-mono);
-    font-size: 22px;
+  .code-value-large {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+    font-size: 34px;
     font-weight: 700;
-    letter-spacing: 0.1em;
+    letter-spacing: 0;
+    line-height: 1.1;
+    color: var(--color-label);
+    user-select: all;
+  }
+
+  .code-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Online Friends Invite Popover */
+  .invite-popover {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    background-color: var(--card-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--glass-shadow);
+    max-width: 360px;
+  }
+
+  .invite-popover-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .invite-title {
+    font-size: var(--text-subheadline);
+    font-weight: 700;
+    color: var(--color-label);
+  }
+
+  .invite-close-btn {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--color-secondary-label);
+    padding: 2px 4px;
+  }
+
+  .invite-loading,
+  .invite-empty {
+    font-size: var(--text-caption-1);
+    color: var(--color-secondary-label);
+    padding: 12px 8px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .invite-friends-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  .invite-friend-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    background-color: var(--color-tertiary-system-fill);
+  }
+
+  .friend-row-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .friend-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background-color: var(--color-system-blue);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .friend-details {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .friend-nick {
+    font-size: var(--text-caption-1);
+    font-weight: 600;
+    color: var(--color-label);
+  }
+
+  .friend-sub {
+    font-size: 10px;
+    color: var(--color-system-green);
+  }
+
+  .invited-badge {
+    font-size: var(--text-caption-2);
+    font-weight: 600;
+    color: var(--color-system-green);
+    background-color: rgba(48, 209, 88, 0.15);
+    padding: 3px 8px;
+    border-radius: var(--radius-pill);
   }
 
   .room-world-title {
@@ -1014,6 +1591,44 @@
 
   .tunnel-pill.active .dot {
     background-color: var(--color-system-green);
+  }
+
+  .tunnel-pill.offline {
+    color: var(--color-system-red);
+    background-color: rgba(255, 69, 58, 0.12);
+  }
+
+  .tunnel-pill.offline .dot.error {
+    background-color: var(--color-system-red);
+  }
+
+  .tunnel-error-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: var(--radius-md, 10px);
+    background-color: rgba(255, 69, 58, 0.08);
+    border: 1px solid rgba(255, 69, 58, 0.22);
+    flex-wrap: wrap;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .tunnel-error-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    flex: 1;
+  }
+
+  .tunnel-error-text {
+    font-size: var(--text-caption-1, 12px);
+    color: var(--color-system-red);
+    font-weight: 500;
+    line-height: 1.3;
   }
 
   .modsync-banner {
@@ -1141,7 +1756,6 @@
     background-color: rgba(48, 209, 88, 0.12);
   }
 
-  .copy-badge-btn,
   .copy-pill-btn {
     border: none;
     background: transparent;
@@ -1151,10 +1765,9 @@
     color: var(--color-system-blue);
     padding: 2px 6px;
     border-radius: var(--radius-sm);
-    transition: background-color 0.15s ease;
+    transition: background-color var(--motion-duration-short) ease;
   }
 
-  .copy-badge-btn:hover,
   .copy-pill-btn:hover {
     background-color: var(--color-quaternary-system-fill);
   }
@@ -1172,5 +1785,11 @@
     background-color: rgba(48, 209, 88, 0.12);
     color: var(--color-system-green);
     border: 1px solid rgba(48, 209, 88, 0.25);
+  }
+
+  .lan-world-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 </style>

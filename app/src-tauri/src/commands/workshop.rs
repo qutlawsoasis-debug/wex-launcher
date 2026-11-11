@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use tauri::State;
 use wex_core::config::WexPaths;
 use wex_ipc::commands::{
@@ -13,6 +14,187 @@ use super::launch::PlayState;
 fn resolve_game_dir(paths: &WexPaths, version: Option<&str>) -> PathBuf {
     let ver = version.unwrap_or("1.21.1");
     paths.instance_dir(ver)
+}
+
+/// Validates that an input string is a single path component without separators or traversal.
+pub fn validate_single_component(name: &str) -> Result<&str, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("Имя не может быть пустым".to_string());
+    }
+    if trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed.contains('\0')
+        || trimmed == "."
+        || trimmed == ".."
+    {
+        return Err(
+            "Имя должно быть одиночным компонентом пути без разделителей и относительных переходов"
+                .to_string(),
+        );
+    }
+    let p = Path::new(trimmed);
+    let mut comps = p.components();
+    match (comps.next(), comps.next()) {
+        (Some(std::path::Component::Normal(_)), None) => Ok(trimmed),
+        _ => Err("Имя должно быть одиночным компонентом пути".to_string()),
+    }
+}
+
+pub fn resolve_and_validate_world_dir(
+    input: &str,
+    version: Option<&str>,
+    paths: &WexPaths,
+) -> Result<PathBuf, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err("Имя каталога мира не может быть пустым".to_string());
+    }
+    let p = Path::new(trimmed);
+    if p.components().any(|c| c == std::path::Component::ParentDir) {
+        return Err("Относительные переходы пути запрещены".to_string());
+    }
+
+    let game_dir = resolve_game_dir(paths, version);
+    let saves_dir = game_dir.join("saves");
+
+    let candidate = if p.components().count() == 1 {
+        validate_single_component(trimmed)?;
+        saves_dir.join(trimmed)
+    } else if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        return Err(
+            "Путь к миру должен быть одиночным именем папки или абсолютным путём".to_string(),
+        );
+    };
+
+    if !candidate.exists() {
+        return Err("Каталог мира не существует".to_string());
+    }
+
+    let canon_target = candidate.canonicalize().map_err(|e| e.to_string())?;
+    let canon_wex = paths
+        .root
+        .canonicalize()
+        .unwrap_or_else(|_| paths.root.clone());
+    if !canon_target.starts_with(&canon_wex) {
+        return Err("Каталог мира находится за пределами папки Wex".to_string());
+    }
+    if canon_target == canon_wex {
+        return Err("Нельзя удалять или изменять корневой каталог Wex".to_string());
+    }
+
+    if saves_dir.exists() {
+        if let Ok(canon_saves) = saves_dir.canonicalize() {
+            if canon_target == canon_saves {
+                return Err("Нельзя удалять или изменять каталог saves целиком".to_string());
+            }
+        }
+    }
+    if game_dir.exists() {
+        if let Ok(canon_game) = game_dir.canonicalize() {
+            if canon_target == canon_game {
+                return Err("Нельзя удалять или изменять каталог игры целиком".to_string());
+            }
+        }
+    }
+
+    Ok(canon_target)
+}
+
+pub fn delete_world_impl(
+    paths: &WexPaths,
+    world_folder: &str,
+    version: Option<&str>,
+) -> Result<(), String> {
+    let target = resolve_and_validate_world_dir(world_folder, version, paths)?;
+    wex_social::delete_world(&target).map_err(|e| e.to_string())
+}
+
+pub fn restore_world_backup_impl(
+    paths: &WexPaths,
+    backup_path: &str,
+    target_world_folder: Option<&str>,
+    version: Option<&str>,
+) -> Result<String, String> {
+    let zip_file = PathBuf::from(backup_path);
+    if !zip_file.exists() || !zip_file.is_file() {
+        return Err("Файл резервной копии не найден".to_string());
+    }
+
+    let canon_zip = zip_file.canonicalize().map_err(|e| e.to_string())?;
+    let canon_wex = paths
+        .root
+        .canonicalize()
+        .unwrap_or_else(|_| paths.root.clone());
+    if !canon_zip.starts_with(&canon_wex) {
+        return Err("Файл резервной копии должен находиться внутри папки Wex".to_string());
+    }
+
+    let game_dir = resolve_game_dir(paths, version);
+    let saves_dir = game_dir.join("saves");
+    fs::create_dir_all(&saves_dir).map_err(|e| e.to_string())?;
+    let canon_saves = saves_dir.canonicalize().map_err(|e| e.to_string())?;
+
+    let target_dir = match target_world_folder {
+        Some(t) if !t.trim().is_empty() => {
+            let trimmed = t.trim();
+            let p = Path::new(trimmed);
+            if p.components().any(|c| c == std::path::Component::ParentDir) {
+                return Err("Относительные переходы пути запрещены".to_string());
+            }
+            if p.components().count() == 1 {
+                validate_single_component(trimmed)?;
+                saves_dir.join(trimmed)
+            } else if p.is_absolute() {
+                p.to_path_buf()
+            } else {
+                return Err(
+                    "Целевой каталог должен быть одиночным именем или абсолютным путём".to_string(),
+                );
+            }
+        }
+        _ => {
+            let stem = zip_file
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let safe_name = stem.split('_').next().unwrap_or("RestoredWorld");
+            validate_single_component(safe_name)?;
+            saves_dir.join(safe_name)
+        }
+    };
+
+    if target_dir.exists() {
+        let canon_target = target_dir.canonicalize().map_err(|e| e.to_string())?;
+        if !canon_target.starts_with(&canon_wex) || canon_target == canon_wex {
+            return Err(
+                "Целевой каталог мира должен находиться строго внутри папки Wex".to_string(),
+            );
+        }
+        if canon_target == canon_saves {
+            return Err("Нельзя перезаписывать каталог saves целиком".to_string());
+        }
+    } else {
+        if let Some(parent) = target_dir.parent() {
+            let canon_parent = parent.canonicalize().map_err(|e| e.to_string())?;
+            if !canon_parent.starts_with(&canon_wex) {
+                return Err(
+                    "Целевой каталог мира должен находиться строго внутри папки Wex".to_string(),
+                );
+            }
+        }
+        let fname = target_dir
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or("");
+        validate_single_component(fname)?;
+    }
+
+    wex_social::restore_world_backup(&canon_zip, &target_dir).map_err(|e| e.to_string())?;
+    Ok(target_dir.to_string_lossy().to_string())
 }
 
 // ============================================================================
@@ -54,7 +236,8 @@ pub async fn workshop_create_world_backup(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<WorldBackupItemDto, String> {
-    let world_path = PathBuf::from(&world_folder);
+    let world_path =
+        resolve_and_validate_world_dir(&world_folder, version.as_deref(), &state.paths)?;
     let game_dir = resolve_game_dir(&state.paths, version.as_deref());
     let backup_base_dir = game_dir.join("backups");
     let zip_path = wex_social::create_world_backup(&world_path, &backup_base_dir)
@@ -150,42 +333,28 @@ pub async fn workshop_restore_world_backup(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<String, String> {
-    let zip_file = PathBuf::from(&backup_path);
-    let target_dir = match target_world_folder {
-        Some(t) if !t.is_empty() => PathBuf::from(t),
-        _ => {
-            let stem = zip_file
-                .file_stem()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-            let safe_name = stem.split('_').next().unwrap_or("RestoredWorld");
-            let game_dir = resolve_game_dir(&state.paths, version.as_deref());
-            game_dir.join("saves").join(safe_name)
-        }
-    };
-    wex_social::restore_world_backup(&zip_file, &target_dir).map_err(|e| e.to_string())?;
-    Ok(target_dir.to_string_lossy().to_string())
+    restore_world_backup_impl(
+        &state.paths,
+        &backup_path,
+        target_world_folder.as_deref(),
+        version.as_deref(),
+    )
 }
 
 /// Compatibility IPC command per docs/IPC.md
 #[tauri::command]
 pub async fn social_restore_world_backup(
     request: SocialRestoreWorldBackupRequest,
-    _state: State<'_, PlayState>,
+    state: State<'_, PlayState>,
 ) -> Result<SocialRestoreWorldBackupResponse, String> {
-    let zip_file = PathBuf::from(&request.backup_path);
-    let saves_dir = PathBuf::from(&request.saves_dir);
-    let stem = zip_file
-        .file_stem()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
-    let safe_name = stem.split('_').next().unwrap_or("RestoredWorld");
-    let target_dir = saves_dir.join(safe_name);
-    wex_social::restore_world_backup(&zip_file, &target_dir).map_err(|e| e.to_string())?;
+    let restored = restore_world_backup_impl(
+        &state.paths,
+        &request.backup_path,
+        Some(&request.saves_dir),
+        None,
+    )?;
     Ok(SocialRestoreWorldBackupResponse {
-        restored_world_dir: target_dir.to_string_lossy().to_string(),
+        restored_world_dir: restored,
     })
 }
 
@@ -193,10 +362,9 @@ pub async fn social_restore_world_backup(
 #[tauri::command]
 pub async fn workshop_delete_world(
     world_folder: String,
-    _state: State<'_, PlayState>,
+    state: State<'_, PlayState>,
 ) -> Result<(), String> {
-    let path = PathBuf::from(&world_folder);
-    wex_social::delete_world(&path).map_err(|e| e.to_string())
+    delete_world_impl(&state.paths, &world_folder, None)
 }
 
 /// List screenshot PNG files in the instance screenshot folder.
@@ -236,7 +404,9 @@ pub async fn social_list_screenshots(
 pub async fn workshop_open_path(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
     if !p.exists() {
-        return Err(format!("Путь не существует: {}", path));
+        return Err(
+            "Указанный путь не существует на диске. Проверьте правильность папки.".to_string(),
+        );
     }
 
     #[cfg(target_os = "windows")]
@@ -282,6 +452,62 @@ pub async fn workshop_open_path(path: String) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Reveal screenshots folder in system file manager.
+#[tauri::command]
+pub async fn workshop_open_screenshots_folder(
+    version: Option<String>,
+    state: State<'_, PlayState>,
+) -> Result<(), String> {
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let screenshots_dir = game_dir.join("screenshots");
+    if !screenshots_dir.exists() {
+        let _ = std::fs::create_dir_all(&screenshots_dir);
+    }
+    workshop_open_path(screenshots_dir.to_string_lossy().to_string()).await
+}
+
+/// Copies the image at the given path directly into the system clipboard as bitmap data.
+pub fn copy_screenshot_image_internal<F>(path: &str, set_clipboard: F) -> Result<(), String>
+where
+    F: FnOnce(&Path) -> Result<(), String>,
+{
+    let p = PathBuf::from(path);
+    if !p.exists() || !p.is_file() {
+        return Err("Файл скриншота не найден на диске. Обновите список скриншотов.".to_string());
+    }
+    set_clipboard(&p)
+}
+
+fn system_set_clipboard_image(path: &Path) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let script = format!(
+            "Add-Type -AssemblyName System.Windows.Forms; $img = [System.Drawing.Image]::FromFile('{}'); [System.Windows.Forms.Clipboard]::SetImage($img); $img.Dispose()",
+            path.to_string_lossy().replace('\'', "''")
+        );
+        let status = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .status()
+            .map_err(|e| format!("Ошибка копирования изображения: {}", e))?;
+        if !status.success() {
+            return Err(
+                "Не удалось скопировать изображение в буфер обмена. Попробуйте ещё раз."
+                    .to_string(),
+            );
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = path;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn workshop_copy_screenshot_image(path: String) -> Result<(), String> {
+    copy_screenshot_image_internal(&path, system_set_clipboard_image)
 }
 
 // ============================================================================
@@ -394,5 +620,116 @@ mod tests {
     async fn test_workshop_open_nonexistent_path() {
         let res = workshop_open_path("C:\\nonexistent_dir_12345_67890".to_string()).await;
         assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_workshop_copy_screenshot_nonexistent() {
+        let res = copy_screenshot_image_internal("C:\\nonexistent_screen_123.png", |_| Ok(()));
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("Файл скриншота не найден"));
+    }
+
+    #[tokio::test]
+    async fn test_workshop_copy_screenshot_valid_png_isolated() {
+        let tmp = tempdir().unwrap();
+        let shot_file = tmp.path().join("shot.png");
+        let png_bytes = [
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
+            0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+        ];
+        fs::write(&shot_file, png_bytes).unwrap();
+        let mut clipboard_invoked = false;
+        let res = copy_screenshot_image_internal(&shot_file.to_string_lossy(), |p| {
+            assert_eq!(p, shot_file.as_path());
+            clipboard_invoked = true;
+            Ok(())
+        });
+        assert!(res.is_ok());
+        assert!(
+            clipboard_invoked,
+            "Isolated test verified clipboard callback without mutating OS clipboard"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "Touches real host clipboard; run explicitly via cargo test -- --ignored"]
+    async fn test_workshop_copy_screenshot_real_clipboard_opt_in() {
+        let tmp = tempdir().unwrap();
+        let shot_file = tmp.path().join("shot.png");
+        let png_bytes = [
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
+            0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+        ];
+        fs::write(&shot_file, png_bytes).unwrap();
+        let res = workshop_copy_screenshot_image(shot_file.to_string_lossy().to_string()).await;
+        assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_sec_workshop_delete_world_rejects_outside_and_traversal() {
+        let outside_tmp = tempdir().unwrap();
+        let victim_dir = outside_tmp.path().join("victim_system_folder");
+        fs::create_dir_all(&victim_dir).unwrap();
+        fs::write(victim_dir.join("important.dat"), b"critical").unwrap();
+
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        paths.ensure_dirs().unwrap();
+
+        // 1. Outside directory
+        let res = delete_world_impl(&paths, &victim_dir.to_string_lossy(), None);
+        assert!(
+            res.is_err(),
+            "Must reject deleting directory outside Wex root"
+        );
+        assert!(victim_dir.exists(), "Victim directory must not be deleted");
+
+        // 2. Path traversal
+        let res2 = delete_world_impl(&paths, "../../victim_system_folder", None);
+        assert!(
+            res2.is_err(),
+            "Must reject path traversal in world deletion"
+        );
+        assert!(victim_dir.exists(), "Victim directory must not be deleted");
+    }
+
+    #[tokio::test]
+    async fn test_sec_workshop_restore_world_backup_rejects_outside_target() {
+        let outside_tmp = tempdir().unwrap();
+        let victim_target = outside_tmp.path().join("victim_overwrite_target");
+        fs::create_dir_all(&victim_target).unwrap();
+        fs::write(victim_target.join("important.dat"), b"critical").unwrap();
+
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        paths.ensure_dirs().unwrap();
+        let inst_dir = paths.instance_dir("1.21.1");
+        let world_dir = inst_dir.join("saves").join("ValidWorld");
+        fs::create_dir_all(&world_dir).unwrap();
+        let nbt = make_test_level_dat("Valid World", 1, 100);
+        fs::write(world_dir.join("level.dat"), &nbt).unwrap();
+        let backups_dir = inst_dir.join("backups");
+        let zip_path = wex_social::create_world_backup(&world_dir, &backups_dir).unwrap();
+
+        let res = restore_world_backup_impl(
+            &paths,
+            &zip_path.to_string_lossy(),
+            Some(&victim_target.to_string_lossy()),
+            None,
+        );
+        assert!(
+            res.is_err(),
+            "Must reject restoring world backup to outside directory"
+        );
+        assert!(
+            victim_target.join("important.dat").is_file(),
+            "Victim target must not be wiped"
+        );
     }
 }

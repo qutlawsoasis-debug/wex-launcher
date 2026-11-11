@@ -28,6 +28,9 @@ pub struct ShellProfileDto {
     pub is_online: bool,
     pub has_custom_skin: bool,
     pub skin_head_url: Option<String>,
+    pub total_playtime_seconds: u64,
+    pub total_playtime_formatted: String,
+    pub total_launches: u64,
 }
 
 /// Current shell launch state.
@@ -146,12 +149,19 @@ pub async fn shell_get_profile(
 
     let (has_custom_skin, skin_head_url) = resolve_player_skin(&state.paths, &nickname);
 
+    let playtime_store =
+        wex_core::playtime::PlaytimeStore::load_or_default(&state.paths.playtime_file);
+    let summary = playtime_store.get_summary(None);
+
     Ok(ShellProfileDto {
         nickname,
         initials,
         is_online,
         has_custom_skin,
         skin_head_url,
+        total_playtime_seconds: summary.total_seconds,
+        total_playtime_formatted: summary.total_formatted,
+        total_launches: summary.total_launches,
     })
 }
 
@@ -186,35 +196,22 @@ pub async fn shell_stop_game(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
-    let ver = match version {
-        Some(v) => v,
-        None => {
-            let v = state.running_version.lock().await;
-            v.clone().unwrap_or_default()
-        }
-    };
-
-    if !ver.is_empty() {
-        let _ = state.core.kill_game(&ver).await;
-    }
-
-    state.is_running.store(false, Ordering::SeqCst);
-    state.is_launching.store(false, Ordering::SeqCst);
-
+    state.stop_active_game(version.as_deref()).await;
     set_discord_rpc(&state.discord, Activity::InLauncher).await;
-
     Ok(())
 }
 
 /// Minimize the application window (frameless window control).
 #[tauri::command]
-pub async fn shell_minimize_window(window: Window) -> Result<(), String> {
+pub async fn shell_minimize_window<R: tauri::Runtime>(window: Window<R>) -> Result<(), String> {
     window.minimize().map_err(|e| e.to_string())
 }
 
 /// Toggle maximize / restore for the application window.
 #[tauri::command]
-pub async fn shell_toggle_maximize_window(window: Window) -> Result<bool, String> {
+pub async fn shell_toggle_maximize_window<R: tauri::Runtime>(
+    window: Window<R>,
+) -> Result<bool, String> {
     let is_maximized = window.is_maximized().map_err(|e| e.to_string())?;
     if is_maximized {
         window.unmaximize().map_err(|e| e.to_string())?;
@@ -227,7 +224,7 @@ pub async fn shell_toggle_maximize_window(window: Window) -> Result<bool, String
 
 /// Close the application window.
 #[tauri::command]
-pub async fn shell_close_window(window: Window) -> Result<(), String> {
+pub async fn shell_close_window<R: tauri::Runtime>(window: Window<R>) -> Result<(), String> {
     window.close().map_err(|e| e.to_string())
 }
 

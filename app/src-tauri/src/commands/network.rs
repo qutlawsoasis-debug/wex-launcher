@@ -60,9 +60,9 @@ impl NetworkState {
         let is_online_clone = self.is_online.clone();
         let override_clone = self.override_online.clone();
 
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
 
                 // If an override is set (e.g. during test/mocking), do not probe real socket
                 let forced = *override_clone.read().await;

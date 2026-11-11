@@ -17,6 +17,7 @@
   import Toggle from './Toggle.svelte';
   import Icon from './icons/Icon.svelte';
   import Row from './Row.svelte';
+  import { t, i18n } from '../i18n';
   import type { OldLauncherDataDto, ImportedServerDto, ImportedSkinDto } from '../ipc/generated/models';
 
   interface Props {
@@ -29,6 +30,7 @@
       selectedVersion?: string;
       serversCount: number;
       skinsCount: number;
+      worldsCount?: number;
     }) => void;
     onclose?: () => void;
   }
@@ -58,6 +60,7 @@
   let importVersion = $state(true);
   let importServers = $state(true);
   let importSkins = $state(true);
+  let importWorlds = $state(true);
 
   export async function scanLauncher(targetDir?: string) {
     isScanning = true;
@@ -77,7 +80,7 @@
       }
 
       if (!dirToScan) {
-        errorMessage = 'Каталог старого лаунчера не найден автоматически.';
+        errorMessage = t('import.dir_not_found');
         isScanning = false;
         return;
       }
@@ -88,7 +91,7 @@
 
       scannedData = data;
     } catch (err: any) {
-      errorMessage = err?.message || String(err) || 'Ошибка при чтении данных старого лаунчера';
+      errorMessage = err?.message || String(err) || t('import.read_error');
     } finally {
       isScanning = false;
     }
@@ -107,6 +110,7 @@
         imported_ram_gb?: number;
         imported_servers_count: number;
         imported_skins_count: number;
+        imported_worlds_count: number;
         message: string;
       }>('extras_apply_import', {
         request: {
@@ -117,10 +121,14 @@
           ram_mb: oldData.ram_mb,
           import_version: importVersion,
           selected_version: oldData.selected_version,
+          graphics_preset: oldData.graphics_preset,
           import_servers: importServers,
           servers: oldData.servers || [],
           import_skins: importSkins,
           skins: oldData.skins || [],
+          capes: oldData.capes || [],
+          import_worlds: importWorlds,
+          worlds: oldData.worlds || [],
         },
       });
 
@@ -132,6 +140,7 @@
           selectedVersion: importVersion ? oldData.selected_version : undefined,
           serversCount: response.imported_servers_count,
           skinsCount: response.imported_skins_count,
+          worldsCount: response.imported_worlds_count,
         });
 
         setTimeout(() => {
@@ -140,7 +149,7 @@
         }, 1200);
       }
     } catch (err: any) {
-      errorMessage = err?.message || String(err) || 'Ошибка при переносе данных';
+      errorMessage = err?.message || String(err) || t('import.transfer_error');
     } finally {
       isImporting = false;
     }
@@ -155,9 +164,9 @@
 
 <Sheet
   bind:open
-  title="Импорт из старого лаунчера"
-  cancelLabel="Пропустить"
-  doneLabel={isImporting ? 'Импорт...' : 'Перенести'}
+  title={t('import.sheet_title')}
+  cancelLabel={t('import.action_skip')}
+  doneLabel={isImporting ? (i18n.locale === 'en' ? 'Importing…' : 'Импорт...') : t('import.action_import')}
   showCancel={true}
   showDone={Boolean(oldData) && !successMessage}
   maxWidth="580px"
@@ -171,14 +180,14 @@
     {#if isScanning}
       <div class="scanning-state">
         <Icon name="refresh" size={24} color="var(--color-system-blue)" />
-        <p class="scanning-text">Поиск данных старого лаунчера...</p>
+        <p class="scanning-text">{t('import.scan_progress')}</p>
       </div>
     {:else if successMessage}
       <div class="success-state">
         <div class="success-icon-wrap">
           <Icon name="check" size={28} color="var(--color-system-green)" />
         </div>
-        <h3 class="success-title">Импорт успешно завершён</h3>
+        <h3 class="success-title">{t('import.success')}</h3>
         <p class="success-description">{successMessage}</p>
       </div>
     {:else if oldData}
@@ -186,29 +195,29 @@
       <div class="isolation-notice">
         <Icon name="info" size={16} color="var(--color-system-blue)" />
         <span class="notice-text">
-          Файлы старого лаунчера не будут изменены или удалены. Wex только скопирует выбранные элементы в своё хранилище.
+          {t('import.found_desc')}
         </span>
       </div>
 
       <!-- Found directory path -->
       {#if oldDir}
         <div class="found-source-row">
-          <span class="source-label">Источник:</span>
+          <span class="source-label">{t('import.path_label')}</span>
           <span class="source-path" title={oldDir}>{oldDir}</span>
         </div>
       {/if}
 
       <!-- Transfer items checklist -->
-      <div class="section-heading">Что перенести</div>
+      <div class="section-heading">{t('import.items_to_transfer')}</div>
 
       <div class="transfer-options-list">
         <!-- Nickname -->
         <div class="option-item">
           <div class="option-details">
-            <span class="option-title">Имя игрока</span>
-            <span class="option-subtitle">{oldData.nickname || 'Не указано'}</span>
+            <span class="option-title">{t('import.nickname')}</span>
+            <span class="option-subtitle">{oldData.nickname || t('import.not_specified')}</span>
           </div>
-          <Toggle bind:checked={importNickname} label="Перенести имя игрока" />
+          <Toggle bind:checked={importNickname} label={t('import.transfer_nickname')} />
         </div>
 
         <div class="option-divider"></div>
@@ -216,12 +225,12 @@
         <!-- RAM -->
         <div class="option-item">
           <div class="option-details">
-            <span class="option-title">Выделенная память</span>
+            <span class="option-title">{t('import.ram')}</span>
             <span class="option-subtitle">
-              {oldData.ram_mb ? `${Math.round(oldData.ram_mb / 1024)} ГБ (${oldData.ram_mb} МБ)` : 'По умолчанию'}
+              {oldData.ram_mb ? `${Math.round(oldData.ram_mb / 1024)} ${t('common.unit_gb')} (${oldData.ram_mb} ${t('common.unit_mb')})` : t('import.default')}
             </span>
           </div>
-          <Toggle bind:checked={importRam} label="Перенести настройки памяти" />
+          <Toggle bind:checked={importRam} label={t('import.transfer_ram')} />
         </div>
 
         <div class="option-divider"></div>
@@ -229,10 +238,10 @@
         <!-- Version -->
         <div class="option-item">
           <div class="option-details">
-            <span class="option-title">Выбранная версия</span>
+            <span class="option-title">{t('import.version')}</span>
             <span class="option-subtitle">{oldData.selected_version || '1.21.1'}</span>
           </div>
-          <Toggle bind:checked={importVersion} label="Перенести выбранную версию" />
+          <Toggle bind:checked={importVersion} label={t('import.transfer_version')} />
         </div>
 
         <div class="option-divider"></div>
@@ -240,17 +249,17 @@
         <!-- Servers -->
         <div class="option-item">
           <div class="option-details">
-            <span class="option-title">Серверы</span>
+            <span class="option-title">{t('import.servers')}</span>
             <span class="option-subtitle">
               {oldData.servers?.length
-                ? `${oldData.servers.length} сервер(-ов) найдено`
-                : 'Серверы не найдены'}
+                ? t('import.servers_found', { count: oldData.servers.length })
+                : t('import.servers_none')}
             </span>
           </div>
           <Toggle
             bind:checked={importServers}
             disabled={!oldData.servers || oldData.servers.length === 0}
-            label="Перенести сохранённые серверы"
+            label={t('import.transfer_servers')}
           />
         </div>
 
@@ -259,31 +268,50 @@
         <!-- Skins and wardrobe -->
         <div class="option-item">
           <div class="option-details">
-            <span class="option-title">Скины и плащи</span>
+            <span class="option-title">{t('import.skins')}</span>
             <span class="option-subtitle">
               {oldData.skins?.length
-                ? `${oldData.skins.length} скин(-ов) найдено`
-                : 'Скины не найдены'}
+                ? t('import.skins_found', { count: oldData.skins.length })
+                : t('import.skins_none')}
             </span>
           </div>
           <Toggle
             bind:checked={importSkins}
             disabled={!oldData.skins || oldData.skins.length === 0}
-            label="Перенести скины и плащи"
+            label={t('import.transfer_skins')}
+          />
+        </div>
+
+        <div class="option-divider"></div>
+
+        <!-- Worlds -->
+        <div class="option-item">
+          <div class="option-details">
+            <span class="option-title">{t('import.local_worlds')}</span>
+            <span class="option-subtitle">
+              {oldData.worlds?.length
+                ? t('import.worlds_found', { count: oldData.worlds.length })
+                : t('import.worlds_none')}
+            </span>
+          </div>
+          <Toggle
+            bind:checked={importWorlds}
+            disabled={!oldData.worlds || oldData.worlds.length === 0}
+            label={t('import.transfer_worlds')}
           />
         </div>
       </div>
     {:else}
-      <!-- Empty state / error -->
+      <!-- Empty detect state / error -->
       <div class="empty-detect-state">
         <Icon name="folder" size={32} color="var(--color-tertiary-label)" />
-        <h3 class="empty-title">Данные старого лаунчера не найдены</h3>
+        <h3 class="empty-title">{t('import.not_found')}</h3>
         <p class="empty-subtitle">
-          {errorMessage || 'Wex не обнаружил каталог .aura в стандартной папке AppData. Вы можете продолжить со стандартными настройками.'}
+          {errorMessage || t('import.fallback_hint')}
         </p>
         <div class="empty-actions">
           <Button variant="secondary" size="regular" onclick={() => scanLauncher()}>
-            Повторить поиск
+            {t('common.repeat')}
           </Button>
         </div>
       </div>

@@ -20,6 +20,10 @@
   import SegmentedControl from '../components/SegmentedControl.svelte';
   import Icon from '../components/icons/Icon.svelte';
   import ErrorState from '../components/ErrorState.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
+  import { network } from '../design/network.svelte';
+  import { t, i18n } from '../i18n';
 
   export interface ModEntryModel {
     id: string;
@@ -60,12 +64,12 @@
     { value: '1.20.1', label: '1.20.1' },
   ];
 
-  const filterTabs = [
-    { value: 'all', label: 'Все моды' },
-    { value: 'enabled', label: 'Включённые' },
-    { value: 'pack', label: 'Пак Wex' },
-    { value: 'custom', label: 'Пользовательские' },
-  ];
+  let filterTabs = $derived([
+    { value: 'all', label: t('mods.tab_all') },
+    { value: 'enabled', label: t('mods.tab_enabled') },
+    { value: 'pack', label: t('mods.tab_pack') },
+    { value: 'custom', label: t('mods.tab_custom') },
+  ]);
 
   let filteredMods = $derived(
     mods.filter((m) => {
@@ -90,6 +94,9 @@
     loading = true;
     loadError = null;
     try {
+      if (typeof window !== 'undefined' && (window as any).__MOCK_DELAY__) {
+        await new Promise((r) => setTimeout(r, (window as any).__MOCK_DELAY__));
+      }
       const { invoke } = await import('@tauri-apps/api/core');
       const res = await invoke<ModEntryModel[]>('list_mods', { version });
       if (Array.isArray(res)) {
@@ -156,8 +163,8 @@
     if (!file.name.endsWith('.jar')) {
       modError = {
         code: 'MODS_INVALID_FILE',
-        message: 'Неподдерживаемый файл мода',
-        technical: `Выбран файл «${file.name}». Лаунчер принимает только архивы модификаций .jar.`,
+        message: t('mods.unsupported_file_title'),
+        technical: t('mods.unsupported_file_desc', { name: file.name }),
       };
       return;
     }
@@ -182,7 +189,7 @@
           id: file.name.replace('.jar', '').toLowerCase(),
           name: file.name.replace('.jar', ''),
           version: '1.0.0',
-          description: 'Пользовательский файл мода',
+          description: t('mods.custom_mod_desc'),
           file_name: file.name,
           enabled: true,
           is_pack_mod: false,
@@ -201,7 +208,7 @@
           id: file.name.replace('.jar', '').toLowerCase(),
           name: file.name.replace('.jar', ''),
           version: '1.0.0',
-          description: 'Пользовательский файл мода',
+          description: t('mods.custom_mod_desc'),
           file_name: file.name,
           enabled: true,
           is_pack_mod: false,
@@ -218,8 +225,8 @@
     if (mod.is_pack_mod) {
       modError = {
         code: 'MODS_PROTECTED_PACK_MOD',
-        message: 'Мод защищён от удаления',
-        technical: `Мод «${mod.name}» (${mod.file_name}) входит в официальный пак Wex и не может быть удалён из клиента.`,
+        message: t('mods.protected_title'),
+        technical: t('mods.protected_desc', { name: mod.name, file: mod.file_name }),
       };
       return;
     }
@@ -248,12 +255,45 @@
     loadMods(newVer);
   }
 
+  let prevOnline = network.isOnline;
+  $effect(() => {
+    const currentOnline = network.isOnline;
+    if (currentOnline && !prevOnline) {
+      loadMods(selectedVersion);
+    }
+    prevOnline = currentOnline;
+  });
+
   onMount(() => {
     loadMods(selectedVersion);
   });
 </script>
 
 <div class="mods-screen">
+  <!-- Honest Offline State Banner -->
+  {#if !network.isOnline}
+    <div class="mods-offline-banner" role="status" aria-live="polite">
+      <div class="offline-banner-left">
+        <Icon name="wifi-off" size={16} color="var(--color-system-orange)" />
+        <div class="offline-banner-text">
+          <span class="offline-banner-title">{t('offline.title')}</span>
+          <span class="offline-banner-desc">
+            {t('mods.offline_banner_desc')}
+          </span>
+        </div>
+      </div>
+      <Button
+        variant="secondary"
+        size="small"
+        onclick={() => network.check()}
+        title={t('mods.check_connection_title')}
+      >
+        <Icon name="refresh" size={12} color="var(--color-secondary-label)" />
+        <span>{t('offline.retry')}</span>
+      </Button>
+    </div>
+  {/if}
+
   <!-- Version switcher & Primary toolbar -->
   <div class="screen-header">
     <div class="header-left">
@@ -274,7 +314,7 @@
         class="hidden-file-input"
         bind:this={fileInputRef}
         onchange={handleFileSelected}
-        aria-label="Выбрать файл мода .jar"
+        aria-label={t('mods.add_mod')}
       />
       <Button
         variant="primary"
@@ -283,17 +323,17 @@
         disabled={isAdding}
       >
         <Icon name="plus" size={13} color="#ffffff" />
-        <span>Добавить мод...</span>
+        <span>{t('mods.add_mod')}</span>
       </Button>
 
       <Button
         variant="secondary"
         size="small"
         onclick={handleOpenModsDir}
-        title="Открыть папку инстанса с модами в Проводнике"
+        title={t('mods.open_folder')}
       >
         <Icon name="folder" size={13} color="var(--color-secondary-label)" />
-        <span>Папка с модами</span>
+        <span>{t('mods.open_folder')}</span>
       </Button>
     </div>
   </div>
@@ -301,10 +341,10 @@
   <!-- Search & Category Filters -->
   <div class="screen-filters">
     <div class="search-wrap">
-      <SearchField placeholder="Поиск модов..." bind:value={searchQuery} />
+      <SearchField placeholder={t('mods.search_placeholder')} bind:value={searchQuery} />
     </div>
     <div class="tabs-wrap">
-      <SegmentedControl options={filterTabs} bind:value={filterTab} size="small" />
+      <SegmentedControl options={filterTabs} bind:value={filterTab} />
     </div>
   </div>
 
@@ -325,12 +365,9 @@
 
   <!-- Mods List Area -->
   <div class="mods-content">
-    <List header="Установленные моды (версия {selectedVersion}) • {filteredMods.length} из {mods.length}">
+    <List header={i18n.locale === 'en' ? `Installed Mods — Minecraft ${selectedVersion} · ${filteredMods.length} of ${mods.length}` : `Установленные моды — Minecraft ${selectedVersion} • ${filteredMods.length} из ${mods.length}`}>
       {#if loading}
-        <div class="empty-state">
-          <Icon name="refresh" size={28} color="var(--color-tertiary-label)" />
-          <span class="empty-title">Загрузка модов...</span>
-        </div>
+        <Skeleton variant="row" count={5} />
       {:else if loadError && mods.length === 0}
         <div class="error-state-wrap">
           <ErrorState
@@ -340,11 +377,12 @@
             onsecondaryaction={handleOpenModsDir}
           />
         </div>
-      {:else}
-        {#each filteredMods as m (m.file_name)}
+      {:else if filteredMods.length > 0}
+        {#each filteredMods as m, idx (m.file_name)}
           <Row
-            title="{m.name} {m.version}"
-            subtitle={m.description || m.file_name}
+            index={idx}
+            title={m.name}
+            subtitle={m.description ? `${m.version} • ${m.description}` : `${m.version} • ${m.file_name}`}
           >
             {#snippet leading()}
               <div class="mod-icon">
@@ -359,38 +397,34 @@
             {#snippet trailing()}
               <div class="mod-controls">
                 {#if m.is_pack_mod}
-                  <span class="pack-badge" title="Мод входит в официальную сборку Wex и защищён от удаления">Пак Wex</span>
+                  <span class="pack-badge" title={t('mods.pack_badge_title')}>{t('mods.pack_badge')}</span>
                 {:else}
                   <button
                     type="button"
                     class="delete-btn"
                     onclick={() => handleDeleteMod(m)}
-                    title="Удалить пользовательский мод"
-                    aria-label="Удалить {m.name}"
+                    title={t('mods.delete_tooltip')}
+                    aria-label="{t('mods.delete_tooltip')} {m.name}"
                   >
                     <Icon name="trash" size={14} color="var(--color-system-red)" />
                   </button>
                 {/if}
 
                 <Toggle
-                  ariaLabel={`Включить мод ${m.name}`}
+                  ariaLabel={t('mods.enable_label', { name: m.name })}
                   checked={m.enabled}
                   onchange={(checked) => handleToggleMod(m, checked)}
                 />
               </div>
             {/snippet}
           </Row>
-        {:else}
-          <div class="empty-state">
-            <Icon name="mods" size={32} color="var(--color-tertiary-label)" />
-            <span class="empty-title">
-              {searchQuery ? `По запросу «${searchQuery}» ничего не найдено` : 'Моды не найдены'}
-            </span>
-            <span class="empty-subtitle">
-              {searchQuery ? 'Попробуйте изменить поисковый запрос или категорию' : 'В папке инстанса пока нет модов. Нажмите «Добавить мод...», чтобы установить первый мод'}
-            </span>
-          </div>
         {/each}
+      {:else}
+        <EmptyState
+          icon="mods"
+          title={searchQuery ? t('mods.empty_search', { query: searchQuery }) : t('mods.empty_title')}
+          description={searchQuery ? t('mods.empty_filter_hint') : t('mods.empty_default')}
+        />
       {/if}
     </List>
   </div>
@@ -414,6 +448,21 @@
     overflow-y: auto;
     font-family: var(--font-system);
     box-sizing: border-box;
+  }
+
+  .mods-offline-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--color-material-regular, rgba(30, 30, 35, 0.75));
+    border: 1px solid rgba(255, 159, 10, 0.3);
+    border-radius: var(--radius-large, 14px);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    animation: fadeIn var(--motion-duration-modal-enter) var(--motion-curve-spring-system);
   }
 
   .screen-header {
@@ -452,6 +501,7 @@
 
   .tabs-wrap {
     flex-shrink: 0;
+    min-width: 320px;
   }
 
   .mods-content {
@@ -513,27 +563,5 @@
 
   .hidden-file-input {
     display: none;
-  }
-
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 48px 24px;
-    gap: 8px;
-    text-align: center;
-  }
-
-  .empty-title {
-    font-size: var(--text-headline);
-    font-weight: 600;
-    color: var(--color-label);
-  }
-
-  .empty-subtitle {
-    font-size: var(--text-subheadline);
-    color: var(--color-secondary-label);
-    font-weight: 500;
   }
 </style>

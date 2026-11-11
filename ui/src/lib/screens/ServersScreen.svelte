@@ -1,25 +1,22 @@
 <!--
   Wex Launcher — Screen «Серверы»
-  Specification: tasks/apple/hig/lists-and-tables.md, tasks/apple/hig/sheets.md
+  Specification:
+  - Apple HIG Lists and Tables: https://developer.apple.com/design/human-interface-guidelines/lists-and-tables
+  - Apple HIG Sheets: https://developer.apple.com/design/human-interface-guidelines/sheets
+  - Apple HIG Buttons: https://developer.apple.com/design/human-interface-guidelines/buttons
+  - Apple HIG Search Fields: https://developer.apple.com/design/human-interface-guidelines/search-fields
+  - Apple HIG Color: https://developer.apple.com/design/human-interface-guidelines/color
   Rules:
-  - Inset Grouped list of servers
-  - Live ping, online metrics, MOTD, and server icon
-  - Add server flow via HIG Sheet
-  - Remove server action
-  - Automatic and manual ping refresh
+  - Inset Grouped list of real servers loaded from servers.dat of the chosen instance
+  - Parallel asynchronous SLP pinging with latency, online/max players, MOTD and favicon
+  - Add and Edit server workflows via HIG Sheet modal cards
+  - Direct «Играть» launch action with --quickPlayMultiplayer server auto-connect
+  - System Apple colors only (systemBlue, systemGreen, systemOrange, systemRed)
+  - Zero fabricated data: authentic empty state when no servers exist
 -->
-<script lang="ts">
-  import { onMount } from 'svelte';
-  import List from '../components/List.svelte';
-  import Row from '../components/Row.svelte';
-  import Button from '../components/Button.svelte';
-  import SearchField from '../components/SearchField.svelte';
-  import Sheet from '../components/Sheet.svelte';
-  import Icon from '../components/icons/Icon.svelte';
-  import OfflineState from '../components/OfflineState.svelte';
-  import { network } from '../design/network.svelte';
-
-  interface ServerEntry {
+<script module lang="ts">
+  import { t, i18n } from '../i18n';
+  export interface ServerEntry {
     id: string;
     name: string;
     address: string;
@@ -30,39 +27,262 @@
     motd?: string | null;
     version?: string | null;
     isPinging?: boolean;
+    pingError?: boolean;
+    errorMessage?: string | null;
+    errorReason?: 'offline' | 'invalid_address' | 'no_internet' | null;
+    isFriendServer?: boolean;
+    friendNick?: string;
+    worldName?: string;
+    lobbyCode?: string;
   }
 
+  export interface FriendItem {
+    id: string;
+    nick: string;
+    status: 'online' | 'playing' | 'in_lobby' | 'offline';
+    last_seen?: number | null;
+    game_version?: string | null;
+    world_name?: string | null;
+    lobby_code?: string | null;
+  }
+
+  /**
+   * Categorizes server ping error into clear reasons required by specification:
+   * - offline: «Сервер выключен или недоступен»
+   * - invalid_address: «Неверный адрес сервера»
+   * - no_internet: «Отсутствует подключение к интернету»
+   */
+  export function diagnosePingError(
+    error: any,
+    isOnline = true
+  ): {
+    reason: 'offline' | 'invalid_address' | 'no_internet';
+    message: string;
+  } {
+    if (!isOnline) {
+      return {
+        reason: 'no_internet',
+        message: t('servers.err_no_internet'),
+      };
+    }
+
+    const errStr = (typeof error === 'string' ? error : error?.message || '').toLowerCase();
+
+    // 1. Network / Internet unreachable
+    if (
+      errStr.includes('no_internet') ||
+      errStr.includes('network unreachable') ||
+      errStr.includes('enetunreach') ||
+      errStr.includes('enetdown') ||
+      errStr.includes('нет интернета')
+    ) {
+      return {
+        reason: 'no_internet',
+        message: t('servers.err_no_internet'),
+      };
+    }
+
+    // 2. Invalid address / DNS resolution failure
+    if (
+      errStr.includes('invalid_address') ||
+      errStr.includes('no such host') ||
+      errStr.includes('failed to lookup') ||
+      errStr.includes('dns') ||
+      errStr.includes('not found') ||
+      errStr.includes('addrnotavailable') ||
+      errStr.includes('cannot assign') ||
+      errStr.includes('неверный адрес')
+    ) {
+      return {
+        reason: 'invalid_address',
+        message: t('servers.err_invalid_address'),
+      };
+    }
+
+    // 3. Server turned off or connection timed out
+    return {
+      reason: 'offline',
+      message: t('servers.err_unreachable'),
+    };
+  }
+</script>
+
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import List from '../components/List.svelte';
+  import Row from '../components/Row.svelte';
+  import Button from '../components/Button.svelte';
+  import SearchField from '../components/SearchField.svelte';
+  import Sheet from '../components/Sheet.svelte';
+  import SegmentedControl from '../components/SegmentedControl.svelte';
+  import Icon from '../components/icons/Icon.svelte';
+  import OfflineState from '../components/OfflineState.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
+  import { network } from '../design/network.svelte';
+
+  interface Props {
+    selectedVersion?: string;
+    playerName?: string;
+    mockFriendServers?: ServerEntry[];
+    onlaunch?: (server: ServerEntry) => void;
+  }
+
+  let {
+    selectedVersion = '1.21.1',
+    playerName = 'Player',
+    mockFriendServers,
+    onlaunch,
+  }: Props = $props();
+
+  let activeVersion = $state('1.21.1');
+  let effectivePlayerName = $state('Player');
+
+  $effect(() => {
+    if (selectedVersion) activeVersion = selectedVersion;
+  });
+
+  $effect(() => {
+    if (playerName) effectivePlayerName = playerName;
+  });
+
+  $effect(() => {
+    if (mockFriendServers) {
+      friendServers = mockFriendServers;
+    }
+  });
   let searchQuery = $state('');
+  let isRefreshingAll = $state(false);
+  let isImporting = $state(false);
+  let launchingServerId = $state<string | null>(null);
+  let launchFeedback = $state<string | null>(null);
+
+  // Add Server Sheet state
   let addSheetOpen = $state(false);
   let newServerName = $state('');
   let newServerAddress = $state('');
-  let isRefreshingAll = $state(false);
+  let addError = $state<string | null>(null);
+
+  // Edit Server Sheet state
+  let editSheetOpen = $state(false);
+  let editingServer = $state<ServerEntry | null>(null);
+  let editServerName = $state('');
+  let editServerAddress = $state('');
+  let editError = $state<string | null>(null);
 
   let servers = $state<ServerEntry[]>([]);
+  let friendServers = $state<ServerEntry[]>([]);
 
-  let filteredServers = $derived(
-    servers.filter(
+  const versionOptions = [
+    { value: '1.21.1', label: '1.21.1' },
+    { value: '1.20.1', label: '1.20.1' },
+  ];
+
+  // Friend servers are pinned at the very top of the list
+  let filteredServers = $derived.by(() => {
+    const q = searchQuery.toLowerCase();
+    const matchedFriends = friendServers.filter(
       (s) =>
-        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.motd && s.motd.toLowerCase().includes(searchQuery.toLowerCase()))
-    )
-  );
+        s.name.toLowerCase().includes(q) ||
+        s.address.toLowerCase().includes(q) ||
+        (s.motd && s.motd.toLowerCase().includes(q)) ||
+        (s.friendNick && s.friendNick.toLowerCase().includes(q))
+    );
+    const matchedNormal = servers.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.address.toLowerCase().includes(q) ||
+        (s.motd && s.motd.toLowerCase().includes(q))
+    );
+    return [...matchedFriends, ...matchedNormal];
+  });
 
-  async function loadServers() {
+  async function loadFriendServers() {
+    if (mockFriendServers) {
+      friendServers = mockFriendServers;
+      return;
+    }
+
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const list = await invoke<ServerEntry[]>('list_servers');
-      if (list && list.length > 0) {
-        servers = list;
+      const backendFriends = await invoke<
+        Array<{
+          id: string;
+          friend_nick: string;
+          world_name: string;
+          address: string;
+          lobby_code?: string;
+          game_version?: string;
+        }>
+      >('get_friend_hosted_servers');
+
+      if (backendFriends && backendFriends.length > 0) {
+        friendServers = backendFriends.map((f) => ({
+          id: f.id,
+          name: t('servers.friend_world_title', { friend: f.friend_nick }),
+          address: f.address,
+          motd: t('servers.friend_world_motd', { friend: f.friend_nick, world: f.world_name }),
+          version: f.game_version || activeVersion,
+          isFriendServer: true,
+          friendNick: f.friend_nick,
+          lobbyCode: f.lobby_code,
+          worldName: f.world_name,
+        }));
+        return;
+      }
+
+      // Fallback: query social_sync
+      const syncResult = await invoke<{
+        friends?: FriendItem[];
+      }>('social_sync', {});
+
+      if (syncResult && syncResult.friends) {
+        const fromSync: ServerEntry[] = [];
+        for (const f of syncResult.friends) {
+          if ((f.status === 'playing' || f.status === 'in_lobby') && (f.world_name || f.lobby_code)) {
+            const addr = f.lobby_code
+              ? `#${f.lobby_code}`
+              : f.world_name?.includes(':')
+                ? f.world_name
+                : '127.0.0.1:25565';
+            fromSync.push({
+              id: `friend-srv-${f.id}`,
+              name: t('servers.friend_world_title', { friend: f.nick }),
+              address: addr,
+              motd: t('servers.friend_world_motd', { friend: f.nick, world: f.world_name || t('servers.world_coop') }),
+              version: f.game_version || activeVersion,
+              isFriendServer: true,
+              friendNick: f.nick,
+              lobbyCode: f.lobby_code || undefined,
+              worldName: f.world_name || undefined,
+            });
+          }
+        }
+        friendServers = fromSync;
       }
     } catch {
       // In-browser mock fallback
     }
   }
 
+  async function loadServers(ver: string) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const list = await invoke<ServerEntry[]>('list_servers', { version: ver });
+      servers = list || [];
+      if (servers.length > 0) {
+        refreshAllServers();
+      }
+    } catch {
+      // In-browser mock / test fallback: keep empty array for authentic empty state
+      servers = [];
+    }
+  }
+
   async function pingSingleServer(server: ServerEntry) {
     server.isPinging = true;
+    server.pingError = false;
+
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const result = await invoke<{
@@ -72,117 +292,316 @@
         motd: string;
         version: string;
         favicon?: string;
-      }>('ping_server', { address: server.address });
+      }>('ping_server', { address: server.address, timeout_ms: 2500 });
 
       server.ping_ms = result.latency_ms;
       server.online = result.online;
       server.max_players = result.max_players;
       server.motd = result.motd;
       server.version = result.version;
-      if (result.favicon) server.icon = result.favicon;
-    } catch {
-      // Offline or ping timeout
+      if (result.favicon) {
+        server.icon = result.favicon;
+      }
+      server.errorReason = null;
+      server.errorMessage = null;
+    } catch (e: any) {
+      // No fabricated numbers on error: online and max_players stay null
+      server.ping_ms = null;
+      server.online = null;
+      server.max_players = null;
+      server.pingError = true;
+      const diag = diagnosePingError(e, network.isOnline);
+      server.errorReason = diag.reason;
+      server.errorMessage = diag.message;
     } finally {
       server.isPinging = false;
     }
   }
 
   async function refreshAllServers() {
-    if (isRefreshingAll) return;
+    if (isRefreshingAll || servers.length === 0) return;
     isRefreshingAll = true;
-    await Promise.all(servers.map((s) => pingSingleServer(s)));
+    await Promise.allSettled(servers.map((s) => pingSingleServer(s)));
     isRefreshingAll = false;
   }
 
-  async function handleAddServer() {
-    if (!newServerName.trim() || !newServerAddress.trim()) return;
+  async function handleImportBothVersions() {
+    isImporting = true;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const imported = await invoke<ServerEntry[]>('import_servers_both_versions');
+      if (imported && imported.length > 0) {
+        servers = imported;
+        refreshAllServers();
+      }
+    } catch {
+      // Browser preview / mock fallback
+    } finally {
+      isImporting = false;
+    }
+  }
 
+  async function handleAddServer() {
+    addError = null;
     const name = newServerName.trim();
     const address = newServerAddress.trim();
 
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const created = await invoke<ServerEntry>('add_server', { name, address });
-      servers = [...servers, created];
-      pingSingleServer(created);
-    } catch {
-      const fallback: ServerEntry = {
-        id: `srv-${Date.now()}`,
-        name,
-        address,
-        version: '1.21.1',
-        motd: 'Пользовательский сервер',
-        ping_ms: 45,
-        online: 1,
-        max_players: 20,
-      };
-      servers = [...servers, fallback];
+    if (!name || !address) {
+      addError = t('servers.err_fill_fields');
+      return false;
     }
 
-    newServerName = '';
-    newServerAddress = '';
-    addSheetOpen = false;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const created = await invoke<ServerEntry>('add_server', {
+        version: activeVersion,
+        name,
+        address,
+      });
+
+      servers = [...servers, created];
+      pingSingleServer(created);
+      addSheetOpen = false;
+      newServerName = '';
+      newServerAddress = '';
+      return true;
+    } catch (e: any) {
+      const msg = typeof e === 'string' ? e : e?.message || t('servers.err_save_failed');
+      addError = msg;
+      return false;
+    }
+  }
+
+  function openEditSheet(server: ServerEntry) {
+    editingServer = server;
+    editServerName = server.name;
+    editServerAddress = server.address;
+    editError = null;
+    editSheetOpen = true;
+  }
+
+  async function handleEditServer() {
+    if (!editingServer) return;
+    editError = null;
+
+    const name = editServerName.trim();
+    const address = editServerAddress.trim();
+
+    if (!name || !address) {
+      editError = t('servers.err_fill_fields');
+      return false;
+    }
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const updated = await invoke<ServerEntry>('edit_server', {
+        version: activeVersion,
+        old_address: editingServer.address,
+        name,
+        new_address: address,
+      });
+
+      servers = servers.map((s) => (s.id === editingServer!.id ? { ...s, ...updated } : s));
+      const target = servers.find((s) => s.id === editingServer!.id);
+      if (target) {
+        pingSingleServer(target);
+      }
+
+      editSheetOpen = false;
+      editingServer = null;
+      return true;
+    } catch (e: any) {
+      const msg = typeof e === 'string' ? e : e?.message || t('servers.err_update_failed');
+      editError = msg;
+      return false;
+    }
   }
 
   async function handleRemoveServer(server: ServerEntry) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('remove_server', { address: server.address });
+      await invoke('remove_server', {
+        version: activeVersion,
+        address: server.address,
+      });
     } catch {
-      // Fallback
+      // Ignored
     }
     servers = servers.filter((s) => s.id !== server.id);
   }
 
+  async function handlePlayServer(server: ServerEntry) {
+    if (onlaunch) {
+      onlaunch(server);
+      return;
+    }
+
+    if (server.lobbyCode) {
+      launchingServerId = server.id;
+      launchFeedback = t('servers.feedback_lobby_connecting', { code: server.lobbyCode });
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('join_lobby_room', {
+          code: server.lobbyCode,
+          playerName: effectivePlayerName,
+        });
+        launchFeedback = t('servers.feedback_lobby_joined', { code: server.lobbyCode });
+      } catch (e: any) {
+        launchFeedback = typeof e === 'string' ? e : e?.message || t('servers.feedback_lobby_error');
+      } finally {
+        setTimeout(() => {
+          launchingServerId = null;
+          launchFeedback = null;
+        }, 4000);
+      }
+      return;
+    }
+
+    launchingServerId = server.id;
+    launchFeedback = t('servers.feedback_launching', { version: activeVersion, name: server.name });
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('launch_game', {
+        version: activeVersion,
+        nickname: effectivePlayerName,
+        server: server.address,
+      });
+      launchFeedback = t('servers.feedback_game_running', { address: server.address });
+    } catch (e: any) {
+      launchFeedback = typeof e === 'string' ? e : e?.message || t('servers.feedback_launch_error');
+    } finally {
+      setTimeout(() => {
+        launchingServerId = null;
+        launchFeedback = null;
+      }, 4000);
+    }
+  }
+
+  function onVersionChange(newVer: string) {
+    activeVersion = newVer;
+    loadServers(newVer);
+  }
+
+  let prevOnline = network.isOnline;
+  $effect(() => {
+    const currentOnline = network.isOnline;
+    if (currentOnline && !prevOnline) {
+      loadServers(activeVersion);
+      loadFriendServers();
+    }
+    prevOnline = currentOnline;
+  });
+
   onMount(() => {
-    loadServers();
+    // 1. Attempt reading configuration to match current active nickname and version
+    import('@tauri-apps/api/core')
+      .then(({ invoke }) => {
+        invoke<{ selected_version?: string; player_name?: string }>('get_launcher_settings')
+          .then((cfg) => {
+            if (cfg?.selected_version) activeVersion = cfg.selected_version;
+            if (cfg?.player_name) effectivePlayerName = cfg.player_name;
+            loadServers(activeVersion);
+          })
+          .catch(() => {
+            loadServers(activeVersion);
+          });
+      })
+      .catch(() => {
+        loadServers(activeVersion);
+      });
+
+    // 2. Load friend hosted servers
+    loadFriendServers();
   });
 </script>
 
 <div class="servers-screen">
+  <!-- Top Screen Toolbar: search, version segmented control, refresh & add actions -->
   <div class="screen-toolbar">
     <div class="search-wrap">
-      <SearchField placeholder="Поиск серверов по названию или адресу..." bind:value={searchQuery} />
+      <SearchField placeholder={t('servers.search_placeholder')} bind:value={searchQuery} />
     </div>
 
-    <div class="toolbar-actions">
+    <div class="toolbar-controls">
+      <div class="version-picker" title={t('servers.instance_select_title')}>
+        <SegmentedControl
+          options={versionOptions}
+          value={activeVersion}
+          onchange={onVersionChange}
+        />
+      </div>
+
       <Button
         variant="secondary"
         size="small"
         onclick={refreshAllServers}
         loading={isRefreshingAll}
-        title="Обновить статус и пинг всех серверов"
+        title={t('servers.refresh_all')}
       >
         <Icon name="restore" size={13} color="var(--color-secondary-label)" />
-        <span>Обновить</span>
+        <span>{t('common.refresh')}</span>
+      </Button>
+
+      <Button
+        variant="secondary"
+        size="small"
+        onclick={handleImportBothVersions}
+        loading={isImporting}
+        title={t('servers.import_tooltip')}
+      >
+        <Icon name="folder" size={13} color="var(--color-secondary-label)" />
+        <span>{t('servers.action_import')}</span>
       </Button>
 
       <Button
         variant="primary"
         size="small"
-        onclick={() => (addSheetOpen = true)}
-        title="Добавить новый Minecraft сервер"
+        onclick={() => {
+          newServerName = '';
+          newServerAddress = '';
+          addError = null;
+          addSheetOpen = true;
+        }}
+        title={t('servers.add_server')}
       >
         <Icon name="server" size={14} color="#ffffff" />
-        <span>Добавить сервер</span>
+        <span>{t('servers.add_server')}</span>
       </Button>
     </div>
   </div>
 
+  {#if launchFeedback}
+    <div class="launch-toast" role="status">
+      <Icon name="play" size={14} color="var(--color-system-blue)" />
+      <span>{launchFeedback}</span>
+    </div>
+  {/if}
+
+  <!-- Main Servers List View (Apple HIG Inset Grouped) -->
   <div class="servers-content">
     {#if !network.isOnline}
-      <OfflineState onretry={loadServers} />
+      <OfflineState onretry={() => loadServers(activeVersion)} />
+    {:else if isRefreshingAll && filteredServers.length === 0}
+      <List header="Серверы Minecraft • {activeVersion}">
+        <Skeleton variant="row" count={4} />
+      </List>
     {:else if filteredServers.length > 0}
-      <List header="Серверы Minecraft и миры Wex">
-        {#each filteredServers as s (s.id)}
+      <List header="Серверы Minecraft • {activeVersion}">
+        {#each filteredServers as s, idx (s.id)}
           <Row
+            index={idx}
             title={s.name}
-            subtitle="{s.address}{s.version ? ' • ' + s.version : ''}{s.motd ? ' — ' + s.motd : ''}"
-            clickable
+            subtitle={s.pingError && s.errorMessage
+              ? `${s.address} • ${s.errorMessage}`
+              : `${s.address}${s.version ? ' • ' + s.version : ''}${s.motd ? ' — ' + s.motd : ''}`}
+            clickable={false}
           >
             {#snippet leading()}
-              <div class="server-avatar">
-                {#if s.icon}
+              <div class="server-avatar" class:friend-avatar={s.isFriendServer}>
+                {#if s.isFriendServer}
+                  <Icon name="friends" size={18} color="var(--color-system-green)" />
+                {:else if s.icon}
                   <img src={s.icon} class="server-icon-img" alt={s.name} />
                 {:else}
                   <Icon name="server" size={18} color="var(--color-system-blue)" />
@@ -190,83 +609,200 @@
               </div>
             {/snippet}
 
+            {#if s.isFriendServer}
+              <div class="pinned-row-tag">
+                <span class="pinned-badge" title={t('servers.friend_pinned_tooltip')}>
+                  <Icon name="friends" size={11} color="var(--color-system-orange)" />
+                  <span>{t('servers.badge_friend_server')}</span>
+                </span>
+              </div>
+            {/if}
+
             {#snippet trailing()}
               <div class="server-metrics">
                 {#if s.isPinging}
-                  <span class="ping-pill loading">Пинг...</span>
+                  <span class="ping-pill loading">
+                    <span class="spinner-dot"></span>
+                    {t('servers.pinging')}
+                  </span>
+                {:else if s.pingError}
+                  {#if s.errorReason === 'offline'}
+                    <span class="ping-pill offline" title={s.errorMessage || t('servers.err_unreachable')}>
+                      {t('servers.status_offline_reason')}
+                    </span>
+                  {:else if s.errorReason === 'invalid_address'}
+                    <span class="ping-pill error" title={s.errorMessage || t('servers.err_invalid_address')}>
+                      {t('servers.status_bad_address')}
+                    </span>
+                  {:else if s.errorReason === 'no_internet'}
+                    <span class="ping-pill warning" title={s.errorMessage || t('servers.err_no_internet')}>
+                      {t('servers.status_no_network')}
+                    </span>
+                  {:else}
+                    <span class="ping-pill offline" title={t('servers.unavailable_tooltip')}>
+                      {t('servers.offline')}
+                    </span>
+                  {/if}
+
+                  <!-- Retry Button for Failed Ping -->
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    onclick={() => pingSingleServer(s)}
+                    loading={s.isPinging}
+                    title={t('servers.retry_ping_tooltip')}
+                  >
+                    <Icon name="restore" size={11} color="var(--color-system-blue)" />
+                    <span>{t('servers.btn_retry')}</span>
+                  </Button>
                 {:else if s.ping_ms !== null && s.ping_ms !== undefined}
-                  <span class="ping-pill" class:fast={s.ping_ms < 60} class:medium={s.ping_ms >= 60 && s.ping_ms < 150} class:slow={s.ping_ms >= 150}>
+                  <span
+                    class="ping-pill"
+                    class:fast={s.ping_ms < 60}
+                    class:medium={s.ping_ms >= 60 && s.ping_ms < 150}
+                    class:slow={s.ping_ms >= 150}
+                    title={t('servers.rtt_tooltip')}
+                  >
                     <span class="dot"></span>
-                    {s.ping_ms} мс
+                    {t('servers.ping_ms', { ms: s.ping_ms })}
                   </span>
 
                   {#if s.online !== null && s.online !== undefined}
-                    <span class="online-counter">
+                    <span class="online-counter" title={t('servers.players_online_tooltip')}>
                       {s.online}/{s.max_players ?? '?'}
                     </span>
                   {/if}
                 {:else}
-                  <span class="ping-pill offline">Офлайн</span>
+                  <span class="ping-pill offline" title={t('servers.unavailable_tooltip')}>
+                    {t('servers.offline')}
+                  </span>
                 {/if}
 
-                <Button variant="secondary" size="small">
-                  Подключиться
+                <!-- Primary Action: Connect & Launch -->
+                <Button
+                  variant="primary"
+                  size="small"
+                  onclick={() => handlePlayServer(s)}
+                  loading={launchingServerId === s.id}
+                  title={t('servers.launch_connect_tooltip')}
+                >
+                  <Icon name="play" size={12} color="#ffffff" />
+                  <span>{t('servers.btn_quick_play')}</span>
                 </Button>
 
-                <button
-                  type="button"
-                  class="remove-btn"
-                  onclick={() => handleRemoveServer(s)}
-                  title="Удалить сервер"
-                  aria-label="Удалить сервер {s.name}"
-                >
-                  <Icon name="close" size={12} color="var(--color-secondary-label)" />
-                </button>
+                {#if !s.isFriendServer}
+                  <!-- Edit Server -->
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    onclick={() => openEditSheet(s)}
+                    title={t('servers.edit_tooltip')}
+                  >
+                    <span>{t('servers.btn_edit')}</span>
+                  </Button>
+
+                  <!-- Remove Server -->
+                  <button
+                    type="button"
+                    class="remove-btn"
+                    onclick={() => handleRemoveServer(s)}
+                    title={t('servers.delete_server')}
+                    aria-label="{t('servers.delete_server')} {s.name}"
+                  >
+                    <Icon name="close" size={12} color="var(--color-secondary-label)" />
+                  </button>
+                {/if}
               </div>
             {/snippet}
           </Row>
         {/each}
       </List>
     {:else}
-      <div class="empty-state-card">
-        <Icon name="server" size={44} color="var(--color-tertiary-label)" />
-        <h2 class="empty-title">Серверы не найдены</h2>
-        <p class="empty-desc">
-          {searchQuery
-            ? 'По запросу «' + searchQuery + '» ничего не найдено.'
-            : 'Список серверов пуст. Нажмите «Добавить сервер», чтобы сохранить адрес любимого сервера.'}
-        </p>
-      </div>
+      <EmptyState
+        icon="server"
+        title={t('servers.empty_title')}
+        description={searchQuery
+          ? t('servers.empty_search', { query: searchQuery })
+          : t('servers.empty_default')}
+        actionText={searchQuery ? undefined : t('servers.add_server')}
+        onaction={searchQuery ? undefined : () => (addSheetOpen = true)}
+      />
     {/if}
   </div>
 </div>
 
+<!-- Add Server HIG Sheet -->
 <Sheet
   bind:open={addSheetOpen}
-  title="Добавить сервер"
-  doneLabel="Сохранить"
+  title={t('servers.sheet_title')}
+  doneLabel={t('servers.sheet_save')}
   ondone={handleAddServer}
 >
   <div class="sheet-form">
+    {#if addError}
+      <div class="sheet-error" role="alert">
+        <Icon name="warning" size={14} color="var(--color-system-red)" />
+        <span>{addError}</span>
+      </div>
+    {/if}
+
     <div class="form-row">
-      <label class="form-label" for="srv-name">Название сервера</label>
+      <label class="form-label" for="new-srv-name">{t('servers.sheet_name_label')}</label>
       <input
-        id="srv-name"
+        id="new-srv-name"
         type="text"
         bind:value={newServerName}
-        placeholder="Например: Мой любимый сервер"
+        placeholder={t('servers.sheet_name_placeholder')}
         class="form-input"
         maxlength={32}
       />
     </div>
 
     <div class="form-row">
-      <label class="form-label" for="srv-addr">Адрес сервера (домен или IP:порт)</label>
+      <label class="form-label" for="new-srv-addr">{t('servers.sheet_address_label')}</label>
       <input
-        id="srv-addr"
+        id="new-srv-addr"
         type="text"
         bind:value={newServerAddress}
-        placeholder="mc.example.com или 192.168.1.100:25565"
+        placeholder={t('servers.sheet_address_placeholder')}
+        class="form-input"
+      />
+    </div>
+  </div>
+</Sheet>
+
+<!-- Edit Server HIG Sheet -->
+<Sheet
+  bind:open={editSheetOpen}
+  title={t('servers.edit_sheet_title')}
+  doneLabel={t('servers.sheet_save')}
+  ondone={handleEditServer}
+>
+  <div class="sheet-form">
+    {#if editError}
+      <div class="sheet-error" role="alert">
+        <Icon name="warning" size={14} color="var(--color-system-red)" />
+        <span>{editError}</span>
+      </div>
+    {/if}
+
+    <div class="form-row">
+      <label class="form-label" for="edit-srv-name">{t('servers.lbl_server_name')}</label>
+      <input
+        id="edit-srv-name"
+        type="text"
+        bind:value={editServerName}
+        class="form-input"
+        maxlength={32}
+      />
+    </div>
+
+    <div class="form-row">
+      <label class="form-label" for="edit-srv-addr">{t('servers.lbl_server_address')}</label>
+      <input
+        id="edit-srv-addr"
+        type="text"
+        bind:value={editServerAddress}
         class="form-input"
       />
     </div>
@@ -298,10 +834,27 @@
     min-width: 260px;
   }
 
-  .toolbar-actions {
+  .toolbar-controls {
     display: flex;
     align-items: center;
     gap: 10px;
+  }
+
+  .version-picker {
+    display: flex;
+    align-items: center;
+  }
+
+  .launch-toast {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background-color: var(--color-tertiary-system-fill);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-subheadline);
+    color: var(--color-label);
   }
 
   .servers-content {
@@ -318,6 +871,26 @@
     justify-content: center;
     overflow: hidden;
     flex-shrink: 0;
+  }
+
+  .server-avatar.friend-avatar {
+    background-color: rgba(48, 209, 88, 0.18);
+  }
+
+  .pinned-row-tag {
+    margin-top: 4px;
+  }
+
+  .pinned-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    background-color: rgba(255, 159, 10, 0.15);
+    color: var(--color-system-orange);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-caption2);
+    font-weight: 600;
   }
 
   .server-icon-img {
@@ -367,9 +940,36 @@
     background-color: rgba(255, 69, 58, 0.12);
   }
 
-  .ping-pill.offline,
+  .ping-pill.offline {
+    color: var(--color-system-red);
+    background-color: rgba(255, 69, 58, 0.12);
+  }
+
+  .ping-pill.error {
+    color: var(--color-system-red);
+    background-color: rgba(255, 69, 58, 0.16);
+  }
+
+  .ping-pill.warning {
+    color: var(--color-system-orange);
+    background-color: rgba(255, 159, 10, 0.16);
+  }
+
   .ping-pill.loading {
     color: var(--color-tertiary-label);
+  }
+
+  .spinner-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--color-tertiary-label);
+    animation: pulse 1s infinite alternate;
+  }
+
+  @keyframes pulse {
+    0% { opacity: 0.3; }
+    100% { opacity: 1; }
   }
 
   .online-counter {
@@ -405,39 +1005,22 @@
     stroke: var(--color-system-red);
   }
 
-  .empty-state-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 64px 24px;
-    gap: 12px;
-    text-align: center;
-    background-color: var(--card-bg);
-    border: 1px dashed var(--glass-border);
-    border-radius: var(--radius-lg);
-  }
-
-  .empty-title {
-    font-size: var(--text-headline);
-    font-weight: 600;
-    color: var(--color-label);
-    margin: 0;
-  }
-
-  .empty-desc {
-    font-size: var(--text-subheadline);
-    color: var(--color-secondary-label);
-    max-width: 380px;
-    line-height: 1.4;
-    margin: 0;
-  }
-
   .sheet-form {
     display: flex;
     flex-direction: column;
     gap: 16px;
     padding: 4px 0;
+  }
+
+  .sheet-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background-color: rgba(255, 69, 58, 0.12);
+    border-radius: var(--radius-sm);
+    color: var(--color-system-red);
+    font-size: var(--text-footnote);
   }
 
   .form-row {

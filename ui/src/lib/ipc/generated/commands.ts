@@ -3,11 +3,14 @@
 import type {
     AchievementDefinitionDto,
     AchievementProgressDto,
+    ClearStorageCacheResultDto,
     CrashDiagnosisDto,
+    DeepLinkActionDto,
     DiscordActivityDto,
     FriendItemDto,
     FriendProfileDto,
     GraphicsPresetDto,
+    IntegrityCheckResultDto,
     LobbyCreateResponseDto,
     LobbyJoinResponseDto,
     LobbyStatusResponseDto,
@@ -23,6 +26,7 @@ import type {
     ScreenshotItemDto,
     ServerPingResponseDto,
     SkinModelDto,
+    StorageCacheInfoDto,
     SkinValidationResultDto,
     SyncResponseDto,
     TunnelConfigResponseDto,
@@ -94,6 +98,10 @@ export type NetLanConnectRequest = { address: string, };;
 
 export type NetLanConnectResponse = { success: boolean, message: string, };;
 
+export type NetLanPublishRequest = { motd: string, port: number, host_name: string | null, };;
+
+export type NetLanPublishResponse = { code: string, host_name: string, world_name: string, tunnel_address: string, port: number, };;
+
 export type NetCompareManifestsRequest = { client_manifest: Array<ModManifestEntryDto>, host_manifest: Array<ModManifestEntryDto>, };;
 
 export type NetCompareManifestsResponse = { mismatches: Array<ModMismatchItemDto>, manifest_hash: string, };;
@@ -102,11 +110,11 @@ export type NetComputeManifestHashRequest = { manifest: Array<ModManifestEntryDt
 
 export type NetComputeManifestHashResponse = { hash: string, };;
 
-export type NetTunnelStartRequest = { binary_path: string, secret_key: string, };;
+export type NetTunnelStartRequest = Record<string, never>;;
 
 export type NetTunnelStartResponse = { pid: number, };;
 
-export type NetTunnelEnsureBinaryRequest = { destination_path: string, };;
+export type NetTunnelEnsureBinaryRequest = Record<string, never>;;
 
 export type NetTunnelEnsureBinaryResponse = { path: string, verified: boolean, };;
 
@@ -133,6 +141,10 @@ export type WardrobeApplyResponse = { success: boolean, message: string, };;
 export type WardrobeDeleteHistoryRequest = { history_dir: string, item_id: string, };;
 
 export type WardrobeDeleteHistoryResponse = { success: boolean, };;
+
+export type WardrobeGetSkinRequest = { history_dir: string, item_id: string, };;
+
+export type WardrobeGetSkinResponse = { item: WardrobeItemDto, skin_bytes_base64: string, };;
 
 export type ExtrasDiscordSetActivityRequest = { activity: DiscordActivityDto, };;
 
@@ -192,6 +204,42 @@ export type SocialGetNewsResponse = { versions: Array<ReleaseNoteVersionDto>, };
 
 export type SocialCheckLauncherUpdateRequest = { manifest_url: string, current_version: string, target_platform: string | null, };;
 
+export type SocialCheckLauncherUpdateResponse = { update: UpdateCheckResultDto, };;
+
+export type StorageVerifyFilesRequest = { version: string, };;
+
+export type StorageVerifyFilesResponse = { result: IntegrityCheckResultDto, };;
+
+export type StorageGetCacheInfoRequest = Record<string, never>;;
+
+export type StorageGetCacheInfoResponse = { info: StorageCacheInfoDto, };;
+
+export type StorageClearCacheRequest = Record<string, never>;;
+
+export type StorageClearCacheResponse = { result: ClearStorageCacheResultDto, };;
+
+export type MusicTrackDto = { id: string, title: string, artist: string, file_name: string, cover_data_url: string | null, duration_seconds: bigint | null, };;
+
+export type MusicPlaylistResponse = { tracks: Array<MusicTrackDto>, music_dir: string, };;
+
+export type MusicGetTrackDataRequest = { file_name: string, };;
+
+export type MusicGetTrackDataResponse = { file_name: string, mime_type: string, audio_base64: string, };;
+
+export type MusicSettingsDto = { enabled: boolean, volume: number, auto_pause_on_launch: boolean, };;
+
+export type MusicSmtcStateDto = { is_playing: boolean, track_title: string | null, artist: string | null, album: string | null, has_cover: boolean, position_seconds: bigint, duration_seconds: bigint | null, };;
+
+export type MusicSessionStateDto = { has_active_session: boolean, source_app: string, app_id: string, title: string, artist: string, album: string, is_playing: boolean, position_seconds: number, duration_seconds: number, thumbnail_base64: string | null, timestamp_ms: bigint, };;
+
+export type MusicUpdateSessionRequest = { session: MusicSessionStateDto, };;
+
+export type MusicCheckCommandResponse = { command: string | null, };;
+
+export type ParseDeepLinkRequest = { uri: string, };;
+
+export type ParseDeepLinkResponse = { action: DeepLinkActionDto, };;
+
 export const COMMANDS = {
     CORE_GET_CONFIG: "core_get_config",
     CORE_SAVE_CONFIG: "core_save_config",
@@ -218,6 +266,7 @@ export const COMMANDS = {
     NET_LOBBY_LIST_OPEN_ROOMS: "net_lobby_list_open_rooms",
     NET_LAN_LIST_DISCOVERED: "net_lan_list_discovered",
     NET_LAN_CONNECT: "net_lan_connect",
+    NET_LAN_PUBLISH: "net_lan_publish",
     NET_COMPARE_MANIFESTS: "net_compare_manifests",
     NET_COMPUTE_MANIFEST_HASH: "net_compute_manifest_hash",
     NET_TUNNEL_START: "net_tunnel_start",
@@ -233,6 +282,7 @@ export const COMMANDS = {
     WARDROBE_GET_STATE: "wardrobe_get_state",
     WARDROBE_APPLY: "wardrobe_apply",
     WARDROBE_DELETE_HISTORY: "wardrobe_delete_history",
+    WARDROBE_GET_SKIN: "wardrobe_get_skin",
     EXTRAS_DISCORD_SET_ACTIVITY: "extras_discord_set_activity",
     EXTRAS_DISCORD_CLEAR_ACTIVITY: "extras_discord_clear_activity",
     EXTRAS_IMPORT_OLD_LAUNCHER: "extras_import_old_launcher",
@@ -255,6 +305,21 @@ export const COMMANDS = {
     SOCIAL_LIST_SCREENSHOTS: "social_list_screenshots",
     SOCIAL_GET_NEWS: "social_get_news",
     SOCIAL_CHECK_LAUNCHER_UPDATE: "social_check_launcher_update",
+    STORAGE_VERIFY_FILES: "storage_verify_files",
+    STORAGE_GET_CACHE_INFO: "storage_get_cache_info",
+    STORAGE_CLEAR_CACHE: "storage_clear_cache",
+    MUSIC_GET_PLAYLIST: "music_get_playlist",
+    MUSIC_GET_TRACK_DATA: "music_get_track_data",
+    MUSIC_OPEN_FOLDER: "music_open_folder",
+    MUSIC_GET_SETTINGS: "music_get_settings",
+    MUSIC_SET_SETTINGS: "music_set_settings",
+    MUSIC_SYNC_SMTC: "music_sync_smtc",
+    MUSIC_GET_SMTC_STATE: "music_get_smtc_state",
+    MUSIC_UPDATE_SESSION: "music_update_session",
+    MUSIC_CHECK_COMMAND: "music_check_command",
+    DEEP_LINK_PARSE: "deep_link_parse",
+    DEEP_LINK_GET_PENDING: "deep_link_get_pending",
+    DEEP_LINK_CLEAR_PENDING: "deep_link_clear_pending",
 } as const;
 
 export type IpcCommandName = typeof COMMANDS[keyof typeof COMMANDS];

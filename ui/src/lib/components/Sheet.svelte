@@ -11,6 +11,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import Button from './Button.svelte';
+  import { t } from '../i18n';
 
   interface Props {
     open?: boolean;
@@ -21,15 +22,15 @@
     showDone?: boolean;
     maxWidth?: string;
     onclose?: () => void;
-    ondone?: () => void;
+    ondone?: () => void | boolean | Promise<void | boolean>;
     children?: Snippet;
   }
 
   let {
     open = $bindable(false),
     title,
-    cancelLabel = 'Отмена',
-    doneLabel = 'Готово',
+    cancelLabel = t('common.cancel'),
+    doneLabel = t('common.done'),
     showCancel = true,
     showDone = true,
     maxWidth = '540px',
@@ -44,13 +45,25 @@
   function close() {
     open = false;
     onclose?.();
-    if (previouslyFocusedEl && typeof previouslyFocusedEl.focus === 'function') {
-      previouslyFocusedEl.focus();
+    const elToFocus = previouslyFocusedEl;
+    if (elToFocus && typeof elToFocus.focus === 'function') {
+      elToFocus.focus();
+      setTimeout(() => {
+        if (elToFocus && (document.activeElement === document.body || !document.activeElement)) {
+          elToFocus.focus();
+        }
+      }, 10);
     }
   }
 
-  function handleDone() {
-    ondone?.();
+  async function handleDone() {
+    if (ondone) {
+      const res = await ondone();
+      if (res === false) return;
+    }
+    if (ondone && open) {
+      return;
+    }
     close();
   }
 
@@ -135,7 +148,7 @@
       onkeydown={handleCardKeyDown}
       role="dialog"
       aria-modal="true"
-      aria-label={title || 'Sheet'}
+      aria-label={title || 'Модальное окно'}
       tabindex="-1"
     >
       <div class="grabber-area">
@@ -181,8 +194,7 @@
     justify-content: center;
     padding: 24px;
     z-index: 1000;
-    backdrop-filter: blur(8px);
-    animation: fadeIn var(--motion-duration-short) ease forwards;
+    animation: scrimFadeIn var(--motion-duration-screen-enter) ease forwards;
   }
 
   .sheet-card {
@@ -195,8 +207,13 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    animation: slideUp var(--motion-duration-sheet) var(--motion-spring-ease) forwards;
+    animation: sheetSlideUp var(--motion-duration-sheet-enter) var(--motion-curve-spring-system) forwards;
     outline: none;
+  }
+
+  .sheet-card:focus,
+  .sheet-card:focus-visible {
+    outline: none !important;
   }
 
   .grabber-area {
@@ -247,7 +264,7 @@
     overflow-y: auto;
   }
 
-  @keyframes fadeIn {
+  @keyframes scrimFadeIn {
     from {
       opacity: 0;
     }
@@ -256,9 +273,9 @@
     }
   }
 
-  @keyframes slideUp {
+  @keyframes sheetSlideUp {
     from {
-      transform: translateY(30px) scale(0.97);
+      transform: translateY(48px) scale(0.98);
       opacity: 0;
     }
     to {
@@ -269,20 +286,22 @@
 
   @media (prefers-reduced-motion: reduce) {
     .sheet-scrim {
-      animation: none !important;
+      animation: scrimFadeIn var(--motion-duration-short) ease forwards !important;
     }
     .sheet-card {
-      animation: none !important;
+      animation: scrimFadeIn var(--motion-duration-short) ease forwards !important;
       transform: none !important;
     }
   }
 
-  :global([data-reduce-motion="true"]) .sheet-scrim {
-    animation: none !important;
+  :global([data-effects="off"]) .sheet-card,
+  :global([data-reduce-motion="true"]) .sheet-card {
+    animation: scrimFadeIn var(--motion-duration-short) ease forwards !important;
+    transform: none !important;
   }
 
-  :global([data-reduce-motion="true"]) .sheet-card {
-    animation: none !important;
-    transform: none !important;
+  :global([data-effects="off"]) .sheet-scrim,
+  :global([data-reduce-motion="true"]) .sheet-scrim {
+    animation: scrimFadeIn var(--motion-duration-short) ease forwards !important;
   }
 </style>

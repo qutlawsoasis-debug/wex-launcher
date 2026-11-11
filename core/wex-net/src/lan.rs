@@ -10,7 +10,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
-use tracing::{debug, warn};
+use tracing::debug;
 
 pub const MINECRAFT_LAN_MULTICAST_ADDR: &str = "224.0.2.60";
 pub const MINECRAFT_LAN_PORT: u16 = 4445;
@@ -89,6 +89,9 @@ fn current_time_ms() -> u64 {
 pub struct LanDiscoveryService {
     cache: Arc<Mutex<HashMap<String, DiscoveredLanWorld>>>,
     ttl: Duration,
+    bind_addr: SocketAddr,
+    multicast_ip: Option<Ipv4Addr>,
+    listener_abort: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl Default for LanDiscoveryService {
@@ -99,10 +102,37 @@ impl Default for LanDiscoveryService {
 
 impl LanDiscoveryService {
     pub fn new(ttl: Duration) -> Self {
+        #[cfg(test)]
+        let (bind_addr, multicast_ip) = (SocketAddr::from(([127, 0, 0, 1], 0)), None);
+        #[cfg(not(test))]
+        let (bind_addr, multicast_ip) = (
+            SocketAddr::from(([0, 0, 0, 0], MINECRAFT_LAN_PORT)),
+            MINECRAFT_LAN_MULTICAST_ADDR.parse().ok(),
+        );
+
+        Self::new_with_bind(ttl, bind_addr, multicast_ip)
+    }
+
+    pub fn new_with_bind(
+        ttl: Duration,
+        bind_addr: SocketAddr,
+        multicast_ip: Option<Ipv4Addr>,
+    ) -> Self {
         Self {
             cache: Arc::new(Mutex::new(HashMap::new())),
             ttl,
+            bind_addr,
+            multicast_ip,
+            listener_abort: Arc::new(Mutex::new(None)),
         }
+    }
+
+    pub fn new_loopback() -> Self {
+        Self::new_with_bind(
+            Duration::from_secs(6),
+            SocketAddr::from(([127, 0, 0, 1], 0)),
+            None,
+        )
     }
 
     /// Record a discovered announcement from a specific sender IP.
@@ -148,62 +178,95 @@ impl LanDiscoveryService {
         lock.clear();
     }
 
-    /// Start background UDP multicast listener on `224.0.2.60:4445`.
-    /// Returns cancellation token / abort handle if successfully bound.
-    pub fn spawn_listener(self: Arc<Self>) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
-            let multicast_ip: Ipv4Addr = match MINECRAFT_LAN_MULTICAST_ADDR.parse() {
-                Ok(ip) => ip,
-                Err(e) => {
-                    warn!("Failed to parse LAN multicast IP: {}", e);
-                    return;
-                }
-            };
-
-            let bind_addr = SocketAddr::from(([0, 0, 0, 0], MINECRAFT_LAN_PORT));
-
-            // Create UDP socket
-            let std_socket = match std::net::UdpSocket::bind(bind_addr) {
-                Ok(s) => s,
-                Err(e) => {
-                    debug!("LAN discovery bind on 0.0.0.0:{} failed (may be already bound or blocked): {}", MINECRAFT_LAN_PORT, e);
-                    return;
-                }
-            };
-
-            if let Err(e) = std_socket.join_multicast_v4(&multicast_ip, &Ipv4Addr::UNSPECIFIED) {
-                debug!("LAN discovery join_multicast_v4 failed: {}", e);
-                return;
-            }
-
-            let _ = std_socket.set_nonblocking(true);
-
-            let socket = match tokio::net::UdpSocket::from_std(std_socket) {
-                Ok(s) => s,
-                Err(e) => {
-                    debug!("Failed to convert std UdpSocket to tokio: {}", e);
-                    return;
-                }
-            };
-
-            debug!(
-                "Minecraft LAN discovery listener active on 224.0.2.60:{}",
-                MINECRAFT_LAN_PORT
-            );
-
+    /// Start listening for LAN announcements on configured address.
+    /// Safe against duplicate starts (no-op if already listening).
+    pub async fn start(&self) -> std::io::Result<()> {
+        let mut lock = self.listener_abort.lock().await;
+        if lock.as_ref().is_some_and(|h| !h.is_finished()) {
+            return Ok(());
+        }
+        *lock = None;
+        if std::env::var_os("WEX_NO_MULTICAST_BIND").is_some()
+            || std::env::var_os("WEX_TEST_NO_MULTICAST").is_some()
+            || (cfg!(test) && self.bind_addr.ip().is_unspecified())
+        {
+            return Ok(());
+        }
+        // Complete fallible setup before publishing a running task. The caller
+        // receives bind/multicast failures and can retry without an explicit stop.
+        let std_socket = std::net::UdpSocket::bind(self.bind_addr)?;
+        if let Some(ip) = self.multicast_ip {
+            std_socket.join_multicast_v4(&ip, &Ipv4Addr::UNSPECIFIED)?;
+        }
+        std_socket.set_nonblocking(true)?;
+        let runtime = tokio::runtime::Handle::try_current().map_err(std::io::Error::other)?;
+        let socket = tokio::net::UdpSocket::from_std(std_socket)?;
+        let service = self.clone();
+        *lock = Some(runtime.spawn(async move {
             let mut buf = [0u8; 2048];
             loop {
                 match socket.recv_from(&mut buf).await {
                     Ok((len, peer)) => {
                         if let Ok(text) = std::str::from_utf8(&buf[..len]) {
-                            let peer_ip = peer.ip().to_string();
-                            self.record_announcement(text, &peer_ip).await;
+                            service
+                                .record_announcement(text, &peer.ip().to_string())
+                                .await;
                         }
                     }
                     Err(e) => {
-                        debug!("LAN discovery recv error: {}", e);
-                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        debug!("LAN discovery stopped: {}", e);
+                        break;
                     }
+                }
+            }
+        }));
+        Ok(())
+    }
+
+    pub async fn stop(&self) {
+        let mut lock = self.listener_abort.lock().await;
+        if let Some(task) = lock.take() {
+            task.abort();
+            let _ = task.await;
+        }
+    }
+
+    pub async fn is_running(&self) -> bool {
+        self.listener_abort
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|h| !h.is_finished())
+    }
+
+    /// Legacy compatibility helper: spawns listener asynchronously.
+    pub fn spawn_listener(self: Arc<Self>) {
+        let this = (*self).clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let _ = this.start().await;
+            });
+        }
+    }
+
+    /// Safe test listener bound strictly to loopback 127.0.0.1 (Rule 23:10 compliance)
+    pub fn spawn_loopback_listener(self: Arc<Self>, port: u16) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            let socket =
+                match tokio::net::UdpSocket::bind(SocketAddr::from(([127, 0, 0, 1], port))).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        debug!(
+                            "Failed to bind loopback test listener on 127.0.0.1:{}: {}",
+                            port, e
+                        );
+                        return;
+                    }
+                };
+            let mut buf = [0u8; 1024];
+            while let Ok((len, addr)) = socket.recv_from(&mut buf).await {
+                if let Ok(msg) = std::str::from_utf8(&buf[..len]) {
+                    self.record_announcement(msg, &addr.ip().to_string()).await;
                 }
             }
         })
@@ -213,6 +276,13 @@ impl LanDiscoveryService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[ignore = "multicast socket requires opt-in to avoid firewall popups"]
+    #[tokio::test]
+    async fn test_multicast_raw_bind_ignored() {
+        let service = LanDiscoveryService::default();
+        assert_eq!(service.ttl, Duration::from_secs(60));
+    }
 
     #[test]
     fn test_parse_standard_announcement() {
@@ -285,5 +355,44 @@ mod tests {
 
         let expired_worlds = service.get_discovered_worlds().await;
         assert_eq!(expired_worlds.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_lan_discovery_start_stop_loopback() {
+        let service = LanDiscoveryService::new_loopback();
+        assert!(!service.is_running().await);
+        service.start().await.unwrap();
+        assert!(service.is_running().await);
+        service.stop().await;
+        assert!(!service.is_running().await);
+    }
+
+    #[tokio::test]
+    #[ignore = "Real multicast UDP 0.0.0.0:4445 binding triggers Windows Firewall prompt; manual opt-in only"]
+    async fn test_lan_discovery_real_multicast() {
+        let service = LanDiscoveryService::new_with_bind(
+            Duration::from_secs(2),
+            SocketAddr::from(([0, 0, 0, 0], MINECRAFT_LAN_PORT)),
+            MINECRAFT_LAN_MULTICAST_ADDR.parse().ok(),
+        );
+        service.start().await.unwrap();
+        assert!(service.is_running().await);
+        service.stop().await;
+    }
+    #[tokio::test]
+    async fn review_26_failed_bind_can_retry_without_stop() {
+        let occupied = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let addr = occupied.local_addr().unwrap();
+        let service = LanDiscoveryService::new_with_bind(Duration::from_secs(1), addr, None);
+        assert!(service.start().await.is_err());
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert!(
+            !service.is_running().await,
+            "failed bind must not report running"
+        );
+        drop(occupied);
+        service.start().await.unwrap();
+        assert!(service.is_running().await);
+        service.stop().await;
     }
 }

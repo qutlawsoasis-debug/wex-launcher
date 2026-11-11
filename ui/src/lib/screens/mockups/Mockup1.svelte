@@ -50,7 +50,7 @@
   );
 
   // Background artwork based on active theme
-  let bgImage = $derived(theme.isDark ? '/art/sunset.png' : '/art/day.png');
+  let bgImage = $derived(theme.isDark ? '/art/sunset.webp' : '/art/day.webp');
 </script>
 
 <div class="mockup1-container">

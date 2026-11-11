@@ -13,6 +13,7 @@ pub struct WexPaths {
     pub runtime_dir: PathBuf,
     pub logs_dir: PathBuf,
     pub config_file: PathBuf,
+    pub playtime_file: PathBuf,
 }
 
 impl WexPaths {
@@ -36,6 +37,7 @@ impl WexPaths {
         let runtime_dir = root.join("runtime");
         let logs_dir = root.join("logs");
         let config_file = root.join("config.json");
+        let playtime_file = root.join("playtime.json");
 
         Self {
             root,
@@ -46,6 +48,7 @@ impl WexPaths {
             runtime_dir,
             logs_dir,
             config_file,
+            playtime_file,
         }
     }
 
@@ -160,6 +163,84 @@ pub struct LauncherConfig {
 
     #[serde(default = "default_accent")]
     pub accent: String,
+
+    #[serde(
+        default,
+        alias = "fastStartJvm",
+        alias = "fast_start_jvm",
+        alias = "prewarmGame"
+    )]
+    pub fast_start_jvm: bool,
+
+    #[serde(
+        default = "default_fast_launch",
+        alias = "fastLaunch",
+        alias = "fast_launch"
+    )]
+    pub fast_launch: bool,
+
+    #[serde(default)]
+    pub window_state: WindowStateConfig,
+
+    #[serde(
+        default = "default_minimize_to_tray",
+        alias = "minimize_to_tray",
+        alias = "minimizeToTray",
+        alias = "minimize_to_tray_on_game_start"
+    )]
+    pub minimize_to_tray: bool,
+
+    #[serde(
+        default = "default_true",
+        alias = "friendNotifications",
+        alias = "friend_notifications"
+    )]
+    pub friend_notifications: bool,
+
+    #[serde(
+        default = "default_game_window_behavior",
+        alias = "game_window_behavior",
+        alias = "gameWindowBehavior"
+    )]
+    pub game_window_behavior: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WindowStateConfig {
+    #[serde(default = "default_window_width")]
+    pub width: u32,
+    #[serde(default = "default_window_height")]
+    pub height: u32,
+    #[serde(default)]
+    pub x: Option<i32>,
+    #[serde(default)]
+    pub y: Option<i32>,
+    #[serde(default)]
+    pub is_maximized: bool,
+}
+
+fn default_window_width() -> u32 {
+    1080
+}
+
+fn default_window_height() -> u32 {
+    720
+}
+
+fn default_minimize_to_tray() -> bool {
+    true
+}
+
+impl Default for WindowStateConfig {
+    fn default() -> Self {
+        Self {
+            width: default_window_width(),
+            height: default_window_height(),
+            x: None,
+            y: None,
+            is_maximized: false,
+        }
+    }
 }
 
 fn deserialize_ram<'de, D>(deserializer: D) -> std::result::Result<u32, D::Error>
@@ -182,8 +263,61 @@ fn default_nickname() -> String {
     "Player".to_string()
 }
 
+#[cfg(windows)]
+pub fn get_total_system_ram_mb() -> Option<u64> {
+    unsafe {
+        use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+        let mut status = MEMORYSTATUSEX {
+            dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
+            ..std::mem::zeroed()
+        };
+        if GlobalMemoryStatusEx(&mut status) != 0 {
+            Some(status.ullTotalPhys / (1024 * 1024))
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn get_total_system_ram_mb() -> Option<u64> {
+    None
+}
+
+/// Detect whether the current machine qualifies as weak hardware:
+/// e.g. <= 4 logical CPU cores or <= 8 GB of physical RAM.
+pub fn is_weak_hardware() -> bool {
+    if let Ok(val) = std::env::var("WEX_FORCE_WEAK_PC") {
+        if val == "1" || val.eq_ignore_ascii_case("true") {
+            return true;
+        }
+        if val == "0" || val.eq_ignore_ascii_case("false") {
+            return false;
+        }
+    }
+
+    let logical_cores = std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(4);
+    if logical_cores <= 4 {
+        return true;
+    }
+
+    if let Some(ram_mb) = get_total_system_ram_mb() {
+        if ram_mb <= 8192 {
+            return true;
+        }
+    }
+
+    false
+}
+
 fn default_memory() -> u32 {
-    4096
+    if is_weak_hardware() {
+        3072
+    } else {
+        4096
+    }
 }
 
 fn default_appearance() -> String {
@@ -195,7 +329,11 @@ fn default_accent() -> String {
 }
 
 fn default_graphics_preset() -> String {
-    "High".to_string()
+    if is_weak_hardware() {
+        "Low".to_string()
+    } else {
+        "High".to_string()
+    }
 }
 
 fn default_discord_rpc() -> bool {
@@ -208,6 +346,53 @@ fn default_language() -> String {
 
 fn default_java_mode() -> String {
     "auto".to_string()
+}
+
+#[cfg(windows)]
+pub fn get_system_total_memory_mb() -> u32 {
+    use std::mem::zeroed;
+    #[repr(C)]
+    struct MemoryStatusEx {
+        length: u32,
+        memory_load: u32,
+        total_phys: u64,
+        avail_phys: u64,
+        total_page_file: u64,
+        avail_page_file: u64,
+        total_virtual: u64,
+        avail_virtual: u64,
+        avail_extended_virtual: u64,
+    }
+    extern "system" {
+        fn GlobalMemoryStatusEx(status: *mut MemoryStatusEx) -> i32;
+    }
+    unsafe {
+        let mut status: MemoryStatusEx = zeroed();
+        status.length = std::mem::size_of::<MemoryStatusEx>() as u32;
+        if GlobalMemoryStatusEx(&mut status) != 0 {
+            (status.total_phys / (1024 * 1024)) as u32
+        } else {
+            16384
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn get_system_total_memory_mb() -> u32 {
+    16384
+}
+
+pub fn default_fast_launch() -> bool {
+    // Enabled by default only when system RAM >= 16 GB (~15360 MB)
+    get_system_total_memory_mb() >= 15360
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_game_window_behavior() -> String {
+    "minimize".to_string()
 }
 
 impl Default for LauncherConfig {
@@ -227,6 +412,12 @@ impl Default for LauncherConfig {
             quick_play_multiplayer: None,
             appearance: default_appearance(),
             accent: default_accent(),
+            fast_start_jvm: false,
+            fast_launch: default_fast_launch(),
+            window_state: WindowStateConfig::default(),
+            minimize_to_tray: default_minimize_to_tray(),
+            friend_notifications: true,
+            game_window_behavior: default_game_window_behavior(),
         }
     }
 }
@@ -252,6 +443,12 @@ impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
             quick_play_multiplayer: None,
             appearance: ipc.appearance,
             accent: ipc.accent,
+            fast_start_jvm: ipc.fast_start_jvm,
+            fast_launch: ipc.fast_launch,
+            window_state: WindowStateConfig::default(),
+            minimize_to_tray: default_minimize_to_tray(),
+            friend_notifications: default_true(),
+            game_window_behavior: default_game_window_behavior(),
         }
     }
 }
@@ -266,6 +463,8 @@ impl From<LauncherConfig> for wex_ipc::models::LauncherConfig {
             reduce_transparency: core.reduce_transparency,
             appearance: core.appearance,
             accent: core.accent,
+            fast_start_jvm: core.fast_start_jvm,
+            fast_launch: core.fast_launch,
         }
     }
 }
@@ -339,6 +538,63 @@ mod tests {
         let loaded = LauncherConfig::load_or_default(&config_path);
         assert_eq!(loaded.nickname, "TestUser");
         assert_eq!(loaded.max_memory_mb, 8192);
+        assert_eq!(loaded.game_window_behavior, "minimize");
         assert_eq!(loaded.selected_version, "1.20.1");
+    }
+
+    #[test]
+    fn test_window_state_and_minimize_to_tray_config() {
+        let tmp = tempdir().unwrap();
+        let config_path = tmp.path().join("config.json");
+
+        // Test defaults
+        let default_cfg = LauncherConfig::default();
+        assert!(default_cfg.minimize_to_tray);
+        assert_eq!(default_cfg.window_state.width, 1080);
+        assert_eq!(default_cfg.window_state.height, 720);
+        assert_eq!(default_cfg.window_state.x, None);
+        assert_eq!(default_cfg.window_state.y, None);
+        assert!(!default_cfg.window_state.is_maximized);
+
+        // Test custom state persistence
+        let custom_cfg = LauncherConfig {
+            minimize_to_tray: false,
+            window_state: WindowStateConfig {
+                width: 1440,
+                height: 900,
+                x: Some(250),
+                y: Some(180),
+                is_maximized: true,
+            },
+            ..Default::default()
+        };
+        custom_cfg.save(&config_path).unwrap();
+
+        let loaded = LauncherConfig::load_or_default(&config_path);
+        assert!(!loaded.minimize_to_tray);
+        assert_eq!(loaded.window_state.width, 1440);
+        assert_eq!(loaded.window_state.height, 900);
+        assert_eq!(loaded.window_state.x, Some(250));
+        assert_eq!(loaded.window_state.y, Some(180));
+        assert!(loaded.window_state.is_maximized);
+    }
+
+    #[test]
+    fn test_weak_hardware_detection_and_defaults() {
+        std::env::set_var("WEX_FORCE_WEAK_PC", "true");
+        assert!(is_weak_hardware());
+        assert_eq!(default_memory(), 3072);
+        assert_eq!(default_graphics_preset(), "Low");
+
+        let def_cfg = LauncherConfig::default();
+        assert_eq!(def_cfg.max_memory_mb, 3072);
+        assert_eq!(def_cfg.graphics_preset, "Low");
+
+        std::env::set_var("WEX_FORCE_WEAK_PC", "false");
+        assert!(!is_weak_hardware());
+        assert_eq!(default_memory(), 4096);
+        assert_eq!(default_graphics_preset(), "High");
+
+        std::env::remove_var("WEX_FORCE_WEAK_PC");
     }
 }

@@ -375,4 +375,87 @@ mod tests {
         assert!(diag.title.contains("код -1") || diag.title.contains("ошибкой"));
         assert!(diag.technical_summary.contains("Normal game log"));
     }
+
+    #[test]
+    fn test_real_qa_isolated_profile_case1_incompatible_mod() {
+        let dir = tempdir().unwrap();
+        let paths = WexPaths::new(Some(dir.path().to_path_buf()));
+        let inst_dir = paths.instance_dir("1.21.1");
+        let mods_dir = inst_dir.join("mods");
+        let logs_dir = inst_dir.join("logs");
+        fs::create_dir_all(&mods_dir).unwrap();
+        fs::create_dir_all(&logs_dir).unwrap();
+
+        // 1. Place incompatible mod in mods folder
+        let mod_file = mods_dir.join("incompatible_test_mod.jar");
+        fs::write(&mod_file, b"incompatible mod binary").unwrap();
+
+        // 2. Write Fabric crash log
+        let crash_log = "[22:45:00] [main/INFO]: Loading Minecraft 1.21.1 with Fabric Loader 0.16.9\n\
+                         [22:45:01] [main/ERROR]: Minecraft has crashed!\n\
+                         net.fabricmc.loader.impl.FormattedException: Some of your mods are incompatible with the game or each other!\n\
+                         \t - Mod 'incompatible_test_mod' is incompatible with mod 'fabricloader'\n";
+        fs::write(logs_dir.join("latest.log"), crash_log).unwrap();
+
+        // 3. Diagnose crash from disk
+        let req = ExtrasAnalyzeCrashRequest {
+            exit_code: Some(1),
+            log_text: None,
+            crash_report_text: None,
+        };
+        let diag = analyze_crash_impl(&paths, &req, Some("1.21.1"));
+
+        match &diag.kind {
+            CrashKindDto::IncompatibleMod { mod_name } => {
+                assert_eq!(mod_name, "incompatible_test_mod");
+            }
+            other => panic!("Expected IncompatibleMod, got {:?}", other),
+        }
+
+        assert!(diag.title.contains("incompatible_test_mod"));
+        assert!(diag.user_advice.contains("incompatible_test_mod"));
+        assert!(diag
+            .user_advice
+            .contains("Удалите или обновите его во вкладке Мастерская"));
+
+        // 4. Test disabling mod
+        let disable_res =
+            disable_offending_mod_impl(&paths, Some("1.21.1"), "incompatible_test_mod");
+        assert!(disable_res.is_ok());
+        assert!(mods_dir.join("incompatible_test_mod.jar.disabled").exists());
+        assert!(!mod_file.exists());
+    }
+
+    #[test]
+    fn test_real_qa_isolated_profile_case2_out_of_memory() {
+        let dir = tempdir().unwrap();
+        let paths = WexPaths::new(Some(dir.path().to_path_buf()));
+        let inst_dir = paths.instance_dir("1.21.1");
+        let logs_dir = inst_dir.join("logs");
+        fs::create_dir_all(&logs_dir).unwrap();
+
+        // 1. Write OutOfMemory crash log (from Xmx 256M limit)
+        let oom_log = "[22:45:10] [main/INFO]: Starting Minecraft 1.21.1 with JVM argument -Xmx256M\n\
+                       [22:45:12] [Render thread/FATAL]: Error executing task on Client\n\
+                       java.lang.OutOfMemoryError: Java heap space\n\
+                       \tat net.minecraft.client.render.WorldRenderer.reload(WorldRenderer.java:1024)\n";
+        fs::write(logs_dir.join("latest.log"), oom_log).unwrap();
+
+        // 2. Diagnose crash from disk with exit code -805306369 (standard OOM exit code)
+        let req = ExtrasAnalyzeCrashRequest {
+            exit_code: Some(-805306369),
+            log_text: None,
+            crash_report_text: None,
+        };
+        let diag = analyze_crash_impl(&paths, &req, Some("1.21.1"));
+
+        match &diag.kind {
+            CrashKindDto::OutOfMemory => {}
+            other => panic!("Expected OutOfMemory, got {:?}", other),
+        }
+
+        assert_eq!(diag.title, "Нехватка оперативной памяти (ОЗУ)");
+        assert!(diag.user_advice.contains("Увеличьте"));
+        assert!(diag.user_advice.contains("памяти в Настройках лаунчера"));
+    }
 }

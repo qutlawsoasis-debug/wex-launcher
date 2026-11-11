@@ -16,6 +16,15 @@ pub struct LauncherConfig {
     pub reduce_transparency: bool,
     pub appearance: String, // "dark" | "light" | "auto"
     pub accent: String,     // "blue" | "mono" | etc.
+    #[serde(
+        default,
+        alias = "fastStartJvm",
+        alias = "fast_start_jvm",
+        alias = "prewarmGame"
+    )]
+    pub fast_start_jvm: bool,
+    #[serde(default, alias = "fastLaunch", alias = "fast_launch")]
+    pub fast_launch: bool,
 }
 
 impl Default for LauncherConfig {
@@ -28,6 +37,8 @@ impl Default for LauncherConfig {
             reduce_transparency: false,
             appearance: "dark".to_string(),
             accent: "blue".to_string(),
+            fast_start_jvm: false,
+            fast_launch: false,
         }
     }
 }
@@ -503,6 +514,10 @@ pub struct WardrobeStateDto {
 pub enum DiscordActivityDto {
     #[default]
     InLauncher,
+    Installing {
+        version: String,
+        stage: Option<String>,
+    },
     Playing {
         version: String,
         world_name: Option<String>,
@@ -520,6 +535,9 @@ impl From<wex_extras::Activity> for DiscordActivityDto {
     fn from(a: wex_extras::Activity) -> Self {
         match a {
             wex_extras::Activity::InLauncher => Self::InLauncher,
+            wex_extras::Activity::Installing { version, stage } => {
+                Self::Installing { version, stage }
+            }
             wex_extras::Activity::Playing {
                 version,
                 world_name,
@@ -550,6 +568,9 @@ impl From<DiscordActivityDto> for wex_extras::Activity {
     fn from(a: DiscordActivityDto) -> Self {
         match a {
             DiscordActivityDto::InLauncher => Self::InLauncher,
+            DiscordActivityDto::Installing { version, stage } => {
+                Self::Installing { version, stage }
+            }
             DiscordActivityDto::Playing {
                 version,
                 world_name,
@@ -570,6 +591,31 @@ impl From<DiscordActivityDto> for wex_extras::Activity {
                 player_count,
                 host_name,
             },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct DiscordPreviewDto {
+    pub is_enabled: bool,
+    pub is_connected: bool,
+    pub title: String,
+    pub details: String,
+    pub state: String,
+    pub small_text: Option<String>,
+    pub has_timestamp: bool,
+}
+
+impl From<wex_extras::discord::DiscordPreview> for DiscordPreviewDto {
+    fn from(p: wex_extras::discord::DiscordPreview) -> Self {
+        Self {
+            is_enabled: p.is_enabled,
+            is_connected: p.is_connected,
+            title: p.title,
+            details: p.details,
+            state: p.state,
+            small_text: p.small_text,
+            has_timestamp: p.has_timestamp,
         }
     }
 }
@@ -606,6 +652,15 @@ pub struct ImportedWardrobeItemDto {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct ImportedWorldDto {
+    pub folder_name: String,
+    pub display_name: String,
+    pub version: Option<String>,
+    pub source_path: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct OldLauncherDataDto {
     pub nickname: String,
     pub ram_mb: u32,
@@ -617,6 +672,8 @@ pub struct OldLauncherDataDto {
     pub skins: Vec<ImportedSkinDto>,
     pub capes: Vec<ImportedCapeDto>,
     pub wardrobe_history: Vec<ImportedWardrobeItemDto>,
+    #[serde(default)]
+    pub worlds: Vec<ImportedWorldDto>,
 }
 
 impl From<wex_extras::OldLauncherData> for OldLauncherDataDto {
@@ -665,6 +722,17 @@ impl From<wex_extras::OldLauncherData> for OldLauncherDataDto {
                     name: w.name,
                     hash: w.hash,
                     model: w.model,
+                })
+                .collect(),
+            worlds: d
+                .worlds
+                .into_iter()
+                .map(|w| ImportedWorldDto {
+                    folder_name: w.folder_name,
+                    display_name: w.display_name,
+                    version: w.version,
+                    source_path: w.source_path.to_string_lossy().to_string(),
+                    size_bytes: w.size_bytes,
                 })
                 .collect(),
         }
@@ -1201,4 +1269,59 @@ impl From<wex_social::UpdateCheckResult> for UpdateCheckResultDto {
             pub_date: u.pub_date,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct OnboardingSpecsDto {
+    pub total_memory_mb: u32,
+    pub recommended_memory_mb: u32,
+    pub memory_explanation: String,
+    pub detected_aura_dir: Option<String>,
+    pub default_version: String,
+    pub default_nickname: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct OnboardingCompleteRequest {
+    pub nickname: String,
+    pub version: String,
+    pub ram_mb: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct IntegrityCheckResultDto {
+    pub total_files: u32,
+    pub checked_files: u32,
+    pub corrupted_files: u32,
+    pub repaired_files: u32,
+    pub status: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct StorageCacheInfoDto {
+    pub total_bytes: u64,
+    pub formatted_size: String,
+    pub logs_bytes: u64,
+    pub crash_reports_bytes: u64,
+    pub temp_bytes: u64,
+    pub file_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct ClearStorageCacheResultDto {
+    pub bytes_freed: u64,
+    pub formatted_freed: String,
+    pub files_deleted: u32,
+    pub status_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct DeepLinkActionDto {
+    pub kind: String,
+    pub target: String,
+    pub raw_uri: String,
+    pub title: String,
+    pub subtitle: String,
+    pub confirm_text: String,
 }

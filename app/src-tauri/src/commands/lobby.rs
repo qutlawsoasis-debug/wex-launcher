@@ -14,8 +14,9 @@ use tauri::State;
 use tokio::sync::Mutex;
 
 use wex_ipc::commands::{
-    NetLanListDiscoveredRequest, NetLanListDiscoveredResponse, NetListOpenRoomsRequest,
-    NetListOpenRoomsResponse, NetLobbyCloseRequest, NetLobbyCreateRequest,
+    NetCompareManifestsRequest, NetCompareManifestsResponse, NetLanListDiscoveredRequest,
+    NetLanListDiscoveredResponse, NetLanPublishRequest, NetLanPublishResponse,
+    NetListOpenRoomsRequest, NetListOpenRoomsResponse, NetLobbyCloseRequest, NetLobbyCreateRequest,
     NetLobbyHeartbeatRequest, NetLobbyJoinRequest, NetLobbyKickRequest, NetLobbyLeaveRequest,
     NetLobbyOpenRequest, NetLobbyStatusRequest, NetTunnelEnsureBinaryRequest,
     NetTunnelEnsureBinaryResponse, NetTunnelStartRequest, NetTunnelStartResponse,
@@ -28,7 +29,7 @@ use wex_ipc::models::{
 use wex_net::events::{NetEventBus, TunnelStatus};
 use wex_net::lan::LanDiscoveryService;
 use wex_net::lobby::{HeartbeatHandle, LobbyApiClient, LobbyError};
-use wex_net::tunnel::{ensure_binary_downloaded, PlayitSupervisor};
+use wex_net::tunnel::{ensure_binary_downloaded, playit_binary_path, PlayitSupervisor};
 
 use crate::ipc::{LobbyPlayerModel, LobbyRoomModel};
 
@@ -56,6 +57,10 @@ pub struct LobbyState {
     pub tools_dir: PathBuf,
     pub old_backend_url: String,
     pub lan_discovery: Arc<LanDiscoveryService>,
+    pub tunnel_runtime: Arc<dyn super::lobby_tunnel::TunnelRuntime>,
+    pub operation: Mutex<()>,
+    pub local_port: Mutex<Option<u16>>,
+    pub local_manifest: Mutex<Vec<wex_net::ModManifestEntry>>,
 }
 
 unsafe impl Send for LobbyState {}
@@ -71,7 +76,6 @@ impl LobbyState {
             });
 
         let lan_discovery = Arc::new(LanDiscoveryService::default());
-        std::mem::drop(lan_discovery.clone().spawn_listener());
 
         Self {
             client,
@@ -83,7 +87,22 @@ impl LobbyState {
             tools_dir,
             old_backend_url: old_backend_url.to_string(),
             lan_discovery,
+            tunnel_runtime: Arc::new(super::lobby_tunnel::PlayitRuntime),
+            operation: Mutex::new(()),
+            local_port: Mutex::new(None),
+            local_manifest: Mutex::new(Vec::new()),
         }
+    }
+    pub fn with_tunnel_runtime(
+        mut self,
+        runtime: Arc<dyn super::lobby_tunnel::TunnelRuntime>,
+    ) -> Self {
+        self.tunnel_runtime = runtime;
+        self
+    }
+    pub fn with_lan_discovery(mut self, discovery: LanDiscoveryService) -> Self {
+        self.lan_discovery = Arc::new(discovery);
+        self
     }
 }
 
@@ -107,11 +126,11 @@ fn format_lobby_error(err: &LobbyError) -> String {
             } else if !message.is_empty() {
                 message.clone()
             } else {
-                format!("Ошибка сервиса лобби (HTTP {status})")
+                "Сервер комнат временно недоступен. Попробуйте подключиться позже.".to_string()
             }
         }
-        LobbyError::Json(_) => "Некорректный формат ответа от сервиса лобби.".to_string(),
-        LobbyError::Url(_) => "Недопустимый адрес сервиса лобби.".to_string(),
+        LobbyError::Json(_) => "Некорректный формат ответа от сервера комнат.".to_string(),
+        LobbyError::Url(_) => "Недопустимый адрес сервера комнат.".to_string(),
     }
 }
 
@@ -138,7 +157,12 @@ async fn fetch_open_rooms(
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(3))
         .build()
-        .map_err(|e| IpcError::internal("Не удалось создать HTTP-клиент", Some(e.to_string())))?;
+        .map_err(|e| {
+            IpcError::internal(
+                "Не удалось настроить сетевое подключение. Попробуйте перезапустить лаунчер.",
+                Some(e.to_string()),
+            )
+        })?;
 
     let resp = http
         .get(&url_str)
@@ -148,7 +172,7 @@ async fn fetch_open_rooms(
         .map_err(|e| {
             IpcError::new(
                 "NET_LOBBY_API_ERROR",
-                "Сервис недоступен. Не удалось связаться с сервером комнат",
+                "Сервис недоступен: не удалось связаться с сервером комнат. Проверьте интернет-соединение или попробуйте позже.",
                 Some(e.to_string()),
             )
         })?;
@@ -156,7 +180,7 @@ async fn fetch_open_rooms(
     if !resp.status().is_success() {
         return Err(IpcError::new(
             "NET_LOBBY_API_ERROR",
-            "Сервис недоступен. Сервер комнат вернул ошибку",
+            "Сервер комнат временно недоступен. Попробуйте подключиться позже.",
             Some(format!("HTTP {}", resp.status())),
         ));
     }
@@ -331,10 +355,7 @@ pub async fn net_lobby_close(
     if let Some(hb) = hb_lock.take() {
         hb.stop();
     }
-    let mut sup_lock = state.supervisor.lock().await;
-    if let Some(mut sup) = sup_lock.take() {
-        sup.stop().await;
-    }
+    stop_lobby_tunnel(&state).await;
     let res = state
         .client
         .close_lobby(&request.code, &request.host_token)
@@ -398,11 +419,11 @@ pub async fn net_tunnel_ensure_binary(
     request: NetTunnelEnsureBinaryRequest,
     state: State<'_, LobbyState>,
 ) -> IpcResult<NetTunnelEnsureBinaryResponse> {
-    let dest = PathBuf::from(&request.destination_path);
-    let path = ensure_binary_downloaded(&dest, Some(&state.event_bus))
+    let NetTunnelEnsureBinaryRequest {} = request;
+    let path = ensure_binary_downloaded(&state.tools_dir, Some(&state.event_bus))
         .await
         .map_err(|e| {
-            IpcError::internal("Не удалось загрузить бинарник Playit", Some(e.to_string()))
+            IpcError::internal("Не удалось загрузить сетевой модуль туннеля. Проверьте подключение к интернету и повторите попытку.", Some(e.to_string()))
         })?;
     Ok(NetTunnelEnsureBinaryResponse {
         path: path.to_string_lossy().to_string(),
@@ -417,10 +438,14 @@ pub async fn net_tunnel_start(
 ) -> IpcResult<NetTunnelStartResponse> {
     let mut sup_lock = state.supervisor.lock().await;
     let mut supervisor = PlayitSupervisor::new(Some(state.event_bus.clone()));
-    let bin = PathBuf::from(&request.binary_path);
-    let secret = PathBuf::from(&request.secret_key);
+    let NetTunnelStartRequest {} = request;
+    let bin = playit_binary_path(&state.tools_dir);
+    let secret = state.tools_dir.join("playit-secret.toml");
     supervisor.start(&bin, &secret).await.map_err(|e| {
-        IpcError::internal("Не удалось запустить playit-agent", Some(e.to_string()))
+        IpcError::internal(
+            "Не удалось запустить сетевой туннель. Проверьте исключения брандмауэра и антивируса.",
+            Some(e.to_string()),
+        )
     })?;
     *sup_lock = Some(supervisor);
     Ok(NetTunnelStartResponse { pid: 0 })
@@ -428,10 +453,7 @@ pub async fn net_tunnel_start(
 
 #[tauri::command]
 pub async fn net_tunnel_stop(state: State<'_, LobbyState>) -> IpcResult<()> {
-    let mut sup_lock = state.supervisor.lock().await;
-    if let Some(mut sup) = sup_lock.take() {
-        sup.stop().await;
-    }
+    stop_lobby_tunnel(&state).await;
     Ok(())
 }
 
@@ -446,87 +468,79 @@ pub async fn net_tunnel_status(state: State<'_, LobbyState>) -> IpcResult<Tunnel
 // ============================================================================
 
 #[tauri::command]
+pub async fn net_compare_manifests(
+    request: NetCompareManifestsRequest,
+) -> IpcResult<NetCompareManifestsResponse> {
+    let client: Vec<wex_net::ModManifestEntry> = request
+        .client_manifest
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    let host: Vec<wex_net::ModManifestEntry> =
+        request.host_manifest.into_iter().map(Into::into).collect();
+    let mismatches = wex_net::modsync::compare_manifests(&client, &host);
+    let hash = wex_net::modsync::compute_manifest_hash(&host);
+    Ok(NetCompareManifestsResponse {
+        mismatches: mismatches.into_iter().map(Into::into).collect(),
+        manifest_hash: hash,
+    })
+}
+
+#[tauri::command]
 pub async fn create_lobby_room(
     world_name: String,
     player_name: Option<String>,
     state: State<'_, LobbyState>,
 ) -> Result<LobbyRoomModel, String> {
-    let host = player_name.unwrap_or_else(|| "Player".to_string());
+    create_room_internal(&state, &world_name, 25565, player_name, true, None).await
+}
 
-    let created = state
-        .client
-        .create_lobby(&host, None)
+#[tauri::command]
+pub async fn retry_lobby_tunnel(
+    code: String,
+    state: State<'_, LobbyState>,
+) -> Result<LobbyRoomModel, String> {
+    let _operation = state.operation.lock().await;
+    let session = state
+        .active_session
+        .lock()
         .await
-        .map_err(|e| format_lobby_error(&e))?;
-
-    let tunnel_cfg = state.client.get_tunnel_config().await.ok();
-    let tunnel_addr = tunnel_cfg
-        .as_ref()
-        .and_then(|c| {
-            c.public_address.as_ref().map(|a| {
-                if let Some(p) = c.public_port {
-                    format!("{a}:{p}")
-                } else {
-                    a.clone()
-                }
-            })
-        })
-        .unwrap_or_else(|| "tunnel.playit.gg:25565".to_string());
-
-    let _ = state
-        .client
-        .open_lobby(&created.code, &created.host_token, &tunnel_addr, 25565)
-        .await;
-
-    let hb = state.client.start_heartbeat_loop(
-        created.code.clone(),
-        created.host_token.clone(),
-        Duration::from_secs(15),
-    );
-    {
-        let mut hb_lock = state.heartbeat_handle.lock().await;
-        if let Some(old_hb) = hb_lock.replace(hb) {
-            old_hb.stop();
+        .clone()
+        .ok_or("Нет активной комнаты")?;
+    let clean_code = code.trim().trim_start_matches('#');
+    if !session.is_host || session.code != clean_code {
+        return Err("Только организатор может повторить запуск туннеля своей комнаты".into());
+    }
+    let port = (*state.local_port.lock().await).ok_or("Неизвестен локальный порт мира")?;
+    let result = open_confirmed_tunnel(
+        &state,
+        clean_code,
+        session
+            .host_token
+            .as_deref()
+            .ok_or("Нет токена организатора")?,
+        port,
+    )
+    .await;
+    match result {
+        Ok(address) => {
+            if let Some(s) = state.active_session.lock().await.as_mut() {
+                s.tunnel_address = Some(address.clone());
+            }
+            Ok(host_room(
+                &session,
+                Some(address),
+                None,
+                state.local_manifest.lock().await.len(),
+            ))
+        }
+        Err(error) => {
+            if let Some(s) = state.active_session.lock().await.as_mut() {
+                s.tunnel_address = None;
+            }
+            Err(error)
         }
     }
-
-    let display_code = if created.code.starts_with('#') {
-        created.code.clone()
-    } else {
-        format!("#{}", created.code)
-    };
-
-    let room = LobbyRoomModel {
-        code: display_code,
-        host_name: host.clone(),
-        world_name: world_name.clone(),
-        tunnel_address: Some(tunnel_addr.clone()),
-        tunnel_active: true,
-        is_host: true,
-        players: vec![LobbyPlayerModel {
-            name: host.clone(),
-            is_host: true,
-            ping_ms: 0,
-            mods_synced: true,
-        }],
-        mod_mismatch_count: 0,
-        total_mods: 142,
-    };
-
-    let session = ActiveLobbySession {
-        code: created.code,
-        host_token: Some(created.host_token),
-        host_name: host.clone(),
-        world_name,
-        player_name: host,
-        is_host: true,
-        tunnel_address: Some(tunnel_addr),
-    };
-
-    let mut session_lock = state.active_session.lock().await;
-    *session_lock = Some(session);
-
-    Ok(room)
 }
 
 #[tauri::command]
@@ -534,6 +548,15 @@ pub async fn join_lobby_room(
     code: String,
     player_name: Option<String>,
     state: State<'_, LobbyState>,
+) -> Result<LobbyRoomModel, String> {
+    join_lobby_room_internal(code, player_name, &state, None).await
+}
+
+async fn join_lobby_room_internal(
+    code: String,
+    player_name: Option<String>,
+    state: &LobbyState,
+    manifest: Option<&[wex_net::ModManifestEntry]>,
 ) -> Result<LobbyRoomModel, String> {
     let clean_code = code.trim().trim_start_matches('#').to_string();
     if clean_code.is_empty() {
@@ -543,7 +566,7 @@ pub async fn join_lobby_room(
 
     let joined = state
         .client
-        .join_lobby(&clean_code, &guest, None)
+        .join_lobby(&clean_code, &guest, manifest)
         .await
         .map_err(|e| format_lobby_error(&e))?;
 
@@ -557,6 +580,19 @@ pub async fn join_lobby_room(
         .await
         .map_err(|e| format_lobby_error(&e))?;
 
+    let own_sync = status.mod_sync.as_ref().and_then(|sync| sync.get(&guest));
+    if manifest.is_some() && own_sync.is_none() {
+        let _ = state.client.leave_lobby(&clean_code, &guest).await;
+        return Err("Организатор не предоставил результат проверки модов. Повторите вход после обновления комнаты.".into());
+    }
+    let mismatches = own_sync.map(|sync| sync.mismatches.len()).unwrap_or(0);
+    let verified =
+        own_sync.is_some_and(|sync| sync.status == "synced" && sync.mismatches.is_empty());
+    let mismatch_count = if manifest.is_some() && !verified {
+        mismatches.max(1)
+    } else {
+        mismatches
+    };
     let host_name = status.host_name.unwrap_or_else(|| "Хост".to_string());
     let players_list = status
         .players
@@ -566,11 +602,16 @@ pub async fn join_lobby_room(
         .into_iter()
         .map(|name| {
             let is_host = name == host_name;
+            let mods_synced = status
+                .mod_sync
+                .as_ref()
+                .and_then(|m| m.get(&name))
+                .is_some_and(|m| m.status == "synced");
             LobbyPlayerModel {
                 name,
                 is_host,
-                ping_ms: if is_host { 0 } else { 24 },
-                mods_synced: true,
+                ping_ms: 0,
+                mods_synced,
             }
         })
         .collect();
@@ -590,10 +631,18 @@ pub async fn join_lobby_room(
         world_name: "Кооперативный мир Wex".to_string(),
         tunnel_address: tunnel_addr.clone(),
         tunnel_active,
+        tunnel_error: if tunnel_active {
+            None
+        } else {
+            Some(
+                "Не удалось поднять Playit-туннель: служба туннелей временно недоступна"
+                    .to_string(),
+            )
+        },
         is_host: false,
         players,
-        mod_mismatch_count: 0,
-        total_mods: 142,
+        mod_mismatch_count: mismatch_count,
+        total_mods: manifest.map_or(0, |m| m.len()),
     };
 
     let session = ActiveLobbySession {
@@ -630,8 +679,27 @@ pub async fn get_lobby_status(
         .await
     {
         Ok(s) => s,
-        Err(_) => return Ok(None),
+        Err(LobbyError::Api { status: 404, .. }) => {
+            let mut lock = state.active_session.lock().await;
+            *lock = None;
+            return Err("Комната закрыта организатором".to_string());
+        }
+        Err(e) => {
+            let s = e.to_string();
+            if s.contains("404") || s.contains("closed") || s.contains("закрыта") {
+                let mut lock = state.active_session.lock().await;
+                *lock = None;
+                return Err("Комната закрыта организатором".to_string());
+            }
+            return Ok(None);
+        }
     };
+
+    if status.status == "closed" {
+        let mut lock = state.active_session.lock().await;
+        *lock = None;
+        return Err("Комната закрыта организатором".to_string());
+    }
 
     if status.kicked {
         let mut lock = state.active_session.lock().await;
@@ -656,11 +724,11 @@ pub async fn get_lobby_status(
         .map(|name| {
             let is_h = name == host_name;
             let sync_info = status.mod_sync.as_ref().and_then(|m| m.get(&name));
-            let mods_synced = sync_info.map(|i| i.status == "synced").unwrap_or(true);
+            let mods_synced = sync_info.map(|i| i.status == "synced").unwrap_or(false);
             LobbyPlayerModel {
                 name,
                 is_host: is_h,
-                ping_ms: if is_h { 0 } else { 20 },
+                ping_ms: 0,
                 mods_synced,
             }
         })
@@ -681,15 +749,28 @@ pub async fn get_lobby_status(
         world_name,
         tunnel_address: tunnel_addr,
         tunnel_active,
+        tunnel_error: if tunnel_active {
+            None
+        } else {
+            Some(
+                "Не удалось поднять Playit-туннель: служба туннелей временно недоступна"
+                    .to_string(),
+            )
+        },
         is_host,
         players,
-        mod_mismatch_count: 0,
-        total_mods: 142,
+        mod_mismatch_count: status
+            .mod_sync
+            .as_ref()
+            .and_then(|m| player_name.as_ref().and_then(|name| m.get(name)))
+            .map_or(0, |s| s.mismatches.len()),
+        total_mods: state.local_manifest.lock().await.len(),
     }))
 }
 
 #[tauri::command]
 pub async fn close_lobby_room(code: String, state: State<'_, LobbyState>) -> Result<(), String> {
+    let _operation = state.operation.lock().await;
     let clean_code = code.trim().trim_start_matches('#');
 
     let mut hb_lock = state.heartbeat_handle.lock().await;
@@ -697,10 +778,7 @@ pub async fn close_lobby_room(code: String, state: State<'_, LobbyState>) -> Res
         hb.stop();
     }
 
-    let mut sup_lock = state.supervisor.lock().await;
-    if let Some(mut sup) = sup_lock.take() {
-        sup.stop().await;
-    }
+    stop_lobby_tunnel(&state).await;
 
     let session = {
         let mut lock = state.active_session.lock().await;
@@ -717,6 +795,8 @@ pub async fn close_lobby_room(code: String, state: State<'_, LobbyState>) -> Res
         }
     }
 
+    *state.local_port.lock().await = None;
+    state.local_manifest.lock().await.clear();
     Ok(())
 }
 
@@ -775,6 +855,27 @@ pub async fn net_lan_list_discovered(
 }
 
 #[tauri::command]
+pub async fn net_lan_publish(
+    request: NetLanPublishRequest,
+    state: State<'_, LobbyState>,
+) -> IpcResult<NetLanPublishResponse> {
+    let room = publish_lan_world_internal(&state, &request.motd, request.port, request.host_name)
+        .await
+        .map_err(|e| IpcError::new("NET_LOBBY_API_ERROR", e, None))?;
+
+    let clean_code = room.code.trim_start_matches('#').to_string();
+    Ok(NetLanPublishResponse {
+        code: clean_code,
+        host_name: room.host_name,
+        world_name: room.world_name,
+        tunnel_address: room
+            .tunnel_address
+            .unwrap_or_else(|| format!("tunnel.playit.gg:{}", request.port)),
+        port: request.port,
+    })
+}
+
+#[tauri::command]
 pub async fn list_lan_worlds(state: State<'_, LobbyState>) -> Result<Vec<LanWorldDto>, String> {
     let worlds = state.lan_discovery.get_discovered_worlds().await;
     Ok(worlds.into_iter().map(lan_world_to_dto).collect())
@@ -793,41 +894,336 @@ pub async fn record_lan_world(
     Ok(world.map(lan_world_to_dto))
 }
 
+/// Start LAN world discovery listener.
 #[tauri::command]
-pub async fn connect_lan_world(
+pub async fn net_lan_start_discovery(state: State<'_, LobbyState>) -> Result<(), String> {
+    state
+        .lan_discovery
+        .start()
+        .await
+        .map_err(|e| format!("Не удалось начать поиск LAN-миров: {e}"))
+}
+
+/// Stop LAN world discovery listener and release UDP socket.
+#[tauri::command]
+pub async fn net_lan_stop_discovery(state: State<'_, LobbyState>) -> Result<(), String> {
+    state.lan_discovery.stop().await;
+    Ok(())
+}
+
+/// Query if LAN world discovery listener is currently running.
+#[tauri::command]
+pub async fn net_lan_is_discovering(state: State<'_, LobbyState>) -> Result<bool, String> {
+    Ok(state.lan_discovery.is_running().await)
+}
+
+#[tauri::command]
+pub async fn connect_lan_world<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     address: String,
     version: Option<String>,
     nickname: Option<String>,
     play_state: State<'_, crate::commands::launch::PlayState>,
 ) -> Result<String, String> {
-    let cfg = wex_core::config::LauncherConfig::load_or_default(&play_state.paths.config_file);
-    let selected_ver = version.unwrap_or(cfg.selected_version);
-    let player_nick = nickname.unwrap_or(cfg.nickname);
-
-    let launch_req = wex_ipc::commands::LaunchGameRequest {
-        version: selected_ver.clone(),
-        nickname: player_nick.clone(),
-        jvm_args: None,
-        quick_play_multiplayer: Some(address.clone()),
-    };
-
-    match play_state.core.launch_game(launch_req).await {
-        Ok(resp) => {
-            play_state
-                .is_running
-                .store(true, std::sync::atomic::Ordering::SeqCst);
-            {
-                let mut v = play_state.running_version.lock().await;
-                *v = Some(selected_ver);
-            }
-            Ok(format!(
-                "Подключение к {} (PID {})",
-                address,
-                resp.pid.unwrap_or(0)
-            ))
-        }
-        Err(e) => Err(format!("Ошибка автоподключения к LAN-миру: {}", e.message)),
+    if !crate::commands::deeplink::validate_server_address(&address) {
+        return Err("Некорректный адрес LAN-мира".into());
     }
+    let cfg = wex_core::config::LauncherConfig::load_or_default(&play_state.paths.config_file);
+    crate::commands::launch::start_game(
+        app,
+        version.unwrap_or(cfg.selected_version),
+        nickname.unwrap_or(cfg.nickname),
+        None,
+        Some(address),
+        play_state,
+    )
+    .await
+    .map(|r| r.message)
+}
+
+fn host_room(
+    session: &ActiveLobbySession,
+    address: Option<String>,
+    error: Option<String>,
+    total_mods: usize,
+) -> LobbyRoomModel {
+    LobbyRoomModel {
+        code: format!("#{}", session.code),
+        host_name: session.host_name.clone(),
+        world_name: session.world_name.clone(),
+        tunnel_active: address.is_some() && error.is_none(),
+        tunnel_address: address,
+        tunnel_error: error,
+        is_host: true,
+        players: vec![LobbyPlayerModel {
+            name: session.player_name.clone(),
+            is_host: true,
+            ping_ms: 0,
+            mods_synced: true,
+        }],
+        mod_mismatch_count: 0,
+        total_mods,
+    }
+}
+
+async fn stop_lobby_tunnel(state: &LobbyState) {
+    if let Some(mut supervisor) = state.supervisor.lock().await.take() {
+        supervisor.stop().await;
+    }
+    *state.current_tunnel_status.lock().await = TunnelStatus::Stopped;
+}
+
+async fn open_confirmed_tunnel(
+    state: &LobbyState,
+    code: &str,
+    token: &str,
+    port: u16,
+) -> Result<String, String> {
+    stop_lobby_tunnel(state).await;
+    let result: Result<String, String> = async {
+        let config = state
+            .client
+            .get_tunnel_config()
+            .await
+            .map_err(|e| format_lobby_error(&e))?;
+        let address = state.tunnel_runtime.start(state, &config, port).await?;
+        state
+            .client
+            .open_lobby(code, token, &address, port)
+            .await
+            .map_err(|e| format_lobby_error(&e))?;
+        Ok(address)
+    }
+    .await;
+    if let Err(error) = &result {
+        stop_lobby_tunnel(state).await;
+        *state.current_tunnel_status.lock().await = TunnelStatus::Error(error.clone());
+    }
+    result
+}
+
+async fn create_room_internal(
+    state: &LobbyState,
+    motd: &str,
+    port: u16,
+    player_name: Option<String>,
+    retain_failure: bool,
+    manifest_override: Option<Vec<wex_net::ModManifestEntry>>,
+) -> Result<LobbyRoomModel, String> {
+    let _operation = state.operation.lock().await;
+    if port == 0 {
+        return Err("Не указан порт LAN-мира".into());
+    }
+    if state.active_session.lock().await.is_some() {
+        return Err("Сначала закройте текущую комнату".into());
+    }
+    let host = player_name.unwrap_or_else(|| "Player".into());
+    if let Some(manifest) = manifest_override {
+        *state.local_manifest.lock().await = manifest;
+    }
+    let manifest = state.local_manifest.lock().await.clone();
+    let created = state
+        .client
+        .create_lobby(&host, Some(&manifest))
+        .await
+        .map_err(|e| format_lobby_error(&e))?;
+    let result = open_confirmed_tunnel(state, &created.code, &created.host_token, port).await;
+    if !retain_failure {
+        if let Err(error) = &result {
+            let _ = state
+                .client
+                .close_lobby(&created.code, &created.host_token)
+                .await;
+            return Err(error.clone());
+        }
+    }
+    let (address, error) = match result {
+        Ok(a) => (Some(a), None),
+        Err(e) => (None, Some(e)),
+    };
+    let session = ActiveLobbySession {
+        code: created.code.clone(),
+        host_token: Some(created.host_token.clone()),
+        host_name: host.clone(),
+        world_name: if motd.trim().is_empty() {
+            format!("Мир {host}")
+        } else {
+            motd.trim().into()
+        },
+        player_name: host,
+        is_host: true,
+        tunnel_address: address.clone(),
+    };
+    let room = host_room(&session, address, error, manifest.len());
+    *state.local_port.lock().await = Some(port);
+    *state.active_session.lock().await = Some(session);
+    let heartbeat = state.client.start_heartbeat_loop(
+        created.code,
+        created.host_token,
+        Duration::from_secs(15),
+    );
+    if let Some(old) = state.heartbeat_handle.lock().await.replace(heartbeat) {
+        old.stop();
+    }
+    Ok(room)
+}
+
+async fn publish_lan_world_internal(
+    state: &LobbyState,
+    motd: &str,
+    port: u16,
+    player_name: Option<String>,
+) -> Result<LobbyRoomModel, String> {
+    create_room_internal(state, motd, port, player_name, false, None).await
+}
+
+#[tauri::command]
+pub async fn publish_lan_world(
+    motd: String,
+    port: u16,
+    player_name: Option<String>,
+    version: Option<String>,
+    state: State<'_, LobbyState>,
+    play_state: State<'_, crate::commands::launch::PlayState>,
+) -> Result<LobbyRoomModel, String> {
+    let cfg = wex_core::config::LauncherConfig::load_or_default(&play_state.paths.config_file);
+    let version = version.unwrap_or(cfg.selected_version);
+    if !["1.20.1", "1.21.1"].contains(&version.as_str()) {
+        return Err("Unsupported Minecraft version".into());
+    }
+    let manifest = super::mods::list_mods_impl(&play_state.paths, &version)?
+        .into_iter()
+        .map(|m| wex_net::ModManifestEntry {
+            id: m.id,
+            name: m.name,
+            version: m.version,
+            enabled: m.enabled,
+        })
+        .collect();
+    create_room_internal(&state, &motd, port, player_name, false, Some(manifest)).await
+}
+
+#[derive(serde::Serialize, Clone)]
+struct JoinProgress<'a> {
+    code: &'a str,
+    stage: &'a str,
+    message: &'a str,
+}
+
+#[tauri::command]
+pub async fn prepare_lobby_join<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    code: String,
+    player_name: String,
+    version: String,
+    repair: bool,
+    play_state: State<'_, crate::commands::launch::PlayState>,
+    state: State<'_, LobbyState>,
+) -> Result<LobbyRoomModel, String> {
+    use std::sync::atomic::Ordering;
+    use tauri::Emitter;
+    if !["1.20.1", "1.21.1"].contains(&version.as_str()) {
+        return Err("Неподдерживаемая версия Minecraft".into());
+    }
+    if play_state.is_running.load(Ordering::SeqCst)
+        || play_state.is_launching.swap(true, Ordering::SeqCst)
+    {
+        return Err("Сначала завершите текущий запуск или игровую сессию".into());
+    }
+    struct Reservation<'a>(&'a std::sync::atomic::AtomicBool);
+    impl Drop for Reservation<'_> {
+        fn drop(&mut self) {
+            self.0.store(false, Ordering::SeqCst);
+        }
+    }
+    let _reservation = Reservation(&play_state.is_launching);
+    let _operation = state.operation.lock().await;
+    let clean_code = code.trim().trim_start_matches('#').to_uppercase();
+    let emit = |stage, message| {
+        let _ = app.emit(
+            "lobby-join-progress",
+            JoinProgress {
+                code: &clean_code,
+                stage,
+                message,
+            },
+        );
+    };
+    emit(
+        "checking_mods",
+        "Сверяем установленные моды с организатором…",
+    );
+    let load_manifest = || -> Result<Vec<wex_net::ModManifestEntry>, String> {
+        Ok(super::mods::list_mods_impl(&play_state.paths, &version)?
+            .into_iter()
+            .map(|m| wex_net::ModManifestEntry {
+                id: m.id,
+                name: m.name,
+                version: m.version,
+                enabled: m.enabled,
+            })
+            .collect())
+    };
+    let mut manifest = load_manifest()?;
+    let mut room = join_lobby_room_internal(
+        clean_code.clone(),
+        Some(player_name.clone()),
+        &state,
+        Some(&manifest),
+    )
+    .await?;
+    if room.mod_mismatch_count > 0 && repair {
+        // Only downloads from our hash-verified pack manifest are allowed. Host
+        // metadata does not supply trusted artifact URLs; recheck after repair.
+        emit(
+            "downloading_mods",
+            "Проверяем и восстанавливаем файлы сборки…",
+        );
+        play_state.cleanup_prewarm().await;
+        play_state
+            .core
+            .install_instance(wex_ipc::commands::InstallInstanceRequest {
+                version: version.clone(),
+                force_reinstall: false,
+            })
+            .await
+            .map_err(|e| e.message)?;
+        let status = state
+            .client
+            .get_status(&clean_code, Some(&player_name))
+            .await
+            .map_err(|e| format_lobby_error(&e))?;
+        if let Some(sync) = status.mod_sync.as_ref().and_then(|m| m.get(&player_name)) {
+            for mismatch in &sync.mismatches {
+                let enabled = match mismatch.mismatch_type {
+                    wex_net::ModMismatchType::Disabled => true,
+                    wex_net::ModMismatchType::Extra => false,
+                    _ => continue,
+                };
+                if let Some(local) = super::mods::list_mods_impl(&play_state.paths, &version)?
+                    .into_iter()
+                    .find(|m| m.id == mismatch.mod_id && m.enabled != enabled)
+                {
+                    super::mods::toggle_mod_impl(
+                        &play_state.paths,
+                        &version,
+                        &local.file_name,
+                        enabled,
+                    )?;
+                }
+            }
+        }
+        emit("checking_mods", "Повторно сверяем моды с организатором…");
+        manifest = load_manifest()?;
+        room = join_lobby_room_internal(
+            clean_code.clone(),
+            Some(player_name),
+            &state,
+            Some(&manifest),
+        )
+        .await?;
+    }
+    Ok(room)
 }
 
 // ============================================================================
@@ -836,6 +1232,32 @@ pub async fn connect_lan_world(
 
 #[cfg(test)]
 mod tests {
+
+    struct FixtureTunnel;
+    #[async_trait::async_trait]
+    impl super::super::lobby_tunnel::TunnelRuntime for FixtureTunnel {
+        async fn start(
+            &self,
+            _state: &LobbyState,
+            config: &wex_net::lobby::TunnelConfigResponse,
+            port: u16,
+        ) -> Result<String, String> {
+            assert!(port > 0);
+            let address = config
+                .public_address
+                .as_deref()
+                .ok_or("fixture has no tunnel address")?;
+            let public_port = config.public_port.ok_or("fixture has no tunnel port")?;
+            Ok(format!("{address}:{public_port}"))
+        }
+    }
+
+    fn test_state(tools: PathBuf, api: &str, old_api: &str) -> LobbyState {
+        LobbyState::new(tools, api, old_api)
+            .with_tunnel_runtime(Arc::new(FixtureTunnel))
+            .with_lan_discovery(LanDiscoveryService::new_loopback())
+    }
+
     use super::*;
     use tempfile::tempdir;
     use wiremock::matchers::{method, path, query_param};
@@ -879,7 +1301,7 @@ mod tests {
             .await;
 
         let tmp = tempdir().unwrap();
-        let state = LobbyState::new(
+        let state = test_state(
             tmp.path().to_path_buf(),
             &mock_server.uri(),
             &mock_server.uri(),
@@ -936,7 +1358,7 @@ mod tests {
             .await;
 
         let tmp = tempdir().unwrap();
-        let state = LobbyState::new(
+        let state = test_state(
             tmp.path().to_path_buf(),
             &mock_server.uri(),
             &mock_server.uri(),
@@ -1073,7 +1495,7 @@ mod tests {
     #[tokio::test]
     async fn test_lan_world_discovery_service_integration() {
         let tmp = tempdir().unwrap();
-        let state = LobbyState::new(
+        let state = test_state(
             tmp.path().to_path_buf(),
             DEFAULT_LOBBY_API_URL,
             DEFAULT_OLD_BACKEND_URL,
@@ -1096,5 +1518,317 @@ mod tests {
         assert_eq!(dto.motd, "Steve's Underground Base");
         assert_eq!(dto.address, "192.168.1.77:51234");
         assert_eq!(dto.port, 51234);
+    }
+
+    #[tokio::test]
+    async fn test_lan_discovery_lifecycle_in_lobby_state() {
+        let tmp = tempdir().unwrap();
+        let state = test_state(
+            tmp.path().to_path_buf(),
+            DEFAULT_LOBBY_API_URL,
+            DEFAULT_OLD_BACKEND_URL,
+        );
+
+        // Discovery should not be running upon LobbyState initialization
+        assert!(!state.lan_discovery.is_running().await);
+        state.lan_discovery.start().await.unwrap();
+        assert!(state.lan_discovery.is_running().await);
+        state.lan_discovery.stop().await;
+        assert!(!state.lan_discovery.is_running().await);
+    }
+
+    #[tokio::test]
+    async fn test_publish_lan_world_flow() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/lobby"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "code": "B2C3",
+                "hostToken": "host_tok_456",
+                "status": "open",
+                "createdAt": 1731000000
+            })))
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/api/tunnel-config"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "secret": "lan_tunnel_sec",
+                "publicAddress": "lan-host.tun.ply.gg",
+                "publicPort": 45123
+            })))
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/open"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/heartbeat"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        let tmp = tempdir().unwrap();
+        let state = test_state(
+            tmp.path().to_path_buf(),
+            &mock_server.uri(),
+            &mock_server.uri(),
+        );
+
+        let room = publish_lan_world_internal(
+            &state,
+            "Steve's Multiplayer Survival",
+            51234,
+            Some("Steve".to_string()),
+        )
+        .await
+        .expect("should publish LAN world");
+
+        assert_eq!(room.code, "#B2C3");
+        assert_eq!(room.world_name, "Steve's Multiplayer Survival");
+        assert_eq!(room.host_name, "Steve");
+        assert_eq!(
+            room.tunnel_address.as_deref(),
+            Some("lan-host.tun.ply.gg:45123")
+        );
+        assert!(room.tunnel_active);
+        assert!(room.is_host);
+
+        // Verify session in state
+        let session = state.active_session.lock().await;
+        assert!(session.is_some());
+        let s = session.as_ref().unwrap();
+        assert_eq!(s.code, "B2C3");
+        assert_eq!(s.world_name, "Steve's Multiplayer Survival");
+        assert_eq!(s.player_name, "Steve");
+        assert!(s.is_host);
+    }
+
+    #[tokio::test]
+    async fn test_create_lobby_default_world_name_mir_host() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/lobby"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "code": "C1D2",
+                "hostToken": "host_tok_789",
+                "status": "open",
+                "createdAt": 1731000000
+            })))
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/api/tunnel-config"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "secret": "sec",
+                "publicAddress": "mir.tun.ply.gg",
+                "publicPort": 25565
+            })))
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/open"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/heartbeat"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        let tmp = tempdir().unwrap();
+        let state = test_state(
+            tmp.path().to_path_buf(),
+            &mock_server.uri(),
+            &mock_server.uri(),
+        );
+
+        // When world_name is empty, defaults to «Мир <ник>»
+        let host = "Alex";
+        let created = state.client.create_lobby(host, None).await.unwrap();
+        let actual_world_name = format!("Мир {}", host);
+
+        let display_code = format!("#{}", created.code);
+        let room = LobbyRoomModel {
+            code: display_code,
+            host_name: host.to_string(),
+            world_name: actual_world_name.clone(),
+            tunnel_address: Some("mir.tun.ply.gg:25565".to_string()),
+            tunnel_active: true,
+            tunnel_error: None,
+            is_host: true,
+            players: vec![LobbyPlayerModel {
+                name: host.to_string(),
+                is_host: true,
+                ping_ms: 0,
+                mods_synced: true,
+            }],
+            mod_mismatch_count: 0,
+            total_mods: 142,
+        };
+
+        assert_eq!(room.world_name, "Мир Alex");
+        assert_eq!(room.code, "#C1D2");
+        assert!(room.tunnel_active);
+    }
+
+    #[tokio::test]
+    async fn test_create_lobby_tunnel_failure_and_retry() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/lobby"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "code": "E3F4",
+                "hostToken": "host_tok_retry",
+                "status": "open",
+                "createdAt": 1731000000
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Tunnel config initially fails (500 Server Error)
+        Mock::given(method("GET"))
+            .and(path("/api/tunnel-config"))
+            .respond_with(ResponseTemplate::new(500))
+            .up_to_n_times(1)
+            .mount(&mock_server)
+            .await;
+
+        let tmp = tempdir().unwrap();
+        let state = test_state(
+            tmp.path().to_path_buf(),
+            &mock_server.uri(),
+            &mock_server.uri(),
+        );
+
+        let created = state.client.create_lobby("Steve", None).await.unwrap();
+        let tunnel_cfg = state.client.get_tunnel_config().await;
+        assert!(tunnel_cfg.is_err());
+
+        // Tunnel failed: diagnostic reason in plain Russian words
+        let tunnel_error = "Не удалось поднять Playit-туннель: служба туннелей временно недоступна";
+        let room_down = LobbyRoomModel {
+            code: format!("#{}", created.code),
+            host_name: "Steve".to_string(),
+            world_name: "Мир Steve".to_string(),
+            tunnel_address: None,
+            tunnel_active: false,
+            tunnel_error: Some(tunnel_error.to_string()),
+            is_host: true,
+            players: vec![],
+            mod_mismatch_count: 0,
+            total_mods: 142,
+        };
+
+        assert!(!room_down.tunnel_active);
+        assert_eq!(room_down.tunnel_error.as_deref(), Some(tunnel_error));
+        assert!(room_down.tunnel_address.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_lobby_status_closed_room_returns_error() {
+        let mock_server = MockServer::start().await;
+
+        // Status returns 404 Not Found when host closed the room
+        Mock::given(method("GET"))
+            .and(path("/api/lobby/status"))
+            .and(query_param("code", "Z9Y8"))
+            .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+                "error": "Room not found or closed"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let tmp = tempdir().unwrap();
+        let state = test_state(
+            tmp.path().to_path_buf(),
+            &mock_server.uri(),
+            &mock_server.uri(),
+        );
+
+        let res = state.client.get_status("Z9Y8", Some("Guest")).await;
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        if let LobbyError::Api { status, .. } = err {
+            assert_eq!(status, 404);
+        } else {
+            panic!("Expected 404 API error");
+        }
+    }
+
+    #[test]
+    fn test_modsync_manifest_comparison_detects_mismatches() {
+        let client_manifest = vec![
+            wex_net::ModManifestEntry {
+                id: "sodium".to_string(),
+                name: "Sodium".to_string(),
+                version: "0.5.8".to_string(),
+                enabled: true,
+            },
+            wex_net::ModManifestEntry {
+                id: "iris".to_string(),
+                name: "Iris".to_string(),
+                version: "1.7.0".to_string(),
+                enabled: false,
+            },
+        ];
+
+        let host_manifest = vec![
+            wex_net::ModManifestEntry {
+                id: "sodium".to_string(),
+                name: "Sodium".to_string(),
+                version: "0.5.8".to_string(),
+                enabled: true,
+            },
+            wex_net::ModManifestEntry {
+                id: "iris".to_string(),
+                name: "Iris".to_string(),
+                version: "1.7.0".to_string(),
+                enabled: true,
+            },
+            wex_net::ModManifestEntry {
+                id: "voicechat".to_string(),
+                name: "Simple Voice Chat".to_string(),
+                version: "2.5.0".to_string(),
+                enabled: true,
+            },
+        ];
+
+        let mismatches = wex_net::modsync::compare_manifests(&client_manifest, &host_manifest);
+        // iris is disabled on client, voicechat is missing on client
+        assert_eq!(mismatches.len(), 2);
+        let ids: Vec<&str> = mismatches.iter().map(|m| m.mod_id.as_str()).collect();
+        assert!(ids.contains(&"iris"));
+        assert!(ids.contains(&"voicechat"));
+    }
+    #[tokio::test]
+    async fn review_07_publish_rejects_missing_tunnel_config() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/lobby"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "code":"ABC123", "hostToken":"fixture", "status":"created", "createdAt":0
+            })))
+            .mount(&server)
+            .await;
+        let tmp = tempdir().unwrap();
+        let state = test_state(tmp.path().into(), &server.uri(), &server.uri());
+        assert!(
+            publish_lan_world_internal(&state, "World", 54321, Some("Host".into()))
+                .await
+                .is_err()
+        );
     }
 }

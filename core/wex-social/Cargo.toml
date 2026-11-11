@@ -1,6 +1,6 @@
 [package]
 name = "wex-social"
-version = "0.1.0"
+version = "0.9.2"
 edition = "2021"
 description = "Social, friends, achievements, workshop, news, and updater modules for Wex"
 

@@ -11,9 +11,9 @@ use thiserror::Error;
 pub enum SkinError {
     #[error("Ошибка декодирования изображения: {0}")]
     ImageError(#[from] image::ImageError),
-    #[error("Файл не является корректным PNG: {0}")]
+    #[error("Файл не в формате PNG. Скин должен быть в формате .png: {0}")]
     InvalidPng(String),
-    #[error("Неподдерживаемый размер скина ({width}x{height}): требуется 64x64 или 64x32")]
+    #[error("Размер скина {width}×{height} не поддерживается. Разрешение должно быть ровно 64×64 или 64×32 пикселя")]
     UnsupportedDimensions { width: u32, height: u32 },
     #[error("Размер файла превышает лимит в 2 МБ")]
     FileTooLarge,
@@ -82,7 +82,7 @@ pub fn validate_skin_bytes(bytes: &[u8]) -> SkinValidationResult {
     if bytes.len() < 8 || &bytes[0..8] != b"\x89PNG\r\n\x1a\n" {
         return SkinValidationResult {
             is_valid: false,
-            error: Some("Файл не является PNG изображением".to_string()),
+            error: Some("Файл не в формате PNG. Скин должен быть в формате .png".to_string()),
             width: 0,
             height: 0,
         };
@@ -102,7 +102,7 @@ pub fn validate_skin_bytes(bytes: &[u8]) -> SkinValidationResult {
                 SkinValidationResult {
                     is_valid: false,
                     error: Some(format!(
-                        "Неподдерживаемый размер скина ({}x{}). Требуется 64x64 или 64x32",
+                        "Размер скина {}×{} не поддерживается. Разрешение должно быть ровно 64×64 или 64×32 пикселя",
                         w, h
                     )),
                     width: w,
@@ -112,7 +112,7 @@ pub fn validate_skin_bytes(bytes: &[u8]) -> SkinValidationResult {
         }
         Err(e) => SkinValidationResult {
             is_valid: false,
-            error: Some(format!("Поврежденный файл PNG: {}", e)),
+            error: Some(format!("Повреждённый файл PNG: {}", e)),
             width: 0,
             height: 0,
         },
@@ -290,6 +290,30 @@ impl SkinHistoryManager {
             Ok(false)
         }
     }
+
+    pub fn get_skin_bytes_by_hash(&self, hash: &str) -> Result<Vec<u8>, SkinError> {
+        let filename = format!("{}.png", hash);
+        let path = self.skins_dir().join(filename);
+        if !path.exists() {
+            return Err(SkinError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Скин с хэшем {} не найден", hash),
+            )));
+        }
+        Ok(fs::read(path)?)
+    }
+
+    pub fn get_skin_bytes_by_id(&self, id: &str) -> Result<(Vec<u8>, WardrobeItem), SkinError> {
+        let history = self.get_history()?;
+        let item = history.into_iter().find(|i| i.id == id).ok_or_else(|| {
+            SkinError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Скин не найден в истории",
+            ))
+        })?;
+        let bytes = self.get_skin_bytes_by_hash(&item.hash)?;
+        Ok((bytes, item))
+    }
 }
 
 pub fn generate_csl_config(
@@ -298,6 +322,19 @@ pub fn generate_csl_config(
     skin_png_bytes: Option<&[u8]>,
     cape_png_bytes: Option<&[u8]>,
 ) -> Result<(), SkinError> {
+    let trimmed = nickname.trim();
+    if trimmed.is_empty()
+        || trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed == "."
+        || trimmed == ".."
+        || trimmed.contains('\0')
+    {
+        return Err(SkinError::InvalidPng(
+            "Никнейм должен быть одиночным именем без разделителей пути".to_string(),
+        ));
+    }
+
     let csl_dir = game_dir.join("CustomSkinLoader");
     let local_skins_dir = csl_dir.join("LocalSkin").join("skins");
     let local_capes_dir = csl_dir.join("LocalSkin").join("capes");
@@ -319,7 +356,7 @@ pub fn generate_csl_config(
                 "elytra": "LocalSkin/elytras/{USERNAME}.png"
             },
             {
-                "name": "AuraLobby",
+                "name": "WexLobby",
                 "type": "CustomSkinAPI",
                 "root": "https://lobby-api.vercel.app/csl/"
             }
@@ -341,12 +378,24 @@ pub fn generate_csl_config(
     fs::write(config_path, serde_json::to_string_pretty(&config_json)?)?;
 
     if let Some(bytes) = skin_png_bytes {
-        let skin_path = local_skins_dir.join(format!("{}.png", nickname));
+        let val = validate_skin_bytes(bytes);
+        if !val.is_valid {
+            return Err(SkinError::InvalidPng(
+                val.error
+                    .unwrap_or_else(|| "Файл скина не в формате PNG".to_string()),
+            ));
+        }
+        let skin_path = local_skins_dir.join(format!("{}.png", trimmed));
         fs::write(skin_path, bytes)?;
     }
 
     if let Some(bytes) = cape_png_bytes {
-        let cape_path = local_capes_dir.join(format!("{}.png", nickname));
+        if bytes.len() < 8 || &bytes[0..8] != b"\x89PNG\r\n\x1a\n" {
+            return Err(SkinError::InvalidPng(
+                "Файл плаща должен быть в формате .png".to_string(),
+            ));
+        }
+        let cape_path = local_capes_dir.join(format!("{}.png", trimmed));
         fs::write(cape_path, bytes)?;
     }
 
@@ -443,6 +492,13 @@ mod tests {
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].id, item.id);
 
+        let (loaded_bytes, loaded_item) = mgr.get_skin_bytes_by_id(&item.id).unwrap();
+        assert_eq!(loaded_bytes, bytes);
+        assert_eq!(loaded_item.name, "AlexSkin");
+
+        let hash_bytes = mgr.get_skin_bytes_by_hash(&item.hash).unwrap();
+        assert_eq!(hash_bytes, bytes);
+
         let removed = mgr.remove_item(&item.id).unwrap();
         assert!(removed);
         assert_eq!(mgr.get_history().unwrap().len(), 0);
@@ -469,5 +525,40 @@ mod tests {
             .join("skins")
             .join("TestPlayer.png");
         assert!(player_skin.is_file());
+    }
+
+    #[test]
+    fn test_sec_generate_csl_config_rejects_traversal_nickname() {
+        let dir = tempdir().unwrap();
+        let game_dir = dir.path();
+        let img = make_test_skin_image(64, 64, false);
+        let skin_bytes = encode_png_bytes(&img).unwrap();
+
+        let res = generate_csl_config(game_dir, "../../evil_player", Some(&skin_bytes), None);
+        assert!(
+            res.is_err(),
+            "generate_csl_config must reject traversal nickname"
+        );
+        let escaped_path = game_dir
+            .join("CustomSkinLoader")
+            .join("LocalSkin")
+            .join("evil_player.png");
+        assert!(
+            !escaped_path.exists(),
+            "Escaped skin file must not be created"
+        );
+    }
+
+    #[test]
+    fn test_sec_generate_csl_config_rejects_non_png() {
+        let dir = tempdir().unwrap();
+        let game_dir = dir.path();
+        let bad_bytes = b"NOT_A_PNG_HEADER_DATA";
+
+        let res = generate_csl_config(game_dir, "NormalPlayer", Some(bad_bytes), None);
+        assert!(
+            res.is_err(),
+            "generate_csl_config must reject non-PNG skin bytes"
+        );
     }
 }

@@ -426,6 +426,7 @@ pub async fn workshop_toggle_resource_pack(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
+    super::workshop::validate_single_component(&file_name)?;
     let game_dir = resolve_game_dir(&state.paths, version.as_deref());
     let options_txt = game_dir.join("options.txt");
     set_enabled_resource_pack(&options_txt, &file_name, enabled).map_err(|e| e.to_string())
@@ -576,6 +577,11 @@ pub async fn workshop_set_active_shader_pack(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
+    if let Some(ref s) = shader_file_name {
+        if !s.eq_ignore_ascii_case("OFF") {
+            super::workshop::validate_single_component(s)?;
+        }
+    }
     let game_dir = resolve_game_dir(&state.paths, version.as_deref());
     set_active_shader(&game_dir, shader_file_name.as_deref()).map_err(|e| e.to_string())
 }
@@ -588,7 +594,7 @@ pub fn add_pack_file_impl(
 ) -> Result<String, String> {
     let src = PathBuf::from(source_path);
     if !src.is_file() {
-        return Err(format!("Файл не найден: {}", source_path));
+        return Err("Выбранный файл не найден на диске. Выберите файл заново.".to_string());
     }
 
     let file_name = src
@@ -596,6 +602,8 @@ pub fn add_pack_file_impl(
         .ok_or_else(|| "Недопустимое имя файла".to_string())?
         .to_string_lossy()
         .to_string();
+
+    super::workshop::validate_single_component(&file_name)?;
 
     let game_dir = resolve_game_dir(paths, version);
     let dest_dir = if pack_type == "shaderpack" {
@@ -606,6 +614,16 @@ pub fn add_pack_file_impl(
 
     fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
     let dest_file = dest_dir.join(&file_name);
+
+    let canon_dest_dir = dest_dir.canonicalize().map_err(|e| e.to_string())?;
+    let canon_wex = paths
+        .root
+        .canonicalize()
+        .unwrap_or_else(|_| paths.root.clone());
+    if !canon_dest_dir.starts_with(&canon_wex) {
+        return Err("Каталог назначения находится за пределами папки Wex".to_string());
+    }
+
     fs::copy(&src, &dest_file).map_err(|e| e.to_string())?;
 
     Ok(file_name)
@@ -628,6 +646,8 @@ pub fn delete_pack_file_impl(
     pack_type: &str,
     version: Option<&str>,
 ) -> Result<(), String> {
+    super::workshop::validate_single_component(file_name)?;
+
     let game_dir = resolve_game_dir(paths, version);
     let folder_name = if pack_type == "shaderpack" {
         "shaderpacks"
@@ -636,18 +656,33 @@ pub fn delete_pack_file_impl(
     };
 
     if is_file_from_pack(file_name, folder_name, &game_dir) {
-        return Err("Нельзя удалить файл, входящий в официальную сборку Aura-Pack".to_string());
+        return Err("Файлы из официальной сборки защищены от удаления. Вы можете отключить их в настройках.".to_string());
     }
 
-    let target = game_dir.join(folder_name).join(file_name);
+    let packs_dir = game_dir.join(folder_name);
+    let target = packs_dir.join(file_name);
     if !target.exists() {
-        return Err(format!("Файл не найден: {}", file_name));
+        return Err("Файл не найден. Обновите список файлов.".to_string());
     }
 
-    if target.is_dir() {
-        fs::remove_dir_all(&target).map_err(|e| e.to_string())?;
+    let canon_target = target.canonicalize().map_err(|e| e.to_string())?;
+    let canon_wex = paths
+        .root
+        .canonicalize()
+        .unwrap_or_else(|_| paths.root.clone());
+    if !canon_target.starts_with(&canon_wex) {
+        return Err("Файл находится за пределами папки Wex".to_string());
+    }
+    if let Ok(canon_packs) = packs_dir.canonicalize() {
+        if !canon_target.starts_with(&canon_packs) || canon_target == canon_packs {
+            return Err("Файл должен находиться внутри каталога пакетов".to_string());
+        }
+    }
+
+    if canon_target.is_dir() {
+        fs::remove_dir_all(&canon_target).map_err(|e| e.to_string())?;
     } else {
-        fs::remove_file(&target).map_err(|e| e.to_string())?;
+        fs::remove_file(&canon_target).map_err(|e| e.to_string())?;
     }
 
     // Disable if it was enabled
@@ -851,5 +886,36 @@ mod tests {
             delete_pack_file_impl(&paths, "ImportMe.zip", "resourcepack", Some("1.21.1"));
         assert!(del_user_res.is_ok());
         assert!(!rp_dir.join("ImportMe.zip").exists());
+    }
+
+    #[tokio::test]
+    async fn test_sec_workshop_delete_pack_file_rejects_traversal() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        paths.ensure_dirs().unwrap();
+        let inst_dir = paths.instance_dir("1.21.1");
+        fs::create_dir_all(inst_dir.join("resourcepacks")).unwrap();
+
+        let sensitive = inst_dir.join("sensitive.txt");
+        fs::write(&sensitive, b"sensitive data").unwrap();
+
+        // 1. Relative traversal attempt to delete file outside resourcepacks
+        let res = delete_pack_file_impl(&paths, "../sensitive.txt", "resourcepack", Some("1.21.1"));
+        assert!(
+            res.is_err(),
+            "delete_pack_file_impl must reject traversal path"
+        );
+        assert!(
+            sensitive.is_file(),
+            "Sensitive file outside pack directory must not be deleted"
+        );
+
+        // 2. Multi-component path attempt
+        let res_sub =
+            delete_pack_file_impl(&paths, "subdir/pack.zip", "resourcepack", Some("1.21.1"));
+        assert!(
+            res_sub.is_err(),
+            "delete_pack_file_impl must reject multi-component path"
+        );
     }
 }

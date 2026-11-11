@@ -12,6 +12,8 @@
  * - Pure WebGL implementation (0 npm dependencies, <15 KB)
  */
 
+import { onIdleStateChange, isIdleSuspended } from './idleManager';
+
 export type ModelType = 'default' | 'slim';
 
 export interface UVRect {
@@ -197,25 +199,14 @@ export function getCapePartDefinition(): PartDefinition {
  * Checks if WebGL is available and functional on this canvas/system.
  */
 export function isWebGLSupported(canvas?: HTMLCanvasElement | null): boolean {
-  if (typeof window !== 'undefined' && typeof (window as any).WebGLRenderingContext === 'undefined') {
-    if (!canvas || typeof (canvas as any).getContext !== 'function') return false;
-    try {
-      const gl = (canvas as any).getContext('webgl');
-      return gl !== null && typeof (gl as any)?.createShader === 'function';
-    } catch {
-      return false;
-    }
-  }
-
-  if (!canvas) {
-    if (typeof document === 'undefined') return false;
-    canvas = document.createElement('canvas');
-  }
+  if (typeof window === 'undefined') return false;
   try {
+    const testCanvas = canvas || (typeof document !== 'undefined' ? document.createElement('canvas') : null);
+    if (!testCanvas || typeof (testCanvas as any).getContext !== 'function') return false;
     const gl =
-      canvas.getContext('webgl2') ||
-      canvas.getContext('webgl') ||
-      canvas.getContext('experimental-webgl');
+      testCanvas.getContext('webgl', { alpha: true, antialias: true }) ||
+      testCanvas.getContext('experimental-webgl', { alpha: true, antialias: true }) ||
+      testCanvas.getContext('webgl2', { alpha: true, antialias: true });
     return gl !== null && typeof (gl as any)?.createShader === 'function';
   } catch {
     return false;
@@ -312,6 +303,43 @@ export class Mat4 {
     out[10] = a02 * s + a22 * c;
     out[11] = a03 * s + a23 * c;
 
+    return out;
+  }
+
+  static rotateZ(m: Float32Array, rad: number): Float32Array {
+    const s = Math.sin(rad);
+    const c = Math.cos(rad);
+    const out = new Float32Array(m);
+
+    const a00 = m[0], a01 = m[1], a02 = m[2], a03 = m[3];
+    const a10 = m[4], a11 = m[5], a12 = m[6], a13 = m[7];
+
+    out[0] = a00 * c + a10 * s;
+    out[1] = a01 * c + a10 * s;
+    out[2] = a02 * c + a10 * s;
+    out[3] = a03 * c + a10 * s;
+
+    out[4] = a10 * c - a00 * s;
+    out[5] = a11 * c - a01 * s;
+    out[6] = a12 * c - a02 * s;
+    out[7] = a13 * c - a03 * s;
+
+    return out;
+  }
+
+  static rotateAroundPivot(
+    m: Float32Array,
+    pivot: [number, number, number],
+    rx: number,
+    ry = 0,
+    rz = 0,
+  ): Float32Array {
+    if (rx === 0 && ry === 0 && rz === 0) return m;
+    let out = Mat4.translate(m, pivot);
+    if (rx !== 0) out = Mat4.rotateX(out, rx);
+    if (ry !== 0) out = Mat4.rotateY(out, ry);
+    if (rz !== 0) out = Mat4.rotateZ(out, rz);
+    out = Mat4.translate(out, [-pivot[0], -pivot[1], -pivot[2]]);
     return out;
   }
 }
@@ -443,6 +471,54 @@ export function buildCapeModelBuffer(): {
   };
 }
 
+export type AnimationMode = 'idle' | 'walking';
+
+export interface LimbGeometry {
+  name: 'head' | 'torso' | 'rightArm' | 'leftArm' | 'rightLeg' | 'leftLeg';
+  pivot: [number, number, number];
+  buffer: Float32Array;
+  vertexCount: number;
+}
+
+/**
+ * Builds separate limb meshes (pairing inner and outer 3D layers)
+ * so limbs can rotate around their respective anatomical joints for walking/idle animations.
+ */
+export function buildCharacterLimbGeometries(model: ModelType): LimbGeometry[] {
+  const parts = getCharacterPartDefinitions(model);
+  const isSlim = model === 'slim';
+  const armX = isSlim ? 5.5 : 6.0;
+
+  function combine(partList: PartDefinition[]): { buffer: Float32Array; vertexCount: number } {
+    const buffers = partList.map((p) => buildBoxVertices(p, 64, 64));
+    let totalLen = 0;
+    for (const b of buffers) totalLen += b.length;
+    const res = new Float32Array(totalLen);
+    let off = 0;
+    for (const b of buffers) {
+      res.set(b, off);
+      off += b.length;
+    }
+    return { buffer: res, vertexCount: totalLen / 8 };
+  }
+
+  const head = combine(parts.filter((p) => p.name === 'head' || p.name === 'hat'));
+  const torso = combine(parts.filter((p) => p.name === 'torso' || p.name === 'jacket'));
+  const rightArm = combine(parts.filter((p) => p.name === 'rightArm' || p.name === 'rightSleeve'));
+  const leftArm = combine(parts.filter((p) => p.name === 'leftArm' || p.name === 'leftSleeve'));
+  const rightLeg = combine(parts.filter((p) => p.name === 'rightLeg' || p.name === 'rightPants'));
+  const leftLeg = combine(parts.filter((p) => p.name === 'leftLeg' || p.name === 'leftPants'));
+
+  return [
+    { name: 'head', pivot: [0, 12, 0], buffer: head.buffer, vertexCount: head.vertexCount },
+    { name: 'torso', pivot: [0, 6, 0], buffer: torso.buffer, vertexCount: torso.vertexCount },
+    { name: 'rightArm', pivot: [-armX, 12, 0], buffer: rightArm.buffer, vertexCount: rightArm.vertexCount },
+    { name: 'leftArm', pivot: [armX, 12, 0], buffer: leftArm.buffer, vertexCount: leftArm.vertexCount },
+    { name: 'rightLeg', pivot: [-2, 0, 0], buffer: rightLeg.buffer, vertexCount: rightLeg.vertexCount },
+    { name: 'leftLeg', pivot: [2, 0, 0], buffer: leftLeg.buffer, vertexCount: leftLeg.vertexCount },
+  ];
+}
+
 const VERTEX_SHADER_SRC = `
 attribute vec3 a_position;
 attribute vec3 a_normal;
@@ -468,10 +544,14 @@ varying vec2 v_texcoord;
 varying vec3 v_normal;
 
 uniform sampler2D u_texture;
+uniform sampler2D u_textureNext;
+uniform float u_textureMix;
 uniform vec3 u_lightDir;
 
 void main() {
-  vec4 color = texture2D(u_texture, v_texcoord);
+  vec4 colorCurr = texture2D(u_texture, v_texcoord);
+  vec4 colorNext = texture2D(u_textureNext, v_texcoord);
+  vec4 color = mix(colorCurr, colorNext, u_textureMix);
   if (color.a < 0.1) {
     discard;
   }
@@ -492,6 +572,7 @@ export interface RendererOptions {
   skinImage?: HTMLImageElement | HTMLCanvasElement | null;
   capeImage?: HTMLImageElement | HTMLCanvasElement | null;
   hasCape?: boolean;
+  animation?: AnimationMode;
   onRotationChange?: (yaw: number, pitch: number) => void;
 }
 
@@ -500,14 +581,22 @@ export class Skin3DRenderer {
   private program: WebGLProgram | null = null;
   private charVaoBuffer: WebGLBuffer | null = null;
   private capeVaoBuffer: WebGLBuffer | null = null;
+  private limbBuffers: Map<string, { buffer: WebGLBuffer; vertexCount: number; pivot: [number, number, number] }> = new Map();
   private skinTexture: WebGLTexture | null = null;
+  private skinTextureNext: WebGLTexture | null = null;
   private capeTexture: WebGLTexture | null = null;
+  private hasActiveSkin = false;
+  private isTransitioning = false;
+  private currentTextureMix = 0.0;
+  private transitionStartTime = 0;
 
   private charVertexCount = 0;
   private capeVertexCount = 0;
 
   private model: ModelType = 'default';
   private hasCape = false;
+  private _animation: AnimationMode = 'idle';
+  private _frameCount = 0;
 
   // Interaction & inertia state
   public yaw = 0.45; // Start angled towards 3/4 view
@@ -521,12 +610,15 @@ export class Skin3DRenderer {
   private prefersReducedMotion = false;
   private animationId: number | null = null;
   private destroyed = false;
+  private _isPaused = false;
+  private cleanupIdleListener: () => void = () => {};
 
   constructor(private options: RendererOptions) {
     this.model = options.model || 'default';
     this.hasCape = !!options.hasCape;
+    this._animation = options.animation || 'idle';
 
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
       const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
       this.prefersReducedMotion = mq.matches;
       mq.addEventListener?.('change', (e) => {
@@ -534,15 +626,57 @@ export class Skin3DRenderer {
       });
     }
 
+    this._isPaused = isIdleSuspended();
+    this.cleanupIdleListener = onIdleStateChange((suspended) => {
+      if (suspended) {
+        this.pause();
+      } else {
+        this.resume();
+      }
+    });
+
     this.initGL();
     this.initListeners();
+    (this.options.canvas as any).__renderer3d = this;
     this.startLoop();
+  }
+
+  public get frameCount(): number {
+    return this._frameCount;
+  }
+
+  public getFrameCount(): number {
+    return this._frameCount;
+  }
+
+  public get isPaused(): boolean {
+    return this._isPaused;
+  }
+
+  public isRenderPaused(): boolean {
+    return this._isPaused;
+  }
+
+  public get animation(): AnimationMode {
+    return this._animation;
+  }
+
+  public getAnimation(): AnimationMode {
+    return this._animation;
+  }
+
+  public setAnimation(anim: AnimationMode): void {
+    this._animation = anim;
   }
 
   private initGL(): boolean {
     const canvas = this.options.canvas;
     const gl =
       canvas.getContext('webgl', { alpha: true, antialias: true }) ||
+      (canvas.getContext('webgl2', {
+        alpha: true,
+        antialias: true,
+      }) as WebGLRenderingContext | null) ||
       (canvas.getContext('experimental-webgl', {
         alpha: true,
         antialias: true,
@@ -579,6 +713,7 @@ export class Skin3DRenderer {
 
     // Textures
     this.skinTexture = gl.createTexture();
+    this.skinTextureNext = gl.createTexture();
     this.capeTexture = gl.createTexture();
 
     if (this.options.skinImage) {
@@ -596,7 +731,7 @@ export class Skin3DRenderer {
     const gl = this.gl;
     this.model = model;
 
-    // Character buffer
+    // 1. Character single buffer for backward compatibility
     const charData = buildCharacterModelBuffer(model);
     this.charVertexCount = charData.vertexCount;
 
@@ -606,7 +741,26 @@ export class Skin3DRenderer {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.charVaoBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, charData.buffer, gl.STATIC_DRAW);
 
-    // Cape buffer
+    // 2. Animated Limb buffers with joint pivots
+    const limbs = buildCharacterLimbGeometries(model);
+    for (const limb of limbs) {
+      let existing = this.limbBuffers.get(limb.name);
+      if (!existing) {
+        const buf = gl.createBuffer();
+        if (buf) {
+          existing = { buffer: buf, vertexCount: limb.vertexCount, pivot: limb.pivot };
+          this.limbBuffers.set(limb.name, existing);
+        }
+      }
+      if (existing) {
+        existing.vertexCount = limb.vertexCount;
+        existing.pivot = limb.pivot;
+        gl.bindBuffer(gl.ARRAY_BUFFER, existing.buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, limb.buffer, gl.STATIC_DRAW);
+      }
+    }
+
+    // 3. Cape buffer
     const capeData = buildCapeModelBuffer();
     this.capeVertexCount = capeData.vertexCount;
 
@@ -617,11 +771,10 @@ export class Skin3DRenderer {
     gl.bufferData(gl.ARRAY_BUFFER, capeData.buffer, gl.STATIC_DRAW);
   }
 
-  public setSkinImage(img: HTMLImageElement | HTMLCanvasElement) {
-    if (!this.gl || !this.skinTexture) return;
+  private uploadTexture(tex: WebGLTexture, img: HTMLImageElement | HTMLCanvasElement) {
+    if (!this.gl) return;
     const gl = this.gl;
-
-    gl.bindTexture(gl.TEXTURE_2D, this.skinTexture);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
 
@@ -632,6 +785,26 @@ export class Skin3DRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   }
 
+  public setSkinImage(img: HTMLImageElement | HTMLCanvasElement) {
+    if (!this.gl) return;
+    if (!this.skinTexture) this.skinTexture = this.gl.createTexture();
+    if (!this.skinTextureNext) this.skinTextureNext = this.gl.createTexture();
+    if (!this.skinTexture || !this.skinTextureNext) return;
+
+    if (!this.hasActiveSkin) {
+      this.uploadTexture(this.skinTexture, img);
+      this.uploadTexture(this.skinTextureNext, img);
+      this.hasActiveSkin = true;
+      this.isTransitioning = false;
+      this.currentTextureMix = 0.0;
+    } else {
+      // Upload to next texture and begin smooth 220ms crossfade
+      this.uploadTexture(this.skinTextureNext, img);
+      this.transitionStartTime = performance.now();
+      this.isTransitioning = true;
+    }
+  }
+
   public setCapeImage(img: HTMLImageElement | HTMLCanvasElement | null) {
     if (!this.gl || !this.capeTexture) return;
     const gl = this.gl;
@@ -640,15 +813,7 @@ export class Skin3DRenderer {
       return;
     }
 
-    gl.bindTexture(gl.TEXTURE_2D, this.capeTexture);
-    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
+    this.uploadTexture(this.capeTexture, img);
     this.hasCape = true;
   }
 
@@ -661,6 +826,25 @@ export class Skin3DRenderer {
     this.pitch = 0.1;
     this.velocityX = 0;
     this.velocityY = 0;
+    this.render();
+  }
+
+  public setOrientation(yaw: number, pitch: number, velocityX = 0, velocityY = 0) {
+    this.yaw = yaw;
+    this.pitch = pitch;
+    this.velocityX = velocityX;
+    this.velocityY = velocityY;
+    this.render();
+  }
+
+  public applyDrag(dx: number, dy: number) {
+    const sensitivity = 0.012;
+    this.yaw += dx * sensitivity;
+    this.pitch = Math.max(-0.8, Math.min(0.8, this.pitch + dy * sensitivity));
+    this.velocityX = dx * sensitivity;
+    this.velocityY = dy * sensitivity;
+    this.options.onRotationChange?.(this.yaw, this.pitch);
+    this.render();
   }
 
   private compileShader(type: number, src: string): WebGLShader | null {
@@ -730,9 +914,29 @@ export class Skin3DRenderer {
 
   private cleanupListeners: () => void = () => {};
 
+  public pause(): void {
+    this._isPaused = true;
+    if (this.animationId !== null) {
+      cancelAnimationFrame(this.animationId);
+      this.animationId = null;
+    }
+  }
+
+  public resume(): void {
+    if (this.destroyed || !this._isPaused) return;
+    this._isPaused = false;
+    if (this.animationId === null) {
+      this.startLoop();
+    }
+  }
+
   private startLoop() {
+    if (this.destroyed || this._isPaused) return;
     const renderFrame = () => {
-      if (this.destroyed) return;
+      if (this.destroyed || this._isPaused) {
+        this.animationId = null;
+        return;
+      }
 
       this.stepPhysics();
       this.render();
@@ -755,20 +959,23 @@ export class Skin3DRenderer {
 
       // Idle auto-rotation ONLY when not reduced motion and not interacting
       if (!this.prefersReducedMotion && Math.abs(this.velocityX) < 0.001) {
-        this.yaw += 0.005; // Gentle turntable rotation
+        this.yaw += 0.004; // Gentle turntable rotation
       }
     }
   }
 
   public render() {
     if (!this.gl || !this.program) return;
+    this._frameCount++;
     const gl = this.gl;
     const canvas = this.options.canvas;
 
     // Handle high DPI display
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    const displayWidth = Math.round(canvas.clientWidth * dpr);
-    const displayHeight = Math.round(canvas.clientHeight * dpr);
+    const clientW = canvas.clientWidth || canvas.width || 240;
+    const clientH = canvas.clientHeight || canvas.height || 320;
+    const displayWidth = Math.round(clientW * dpr);
+    const displayHeight = Math.round(clientH * dpr);
 
     if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
       canvas.width = displayWidth;
@@ -786,10 +993,11 @@ export class Skin3DRenderer {
     const uWorld = gl.getUniformLocation(this.program, 'u_world');
     const uLightDir = gl.getUniformLocation(this.program, 'u_lightDir');
     const uTexture = gl.getUniformLocation(this.program, 'u_texture');
+    const uTextureNext = gl.getUniformLocation(this.program, 'u_textureNext');
+    const uTextureMix = gl.getUniformLocation(this.program, 'u_textureMix');
 
     // Directional light from front-top-right (classic isometric portrait light)
     gl.uniform3f(uLightDir, 0.5, 0.8, 1.0);
-    gl.uniform1i(uTexture, 0);
 
     // Camera & Transform
     const aspect = canvas.width / canvas.height;
@@ -800,11 +1008,6 @@ export class Skin3DRenderer {
     view = Mat4.rotateX(view, this.pitch);
     view = Mat4.rotateY(view, this.yaw);
 
-    const mvp = Mat4.multiply(proj, view);
-
-    gl.uniformMatrix4fv(uMatrix, false, mvp);
-    gl.uniformMatrix4fv(uWorld, false, view);
-
     // Setup attributes
     const aPos = gl.getAttribLocation(this.program, 'a_position');
     const aNorm = gl.getAttribLocation(this.program, 'a_normal');
@@ -812,18 +1015,118 @@ export class Skin3DRenderer {
 
     const stride = 8 * Float32Array.BYTES_PER_ELEMENT;
 
-    // 1. Render Character Body
-    if (this.charVaoBuffer && this.skinTexture) {
+    // Handle smooth texture transition progress (crossfade without flicker)
+    if (this.isTransitioning) {
+      const elapsed = performance.now() - this.transitionStartTime;
+      const duration = 220; // 220ms smooth crossfade
+      const progress = Math.min(1.0, elapsed / duration);
+      this.currentTextureMix = 1.0 - Math.pow(1.0 - progress, 3); // cubic ease-out
+      if (progress >= 1.0) {
+        this.isTransitioning = false;
+        this.currentTextureMix = 0.0;
+        // Swap textures so skinTexture holds new image
+        const tmp = this.skinTexture;
+        this.skinTexture = this.skinTextureNext;
+        this.skinTextureNext = tmp;
+      }
+    } else {
+      this.currentTextureMix = 0.0;
+    }
+
+    // Animation rotations
+    const t = performance.now() / 1000;
+    let headRot = { rx: 0, ry: 0, rz: 0 };
+    let torsoRot = { rx: 0, ry: 0, rz: 0 };
+    let rightArmRot = { rx: 0, ry: 0, rz: 0 };
+    let leftArmRot = { rx: 0, ry: 0, rz: 0 };
+    let rightLegRot = { rx: 0, ry: 0, rz: 0 };
+    let leftLegRot = { rx: 0, ry: 0, rz: 0 };
+    let capeRot = { rx: 0.16, ry: 0, rz: 0 };
+
+    if (!this.prefersReducedMotion) {
+      if (this._animation === 'walking') {
+        const speed = 4.5;
+        const legSwing = Math.sin(t * speed) * 0.55;
+        rightLegRot.rx = legSwing;
+        leftLegRot.rx = -legSwing;
+        rightArmRot.rx = -legSwing;
+        rightArmRot.rz = Math.cos(t * speed * 0.5) * 0.04 + 0.05;
+        leftArmRot.rx = legSwing;
+        leftArmRot.rz = -Math.cos(t * speed * 0.5) * 0.04 - 0.05;
+        headRot.rx = Math.sin(t * speed * 2) * 0.04;
+        torsoRot.ry = Math.sin(t * speed) * 0.03;
+        capeRot.rx = 0.35 + Math.abs(Math.sin(t * speed)) * 0.22;
+      } else {
+        // Idle
+        const speed = 1.6;
+        const breath = Math.sin(t * speed);
+        const look = Math.cos(t * speed * 0.6);
+        headRot.rx = breath * 0.03;
+        headRot.ry = look * 0.04;
+        rightArmRot.rx = Math.cos(t * speed) * 0.04 + 0.06;
+        rightArmRot.rz = breath * 0.03 + 0.05;
+        leftArmRot.rx = -Math.cos(t * speed) * 0.04 + 0.06;
+        leftArmRot.rz = -breath * 0.03 - 0.05;
+        capeRot.rx = 0.14 + breath * 0.03;
+      }
+    }
+
+    const limbRotMap: Record<string, { rx: number; ry: number; rz: number }> = {
+      head: headRot,
+      torso: torsoRot,
+      rightArm: rightArmRot,
+      leftArm: leftArmRot,
+      rightLeg: rightLegRot,
+      leftLeg: leftLegRot,
+    };
+
+    // 1. Render Character Limbs with joint pivots
+    if (this.skinTexture && this.limbBuffers.size > 0) {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.skinTexture);
+      gl.uniform1i(uTexture, 0);
+
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.skinTextureNext || this.skinTexture);
+      gl.uniform1i(uTextureNext, 1);
+      gl.uniform1f(uTextureMix, this.currentTextureMix);
+
+      for (const [name, limb] of this.limbBuffers.entries()) {
+        const rot = limbRotMap[name] || { rx: 0, ry: 0, rz: 0 };
+        const limbView = Mat4.rotateAroundPivot(view, limb.pivot, rot.rx, rot.ry, rot.rz);
+        const limbMvp = Mat4.multiply(proj, limbView);
+
+        gl.uniformMatrix4fv(uMatrix, false, limbMvp);
+        gl.uniformMatrix4fv(uWorld, false, limbView);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, limb.buffer);
+        gl.enableVertexAttribArray(aPos);
+        gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, stride, 0);
+
+        gl.enableVertexAttribArray(aNorm);
+        gl.vertexAttribPointer(aNorm, 3, gl.FLOAT, false, stride, 3 * Float32Array.BYTES_PER_ELEMENT);
+
+        gl.enableVertexAttribArray(aTex);
+        gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, stride, 6 * Float32Array.BYTES_PER_ELEMENT);
+
+        gl.drawArrays(gl.TRIANGLES, 0, limb.vertexCount);
+      }
+    } else if (this.charVaoBuffer && this.skinTexture) {
+      // Fallback single-buffer render
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.skinTexture);
+      gl.uniform1i(uTexture, 0);
+      gl.uniform1f(uTextureMix, 0.0);
+
+      const mvp = Mat4.multiply(proj, view);
+      gl.uniformMatrix4fv(uMatrix, false, mvp);
+      gl.uniformMatrix4fv(uWorld, false, view);
 
       gl.bindBuffer(gl.ARRAY_BUFFER, this.charVaoBuffer);
       gl.enableVertexAttribArray(aPos);
       gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, stride, 0);
-
       gl.enableVertexAttribArray(aNorm);
       gl.vertexAttribPointer(aNorm, 3, gl.FLOAT, false, stride, 3 * Float32Array.BYTES_PER_ELEMENT);
-
       gl.enableVertexAttribArray(aTex);
       gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, stride, 6 * Float32Array.BYTES_PER_ELEMENT);
 
@@ -832,14 +1135,17 @@ export class Skin3DRenderer {
 
     // 2. Render Cape (if attached)
     if (this.hasCape && this.capeVaoBuffer && this.capeTexture) {
-      // Cape hangs at back of shoulders with slight backwards angle
-      let capeView = Mat4.rotateX(view, 0.16); // ~9 degrees tilt back
+      const capePivot: [number, number, number] = [0, 12, -2];
+      const capeView = Mat4.rotateAroundPivot(view, capePivot, capeRot.rx, capeRot.ry, capeRot.rz);
       const capeMvp = Mat4.multiply(proj, capeView);
+
       gl.uniformMatrix4fv(uMatrix, false, capeMvp);
       gl.uniformMatrix4fv(uWorld, false, capeView);
 
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.capeTexture);
+      gl.uniform1i(uTexture, 0);
+      gl.uniform1f(uTextureMix, 0.0);
 
       gl.bindBuffer(gl.ARRAY_BUFFER, this.capeVaoBuffer);
       gl.enableVertexAttribArray(aPos);
@@ -857,16 +1163,19 @@ export class Skin3DRenderer {
 
   public destroy() {
     this.destroyed = true;
-    if (this.animationId !== null) {
-      cancelAnimationFrame(this.animationId);
-      this.animationId = null;
-    }
+    this.pause();
+    this.cleanupIdleListener();
     this.cleanupListeners();
 
     if (this.gl) {
+      for (const limb of this.limbBuffers.values()) {
+        this.gl.deleteBuffer(limb.buffer);
+      }
+      this.limbBuffers.clear();
       if (this.charVaoBuffer) this.gl.deleteBuffer(this.charVaoBuffer);
       if (this.capeVaoBuffer) this.gl.deleteBuffer(this.capeVaoBuffer);
       if (this.skinTexture) this.gl.deleteTexture(this.skinTexture);
+      if (this.skinTextureNext) this.gl.deleteTexture(this.skinTextureNext);
       if (this.capeTexture) this.gl.deleteTexture(this.capeTexture);
       if (this.program) this.gl.deleteProgram(this.program);
     }

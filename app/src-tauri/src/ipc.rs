@@ -37,12 +37,13 @@ pub struct LauncherConfig {
 
 impl Default for LauncherConfig {
     fn default() -> Self {
+        let def_core = wex_core::config::LauncherConfig::default();
         Self {
             selected_version: "1.21.1".to_string(),
             player_name: "Player".to_string(),
-            ram_mb: 4096,
+            ram_mb: def_core.max_memory_mb,
             game_dir: default_game_dir(),
-            graphics_preset: "High".to_string(),
+            graphics_preset: def_core.graphics_preset,
             appearance: "dark".to_string(),
             accent: "blue".to_string(),
             reduce_motion: false,
@@ -60,13 +61,7 @@ fn default_game_dir() -> String {
 }
 
 /// System telemetry and memory limits.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SystemInfo {
-    pub total_memory_mb: u32,
-    pub os_name: String,
-    pub launcher_version: String,
-    pub data_dir: String,
-}
+pub use wex_core::SystemInfo;
 
 /// Version description for UI selectors.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,6 +114,8 @@ pub struct LobbyRoomModel {
     pub world_name: String,
     pub tunnel_address: Option<String>,
     pub tunnel_active: bool,
+    #[serde(default)]
+    pub tunnel_error: Option<String>,
     pub is_host: bool,
     pub players: Vec<LobbyPlayerModel>,
     pub mod_mismatch_count: usize,

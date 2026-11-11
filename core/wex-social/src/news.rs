@@ -82,85 +82,76 @@ pub struct ReleaseNoteVersion {
     pub items: Vec<ReleaseNoteItem>,
 }
 
+/// Release notes shipped inside the launcher, shown until a newer
+/// `version.json` replaces them. Keep this in sync with CHANGELOG.md:
+/// only list what is actually in the release.
 pub fn get_bundled_release_notes() -> Vec<ReleaseNoteVersion> {
     vec![
         ReleaseNoteVersion {
-            version: "v1.0.0".to_string(),
-            internal_version: "1.0.0".to_string(),
-            date_text: "7 ноября 2026".to_string(),
-            short_title: "Новый Wex Лаунчер".to_string(),
+            version: format!("v{}", env!("CARGO_PKG_VERSION")),
+            internal_version: env!("CARGO_PKG_VERSION").to_string(),
+            date_text: "10 ноября 2026".to_string(),
+            short_title: "Тихое обновление и правки интерфейса".to_string(),
             is_current: true,
             items: vec![
-                ReleaseNoteItem::parse("[Новое] Полный переход на стек Tauri 2 + Rust + Svelte 5"),
-                ReleaseNoteItem::parse("[Новое] Нативный Apple HIG и Liquid Glass дизайн системы"),
                 ReleaseNoteItem::parse(
-                    "[Новое] Изолированный безопасный импорт данных из старого лаунчера",
+                    "[Улучшено] Обновление ставится без окна установщика, лаунчер открывается сам",
                 ),
                 ReleaseNoteItem::parse(
-                    "[Улучшено] Мгновенный запуск и нулевое потребление памяти в фоне",
+                    "[Улучшено] Сообщение об обновлении переехало в боковую панель",
                 ),
                 ReleaseNoteItem::parse(
-                    "[Исправлено] Полная ликвидация утечек и зависаний процессов",
-                ),
-            ],
-        },
-        ReleaseNoteVersion {
-            version: "beta 1.0.80".to_string(),
-            internal_version: "1.2.88".to_string(),
-            date_text: "11 октября 2026".to_string(),
-            short_title: "Уведомления без спама".to_string(),
-            is_current: false,
-            items: vec![
-                ReleaseNoteItem::parse(
-                    "[Исправлено] Спам уведомлениями об обновлении лаунчера в Windows",
+                    "[Исправлено] Синяя рамка не остаётся на кнопке после клика мышью",
                 ),
                 ReleaseNoteItem::parse(
-                    "[Исправлено] Зависание старых уведомлений после завершения обновления",
+                    "[Исправлено] Кнопка «Играть» не выходит за край панели в маленьком окне",
+                ),
+                ReleaseNoteItem::parse(
+                    "[Исправлено] Текст на карточках читается на любом фоне",
                 ),
             ],
         },
         ReleaseNoteVersion {
-            version: "beta 1.0.79".to_string(),
-            internal_version: "1.2.87".to_string(),
-            date_text: "11 октября 2026".to_string(),
-            short_title: "Миры друзей".to_string(),
+            version: "v0.9.1".to_string(),
+            internal_version: "0.9.1".to_string(),
+            date_text: "10 ноября 2026".to_string(),
+            short_title: "Исправления после первой версии".to_string(),
             is_current: false,
             items: vec![
                 ReleaseNoteItem::parse(
-                    "[Улучшено] Миры в профиле теперь видны друзьям по умолчанию",
+                    "[Исправлено] Заставка больше не показывает «Сетевая ошибка» при запуске",
                 ),
                 ReleaseNoteItem::parse(
-                    "[Улучшено] Управление видимостью отдельных одиночных миров в Настройках",
+                    "[Исправлено] Мастер первой настройки не мигает между шагами",
+                ),
+                ReleaseNoteItem::parse(
+                    "[Исправлено] Пинг сервера на главном экране показывается только после настоящей проверки",
+                ),
+                ReleaseNoteItem::parse(
+                    "[Исправлено] Ник в нижней панели не обрезается, виджет музыки не выходит за край",
+                ),
+                ReleaseNoteItem::parse(
+                    "[Улучшено] Список изменений на главном экране показывает настоящие изменения",
                 ),
             ],
         },
         ReleaseNoteVersion {
-            version: "beta 1.0.78".to_string(),
-            internal_version: "1.2.86".to_string(),
-            date_text: "11 октября 2026".to_string(),
-            short_title: "Скриншоты и новости".to_string(),
+            version: "v0.9.0".to_string(),
+            internal_version: "0.9.0".to_string(),
+            date_text: "10 ноября 2026".to_string(),
+            short_title: "Первая версия Wex".to_string(),
             is_current: false,
             items: vec![
                 ReleaseNoteItem::parse(
-                    "[Улучшено] Отображение недавних скриншотов на главном экране",
+                    "[Новое] Minecraft 1.20.1 и 1.21.1 со своей Java для каждой версии",
                 ),
+                ReleaseNoteItem::parse("[Новое] Быстрый запуск: игра готовится в фоне заранее"),
+                ReleaseNoteItem::parse("[Новое] Игра без интернета на уже скачанных версиях"),
+                ReleaseNoteItem::parse("[Новое] Лобби с кодом и друзья в сети"),
                 ReleaseNoteItem::parse(
-                    "[Улучшено] Аккуратное расположение списка изменений в новостях",
+                    "[Новое] Перенос ника, серверов и миров из старого лаунчера",
                 ),
-            ],
-        },
-        ReleaseNoteVersion {
-            version: "beta 1.0.77".to_string(),
-            internal_version: "1.2.85".to_string(),
-            date_text: "11 октября 2026".to_string(),
-            short_title: "Профиль и приватность".to_string(),
-            is_current: false,
-            items: vec![
-                ReleaseNoteItem::parse("[Исправлено] Сбой при запуске лаунчера после обновления"),
-                ReleaseNoteItem::parse(
-                    "[Новое] Профиль друга: просмотр статистики, достижений и миров",
-                ),
-                ReleaseNoteItem::parse("[Новое] Настройки приватности для отображения друзьям"),
+                ReleaseNoteItem::parse("[Новое] Автообновление лаунчера с проверкой подписи"),
             ],
         },
     ]

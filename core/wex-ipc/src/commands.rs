@@ -35,6 +35,9 @@ pub struct LaunchGameRequest {
     pub nickname: String,
     pub jvm_args: Option<Vec<String>>,
     #[serde(default)]
+    #[serde(alias = "server")]
+    #[serde(alias = "quick_play")]
+    #[serde(alias = "quickPlay")]
     pub quick_play_multiplayer: Option<String>,
 }
 
@@ -81,7 +84,10 @@ pub const CMD_NET_LOBBY_KICK: &str = "net_lobby_kick";
 pub const CMD_NET_LOBBY_TUNNEL_CONFIG: &str = "net_lobby_tunnel_config";
 pub const CMD_NET_LOBBY_LIST_OPEN_ROOMS: &str = "net_lobby_list_open_rooms";
 pub const CMD_NET_LAN_LIST_DISCOVERED: &str = "net_lan_list_discovered";
+pub const CMD_NET_LAN_START_DISCOVERY: &str = "net_lan_start_discovery";
+pub const CMD_NET_LAN_STOP_DISCOVERY: &str = "net_lan_stop_discovery";
 pub const CMD_NET_LAN_CONNECT: &str = "net_lan_connect";
+pub const CMD_NET_LAN_PUBLISH: &str = "net_lan_publish";
 pub const CMD_NET_COMPARE_MANIFESTS: &str = "net_compare_manifests";
 pub const CMD_NET_COMPUTE_MANIFEST_HASH: &str = "net_compute_manifest_hash";
 pub const CMD_NET_TUNNEL_START: &str = "net_tunnel_start";
@@ -217,6 +223,22 @@ pub struct NetLanConnectResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetLanPublishRequest {
+    pub motd: String,
+    pub port: u16,
+    pub host_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct NetLanPublishResponse {
+    pub code: String,
+    pub host_name: String,
+    pub world_name: String,
+    pub tunnel_address: String,
+    pub port: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct NetCompareManifestsRequest {
     pub client_manifest: Vec<ModManifestEntryDto>,
     pub host_manifest: Vec<ModManifestEntryDto>,
@@ -239,10 +261,8 @@ pub struct NetComputeManifestHashResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
-pub struct NetTunnelStartRequest {
-    pub binary_path: String,
-    pub secret_key: String,
-}
+#[serde(deny_unknown_fields)]
+pub struct NetTunnelStartRequest {}
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct NetTunnelStartResponse {
@@ -250,9 +270,8 @@ pub struct NetTunnelStartResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
-pub struct NetTunnelEnsureBinaryRequest {
-    pub destination_path: String,
-}
+#[serde(deny_unknown_fields)]
+pub struct NetTunnelEnsureBinaryRequest {}
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct NetTunnelEnsureBinaryResponse {
@@ -278,6 +297,7 @@ pub const CMD_EXTRAS_APPLY_PRESET: &str = "extras_apply_preset";
 pub const CMD_WARDROBE_GET_STATE: &str = "wardrobe_get_state";
 pub const CMD_WARDROBE_APPLY: &str = "wardrobe_apply";
 pub const CMD_WARDROBE_DELETE_HISTORY: &str = "wardrobe_delete_history";
+pub const CMD_WARDROBE_GET_SKIN: &str = "wardrobe_get_skin";
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct ExtrasAnalyzeCrashRequest {
@@ -351,6 +371,18 @@ pub struct WardrobeDeleteHistoryRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub struct WardrobeDeleteHistoryResponse {
     pub success: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct WardrobeGetSkinRequest {
+    pub history_dir: String,
+    pub item_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct WardrobeGetSkinResponse {
+    pub item: WardrobeItemDto,
+    pub skin_bytes_base64: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS, PartialEq, Eq)]
@@ -538,4 +570,182 @@ pub struct SocialCheckLauncherUpdateRequest {
     pub manifest_url: String,
     pub current_version: String,
     pub target_platform: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct SocialCheckLauncherUpdateResponse {
+    pub update: UpdateCheckResultDto,
+}
+
+// ============================================================================
+// Storage Commands (SPEC items 40–41: wex-verify-files)
+// ============================================================================
+
+pub const CMD_STORAGE_VERIFY_FILES: &str = "storage_verify_files";
+pub const CMD_STORAGE_GET_CACHE_INFO: &str = "storage_get_cache_info";
+pub const CMD_STORAGE_CLEAR_CACHE: &str = "storage_clear_cache";
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct StorageVerifyFilesRequest {
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct StorageVerifyFilesResponse {
+    pub result: IntegrityCheckResultDto,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct StorageGetCacheInfoRequest {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct StorageGetCacheInfoResponse {
+    pub info: StorageCacheInfoDto,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct StorageClearCacheRequest {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct StorageClearCacheResponse {
+    pub result: ClearStorageCacheResultDto,
+}
+
+// ============================================================================
+// Music Commands
+// ============================================================================
+
+pub const CMD_MUSIC_GET_PLAYLIST: &str = "music_get_playlist";
+pub const CMD_MUSIC_GET_TRACK_DATA: &str = "music_get_track_data";
+pub const CMD_MUSIC_OPEN_FOLDER: &str = "music_open_folder";
+pub const CMD_MUSIC_GET_SETTINGS: &str = "music_get_settings";
+pub const CMD_MUSIC_SET_SETTINGS: &str = "music_set_settings";
+pub const CMD_MUSIC_SYNC_SMTC: &str = "music_sync_smtc";
+pub const CMD_MUSIC_GET_SMTC_STATE: &str = "music_get_smtc_state";
+pub const CMD_MUSIC_UPDATE_SESSION: &str = "music_update_session";
+pub const CMD_MUSIC_CHECK_COMMAND: &str = "music_check_command";
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicTrackDto {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub file_name: String,
+    pub cover_data_url: Option<String>,
+    pub duration_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicPlaylistResponse {
+    pub tracks: Vec<MusicTrackDto>,
+    pub music_dir: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicGetTrackDataRequest {
+    pub file_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicGetTrackDataResponse {
+    pub file_name: String,
+    pub mime_type: String,
+    pub audio_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicSettingsDto {
+    pub enabled: bool,
+    pub volume: u8,
+    pub auto_pause_on_launch: bool,
+}
+
+// ============================================================================
+// Onboarding Commands
+// ============================================================================
+
+pub const CMD_ONBOARDING_GET_SPECS: &str = "onboarding_get_specs";
+pub const CMD_ONBOARDING_COMPLETE: &str = "onboarding_complete";
+pub const CMD_ONBOARDING_PREWARM_GAME: &str = "onboarding_prewarm_game";
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicSmtcStateDto {
+    pub is_playing: bool,
+    pub track_title: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub has_cover: bool,
+    pub position_seconds: u64,
+    pub duration_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq)]
+pub struct MusicSessionStateDto {
+    pub has_active_session: bool,
+    pub source_app: String,
+    pub app_id: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub is_playing: bool,
+    pub position_seconds: f64,
+    pub duration_seconds: f64,
+    pub thumbnail_base64: Option<String>,
+    pub timestamp_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq)]
+pub struct MusicUpdateSessionRequest {
+    pub session: MusicSessionStateDto,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct MusicCheckCommandResponse {
+    pub command: Option<String>,
+}
+
+// ============================================================================
+// Deep Link Commands
+// ============================================================================
+
+pub const CMD_DEEP_LINK_PARSE: &str = "deep_link_parse";
+pub const CMD_DEEP_LINK_GET_PENDING: &str = "deep_link_get_pending";
+pub const CMD_DEEP_LINK_CLEAR_PENDING: &str = "deep_link_clear_pending";
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct ParseDeepLinkRequest {
+    pub uri: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+pub struct ParseDeepLinkResponse {
+    pub action: DeepLinkActionDto,
+}
+
+#[cfg(test)]
+mod tunnel_security_tests {
+    use super::*;
+
+    #[test]
+    fn tunnel_requests_use_only_backend_paths() {
+        assert!(serde_json::from_value::<NetTunnelStartRequest>(serde_json::json!({})).is_ok());
+        assert!(
+            serde_json::from_value::<NetTunnelEnsureBinaryRequest>(serde_json::json!({})).is_ok()
+        );
+        assert!(
+            serde_json::from_value::<NetTunnelEnsureBinaryRequest>(serde_json::json!({
+                "destination_path": "../outside"
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn security_regression_tunnel_rejects_executable_from_ipc() {
+        let request = serde_json::json!({
+            "binary_path": "C:\\attacker\\payload.exe",
+            "secret_key": "C:\\attacker\\secret.toml"
+        });
+        assert!(serde_json::from_value::<NetTunnelStartRequest>(request).is_err());
+    }
 }

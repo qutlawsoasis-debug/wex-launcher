@@ -47,6 +47,15 @@ pub struct ImportedWardrobeItem {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportedWorld {
+    pub folder_name: String,
+    pub display_name: String,
+    pub version: Option<String>,
+    pub source_path: PathBuf,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OldLauncherData {
     pub nickname: String,
     pub ram_mb: u32,
@@ -58,6 +67,11 @@ pub struct OldLauncherData {
     pub skins: Vec<ImportedSkin>,
     pub capes: Vec<ImportedCape>,
     pub wardrobe_history: Vec<ImportedWardrobeItem>,
+    pub worlds: Vec<ImportedWorld>,
+    pub jvm_args: Option<String>,
+    pub discord_rpc: Option<bool>,
+    pub active_skin_path: Option<String>,
+    pub active_skin_model: Option<String>,
 }
 
 pub fn default_aura_dir() -> Option<PathBuf> {
@@ -87,12 +101,17 @@ pub fn import_from_dir(aura_dir: &Path) -> Result<OldLauncherData, ImportError> 
     let mut total_play_time_seconds = 0;
     let mut total_game_launches = 0;
     let mut wardrobe_history = Vec::new();
+    let mut jvm_args = None;
+    let mut discord_rpc = None;
+    let mut active_skin_path = None;
+    let mut active_skin_model = None;
 
     // 1. Read config.json
     let config_path = aura_dir.join("config.json");
     if config_path.is_file() {
         if let Ok(text) = fs::read_to_string(&config_path) {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+            let clean_text = text.trim_start_matches('\u{feff}');
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(clean_text) {
                 if let Some(nick) = v.get("Nickname").and_then(|n| n.as_str()) {
                     nickname = nick.to_string();
                 }
@@ -104,6 +123,20 @@ pub fn import_from_dir(aura_dir: &Path) -> Result<OldLauncherData, ImportError> 
                 }
                 if let Some(preset) = v.get("GraphicsPreset").and_then(|p| p.as_str()) {
                     graphics_preset = Some(preset.to_string());
+                }
+                if let Some(args) = v.get("JvmArgs").and_then(|a| a.as_str()) {
+                    jvm_args = Some(args.to_string());
+                }
+                if let Some(rpc) = v.get("DiscordRpcEnabled").and_then(|d| d.as_bool()) {
+                    discord_rpc = Some(rpc);
+                }
+                if let Some(sp) = v.get("SkinPath").and_then(|s| s.as_str()) {
+                    if !sp.trim().is_empty() {
+                        active_skin_path = Some(sp.to_string());
+                    }
+                }
+                if let Some(sm) = v.get("SkinModel").and_then(|s| s.as_str()) {
+                    active_skin_model = Some(sm.to_string());
                 }
                 if let Some(time) = v.get("TotalPlayTimeSeconds").and_then(|t| t.as_u64()) {
                     total_play_time_seconds = time;
@@ -247,6 +280,84 @@ pub fn import_from_dir(aura_dir: &Path) -> Result<OldLauncherData, ImportError> 
         }
     }
 
+    // 5. Check if active SkinPath exists and is not yet in skins list
+    if let Some(ref sp) = active_skin_path {
+        let p = PathBuf::from(sp);
+        let resolved = if p.is_absolute() { p } else { aura_dir.join(p) };
+        if resolved.is_file() {
+            let fn_str = resolved
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            if !skins.iter().any(|s: &ImportedSkin| s.file_name == fn_str) {
+                if let Ok(bytes) = fs::read(&resolved) {
+                    let mut hasher = Sha256::new();
+                    hasher.update(&bytes);
+                    let hash = hex::encode(hasher.finalize());
+                    let is_slim = active_skin_model
+                        .as_deref()
+                        .map(|m| m.eq_ignore_ascii_case("slim"))
+                        .unwrap_or(false);
+
+                    skins.push(ImportedSkin {
+                        file_name: fn_str,
+                        path: resolved,
+                        hash,
+                        is_slim,
+                    });
+                }
+            }
+        }
+    }
+
+    // 6. Scan saves/ (worlds from instances and legacy root)
+    let mut worlds = Vec::new();
+    let save_candidates: [(&str, Option<&str>); 3] = [
+        ("instances/1.20.1/saves", Some("1.20.1")),
+        ("instances/1.21.1/saves", Some("1.21.1")),
+        ("saves", None),
+    ];
+
+    for (rel_path, ver) in save_candidates {
+        let saves_path = aura_dir.join(rel_path);
+        if saves_path.is_dir() {
+            if let Ok(entries) = fs::read_dir(&saves_path) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        let level_dat = p.join("level.dat");
+                        if level_dat.is_file() {
+                            let folder_name = p
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string();
+
+                            // Avoid duplicate worlds by folder_name
+                            if !worlds
+                                .iter()
+                                .any(|w: &ImportedWorld| w.folder_name == folder_name)
+                            {
+                                let display_name = parse_level_name_fallback(&level_dat)
+                                    .unwrap_or_else(|| folder_name.clone());
+                                let size_bytes = dir_size_recursive(&p);
+
+                                worlds.push(ImportedWorld {
+                                    folder_name,
+                                    display_name,
+                                    version: ver.map(|s| s.to_string()),
+                                    source_path: p,
+                                    size_bytes,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Ok(OldLauncherData {
         nickname,
         ram_mb,
@@ -258,7 +369,63 @@ pub fn import_from_dir(aura_dir: &Path) -> Result<OldLauncherData, ImportError> 
         skins,
         capes,
         wardrobe_history,
+        worlds,
+        jvm_args,
+        discord_rpc,
+        active_skin_path,
+        active_skin_model,
     })
+}
+
+fn parse_level_name_fallback(level_dat_path: &Path) -> Option<String> {
+    let bytes = fs::read(level_dat_path).ok()?;
+    let data = if bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b {
+        let mut decoder = flate2::read::GzDecoder::new(&bytes[..]);
+        let mut decomp = Vec::new();
+        std::io::Read::read_to_end(&mut decoder, &mut decomp).ok()?;
+        decomp
+    } else {
+        bytes
+    };
+
+    // Look for string tag with name "LevelName" (tag 8, name len 9, b"LevelName")
+    for i in 0..data.len().saturating_sub(15) {
+        if data[i] == 0x08
+            && data[i + 1] == 0x00
+            && data[i + 2] == 0x09
+            && &data[i + 3..i + 12] == b"LevelName"
+        {
+            let len_pos = i + 12;
+            if len_pos + 2 <= data.len() {
+                let s_len = u16::from_be_bytes([data[len_pos], data[len_pos + 1]]) as usize;
+                let s_start = len_pos + 2;
+                if s_start + s_len <= data.len() {
+                    let s = String::from_utf8_lossy(&data[s_start..s_start + s_len])
+                        .trim()
+                        .to_string();
+                    if !s.is_empty() {
+                        return Some(s);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn dir_size_recursive(path: &Path) -> u64 {
+    let mut total = 0;
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_file() {
+                total += p.metadata().map(|m| m.len()).unwrap_or(0);
+            } else if p.is_dir() {
+                total += dir_size_recursive(&p);
+            }
+        }
+    }
+    total
 }
 
 // Simple binary NBT scanner for servers.dat to avoid complex NBT dependencies in wex-extras
@@ -392,6 +559,12 @@ mod tests {
         let skin_bytes = crate::skins::encode_png_bytes(&mock_skin).unwrap();
         fs::write(skins_dir.join("custom_skin.png"), &skin_bytes).unwrap();
 
+        // 4. Write mock world saves
+        let world_dir = inst_dir.join("saves").join("AuraWorld");
+        fs::create_dir_all(&world_dir).unwrap();
+        fs::write(world_dir.join("level.dat"), b"MOCK_LEVEL_DAT").unwrap();
+        fs::write(world_dir.join("icon.png"), b"MOCK_ICON").unwrap();
+
         // Perform import
         let imported = import_from_dir(aura_path).unwrap();
 
@@ -409,6 +582,10 @@ mod tests {
 
         assert_eq!(imported.skins.len(), 1);
         assert_eq!(imported.skins[0].file_name, "custom_skin.png");
+
+        assert_eq!(imported.worlds.len(), 1);
+        assert_eq!(imported.worlds[0].folder_name, "AuraWorld");
+        assert_eq!(imported.worlds[0].version.as_deref(), Some("1.20.1"));
     }
 
     #[test]
@@ -416,5 +593,21 @@ mod tests {
         let missing = PathBuf::from("C:\\definitely\\non_existent_aura_dir_12345");
         let res = import_from_dir(&missing);
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_import_from_fixture_with_bom() {
+        let dir = tempdir().unwrap();
+        let aura_path = dir.path();
+
+        // Write config with UTF-8 BOM (\u{feff})
+        let config_str =
+            "\u{feff}{\"Nickname\": \"BomPlayer\", \"RamMb\": 4096, \"SelectedVersion\": \"1.20.1\"}";
+        fs::write(aura_path.join("config.json"), config_str.as_bytes()).unwrap();
+
+        let imported = import_from_dir(aura_path).unwrap();
+        assert_eq!(imported.nickname, "BomPlayer");
+        assert_eq!(imported.ram_mb, 4096);
+        assert_eq!(imported.selected_version, "1.20.1");
     }
 }
