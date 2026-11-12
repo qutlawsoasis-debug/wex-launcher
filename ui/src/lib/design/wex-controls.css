@@ -284,6 +284,10 @@
   color: var(--label);
   font: inherit;
 }
+/* The field shows focus with its own 2 px ring (focus-within), not a second outline. */
+.wx .search input:focus-visible {
+  outline: none !important;
+}
 .wx .search:focus-within {
   box-shadow: inset 0 0 0 2px var(--blue);
 }

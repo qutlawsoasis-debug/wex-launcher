@@ -24,6 +24,9 @@
   import TopLine from './lib/shell/TopLine.svelte';
   import LaunchBar from './lib/shell/LaunchBar.svelte';
   import ToastHost from './lib/shell/ToastHost.svelte';
+  import CommandPalette from './lib/shell/CommandPalette.svelte';
+  import { palette } from './lib/shell/commands.svelte';
+  import { handleHotkey } from './lib/shell/hotkeys';
   import HomePage from './lib/pages/home/HomePage.svelte';
   import BuildPage from './lib/pages/build/BuildPage.svelte';
   import { router, buildIdOf, isRoute, buildRoute, type Route } from './lib/shell/router.svelte';
@@ -224,14 +227,19 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
-      if (crashSheetOpen) {
-        crashSheetOpen = false;
-        e.preventDefault();
-        return;
-      }
-      window.dispatchEvent(new CustomEvent('wex-escape'));
-    }
+    const used = handleHotkey(e, {
+      overlayOpen: crashSheetOpen || showOnboarding || deepLinkModalOpen || isStartingUp,
+      closeOverlay: () => {
+        if (crashSheetOpen) {
+          crashSheetOpen = false;
+          return true;
+        }
+        // Sheets of the previous screens listen for this.
+        window.dispatchEvent(new CustomEvent('wex-escape'));
+        return false;
+      },
+    });
+    if (used) e.preventDefault();
   }
 
   onMount(() => {
@@ -249,6 +257,9 @@
       if (localStorage.getItem('wex_onboarding_completed') !== 'true') showOnboarding = true;
     } catch {}
     const showOnboardingEvent = () => (showOnboarding = true);
+    const openCommands = () => palette.show();
+    window.addEventListener('wex-open-command', openCommands);
+    stops.push(() => window.removeEventListener('wex-open-command', openCommands));
     window.addEventListener('wex-show-onboarding', showOnboardingEvent);
     window.addEventListener('hashchange', openFromHash);
     stops.push(() => {
@@ -360,6 +371,7 @@
 
   <LaunchBar />
   <ToastHost />
+  <CommandPalette />
 
   {#if isStartingUp && screens.splash}
     {@const SplashScreen = screens.splash}

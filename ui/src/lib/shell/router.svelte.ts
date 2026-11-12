@@ -82,6 +82,11 @@ class Router {
     this.go(next, false);
   }
 
+  /** Open the same page again from the start (e.g. with a new intent). */
+  reopen(): void {
+    this.version++;
+  }
+
   /** Reset to a clean state (tests, sign-out). */
   reset(route: Route = 'home'): void {
     this.route = route;

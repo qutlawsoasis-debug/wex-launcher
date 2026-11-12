@@ -61,6 +61,9 @@ export interface BackupItem {
   size_bytes: number;
 }
 
+/** Where the next build page should open (set by the command palette). Consumed once. */
+export const buildIntent = $state<{ tab: BuildTab | null; modQuery: string }>({ tab: null, modQuery: '' });
+
 class BuildData {
   version = $state('');
   mods = $state<ModEntry[] | null>(null);

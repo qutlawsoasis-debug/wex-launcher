@@ -14,9 +14,10 @@
   import { formatError } from '../../design/errors';
   import { t, tn } from '../../i18n';
   import Monogram from '../../shell/Monogram.svelte';
-  import { build, type ModEntry } from './build.svelte';
+  import { build, buildIntent, type ModEntry } from './build.svelte';
 
-  let q = $state('');
+  let q = $state(buildIntent.modQuery);
+  buildIntent.modQuery = '';
   let filter = $state<'all' | 'on'>('all');
   let over = $state(false);
   let busy = $state<string | null>(null);

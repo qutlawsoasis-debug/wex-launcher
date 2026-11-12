@@ -13,7 +13,7 @@
   import { formatError } from '../../design/errors';
   import { motionReduced, WexMotion } from '../../design/wex-tokens';
   import { t, tn } from '../../i18n';
-  import { build, BUILD_TABS, type BuildTab } from './build.svelte';
+  import { build, buildIntent, BUILD_TABS, type BuildTab } from './build.svelte';
   import ModsTab from './ModsTab.svelte';
   import WorldsTab from './WorldsTab.svelte';
   import PacksTab from './PacksTab.svelte';
@@ -27,7 +27,8 @@
   }
 
   let { version }: Props = $props();
-  let tab = $state<BuildTab>('mods');
+  let tab = $state<BuildTab>(buildIntent.tab ?? 'mods');
+  buildIntent.tab = null;
 
   const b = $derived(builds.list.find((x) => x.id === version));
   const selected = $derived(builds.selectedId === version);
