@@ -44,7 +44,10 @@
   const sub = $derived.by(() => {
     if (launch.phase === 'launching') {
       const parts: string[] = [];
-      if (launch.total > 0) parts.push(t('shell.of', { done: size(launch.downloaded), total: size(launch.total) }));
+      // Sizes only when core reports real bytes; never "0,0 МБ из 0,0 МБ".
+      if (launch.total >= 1024 * 1024 && launch.downloaded <= launch.total) {
+        parts.push(t('shell.of', { done: size(launch.downloaded), total: size(launch.total) }));
+      }
       if (launch.percent !== null) parts.push(t('shell.percent', { pct: Math.round(launch.percent) }));
       return parts.join(', ');
     }

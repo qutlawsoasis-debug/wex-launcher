@@ -189,6 +189,13 @@ describe('launch bar', () => {
     expect(target.querySelector('.track')?.getAttribute('aria-valuenow')).toBe('42');
     // No invented step numbers: core does not report them.
     expect(target.textContent).not.toMatch(/шаг \d/);
+
+    // Unknown size (core sends 0, or a count far below a megabyte): stage and percent only.
+    emit('install-progress', { stage: 'Ресурсы игры', percentage: 60, downloaded_bytes: 0, total_bytes: 0 });
+    expect(target.querySelector('.sub')?.textContent).toBe('60%');
+    emit('install-progress', { stage: 'Ресурсы игры', percentage: 61, downloaded_bytes: 1830, total_bytes: 3000 });
+    expect(target.querySelector('.sub')?.textContent).toBe('61%');
+    expect(target.textContent).not.toMatch(/0,0 МБ/);
   });
 
   it('Cancel calls cancel_launch; the cancelled event returns to ready with a notice', async () => {

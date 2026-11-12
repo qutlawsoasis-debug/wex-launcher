@@ -17,6 +17,54 @@ use wex_ipc::events::{
 };
 use wex_ipc::models::{InstalledVersion, LauncherConfig};
 
+/// User-facing Russian name of a core install stage. Core names stages in English
+/// for logs and the CLI ("Assets", "Vanilla Libraries", "Aura-Pack sync (1.21.1)").
+pub fn stage_label(stage: &str) -> String {
+    let s = stage.trim();
+    let label = match s {
+        "Assets" => "Ресурсы игры",
+        "Vanilla Libraries" => "Библиотеки Minecraft",
+        "Fabric Libraries" => "Библиотеки Fabric",
+        _ if s.starts_with("Aura-Pack sync") => "Синхронизация сборки",
+        _ if s.starts_with("Aura-Pack") => "Сборка Aura-Pack",
+        _ if s.starts_with("Fabric Loader") => "Загрузчик Fabric",
+        _ if s.starts_with("Mojang Java Runtime")
+            || s.starts_with("Java runtime")
+            || s.starts_with("Java ") =>
+        {
+            "Среда Java"
+        }
+        _ if s.starts_with("Minecraft ") && s.contains("Environment") => "Файлы Minecraft",
+        _ => return s.to_string(),
+    };
+    label.to_string()
+}
+
+/// install-progress for a core Progress event. `current`/`total` count files,
+/// not bytes, so sizes are left unknown (0) and the UI shows stage and percent only.
+pub fn progress_payload(
+    stage: &str,
+    current: u64,
+    total: u64,
+    message: Option<&str>,
+) -> InstallProgressPayload {
+    let pct = if total > 0 {
+        (current as f32 / total as f32) * 100.0
+    } else {
+        0.0
+    };
+    InstallProgressPayload {
+        stage: stage_label(stage),
+        percentage: pct,
+        detail: message
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("Файлов: {} из {}", current, total)),
+        speed_bytes_per_sec: 0,
+        total_bytes: 0,
+        downloaded_bytes: 0,
+    }
+}
+
 /// Bridges events from wex-core into Tauri 2 window events.
 #[derive(Clone)]
 pub struct TauriEventHandler {
@@ -36,12 +84,13 @@ impl EventHandler for TauriEventHandler {
                 } else {
                     0.0
                 };
+                let label = stage_label(stage);
                 let _ = self.app.emit(
                     EVT_INSTALL_PROGRESS,
                     InstallProgressPayload {
-                        stage: stage.clone(),
+                        stage: label.clone(),
                         percentage: pct,
-                        detail: format!("Этап {} из {}: {}", step, total_steps, stage),
+                        detail: format!("Этап {} из {}: {}", step, total_steps, label),
                         speed_bytes_per_sec: 0,
                         total_bytes: 0,
                         downloaded_bytes: 0,
@@ -51,7 +100,7 @@ impl EventHandler for TauriEventHandler {
                     EVT_LAUNCH_STATUS,
                     LaunchStatusPayload {
                         state: "installing".to_string(),
-                        message: format!("Установка: {}", stage),
+                        message: label,
                         exit_code: None,
                     },
                 );
@@ -62,24 +111,9 @@ impl EventHandler for TauriEventHandler {
                 total,
                 message,
             } => {
-                let pct = if *total > 0 {
-                    (*current as f32 / *total as f32) * 100.0
-                } else {
-                    0.0
-                };
-                let detail = message
-                    .clone()
-                    .unwrap_or_else(|| format!("{}/{}", current, total));
                 let _ = self.app.emit(
                     EVT_INSTALL_PROGRESS,
-                    InstallProgressPayload {
-                        stage: stage.clone(),
-                        percentage: pct,
-                        detail,
-                        speed_bytes_per_sec: 0,
-                        total_bytes: *total,
-                        downloaded_bytes: *current,
-                    },
+                    progress_payload(stage, *current, *total, message.as_deref()),
                 );
             }
             Event::GameLaunched { pid } => {
@@ -1340,6 +1374,46 @@ pub async fn get_prewarm_status(
 // ============================================================================
 // Unit Tests (Mock Core, no network)
 // ============================================================================
+
+#[cfg(test)]
+mod progress_tests {
+    use super::*;
+
+    #[test]
+    fn core_stages_are_shown_in_russian() {
+        assert_eq!(stage_label("Assets"), "Ресурсы игры");
+        assert_eq!(stage_label("Vanilla Libraries"), "Библиотеки Minecraft");
+        assert_eq!(stage_label("Fabric Libraries"), "Библиотеки Fabric");
+        assert_eq!(
+            stage_label("Minecraft 1.21.1 Environment"),
+            "Файлы Minecraft"
+        );
+        assert_eq!(
+            stage_label("Fabric Loader 0.19.5 (1.21.1)"),
+            "Загрузчик Fabric"
+        );
+        assert_eq!(stage_label("Mojang Java Runtime (1.21.1)"), "Среда Java");
+        assert_eq!(stage_label("Java java-runtime-delta"), "Среда Java");
+        assert_eq!(
+            stage_label("Aura-Pack sync (1.21.1)"),
+            "Синхронизация сборки"
+        );
+        assert_eq!(stage_label("Aura-Pack (1.20.1)"), "Сборка Aura-Pack");
+        assert_eq!(
+            stage_label("Фоновая подготовка клиента"),
+            "Фоновая подготовка клиента"
+        );
+    }
+
+    #[test]
+    fn file_counts_are_never_sent_as_bytes() {
+        let p = progress_payload("Assets", 1800, 3000, None);
+        assert_eq!(p.stage, "Ресурсы игры");
+        assert_eq!((p.downloaded_bytes, p.total_bytes), (0, 0));
+        assert!((p.percentage - 60.0).abs() < 0.01);
+        assert_eq!(p.detail, "Файлов: 1800 из 3000");
+    }
+}
 
 #[cfg(test)]
 mod tests {
