@@ -18,7 +18,15 @@ export function onFileDrop(handlers: DropHandlers): () => void {
   if (!inTauri()) return () => {};
   let unlisten: (() => void) | null = null;
   let stopped = false;
-  getCurrentWebview()
+  // getCurrentWebview() throws synchronously when the window metadata is missing;
+  // file drop is optional, so that never breaks the page.
+  let webview: ReturnType<typeof getCurrentWebview>;
+  try {
+    webview = getCurrentWebview();
+  } catch {
+    return () => {};
+  }
+  webview
     .onDragDropEvent((event) => {
       const p = event.payload;
       if (p.type === 'enter' || p.type === 'over') handlers.hover?.(true);

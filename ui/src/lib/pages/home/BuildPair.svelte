@@ -3,6 +3,8 @@
   the other stands as a column; choosing it makes the pair flow with a spring.
   HIG › Buttons: the open pane's Play is its one prominent action.
   HIG › Motion: the flow answers the user's choice and is instant under Reduce Motion.
+  The big version digits follow the pointer over the whole Home area, smoothed, and
+  drift back to the centre when it leaves (motion/parallax.ts).
 -->
 <script lang="ts">
   import { builds, coverVar, type Build } from '../../shell/builds.svelte';
@@ -10,7 +12,7 @@
   import { router, buildRoute } from '../../shell/router.svelte';
   import { toasts } from '../../shell/toast.svelte';
   import { formatError } from '../../design/errors';
-  import { motionReduced } from '../../design/wex-tokens';
+  import { parallax } from '../../motion/parallax';
   import { home } from './home.svelte';
   import { t, tn } from '../../i18n';
 
@@ -37,13 +39,9 @@
     }
   }
 
-  function follow(e: PointerEvent) {
-    if (motionReduced()) return;
-    const pane = (e.currentTarget as HTMLElement);
-    const r = pane.getBoundingClientRect();
-    pane.style.setProperty('--px', ((e.clientX - r.left) / r.width - 0.5).toFixed(3));
-    pane.style.setProperty('--py', ((e.clientY - r.top) / r.height - 0.5).toFixed(3));
-  }
+  let pairEl: HTMLElement | undefined = $state();
+  /** The whole Home content area, not just the pane. */
+  const homeArea = () => pairEl?.closest('main') ?? pairEl ?? null;
 
   /** "132 мода на Fabric, Java 21. 3 мира." — only facts the backend knows. */
   function summary(b: Build): string {
@@ -61,7 +59,7 @@
 
 </script>
 
-<section class="pair" aria-label={t('shell.builds')}>
+<section class="pair" aria-label={t('shell.builds')} bind:this={pairEl} use:parallax={{ area: homeArea }}>
   {#each builds.list as b (b.id)}
     {@const open = b.id === builds.selectedId}
     {@const ready = readiness(b)}
@@ -74,7 +72,6 @@
       tabindex={open ? undefined : 0}
       onclick={() => !open && choose(b)}
       onkeydown={(e) => !open && onKey(e, b)}
-      onpointermove={open ? follow : undefined}
     >
       <span class="pane-ver" aria-hidden="true">{b.id}</span>
       <!-- The visible text is the accessible name; the hint says what pressing does. -->
@@ -152,10 +149,9 @@
     pointer-events: none;
     user-select: none;
     white-space: nowrap;
+    /* Smoothed in JS each frame, so no transition here (it restarted on every move). */
     transform: translate(calc(var(--px, 0) * -18px), calc(var(--py, 0) * -10px));
-    transition:
-      opacity var(--dur-short),
-      transform var(--dur-page) var(--ease);
+    transition: opacity var(--dur-short);
   }
   .pane:not(.open) .pane-ver {
     opacity: 0;

@@ -47,3 +47,46 @@ test.describe('Windows animations off, Animations turned on in Wex', () => {
     expect(await page.evaluate(() => document.documentElement.dataset.reduceMotion)).toBe('false');
   });
 });
+
+const ver = (page: Page) =>
+  page.evaluate(() => {
+    const pair = document.querySelector('.pair') as HTMLElement;
+    return { x: Number(pair.style.getPropertyValue('--px') || 0), y: Number(pair.style.getPropertyValue('--py') || 0) };
+  });
+
+test.describe('home: version digits parallax', () => {
+  test.use({ reducedMotion: 'no-preference' });
+  test('follows the pointer over the whole page, smoothly, and drifts back when it leaves', async ({ page }) => {
+    await openApp(page);
+    const main = (await page.locator('main.main').boundingBox())!;
+    const pane = (await page.locator('.pane.open').boundingBox())!;
+    // Far below the pane, still on Home: the digits react.
+    await page.mouse.move(main.x + main.width - 20, pane.y + pane.height + 120);
+    const first = await ver(page);
+    await page.waitForTimeout(600);
+    const end = await ver(page);
+    expect(end.x, 'moves to the right edge').toBeGreaterThan(0.3);
+    expect(end.y, 'moves down').toBeGreaterThan(0);
+    expect(first.x, 'not in one jump').toBeLessThan(end.x);
+    // Off the page (over the sidebar): back to the centre, smoothly.
+    await page.mouse.move(main.x - 40, main.y + 100);
+    await page.waitForTimeout(32);
+    const mid = await ver(page);
+    expect(mid.x).toBeGreaterThan(0);
+    await page.waitForTimeout(800);
+    const back = await ver(page);
+    expect(Math.abs(back.x)).toBeLessThan(0.01);
+    expect(Math.abs(back.y)).toBeLessThan(0.01);
+  });
+});
+
+test.describe('home: parallax under Reduce Motion', () => {
+  test.use({ reducedMotion: 'reduce' });
+  test('the digits stay put', async ({ page }) => {
+    await openApp(page);
+    const main = (await page.locator('main.main').boundingBox())!;
+    await page.mouse.move(main.x + main.width - 20, main.y + main.height - 20);
+    await page.waitForTimeout(400);
+    expect(await ver(page)).toEqual({ x: 0, y: 0 });
+  });
+});
