@@ -124,11 +124,10 @@ describe('i18n Reactive Manager & Translation Helper', () => {
     const { mount, unmount, tick } = await import('svelte');
     const { default: SettingsPage } = await import('../pages/settings/SettingsPage.svelte');
     const { default: LaunchBar } = await import('../shell/LaunchBar.svelte');
-    const { default: ServersScreen } = await import('../screens/ServersScreen.svelte');
+    const { default: ServersPage } = await import('../pages/servers/ServersPage.svelte');
     const { default: BuildPage } = await import('../pages/build/BuildPage.svelte');
     const { default: WardrobePage } = await import('../pages/wardrobe/WardrobePage.svelte');
-    const { default: LobbyScreen } = await import('../screens/LobbyScreen.svelte');
-    const { default: FriendsScreen } = await import('../screens/FriendsScreen.svelte');
+    const { default: FriendsPage } = await import('../pages/friends/FriendsPage.svelte');
 
     const target = document.createElement('div');
     document.body.appendChild(target);
@@ -152,11 +151,11 @@ describe('i18n Reactive Manager & Translation Helper', () => {
     unmount(compPlay);
     target.innerHTML = '';
 
-    // 3. ServersScreen
-    const compServers = mount(ServersScreen, { target });
+    // 3. Servers
+    const compServers = mount(ServersPage, { target });
     await tick();
-    expect(target.textContent).toContain('Add Server');
-    expect(target.textContent).toContain('No Servers Found');
+    expect(target.textContent).toContain('Servers');
+    expect(target.textContent).toContain('Add server');
     unmount(compServers);
     target.innerHTML = '';
 
@@ -179,24 +178,12 @@ describe('i18n Reactive Manager & Translation Helper', () => {
     unmount(compWardrobe);
     target.innerHTML = '';
 
-    // 7. LobbyScreen
-    const compLobby = mount(LobbyScreen, { target });
+    // 7. Friends with the Rooms tab
+    const compFriends = mount(FriendsPage, { target });
     await tick();
-    expect(target.textContent).toContain('LAN & Tunnels');
-    expect(target.textContent).toContain('Cloud Worlds');
-    expect(target.textContent).toContain('Join by Code');
-    expect(target.textContent).toContain('Open LAN World');
-    unmount(compLobby);
-    target.innerHTML = '';
-
-    // 8. FriendsScreen
-    const compFriends = mount(FriendsScreen, { target });
-    await tick();
-    expect(target.textContent).toContain('Friends');
-    expect(target.textContent).toContain('Requests');
-    expect(target.textContent).toContain('Achievements');
-    expect(target.textContent).toContain('Add Friend');
-    expect(target.textContent).toContain('No Friends Yet');
+    for (const label of ['Friends', 'Rooms', 'Friends will appear once accounts are connected.']) {
+      expect(target.textContent).toContain(label);
+    }
     unmount(compFriends);
     target.remove();
 

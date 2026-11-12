@@ -266,16 +266,6 @@ export const ALLOWED_EXCEPTIONS: GuardException[] = [
     reason: 'Backend launch status message match emitted from Rust commands/launch.rs for prewarming state',
   },
   {
-    file: 'ServersScreen.svelte',
-    pattern: /нет интернета|неверный адрес/,
-    reason: 'Error message substring matching in network fault diagnosis',
-  },
-  {
-    file: 'LobbyScreen.svelte',
-    pattern: /закрыта|исключены/,
-    reason: 'Heuristic keyword substring matching for error messages returned from remote lobby server',
-  },
-  {
     file: '*',
     text: '•',
     reason: 'Standard typography divider dot',

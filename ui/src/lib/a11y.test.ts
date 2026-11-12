@@ -2,15 +2,21 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
 import axe from 'axe-core';
 
-import ServersScreen from './screens/ServersScreen.svelte';
-import LobbyScreen from './screens/LobbyScreen.svelte';
-import FriendsScreen from './screens/FriendsScreen.svelte';
 import Sheet from './components/Sheet.svelte';
 import SegmentedControl from './components/SegmentedControl.svelte';
 import List from './components/List.svelte';
 import Row from './components/Row.svelte';
 import Toggle from './components/Toggle.svelte';
 import { theme } from './design/theme.svelte';
+import HomePage from './pages/home/HomePage.svelte';
+import BuildPage from './pages/build/BuildPage.svelte';
+import ServersPage from './pages/servers/ServersPage.svelte';
+import FriendsPage from './pages/friends/FriendsPage.svelte';
+import WardrobePage from './pages/wardrobe/WardrobePage.svelte';
+import SettingsPage from './pages/settings/SettingsPage.svelte';
+import Sidebar from './shell/Sidebar.svelte';
+import TopLine from './shell/TopLine.svelte';
+import LaunchBar from './shell/LaunchBar.svelte';
 
 // Mock canvas getContext in jsdom to suppress warnings
 if (typeof HTMLCanvasElement !== 'undefined') {
@@ -85,10 +91,16 @@ describe('A11y Automated Axe-Core Audit Across All 8 Sections', () => {
     delete (window as any).__TAURI_INTERNALS__;
   });
 
-  const screens = [
-    { name: 'ServersScreen', component: ServersScreen, props: { selectedVersion: '1.21.1', playerName: 'Player' } },
-    { name: 'LobbyScreen', component: LobbyScreen, props: {} },
-    { name: 'FriendsScreen', component: FriendsScreen, props: {} },
+  const screens: Array<{ name: string; component: unknown; props: Record<string, unknown> }> = [
+    { name: 'Sidebar', component: Sidebar, props: { online: true } },
+    { name: 'TopLine', component: TopLine, props: {} },
+    { name: 'LaunchBar', component: LaunchBar, props: {} },
+    { name: 'HomePage', component: HomePage, props: {} },
+    { name: 'BuildPage', component: BuildPage, props: { version: '1.21.1' } },
+    { name: 'ServersPage', component: ServersPage, props: {} },
+    { name: 'FriendsPage', component: FriendsPage, props: {} },
+    { name: 'WardrobePage', component: WardrobePage, props: {} },
+    { name: 'SettingsPage', component: SettingsPage, props: {} },
   ];
 
   for (const { name, component, props } of screens) {

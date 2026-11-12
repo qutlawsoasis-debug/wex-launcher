@@ -2,9 +2,6 @@
   Wex window (reference: LauncherWindow). Sidebar on the left, the top line and
   the page in the middle, the launch bar at the bottom. Frameless window: the
   top line is the drag region.
-
-  Stage 2 of the redesign: the frame is new; pages that are not redesigned yet
-  still render the previous screens inside it until their stage replaces them.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -13,7 +10,6 @@
   import { network } from './lib/design/network.svelte';
   import { formatError } from './lib/design/errors';
   import { t } from './lib/i18n';
-  import type { LobbyRoom } from './lib/screens/LobbyScreen.svelte';
   import type { CrashDiagnosisDto, DeepLinkActionDto } from './lib/ipc/generated/models';
   import type { DeepLinkAction } from './lib/components/DeepLinkConfirmationModal.svelte';
   import { initIdleManager, setGameRunning } from './lib/design/idleManager';
@@ -31,6 +27,10 @@
   import BuildPage from './lib/pages/build/BuildPage.svelte';
   import SettingsPage from './lib/pages/settings/SettingsPage.svelte';
   import WardrobePage from './lib/pages/wardrobe/WardrobePage.svelte';
+  import ServersPage from './lib/pages/servers/ServersPage.svelte';
+  import FriendsPage from './lib/pages/friends/FriendsPage.svelte';
+  import { rooms } from './lib/pages/friends/rooms.svelte';
+  import { friendsIntent } from './lib/pages/friends/friendsIntent.svelte';
   import { applyLook } from './lib/shell/look';
   import { router, buildIdOf, isRoute, buildRoute, type Route } from './lib/shell/router.svelte';
   import { builds } from './lib/shell/builds.svelte';
@@ -40,22 +40,10 @@
   import { stagger } from './lib/shell/stagger';
 
   type ToastKind = 'info' | 'success' | 'warning' | 'error';
-  /** Bridge for the previous screens, which report (type, title, message). */
+  /** Bridge for sheets that report (type, title, message). */
   const notify = (_type: ToastKind, title: string, message?: string) => toasts.show(title, message);
 
-  // Previous screens, loaded on demand until their stage replaces them.
-  let screens = $state<Record<string, any>>({});
-  async function loadScreen(name: string) {
-    if (screens[name]) return;
-    const loaders: Record<string, () => Promise<{ default: any }>> = {
-      servers: () => import('./lib/screens/ServersScreen.svelte'),
-      friends: () => import('./lib/screens/FriendsScreen.svelte'),
-      lobby: () => import('./lib/screens/LobbyScreen.svelte'),
-      splash: () => import('./lib/screens/SplashScreen.svelte'),
-    };
-    const load = loaders[name];
-    if (load) screens[name] = (await load()).default;
-  }
+  let SplashScreen = $state<any>(null);
 
   let isStartingUp = $state(true);
   let showOnboarding = $state(false);
@@ -63,8 +51,6 @@
   let crashDiagnosis = $state<CrashDiagnosisDto | null>(null);
   let deepLinkModalOpen = $state(false);
   let pendingDeepLink = $state<DeepLinkAction | DeepLinkActionDto | null>(null);
-  let lobbyRoom = $state<LobbyRoom | null>(null);
-  let friendsSubtab = $state<'friends' | 'requests' | 'achievements'>('friends');
   let mainEl: HTMLElement | undefined = $state();
 
   let CrashSheet = $state<any>(null);
@@ -75,12 +61,7 @@
   const routeBuild = $derived(buildIdOf(router.route));
 
   $effect(() => {
-    const r = router.route;
-    if (r === 'servers' || r === 'friends' || r === 'lobby') void loadScreen(r);
-  });
-
-  $effect(() => {
-    if (isStartingUp) void loadScreen('splash');
+    if (isStartingUp && !SplashScreen) import('./lib/screens/SplashScreen.svelte').then((m) => (SplashScreen = m.default));
     if (crashSheetOpen && !CrashSheet) import('./lib/components/CrashSheet.svelte').then((m) => (CrashSheet = m.default));
     if (showOnboarding && !OnboardingModal) import('./lib/components/OnboardingModal.svelte').then((m) => (OnboardingModal = m.default));
     if (deepLinkModalOpen && !DeepLinkConfirmationModal)
@@ -100,11 +81,11 @@
 
 
   $effect(() => {
-    friendsLive.setSessionContext({ playerName: builds.playerName, gameVersion: launch.version ?? builds.selectedId, lobby: lobbyRoom });
+    friendsLive.setSessionContext({ playerName: builds.playerName, gameVersion: launch.version ?? builds.selectedId, lobby: rooms.active });
     friendsLive.setGameRunning(isRunning);
   });
 
-  /** Map the previous screens' tab names to routes. */
+  /** Map the crash sheet's section names to routes. */
   function openLegacyTab(tab: string) {
     const map: Record<string, Route> = {
       play: 'home',
@@ -112,8 +93,8 @@
       servers: 'servers',
       friends: 'friends',
       wardrobe: 'wardrobe',
-      lobby: 'lobby',
     };
+    if (tab === 'lobby') return openRooms();
     if (tab === 'mods' || tab === 'workshop') {
       router.go(buildRoute(builds.selectedId));
     } else if (map[tab]) {
@@ -189,7 +170,6 @@
       router.go('home');
       void launch.start(action.target);
     } else if (action.kind === 'friend') {
-      friendsSubtab = 'requests';
       router.go('friends');
       try {
         await call('social_send_friend_request', { targetFriendCode: action.target });
@@ -209,15 +189,23 @@
     } catch {}
   }
 
+  /** Friends › Rooms (invites and join links land here). */
+  function openRooms(push = true) {
+    friendsIntent.tab = 'rooms';
+    if (router.route === 'friends') router.reopen();
+    else router.go('friends', push);
+  }
+
   function openFromHash() {
     const hash = window.location.hash.replace(/^#/, '');
     const join = parseWexJoinUri(window.location.hash) || parseWexJoinUri(window.location.search);
     if (join) {
-      router.go('lobby', false);
+      openRooms(false);
       void friendsLive.handleJoin(join);
       return;
     }
-    if (hash && isRoute(hash, builds.list.map((b) => b.id))) router.go(hash, false);
+    if (hash === 'lobby') openRooms(false);
+    else if (hash && isRoute(hash, builds.list.map((b) => b.id))) router.go(hash, false);
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -228,7 +216,7 @@
           crashSheetOpen = false;
           return true;
         }
-        // Sheets of the previous screens listen for this.
+        // Sheets (logs, report, import) listen for this.
         window.dispatchEvent(new CustomEvent('wex-escape'));
         return false;
       },
@@ -268,8 +256,8 @@
         toasts.show(n.title, n.description, n.action ? { label: n.action.label, run: n.action.onClick } : undefined)
       ),
       friendsLive.onJoin((_code, room) => {
-        if (room) lobbyRoom = room;
-        router.go('lobby');
+        if (room) rooms.active = room;
+        openRooms();
       }),
       friendsLive.onError((error, context) => {
         const f = formatError(error, context);
@@ -331,27 +319,15 @@
   <main class="main" bind:this={mainEl}>
     <TopLine />
     {#key router.version}
-      <div class="page" class:wx={router.route === 'home' || router.route === 'options' || router.route === 'wardrobe' || !!routeBuild} use:stagger>
+      <div class="page wx" use:stagger>
         {#if router.route === 'home'}
           <HomePage />
         {:else if routeBuild}
           <BuildPage version={routeBuild} />
-        {:else if router.route === 'servers' && screens.servers}
-          {@const ServersScreen = screens.servers}
-          <div class="legacy"><ServersScreen selectedVersion={builds.selectedId} playerName={builds.playerName} /></div>
-        {:else if router.route === 'friends' && screens.friends}
-          {@const FriendsScreen = screens.friends}
-          <div class="legacy"><FriendsScreen tab={friendsSubtab} /></div>
-        {:else if router.route === 'lobby' && screens.lobby}
-          {@const LobbyScreen = screens.lobby}
-          <div class="legacy">
-            <LobbyScreen
-              playerName={builds.playerName}
-              version={builds.selectedId}
-              initialRoom={lobbyRoom}
-              onroomchange={(room: LobbyRoom | null) => (lobbyRoom = room)}
-            />
-          </div>
+        {:else if router.route === 'servers'}
+          <ServersPage />
+        {:else if router.route === 'friends'}
+          <FriendsPage />
         {:else if router.route === 'wardrobe'}
           <WardrobePage />
         {:else if router.route === 'options'}
@@ -365,8 +341,7 @@
   <ToastHost />
   <CommandPalette />
 
-  {#if isStartingUp && screens.splash}
-    {@const SplashScreen = screens.splash}
+  {#if isStartingUp && SplashScreen}
     <SplashScreen oncomplete={() => (isStartingUp = false)} />
   {/if}
 
@@ -440,14 +415,6 @@
       opacity: 0;
       transform: translateY(-6px);
     }
-  }
-
-  .legacy {
-    margin-top: 16px;
-    min-height: 0;
-  }
-  .page > .legacy {
-    margin-top: 0;
   }
 
   /* While the game runs the launcher idles: no animation, no blur (energy). */

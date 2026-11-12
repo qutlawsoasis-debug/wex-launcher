@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, unmount } from 'svelte';
 import Sheet from './lib/components/Sheet.svelte';
 import OnboardingModal from './lib/components/OnboardingModal.svelte';
-import ServersScreen from './lib/screens/ServersScreen.svelte';
 import { theme } from './lib/design/theme.svelte';
 
 let target: HTMLDivElement;
@@ -45,31 +44,6 @@ describe('Apple HIG Fixes Verification', () => {
     expect(ondoneCalled).toBe(true);
     // Sheet card must remain in the DOM because ondone returned false
     expect(target.querySelector('.sheet-card')).not.toBeNull();
-
-    unmount(comp);
-  });
-
-  it('2. ServersScreen keeps Add Server sheet open and displays error when saving empty inputs', async () => {
-    const comp = mount(ServersScreen, { target });
-
-    const buttons = Array.from(target.querySelectorAll('button'));
-    const addBtn = buttons.find((b) => b.textContent?.includes('Добавить'));
-    expect(addBtn).toBeDefined();
-    addBtn?.click();
-    await new Promise((r) => setTimeout(r, 50));
-
-    expect(document.querySelector('.sheet-card')).not.toBeNull();
-
-    // Click "Сохранить" with empty fields
-    const sheetDoneBtn = document.querySelector<HTMLButtonElement>('.header-action.trailing button');
-    expect(sheetDoneBtn).not.toBeNull();
-    sheetDoneBtn?.click();
-    await new Promise((r) => setTimeout(r, 50));
-
-    // The sheet must remain open with validation error displayed
-    expect(document.querySelector('.sheet-card')).not.toBeNull();
-    expect(document.querySelector('.sheet-error')).not.toBeNull();
-    expect(document.querySelector('.sheet-error')?.textContent).toContain('Укажите название и адрес');
 
     unmount(comp);
   });

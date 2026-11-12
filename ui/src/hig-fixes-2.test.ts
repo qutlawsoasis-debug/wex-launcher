@@ -2,8 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
 import ProgressBar from './lib/components/ProgressBar.svelte';
 import List from './lib/components/List.svelte';
-import LobbyScreen from './lib/screens/LobbyScreen.svelte';
-import FriendsScreen from './lib/screens/FriendsScreen.svelte';
 import { theme } from './lib/design/theme.svelte';
 import { ru } from './lib/i18n/locales/ru';
 import { en } from './lib/i18n/locales/en';
@@ -155,38 +153,6 @@ describe('Apple HIG Fixes 2 Verification (Settings, Lobby, Friends)', () => {
   });
 
   describe('4. Lobby Screen HIG Requirements (F09, F10, F11)', () => {
-    it('displays honest empty callout when no local LAN worlds are present (F09)', () => {
-      const comp = mount(LobbyScreen, { target });
-
-      const text = target.textContent || '';
-      // Fabricated worlds must NOT be present
-      expect(text).not.toContain('Выживание в тайге');
-      expect(text).not.toContain('Творческий полигон');
-      expect(text).not.toContain('Redstone Experiments');
-
-      // Empty state text must be present
-      expect(text).toContain(ru['lobby.open_world_lan_empty']);
-
-      // Create room button must be disabled when no world is selected
-      const createBtn = target.querySelector<HTMLButtonElement>('[data-testid="create-room-btn"] button');
-      expect(createBtn).not.toBeNull();
-      expect(createBtn?.disabled).toBe(true);
-
-      unmount(comp);
-    });
-
-    it('does not contain parenthetical English in LAN section header', () => {
-      const comp = mount(LobbyScreen, { target });
-
-      const header = target.querySelector('.section-title');
-      expect(header).not.toBeNull();
-      expect(header?.textContent).not.toContain('(LAN)');
-      expect(ru['lobby.lan_section_title']).not.toContain('(LAN)');
-      expect(en['lobby.lan_section_title']).not.toContain('(LAN)');
-
-      unmount(comp);
-    });
-
     it('provides specialized cloud rooms error title, description and retry action (F11)', () => {
       expect(ru['lobby.cloud_error_title']).toBe('Не удалось загрузить облачные миры');
       expect(ru['lobby.cloud_error_desc']).toBe('Проверьте подключение к интернету и повторите попытку.');
@@ -198,41 +164,4 @@ describe('Apple HIG Fixes 2 Verification (Settings, Lobby, Friends)', () => {
     });
   });
 
-  describe('5. Friends Screen HIG Requirements (F12)', () => {
-    it('does not contain parenthetical English in add friend input', () => {
-      const comp = mount(FriendsScreen, { target });
-
-      const input = target.querySelector<HTMLInputElement>('.friend-code-input');
-      expect(input).not.toBeNull();
-      expect(input?.placeholder).not.toContain('(#A7X9)');
-      expect(input?.getAttribute('aria-label')).not.toContain('(#A7X9)');
-
-      unmount(comp);
-    });
-
-    it('achievement row suppresses duplicate title and percentage via hideInfo={true} (F12)', async () => {
-      const comp = mount(FriendsScreen, {
-        target,
-        props: {
-          tab: 'achievements',
-        },
-      });
-
-      await new Promise((r) => setTimeout(r, 50));
-
-      const achRows = Array.from(target.querySelectorAll('.achievement-row'));
-      expect(achRows.length).toBeGreaterThan(0);
-
-      for (const row of achRows) {
-        const titleEl = row.querySelector('.ach-title');
-        expect(titleEl).not.toBeNull();
-
-        // Inside the achievement progress bar, .progress-info must NOT exist
-        const progInfo = row.querySelector('.ach-progress-bar .progress-info');
-        expect(progInfo).toBeNull();
-      }
-
-      unmount(comp);
-    });
-  });
 });

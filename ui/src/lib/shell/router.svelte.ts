@@ -8,8 +8,7 @@ import { tick } from 'svelte';
 import { motionReduced } from '../design/wex-tokens';
 
 export type Section = 'home' | 'servers' | 'friends' | 'wardrobe' | 'options';
-/** 'lobby' has no sidebar item; it opens from invites and join links. */
-export type Route = Section | 'lobby' | `build-${string}`;
+export type Route = Section | `build-${string}`;
 
 export const SECTIONS: readonly Section[] = ['home', 'servers', 'friends', 'wardrobe', 'options'];
 
@@ -22,7 +21,7 @@ export function buildIdOf(route: Route): string | null {
 }
 
 export function isRoute(value: string, buildIds: readonly string[]): value is Route {
-  if ((SECTIONS as readonly string[]).includes(value) || value === 'lobby') return true;
+  if ((SECTIONS as readonly string[]).includes(value)) return true;
   const id = buildIdOf(value as Route);
   return id !== null && buildIds.includes(id);
 }

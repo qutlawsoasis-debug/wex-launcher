@@ -18,7 +18,7 @@
  */
 
 import type { UserPresenceDto } from '../ipc/generated/models';
-import type { LobbyRoom } from '../screens/LobbyScreen.svelte';
+import type { LobbyRoom } from '../pages/friends/lobbyTypes';
 
 export interface FriendItem {
   id: string;

@@ -13,6 +13,8 @@
   import { t, tn } from '../i18n';
   import BuildCover from './BuildCover.svelte';
   import Monogram from './Monogram.svelte';
+  import { onMount } from 'svelte';
+  import { friendsLive } from '../services/friendsLive';
 
   interface Props {
     online: boolean;
@@ -36,6 +38,10 @@
   }
 
   const currentBuild = $derived(buildIdOf(router.route));
+
+  /** Friends online, shown next to «Друзья» only when core reports any (reference: .count). */
+  let friendsOnline = $state(friendsLive.friends.filter((f) => f.status !== 'offline').length);
+  onMount(() => friendsLive.onData((d) => (friendsOnline = (d.friends ?? []).filter((f) => f.status !== 'offline').length)));
 </script>
 
 <aside class="side">
@@ -46,6 +52,7 @@
       <a href="#{id}" aria-current={router.route === id ? 'page' : undefined} onclick={(e) => open(e, id)}>
         <svg viewBox="0 0 20 20" aria-hidden="true">{@html NAV_ICONS[id]}</svg>
         <span>{t(LABEL[id])}</span>
+        {#if id === 'friends' && friendsOnline > 0}<span class="count" aria-label={t('shell.friends_online_count', { n: friendsOnline })}>{friendsOnline}</span>{/if}
       </a>
     {/each}
   </nav>
@@ -181,6 +188,11 @@
     stroke-width: 1.8;
     stroke-linecap: round;
     stroke-linejoin: round;
+  }
+  .count {
+    margin-left: auto;
+    font-size: var(--t-foot);
+    color: var(--label-3);
   }
   .side-h {
     /* 24 px line: the reference reserves it for the new-build button, which core does not offer. */
