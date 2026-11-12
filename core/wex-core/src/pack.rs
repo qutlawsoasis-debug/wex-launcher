@@ -237,19 +237,22 @@ pub async fn sync_aura_pack_cancellable(
         }
 
         // If sync mode, check if already valid
-        if target_path.exists() {
-            if let Ok(meta) = fs::metadata(&target_path) {
-                if meta.len() == file.size {
-                    if let Ok(actual_hash) =
-                        crate::download::compute_file_hash(&target_path, HashType::Sha256)
-                    {
-                        if actual_hash.eq_ignore_ascii_case(&file.sha256) {
-                            continue;
-                        }
-                    }
-                }
+        let reason = match fs::metadata(&target_path) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => "missing".to_string(),
+            Err(e) => format!("cannot read metadata: {}", e),
+            Ok(meta) if meta.len() != file.size => {
+                format!("size {} != {}", meta.len(), file.size)
             }
-        }
+            Ok(_) => match crate::download::compute_file_hash(&target_path, HashType::Sha256) {
+                Ok(actual) if actual.eq_ignore_ascii_case(&file.sha256) => continue,
+                Ok(actual) => format!("sha256 {} != {}", actual, file.sha256),
+                Err(e) => format!("cannot hash: {}", e),
+            },
+        };
+        events.on_event(&Event::Log {
+            level: LogLevel::Info,
+            message: format!("Aura-Pack: will download {} ({})", clean_path, reason),
+        });
 
         let escaped_segments: Vec<String> = clean_path.split('/').map(urlencoding_encode).collect();
         let escaped_path = escaped_segments.join("/");

@@ -5,6 +5,7 @@
  */
 
 import { call } from './ipc';
+import { uiLog } from './uiLog';
 
 export interface Build {
   /** Minecraft version id, e.g. "1.21.1". */
@@ -61,9 +62,11 @@ class Builds {
         this.selectedId = this.list[0].id;
       }
       this.error = null;
+      uiLog('info', `builds.load: ${versions.map((v) => `${v.id} installed=${v.is_installed}`).join(', ')}; selected ${this.selectedId}`);
       await Promise.all(this.list.map((b) => this.loadMods(b.id)));
     } catch (e) {
       this.error = e;
+      uiLog('error', `builds.load failed: ${String(e)}`);
     } finally {
       this.loaded = true;
     }
@@ -85,8 +88,10 @@ class Builds {
   async loadMods(id: string): Promise<void> {
     try {
       const mods = await call<unknown[]>('list_mods', { version: id });
+      uiLog('info', `list_mods ${id}: ${Array.isArray(mods) ? mods.length : typeof mods}`);
       this.list = this.list.map((b) => (b.id === id ? { ...b, mods: mods.length } : b));
-    } catch {
+    } catch (e) {
+      uiLog('warn', `list_mods ${id} failed: ${String(e)}`);
       // Mod count stays unknown; the sidebar then shows no count rather than a guess.
     }
   }

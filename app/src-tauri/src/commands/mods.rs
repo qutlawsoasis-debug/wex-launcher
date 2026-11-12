@@ -389,7 +389,12 @@ pub async fn list_mods(
     version: String,
     state: State<'_, PlayState>,
 ) -> Result<Vec<ModEntry>, String> {
-    list_mods_impl(&state.paths, &version)
+    let res = list_mods_impl(&state.paths, &version);
+    match &res {
+        Ok(list) => tracing::info!("list_mods {}: {}", version, list.len()),
+        Err(e) => tracing::error!("list_mods {} failed: {}", version, e),
+    }
+    res
 }
 
 #[tauri::command]

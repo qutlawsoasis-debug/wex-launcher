@@ -3,6 +3,7 @@
 identifier = "launcher-ui"
 description = "Launcher actions for the local main WebView"
 commands.allow = [
+    "ui_log",
     "startup_get_info",
     "startup_verify_directories",
     "parse_deep_link_uri",

@@ -24,6 +24,7 @@ serde_json = "1.0"
 tokio = { version = "1.0", features = ["time", "sync", "rt", "macros"] }
 async-trait = "0.1"
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
 chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
 regex = "1.10"

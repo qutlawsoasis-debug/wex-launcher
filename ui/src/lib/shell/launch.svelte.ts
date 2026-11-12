@@ -7,6 +7,7 @@
  */
 
 import { call, on } from './ipc';
+import { uiLog } from './uiLog';
 import { builds, type Build } from './builds.svelte';
 import { toasts } from './toast.svelte';
 import { formatError } from '../design/errors';
@@ -95,10 +96,13 @@ class Launch {
     if (this.busy) return;
     const version = builds.selectedId;
     this.enterLaunching(version, server);
+    uiLog('info', `Play pressed: ${version}${server ? ` -> ${server}` : ''}`);
     try {
       await call('start_game', { version, nickname: builds.playerName, jvmArgs: null, server });
+      uiLog('info', `start_game ${version} returned, phase ${this.phase}`);
       if (this.phase === 'launching') this.enterRunning(version, true);
     } catch (e) {
+      uiLog('error', `start_game ${version} failed: ${String(e)}`);
       if (this.phase === 'launching') this.fail(e);
     }
   }
@@ -124,6 +128,7 @@ class Launch {
   }
 
   onStatus(p: LaunchStatusPayload): void {
+    uiLog(p.state === 'error' ? 'error' : 'info', `launch-status ${p.state}: ${p.message}${p.exit_code != null ? ` (exit ${p.exit_code})` : ''}; phase ${this.phase}`);
     switch (p.state) {
       case 'preparing':
       case 'installing':
@@ -151,6 +156,7 @@ class Launch {
   onProgress(p: InstallProgressPayload): void {
     // Background preparation also reports progress; the bar shows it only for a launch.
     if (this.phase !== 'launching') return;
+    if (p.stage && p.stage !== this.stage) uiLog('info', `progress stage: ${p.stage}`);
     if (p.stage) this.setStage(p.stage);
     this.percent = Number.isFinite(p.percentage) ? Math.max(0, Math.min(100, p.percentage)) : null;
     this.downloaded = p.downloaded_bytes ?? 0;

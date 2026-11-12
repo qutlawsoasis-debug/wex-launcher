@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod ipc;
+pub mod launcher_log;
 mod navigation;
 
 pub use commands::servers::*;
@@ -54,6 +55,7 @@ pub fn run() {
         .setup(|app| {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();
+            launcher_log::init(&paths.logs_dir);
             let network_state = commands::network::NetworkState::new();
             network_state.start_supervisor(app.handle().clone());
             let play_state =
@@ -111,6 +113,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            launcher_log::ui_log,
             // Startup commands (SPEC 1.1)
             commands::startup::startup_get_info,
             commands::startup::startup_verify_directories,
