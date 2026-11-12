@@ -14,6 +14,7 @@
   import { indicator } from '../../shell/indicator';
   import { pickImageFile } from '../../shell/filePick';
   import { formatError } from '../../design/errors';
+  import { theme } from '../../design/theme.svelte';
   import { createDefaultSkinCanvas } from './defaultSkin';
   import { t } from '../../i18n';
   import { buildRig, drawThumb, loadImage, toSkinCanvas, isCapeSize, NICK_RE, U, type CapeTexture } from './skinRig';
@@ -28,7 +29,10 @@
   let pose = $state<Pose>('idle');
   let turn = $state(-24);
   let instant = $state(false);
+  /** Explicit auto-turn from its button (normal speed). */
   let auto = $state(false);
+  /** Until the user touches the model it turns slowly by itself. */
+  let touched = $state(false);
   let rigEl: HTMLElement | undefined = $state();
   let tex = $state<HTMLCanvasElement | null>(null);
   let cape = $state<CapeTexture | null>(null);
@@ -138,6 +142,8 @@
   let drag: { x: number; base: number } | null = null;
   function down(e: PointerEvent) {
     if ((e.target as HTMLElement).closest('button')) return;
+    touched = true;
+    auto = false;
     drag = { x: e.clientX, base: turn };
     instant = true;
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -153,16 +159,28 @@
     if (e.key === 'ArrowLeft') turn -= 15;
     else if (e.key === 'ArrowRight') turn += 15;
     else return;
+    touched = true;
     e.preventDefault();
+  }
+
+  /** The ±90° buttons: an explicit turn ends the idle spin. */
+  function turnBy(deg: number) {
+    touched = true;
+    auto = false;
+    turn += deg;
   }
 
   let raf = 0;
   $effect(() => {
-    if (!auto) return;
+    // Explicit auto-turn at 30°/s; before the model is touched a slow idle spin at 12°/s.
+    // No idle spin under Reduce Motion / Animations off, or while the launcher idles.
+    const idleSpin = !touched && !theme.motionReduced;
+    if (!auto && !idleSpin) return;
+    const speed = auto ? 0.03 : 0.012;
     let last = performance.now();
     instant = true;
     const step = (now: number) => {
-      turn += (now - last) * 0.03;
+      if (!document.documentElement.classList.contains('app-idle')) turn += (now - last) * speed;
       last = now;
       raf = requestAnimationFrame(step);
     };
@@ -332,13 +350,16 @@
         {/each}
       </div>
       <div class="stage-tools">
-        <button type="button" class="icon-b" aria-label={t('wardrobe2.turn_left')} title={t('wardrobe2.turn_left')} onclick={() => (turn -= 90)}>
+        <button type="button" class="icon-b" aria-label={t('wardrobe2.turn_left')} title={t('wardrobe2.turn_left')} onclick={() => turnBy(-90)}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 4H2.5V1.5M2.8 4A6 6 0 1 1 2 8" /></svg>
         </button>
-        <button type="button" class="icon-b" aria-label={t('wardrobe2.turn_right')} title={t('wardrobe2.turn_right')} onclick={() => (turn += 90)}>
+        <button type="button" class="icon-b" aria-label={t('wardrobe2.turn_right')} title={t('wardrobe2.turn_right')} onclick={() => turnBy(90)}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11 4h2.5V1.5M13.2 4A6 6 0 1 0 14 8" /></svg>
         </button>
-        <button type="button" class="icon-b" aria-pressed={auto} aria-label={t('wardrobe2.auto_turn')} title={t('wardrobe2.auto_turn')} onclick={() => (auto = !auto)}>
+        <button type="button" class="icon-b" aria-pressed={auto} aria-label={t('wardrobe2.auto_turn')} title={t('wardrobe2.auto_turn')} onclick={() => {
+          touched = true;
+          auto = !auto;
+        }}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" /><path d="M8 5v3l2 1.5" /></svg>
         </button>
       </div>
@@ -528,12 +549,6 @@
     backface-visibility: visible;
   }
   /* Poses: joints swing around the shoulder and hip (reference). */
-  .rig.pose-idle :global(.j-armR .swing) {
-    animation: idleR 3.2s ease-in-out infinite;
-  }
-  .rig.pose-idle :global(.j-armL .swing) {
-    animation: idleL 3.2s ease-in-out infinite;
-  }
   .rig.pose-walk :global(.j-armR .swing),
   .rig.pose-walk :global(.j-legL .swing) {
     animation: swingA 1s ease-in-out infinite;
@@ -565,6 +580,32 @@
   }
   .rig.pose-run :global(.j-cape .swing) {
     transform: rotateX(-38deg);
+  }
+  /* Breathing in the idle pose: head, body and arms rise a little and settle. The
+     translate property is separate from transform, so it adds to the arm sway. */
+  .rig.pose-idle :global(.j-head .swing),
+  .rig.pose-idle :global(.j-body .swing),
+  .rig.pose-idle :global(.j-cape .swing) {
+    animation: breathe 3.2s ease-in-out infinite;
+  }
+  .rig.pose-idle :global(.j-armR .swing) {
+    animation:
+      idleR 3.2s ease-in-out infinite,
+      breathe 3.2s ease-in-out infinite;
+  }
+  .rig.pose-idle :global(.j-armL .swing) {
+    animation:
+      idleL 3.2s ease-in-out infinite,
+      breathe 3.2s ease-in-out infinite;
+  }
+  @keyframes breathe {
+    0%,
+    100% {
+      translate: 0 0;
+    }
+    50% {
+      translate: 0 -2px;
+    }
   }
   @keyframes idleR {
     50% {

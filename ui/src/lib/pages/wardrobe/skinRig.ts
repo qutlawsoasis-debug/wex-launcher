@@ -120,6 +120,13 @@ const FACE_TRANSFORM = (f: Face, w: number, h: number, d: number): string =>
     bottom: `rotateX(-90deg) translateZ(${(h * U) / 2}px)`,
   })[f];
 
+/**
+ * Face brightness as the game lights a model: the top gets full light, the front a
+ * little less, back and sides less again, the bottom least. Baked into each face so
+ * the model reads as a solid body, not flat cut-outs.
+ */
+export const SHADE: Record<Face, number> = { top: 1, front: 0.9, back: 0.82, right: 0.72, left: 0.72, bottom: 0.55 };
+
 const FACE_SIZE = (f: Face, w: number, h: number, d: number): [number, number] =>
   f === 'front' || f === 'back' ? [w, h] : f === 'right' || f === 'left' ? [d, h] : [w, d];
 
@@ -147,6 +154,14 @@ export function box(uv: BoxUV, size: [number, number, number], tex: CanvasImageS
         ctx.scale(1, -1);
       }
       ctx.drawImage(tex, x * scale, y * scale, sw * scale, sh * scale, 0, 0, cv.width, cv.height);
+      // Darken only the painted pixels (source-atop), so see-through parts of outer layers stay clear.
+      if (SHADE[f] < 1) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalCompositeOperation = 'source-atop';
+        ctx.fillStyle = `rgba(0, 0, 0, ${(1 - SHADE[f]).toFixed(2)})`;
+        ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.globalCompositeOperation = 'source-over';
+      }
     }
     cv.style.width = `${fw * U}px`;
     cv.style.height = `${fh * U}px`;
