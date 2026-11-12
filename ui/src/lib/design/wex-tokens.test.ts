@@ -36,7 +36,7 @@ describe('Wex tokens follow the reference', () => {
   });
 
   it('dark colours match the reference for both system and forced dark', () => {
-    for (const name of ['blue', 'blue-text', 'green', 'red', 'label', 'base', 'card', 'side', 'bar']) {
+    for (const name of ['blue', 'blue-text', 'green', 'red', 'label', 'base', 'card', 'side']) {
       const ref = prop(reference, ':root[data-theme="dark"]', name);
       expect(prop(css, ":root[data-theme='dark']", name)).toBe(ref);
       expect(prop(css, ":root:not([data-theme='light'])", name)).toBe(ref);
@@ -101,8 +101,15 @@ describe('Wex tokens follow the reference', () => {
   it('Reduce Transparency makes the sidebar and launch bar solid', () => {
     for (const sel of [":root[data-reduce-transparency='true']", '@media (prefers-reduced-transparency: reduce)']) {
       expect(prop(css, sel, 'side')).toBe('var(--veil-strong)');
-      expect(prop(css, sel, 'bar')).toBe('var(--veil-strong)');
     }
+  });
+
+  it('the launch bar is the same surface as the sidebar (one panel, owner decision)', () => {
+    const bar = readFileSync(resolve(__dirname, '../shell/LaunchBar.svelte'), 'utf8');
+    const side = readFileSync(resolve(__dirname, '../shell/Sidebar.svelte'), 'utf8');
+    expect(bar).toMatch(/\.bar \{[^}]*background: var\(--side\);/);
+    expect(side, 'no divider beside the launch bar').not.toMatch(/\.side \{[^}]*border-right/);
+    expect(css).not.toContain('--bar:');
   });
 });
 

@@ -24,6 +24,7 @@
   import { palette } from './lib/shell/commands.svelte';
   import { handleHotkey } from './lib/shell/hotkeys';
   import HomePage from './lib/pages/home/HomePage.svelte';
+  import { initScrollIndicators } from './lib/design/scrollIndicators';
   import BuildPage from './lib/pages/build/BuildPage.svelte';
   import SettingsPage from './lib/pages/settings/SettingsPage.svelte';
   import WardrobePage from './lib/pages/wardrobe/WardrobePage.svelte';
@@ -227,6 +228,7 @@
   onMount(() => {
     const stops: Array<() => void> = [];
     stops.push(launch.attach());
+    stops.push(initScrollIndicators());
     void builds.load().then(() => {
       // Theme, motion, transparency and language come from the saved settings.
       applyLook(builds.settings);
@@ -384,6 +386,10 @@
     min-width: 0;
     min-height: 0;
     overflow: auto;
+    /* The sidebar and the launch bar are one surface around the content (HIG ›
+       Layout: the background continues under the bars), so the dividing line runs
+       only along the content: here, not on the sidebar beside the launch bar. */
+    border-left: 1px solid var(--edge);
   }
   .page {
     padding: 0 var(--gutter) 32px;

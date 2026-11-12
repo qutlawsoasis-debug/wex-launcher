@@ -35,7 +35,6 @@
 
   --base: #f5f5f7;
   --side: rgba(236, 236, 240, 0.86);
-  --bar: rgba(250, 250, 252, 0.9);
   --card: #ffffff;
   --card-hover: #fbfbfd;
   --edge: rgba(0, 0, 0, 0.08);
@@ -152,7 +151,6 @@
     --separator: rgba(84, 84, 88, 0.5);
     --base: #161618;
     --side: rgba(30, 30, 33, 0.9);
-    --bar: rgba(28, 28, 31, 0.92);
     --card: #1f1f22;
     --card-hover: #26262a;
     --edge: rgba(255, 255, 255, 0.08);
@@ -180,7 +178,6 @@
   --separator: rgba(84, 84, 88, 0.5);
   --base: #161618;
   --side: rgba(30, 30, 33, 0.9);
-  --bar: rgba(28, 28, 31, 0.92);
   --card: #1f1f22;
   --card-hover: #26262a;
   --edge: rgba(255, 255, 255, 0.08);
@@ -196,13 +193,11 @@
 /* Reduce Transparency: materials become solid (system setting or the app's). */
 :root[data-reduce-transparency='true'] {
   --side: var(--veil-strong);
-  --bar: var(--veil-strong);
   --veil: var(--veil-strong);
 }
 @media (prefers-reduced-transparency: reduce) {
   :root {
     --side: var(--veil-strong);
-    --bar: var(--veil-strong);
     --veil: var(--veil-strong);
   }
 }
@@ -283,4 +278,38 @@ textarea {
 :root.app-idle *::after {
   animation: none !important;
   transition: none !important;
+}
+
+/* Scroll indicator (Aura «Полоса прокрутки», aura-client ScrollList: 4 px visible,
+   14 px to hit, at least 24 px long, 3 px from the edge, secondaryLabel at 70 %,
+   hidden after 1.2 s without scrolling). The thumb shows while the element scrolls
+   (`.is-scrolling`, set by scrollIndicators.ts) or under the pointer. */
+::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+  background: transparent;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+::-webkit-scrollbar-thumb {
+  min-height: 24px;
+  min-width: 24px;
+  border-radius: 7px;
+  border: solid transparent;
+  border-width: 0 3px 0 7px;
+  background-clip: padding-box;
+  background-color: transparent;
+}
+::-webkit-scrollbar-thumb:horizontal {
+  border-width: 7px 0 3px 0;
+}
+.is-scrolling::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--label-2) 70%, transparent);
 }

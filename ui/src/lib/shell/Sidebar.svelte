@@ -97,7 +97,6 @@
     background: var(--side);
     backdrop-filter: blur(30px) saturate(160%);
     -webkit-backdrop-filter: blur(30px) saturate(160%);
-    border-right: 1px solid var(--edge);
     display: flex;
     flex-direction: column;
     padding: 20px 12px 12px;

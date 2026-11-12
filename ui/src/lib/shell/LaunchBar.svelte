@@ -168,7 +168,8 @@
     align-items: center;
     gap: var(--gutter);
     padding: 12px 16px 12px var(--gutter);
-    background: var(--bar);
+    /* The same surface as the sidebar: together they read as one panel. */
+    background: var(--side);
     backdrop-filter: blur(30px) saturate(160%);
     -webkit-backdrop-filter: blur(30px) saturate(160%);
     border-top: 1px solid var(--edge);
