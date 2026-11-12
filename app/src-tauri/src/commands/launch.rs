@@ -27,6 +27,8 @@ pub fn stage_label(stage: &str) -> String {
         "Fabric Libraries" => "Библиотеки Fabric",
         _ if s.starts_with("Aura-Pack sync") => "Синхронизация сборки",
         _ if s.starts_with("Aura-Pack") => "Сборка Aura-Pack",
+        // Download pool of the pack sync ("Pack 1.21.1").
+        _ if s.starts_with("Pack ") => "Моды и файлы сборки",
         _ if s.starts_with("Fabric Loader") => "Загрузчик Fabric",
         _ if s.starts_with("Mojang Java Runtime")
             || s.starts_with("Java runtime")
@@ -1436,6 +1438,7 @@ mod progress_tests {
     #[test]
     fn core_stages_are_shown_in_russian() {
         assert_eq!(stage_label("Assets"), "Ресурсы игры");
+        assert_eq!(stage_label("Pack 1.21.1"), "Моды и файлы сборки");
         assert_eq!(stage_label("Vanilla Libraries"), "Библиотеки Minecraft");
         assert_eq!(stage_label("Fabric Libraries"), "Библиотеки Fabric");
         assert_eq!(
