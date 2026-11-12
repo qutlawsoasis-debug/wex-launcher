@@ -145,7 +145,7 @@
       <div class="d">{t('build.java_shared')}</div>
     </div>
     <select aria-label={t('build.java')} value={javaMode} onchange={onJava} disabled={!settings}>
-      <option value="auto">{t('build.java_builtin', { java: b?.java ?? '' })}</option>
+      <option value="auto">{b?.java ? t('build.java_builtin', { java: b.java }) : t('build.java_builtin_auto')}</option>
       <option value="custom">{t('build.java_custom')}</option>
     </select>
     {#if javaMode === 'custom'}

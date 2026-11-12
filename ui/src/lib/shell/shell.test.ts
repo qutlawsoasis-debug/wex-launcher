@@ -24,8 +24,8 @@ import Sidebar from './Sidebar.svelte';
 import TopLine from './TopLine.svelte';
 
 const versions = [
-  { id: '1.21.1', name: 'Minecraft 1.21.1', is_installed: true, required_java: 21 },
-  { id: '1.20.1', name: 'Minecraft 1.20.1', is_installed: true, required_java: 17 },
+  { id: '1.21.1', name: 'Minecraft 1.21.1', is_installed: true },
+  { id: '1.20.1', name: 'Minecraft 1.20.1', is_installed: true },
 ];
 let settings: Record<string, unknown>;
 
@@ -141,11 +141,34 @@ describe('launch bar', () => {
     comp = mount(LaunchBar, { target });
     await tick();
     expect(target.querySelector('.title')?.textContent).toContain('Wex 1.21.1');
-    expect(target.querySelector('.sub')?.textContent).toBe('6 ГБ памяти, Java 21');
+    expect(target.querySelector('.sub')?.textContent).toBe('Игра скачана, можно играть, 6 ГБ памяти');
     const play = target.querySelector<HTMLButtonElement>('.play')!;
     expect(play.textContent).toContain('Играть');
     expect(play.getAttribute('aria-label')).toBe('Играть в Wex 1.21.1');
     expect(play.classList.contains('cancel') || play.classList.contains('stop')).toBe(false);
+  });
+
+  it('a build that is not downloaded says what Play will do; Play stays enabled', async () => {
+    await attachLaunch();
+    builds.list = builds.list.map((b) => ({ ...b, installed: false }));
+    comp = mount(LaunchBar, { target });
+    await tick();
+    expect(target.querySelector('.sub')?.textContent).toContain('Игра ещё не скачана — нажмите «Играть», чтобы скачать');
+    expect(target.querySelector<HTMLButtonElement>('.play')!.disabled).toBe(false);
+  });
+
+  it('no builds from core: the reason is shown and the button retries instead of standing disabled', async () => {
+    await attachLaunch();
+    builds.list = [];
+    comp = mount(LaunchBar, { target });
+    await tick();
+    expect(target.querySelector('.sub')?.textContent).toBe('Не удалось получить сборки — нажмите «Повторить»');
+    const btn = target.querySelector<HTMLButtonElement>('.play')!;
+    expect(btn.disabled).toBe(false);
+    expect(btn.textContent).toContain('Повторить');
+    btn.click();
+    await vi.waitFor(() => expect(builds.list.length).toBe(2));
+    expect(target.querySelector('.play')?.textContent).toContain('Играть');
   });
 
   it('Play calls start_game for the selected build and shows backend stages with progress', async () => {
@@ -224,7 +247,7 @@ describe('launch bar', () => {
     expect(launch.phase).toBe('idle');
     expect(target.querySelector('.track')).toBeNull();
     emit('prewarm-status', { state: 'ready', progress: 100 });
-    expect(target.querySelector('.sub')?.textContent).toBe('Готово к запуску, 6 ГБ памяти, Java 21');
+    expect(target.querySelector('.sub')?.textContent).toBe('Готово к быстрому запуску, 6 ГБ памяти');
   });
 });
 

@@ -43,8 +43,8 @@ beforeEach(async () => {
         return null;
       case 'get_installed_versions':
         return [
-          { id: '1.21.1', name: '1.21.1', is_installed: true, required_java: 21 },
-          { id: '1.20.1', name: '1.20.1', is_installed: true, required_java: 17 },
+          { id: '1.21.1', name: '1.21.1', is_installed: true },
+          { id: '1.20.1', name: '1.20.1', is_installed: true },
         ];
       case 'list_mods':
         return mods;
@@ -108,7 +108,7 @@ describe('build page', () => {
   it('header and facts only state what core knows', async () => {
     await open();
     expect(target.querySelector('.build-head h1')?.textContent).toBe('Wex 1.20.1');
-    expect(target.querySelector('.build-head p')?.textContent).toBe('Fabric, Java 17');
+    expect(target.querySelector('.build-head p')?.textContent).toBe('Fabric. Игра скачана, можно играть');
     expect(target.querySelector('.build-head')?.textContent).toContain('Выбрать для запуска');
     await vi.waitFor(() => expect(target.querySelectorAll('.fact').length).toBe(3));
     const facts = [...target.querySelectorAll('.fact span')].map((s) => s.textContent);

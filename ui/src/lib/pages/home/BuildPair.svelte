@@ -6,7 +6,7 @@
 -->
 <script lang="ts">
   import { builds, coverVar, type Build } from '../../shell/builds.svelte';
-  import { launch } from '../../shell/launch.svelte';
+  import { launch, readiness } from '../../shell/launch.svelte';
   import { router, buildRoute } from '../../shell/router.svelte';
   import { toasts } from '../../shell/toast.svelte';
   import { formatError } from '../../design/errors';
@@ -48,19 +48,17 @@
   /** "132 мода на Fabric, Java 21. 3 мира." — only facts the backend knows. */
   function summary(b: Build): string {
     const parts: string[] = [];
-    const head = b.mods !== null ? t('home.mods_on_loader', { mods: tn('shell.mods', b.mods), java: b.java }) : t('home.loader_java', { java: b.java });
+    const mods = b.mods !== null ? tn('shell.mods', b.mods) : null;
+    const head =
+      b.java !== null
+        ? mods ? t('home.mods_on_loader', { mods, java: b.java }) : t('home.loader_java', { java: b.java })
+        : mods ? t('home.mods_on_fabric', { mods }) : t('home.fabric');
     parts.push(head + '.');
     const w = home.worlds[b.id];
     if (w !== undefined) parts.push(w > 0 ? tn('home.worlds', w) + '.' : t('home.no_worlds'));
     return parts.join(' ');
   }
 
-  /** Readiness from what core reports: fast launch prepared, game files present, or not yet. */
-  function readiness(b: Build): { ok: boolean; text: string } {
-    if (b.id === builds.selectedId && launch.prewarm === 'ready') return { ok: true, text: t('home.ready_fast') };
-    if (b.installed) return { ok: true, text: t('home.ready_installed') };
-    return { ok: false, text: t('home.ready_first_download') };
-  }
 </script>
 
 <section class="pair" aria-label={t('shell.builds')}>
@@ -119,6 +117,7 @@
     display: flex;
     gap: 12px;
     height: 380px;
+    container-type: inline-size;
   }
   .pane {
     position: relative;
@@ -217,7 +216,9 @@
     flex-direction: column;
     justify-content: space-between;
     padding: 28px 32px;
-    min-width: 520px;
+    /* The width the open pane ends at (pair minus the other column and the gap),
+       so the text does not reflow while the panes flow, and fits at the minimum window. */
+    min-width: calc(100cqw - 116px);
   }
   .pane-body > * {
     animation: rise 520ms var(--ease) both;

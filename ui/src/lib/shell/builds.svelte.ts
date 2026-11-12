@@ -9,8 +9,8 @@ import { call } from './ipc';
 export interface Build {
   /** Minecraft version id, e.g. "1.21.1". */
   id: string;
-  /** Java major version the build runs on. */
-  java: number;
+  /** Java major version the build runs on; null when core does not report it. */
+  java: number | null;
   installed: boolean;
   /** Mod count from list_mods; null until known or if the folder can't be read. */
   mods: number | null;
@@ -20,7 +20,8 @@ interface InstalledVersion {
   id: string;
   name: string;
   is_installed: boolean;
-  required_java: number;
+  /** Not sent by the current core; read when present. */
+  required_java?: number;
 }
 
 export type LauncherSettings = Record<string, unknown> & {
@@ -55,7 +56,7 @@ class Builds {
         call<InstalledVersion[]>('get_installed_versions'),
       ]);
       this.applySettings(settings);
-      this.list = versions.map((v) => ({ id: v.id, java: v.required_java, installed: v.is_installed, mods: null }));
+      this.list = versions.map((v) => ({ id: v.id, java: typeof v.required_java === 'number' ? v.required_java : null, installed: v.is_installed, mods: null }));
       if (!this.list.some((b) => b.id === this.selectedId) && this.list[0]) {
         this.selectedId = this.list[0].id;
       }

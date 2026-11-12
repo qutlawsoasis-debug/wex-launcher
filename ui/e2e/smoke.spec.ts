@@ -107,3 +107,32 @@ test('servers: add a server through core', async ({ page }) => {
   await page.locator('.editor .btn.blue').click();
   await expect(page.locator('.lrow-srv')).toHaveCount(3);
 });
+
+for (const [w, h] of [[880, 600], [1080, 720]] as const) {
+  test(`window ${w}×${h} (minimum and default): no page spills sideways, wardrobe keeps two columns`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: h });
+    for (const p of PAGES) {
+      await openApp(page, p.hash);
+      await expect(page.locator('.page h1').first()).toHaveText(p.heading);
+      const spill = await page.evaluate(() => {
+        const main = document.querySelector('main')!;
+        return main.scrollWidth - main.clientWidth;
+      });
+      expect(spill, `${p.hash || '#home'} overflows by ${spill}px`).toBeLessThanOrEqual(1);
+    }
+    await openApp(page, '#wardrobe');
+    const cols = await page.locator('.wd2').evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
+    expect(cols).toBe(2);
+    // The whole model stands inside the scene: the nickname tag sits between its top and the bottom bar.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const s = document.querySelector('.stage3d')!.getBoundingClientRect();
+          const tag = document.querySelector('.nametag')!.getBoundingClientRect();
+          const bar = document.querySelector('.stage-bar')!.getBoundingClientRect();
+          return tag.top >= s.top && tag.top < bar.top;
+        })
+      )
+      .toBe(true);
+  });
+}

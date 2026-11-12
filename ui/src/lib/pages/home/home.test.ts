@@ -31,8 +31,8 @@ beforeEach(async () => {
         return null;
       case 'get_installed_versions':
         return [
-          { id: '1.21.1', name: '1.21.1', is_installed: installed['1.21.1'], required_java: 21 },
-          { id: '1.20.1', name: '1.20.1', is_installed: installed['1.20.1'], required_java: 17 },
+          { id: '1.21.1', name: '1.21.1', is_installed: installed['1.21.1'] },
+          { id: '1.20.1', name: '1.20.1', is_installed: installed['1.20.1'] },
         ];
       case 'list_mods':
         return new Array(args!.version === '1.21.1' ? 132 : 130).fill({});
@@ -98,8 +98,8 @@ describe('home page', () => {
     await render();
     const open = target.querySelector('.pane.open')!;
     expect(open.querySelector('h1')?.textContent).toBe('Wex 1.21.1');
-    expect(open.querySelector('p')?.textContent).toBe('132 мода на Fabric, Java 21. Миров пока нет.');
-    expect(open.querySelector('.ready')?.textContent).toBe('Игра установлена');
+    expect(open.querySelector('p')?.textContent).toBe('132 мода на Fabric. Миров пока нет.');
+    expect(open.querySelector('.ready')?.textContent).toBe('Игра скачана, можно играть');
     // Nothing core does not report: loader version, last launch, download size.
     expect(open.textContent).not.toMatch(/0\.19|Последний запуск|МБ/);
     const closed = target.querySelector('.pane:not(.open)')!;
@@ -116,9 +116,9 @@ describe('home page', () => {
     await vi.waitFor(() => expect(toasts.current?.title).toBe('Для запуска выбрана Wex 1.20.1'));
     flushSync();
     const open = target.querySelector('.pane.open')!;
-    expect(open.querySelector('p')?.textContent).toBe('130 модов на Fabric, Java 17. 3 мира.');
+    expect(open.querySelector('p')?.textContent).toBe('130 модов на Fabric. 3 мира.');
     expect(open.querySelector('.ready')?.classList.contains('upd')).toBe(true);
-    expect(open.querySelector('.ready')?.textContent).toBe('Игра скачается при первом запуске');
+    expect(open.querySelector('.ready')?.textContent).toBe('Игра ещё не скачана — нажмите «Играть», чтобы скачать');
     launch.prewarm = 'ready';
     flushSync();
     expect(target.querySelector('.pane.open .ready')?.textContent).toBe('Готово к быстрому запуску');

@@ -50,7 +50,7 @@ beforeEach(async () => {
       case 'get_launcher_settings':
         return { selected_version: '1.21.1', player_name: 'Player' };
       case 'get_installed_versions':
-        return [{ id: '1.21.1', name: '1.21.1', is_installed: true, required_java: 21 }];
+        return [{ id: '1.21.1', name: '1.21.1', is_installed: true }];
       case 'list_servers':
         return servers;
       case 'ping_server_details':

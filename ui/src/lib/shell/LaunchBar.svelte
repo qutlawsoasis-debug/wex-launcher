@@ -7,7 +7,7 @@
   bar when the amount is known; HIG › Materials for the bar background.
 -->
 <script lang="ts">
-  import { launch } from './launch.svelte';
+  import { launch, readiness } from './launch.svelte';
   import { builds } from './builds.svelte';
   import { t, i18n } from '../i18n';
   import BuildCover from './BuildCover.svelte';
@@ -53,11 +53,12 @@
       if (launch.startedAt) parts.push(clock(now - launch.startedAt));
       return parts.join(', ');
     }
-    const parts: string[] = [];
-    if (launch.prewarm === 'ready') parts.push(t('shell.ready'));
-    else if (launch.prewarm === 'prewarming') parts.push(t('shell.prewarming'));
+    // Idle: always say whether Play can start and what it will do.
+    if (!builds.loaded) return t('shell.builds_loading');
+    if (!build) return t('shell.builds_unavailable');
+    const parts: string[] = [launch.prewarm === 'prewarming' ? t('shell.prewarming') : readiness(build).text];
     if (builds.ramMb) parts.push(t('shell.memory_gb', { gb: Math.round(builds.ramMb / 1024) }));
-    if (build) parts.push(t('shell.java', { java: build.java }));
+    if (build.java !== null) parts.push(t('shell.java', { java: build.java }));
     return parts.join(', ');
   });
 
@@ -87,8 +88,12 @@
     }
   });
 
+  /** Core gave no builds: the button retries instead of standing disabled. */
+  const retry = $derived(launch.phase === 'idle' && builds.loaded && !build);
+
   function press() {
-    if (launch.phase === 'idle') void launch.start();
+    if (retry) void builds.load();
+    else if (launch.phase === 'idle') void launch.start();
     else if (launch.phase === 'launching') void launch.cancel();
     else void launch.stop();
   }
@@ -129,15 +134,19 @@
     class:cancel={launch.phase === 'launching'}
     class:stop={launch.phase === 'running'}
     bind:this={playEl}
-    disabled={launch.phase === 'idle' && !build}
-    aria-label={launch.phase === 'idle'
+    disabled={launch.phase === 'idle' && !builds.loaded}
+    aria-label={retry
+      ? t('common.retry')
+      : launch.phase === 'idle'
       ? t('shell.play_label', { ver: shownId })
       : launch.phase === 'launching'
         ? t('shell.cancel_label')
         : t('shell.stop_label')}
     onclick={press}
   >
-    {#if launch.phase === 'idle'}
+    {#if retry}
+      {t('common.retry')}
+    {:else if launch.phase === 'idle'}
       <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1v8l7-4z" /></svg>{t('shell.play')}
     {:else if launch.phase === 'launching'}
       {t('shell.cancel')}

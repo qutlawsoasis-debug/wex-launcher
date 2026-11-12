@@ -342,14 +342,22 @@
   position: relative;
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid var(--separator);
+  /* The separator is drawn inside so the row can scroll sideways when the
+     window is narrow (minimum 880 px) instead of pushing past the edge. */
+  box-shadow: inset 0 -1px 0 var(--separator);
   margin-top: -8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.wx .tabs::-webkit-scrollbar {
+  display: none;
 }
 .wx .tabs button {
   position: relative;
   z-index: 1;
+  flex: none;
   height: 44px;
-  margin-bottom: -1px;
   padding: 0 16px;
   color: var(--label-2);
   font-weight: var(--w-semibold);
@@ -363,7 +371,7 @@
 .wx .tabs > .ind {
   position: absolute;
   left: 0;
-  bottom: -1px;
+  bottom: 0;
   height: 2px;
   border-radius: 2px;
   background: var(--blue-text);
@@ -372,6 +380,12 @@
     transform var(--dur-ind) var(--spring),
     width var(--dur-ind) var(--spring),
     opacity var(--dur-short);
+}
+
+@media (max-width: 1100px) {
+  .wx .tabs button {
+    padding: 0 12px;
+  }
 }
 
 /* Forms (reference: .form / .frow / .field / select / range). HIG › Text fields. */

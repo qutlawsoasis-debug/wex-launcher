@@ -7,7 +7,7 @@
  */
 
 import { call, on } from './ipc';
-import { builds } from './builds.svelte';
+import { builds, type Build } from './builds.svelte';
 import { toasts } from './toast.svelte';
 import { formatError } from '../design/errors';
 import { t } from '../i18n';
@@ -204,6 +204,17 @@ class Launch {
     this.server = null;
     this.startedAt = null;
   }
+}
+
+/**
+ * Whether a build can start right now and, if not quite, what Play will do:
+ * fast launch prepared, game files present, or the first press downloads them.
+ * Shown wherever Play is, so the button never stands without a reason.
+ */
+export function readiness(b: Build): { ok: boolean; text: string } {
+  if (b.id === builds.selectedId && launch.prewarm === 'ready') return { ok: true, text: t('home.ready_fast') };
+  if (b.installed) return { ok: true, text: t('home.ready_installed') };
+  return { ok: false, text: t('home.ready_first_download') };
 }
 
 export const launch = new Launch();

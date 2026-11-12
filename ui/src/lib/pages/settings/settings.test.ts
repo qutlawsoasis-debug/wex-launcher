@@ -43,7 +43,7 @@ beforeEach(async () => {
         settings = { ...(args!.newSettings as Record<string, unknown>) };
         return null;
       case 'get_installed_versions':
-        return [{ id: '1.21.1', name: '1.21.1', is_installed: true, required_java: 21 }];
+        return [{ id: '1.21.1', name: '1.21.1', is_installed: true }];
       case 'get_storage_cache_info':
         return { total_bytes: 1288490188, formatted_size: '1,2 ГБ' };
       case 'clear_storage_cache':

@@ -7,7 +7,7 @@
 -->
 <script lang="ts">
   import { builds, coverVar } from '../../shell/builds.svelte';
-  import { launch } from '../../shell/launch.svelte';
+  import { launch, readiness } from '../../shell/launch.svelte';
   import { toasts } from '../../shell/toast.svelte';
   import { indicator } from '../../shell/indicator';
   import { formatError } from '../../design/errors';
@@ -52,6 +52,11 @@
     const current = tab;
     void build.version;
     void build.loadTab(current);
+  });
+
+  // In a narrow window the tab row scrolls; keep the chosen tab in view.
+  $effect(() => {
+    document.getElementById(`btab-${tab}`)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   });
 
   async function select() {
@@ -103,7 +108,7 @@
   <div class="hero-in">
     <div>
       <h1>{t('shell.build_name', { ver: version })}</h1>
-      {#if b}<p>{t('build.head_meta', { java: b.java })}</p>{/if}
+      {#if b}<p>{b.java !== null ? t('build.head_meta', { java: b.java }) : t('home.fabric')}. {readiness(b).text}</p>{/if}
     </div>
     <div class="hero-actions">
       {#if !selected}

@@ -29,8 +29,8 @@ beforeEach(async () => {
         return null;
       case 'get_installed_versions':
         return [
-          { id: '1.21.1', name: '1.21.1', is_installed: true, required_java: 21 },
-          { id: '1.20.1', name: '1.20.1', is_installed: true, required_java: 17 },
+          { id: '1.21.1', name: '1.21.1', is_installed: true },
+          { id: '1.20.1', name: '1.20.1', is_installed: true },
         ];
       case 'list_mods':
         return [

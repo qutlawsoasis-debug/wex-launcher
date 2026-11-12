@@ -16,7 +16,7 @@
   import { formatError } from '../../design/errors';
   import { createDefaultSkinCanvas } from './defaultSkin';
   import { t } from '../../i18n';
-  import { buildRig, drawThumb, loadImage, toSkinCanvas, isCapeSize, NICK_RE, type CapeTexture } from './skinRig';
+  import { buildRig, drawThumb, loadImage, toSkinCanvas, isCapeSize, NICK_RE, U, type CapeTexture } from './skinRig';
   import { wardrobe, fileToBase64, looksSlim, safeName, type SavedSkin } from './wardrobe.svelte';
   import { call } from '../../shell/ipc';
   import { formatDate } from '../../shell/format';
@@ -69,6 +69,30 @@
 
   const slim = $derived(wardrobe.state.model === 'Slim');
   const skinLabel = $derived(wardrobe.state.skin_base64 ? wardrobe.state.skin_name || t('wardrobe2.skin') : t('wardrobe2.default_skin'));
+
+  /**
+   * Fit the model into the scene: it stands between the caption and the bottom bar
+   * and shrinks with the window instead of the two columns falling apart.
+   * Sets --k (scale) and --cy (model centre) on the scene.
+   */
+  function fitModel(node: HTMLElement) {
+    if (typeof ResizeObserver === 'undefined') return;
+    const fit = () => {
+      const top = node.querySelector<HTMLElement>('.stage-top');
+      const bar = node.querySelector<HTMLElement>('.stage-bar');
+      const bandTop = (top ? top.offsetTop + top.offsetHeight : 0) + 44; // room for the nickname tag
+      const bandBottom = (bar ? bar.offsetTop : node.clientHeight) - 20; // room for the floor shadow
+      // 32 skin px tall; about 20 wide when turned (body plus arms in depth).
+      const k = Math.max(0.4, Math.min(1, (bandBottom - bandTop) / (32 * U), (node.clientWidth - 40) / (20 * U)));
+      node.style.setProperty('--k', k.toFixed(3));
+      node.style.setProperty('--cy', `${Math.round((bandTop + bandBottom) / 2)}px`);
+    };
+    const ro = new ResizeObserver(fit);
+    ro.observe(node);
+    const bar = node.querySelector('.stage-bar');
+    if (bar) ro.observe(bar);
+    return { destroy: () => ro.disconnect() };
+  }
 
   onMount(() => {
     void loadAchievements();
@@ -292,6 +316,7 @@
     onpointerup={up}
     onpointercancel={up}
     onkeydown={onStageKey}
+    use:fitModel
   >
     <div class="nametag">{nickOk ? nick || wardrobe.state.nickname : wardrobe.state.nickname}</div>
     <div class="rig-wrap"><div class="rig pose-{pose}" class:now={instant} style:--turn="{turn}deg" bind:this={rigEl}></div></div>
@@ -431,13 +456,16 @@
   }
   .wd2 {
     display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(320px, 1fr);
+    /* Two columns down to the minimum window (880 px): the scene shrinks, the panel keeps 300 px. */
+    grid-template-columns: minmax(0, 1.15fr) minmax(300px, 1fr);
     gap: 20px;
     align-items: start;
   }
   .stage3d {
     position: relative;
-    height: 560px;
+    /* Fits the window height: 560 px at large sizes, 400 px at the minimum window. */
+    height: clamp(400px, calc(100vh - 230px), 560px);
+    container-type: size;
     border-radius: var(--r-l);
     overflow: hidden;
     background:
@@ -455,9 +483,10 @@
   .rig-wrap {
     position: absolute;
     left: 50%;
-    top: 53%;
+    top: var(--cy, 53%);
     transform-style: preserve-3d;
     transform: rotateX(-8deg);
+    scale: var(--k, 1);
   }
   .rig {
     position: relative;
@@ -595,7 +624,8 @@
   .floor {
     position: absolute;
     left: 50%;
-    top: calc(53% + 16 * 11px);
+    top: calc(var(--cy, 53%) + 16 * 11px * var(--k, 1));
+    scale: var(--k, 1);
     width: 224px;
     height: 40px;
     margin-left: -112px;
@@ -607,7 +637,7 @@
   .nametag {
     position: absolute;
     left: 50%;
-    top: calc(53% - 16 * 11px - 48px);
+    top: calc(var(--cy, 53%) - 16 * 11px * var(--k, 1) - 40px);
     transform: translateX(-50%);
     padding: 4px 12px;
     border-radius: var(--r-xs);
@@ -895,9 +925,22 @@
     font-size: var(--t-cap);
     color: var(--label-3);
   }
-  @media (max-width: 1100px) {
-    .wd2 {
-      grid-template-columns: 1fr;
+  /* Narrow scene (minimum window): poses take the full width, the turn buttons go below. */
+  @container (max-width: 340px) {
+    .stage-bar {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+    }
+    .stage-bar .seg {
+      display: flex;
+    }
+    .stage-bar .seg button {
+      flex: 1;
+      padding: 0 6px;
+    }
+    .stage-tools {
+      align-self: center;
     }
   }
 </style>
