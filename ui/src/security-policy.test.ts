@@ -1,6 +1,6 @@
 // @vitest-environment node
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const appDir = resolve(process.cwd(), '../app/src-tauri');
@@ -37,5 +37,24 @@ describe('bundled WebView security boundary', () => {
     expect(capability.permissions.some((p: unknown) => typeof p === 'string' && p.startsWith('fs:'))).toBe(false);
     const permissions = read('permissions/launcher-ui.toml');
     expect(permissions).not.toMatch(/"(?:net_tunnel_start|extras_generate_csl_config|extras_save_skin)"/);
+  });
+
+  it('allows every command the bundled UI calls (mocks skip the ACL, the real app does not)', () => {
+    const allowed = new Set([...read('permissions/launcher-ui.toml').matchAll(/"([a-z0-9_]+)"/g)].map((m) => m[1]));
+    const srcDir = resolve(process.cwd(), 'src');
+    const used = new Map<string, string>();
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (/\.(ts|svelte)$/.test(e.name) && !/\.(test|spec)\.ts$/.test(e.name) && !p.includes('generated')) {
+          for (const m of readFileSync(p, 'utf8').matchAll(/\b(?:call|invoke)(?:<[^>()]*>)?\(\s*'([a-z0-9_]+)'/g)) used.set(m[1], p);
+        }
+      }
+    };
+    walk(srcDir);
+    expect(used.size).toBeGreaterThan(20);
+    const missing = [...used].filter(([c]) => !allowed.has(c)).map(([c, f]) => `${c} (${f.slice(srcDir.length + 1)})`);
+    expect(missing).toEqual([]);
   });
 });

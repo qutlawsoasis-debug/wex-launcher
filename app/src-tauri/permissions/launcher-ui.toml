@@ -113,4 +113,14 @@ commands.allow = [
     "onboarding_get_specs",
     "onboarding_complete",
     "onboarding_prewarm_game",
+    # New interface (feat/ui-redesign): build list, Play, window buttons, servers, data folder, presence.
+    "get_installed_versions",
+    "start_game",
+    "shell_get_launch_state",
+    "shell_minimize_window",
+    "shell_toggle_maximize_window",
+    "shell_close_window",
+    "ping_server_details",
+    "get_data_dir",
+    "social_set_presence",
 ]
