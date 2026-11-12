@@ -284,15 +284,6 @@
     }
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .sheet-scrim {
-      animation: scrimFadeIn var(--dur-micro) ease forwards !important;
-    }
-    .sheet-card {
-      animation: scrimFadeIn var(--dur-micro) ease forwards !important;
-      transform: none !important;
-    }
-  }
 
   :global([data-effects="off"]) .sheet-card,
   :global([data-reduce-motion="true"]) .sheet-card {

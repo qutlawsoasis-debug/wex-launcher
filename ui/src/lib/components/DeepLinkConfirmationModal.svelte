@@ -316,13 +316,6 @@
   }
 
   /* Reduce Motion Parity */
-  @media (prefers-reduced-motion: reduce) {
-    .deeplink-scrim,
-    .deeplink-dialog {
-      animation: none !important;
-      transform: none !important;
-    }
-  }
 
   :global([data-reduce-motion='true']) .deeplink-scrim,
   :global([data-reduce-motion='true']) .deeplink-dialog {

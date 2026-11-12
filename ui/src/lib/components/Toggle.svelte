@@ -185,18 +185,6 @@
     border: 0;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .apple-toggle,
-    .track,
-    .thumb {
-      transition: none !important;
-    }
-    .apple-toggle:active:not([aria-disabled="true"]) .thumb,
-    .apple-toggle.checked:active:not([aria-disabled="true"]) .thumb {
-      width: 20px !important;
-      margin-left: 0 !important;
-    }
-  }
 
   :global([data-reduce-motion="true"]) .apple-toggle,
   :global([data-reduce-motion="true"]) .track,

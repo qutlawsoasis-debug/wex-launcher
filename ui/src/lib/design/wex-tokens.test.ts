@@ -26,9 +26,9 @@ const rgb = (hex: string) => {
 };
 
 describe('Wex tokens follow the reference', () => {
-  it('light colours, radii, type and motion match launcher-reference.html', () => {
+  it('light colours, radii and type match launcher-reference.html', () => {
     for (const name of ['blue', 'blue-hi', 'blue-text', 'green', 'red', 'orange', 'label', 'base', 'card', 'cover-1211', 'cover-1201',
-      'r-s', 'r-m', 'r-l', 't-body', 't-hero', 'ease', 'spring', 'dur-micro', 'dur-short', 'dur-ind', 'dur-page', 'dur-pair']) {
+      'r-s', 'r-m', 'r-l', 't-body', 't-hero']) {
       const ref = prop(reference, ':root {', name);
       expect(ref, `reference has --${name}`).toBeDefined();
       expect(norm(prop(css, ':root {', name)), `--${name}`).toBe(norm(ref));
@@ -77,13 +77,25 @@ describe('Wex tokens follow the reference', () => {
     expect(meetsWcagAA(rgb(WexColors.dark.label), rgb(WexColors.dark.base)).pass).toBe(true);
   });
 
-  it('Reduce Motion zeroes every duration, both the system query and the app switch', () => {
+  it('motion is quick but smooth: one ease-out curve without overshoot, transitions 180–280 ms', () => {
+    const curve = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
+    expect(norm(prop(css, ':root {', 'ease'))).toBe(norm(curve));
+    expect(norm(prop(css, ':root {', 'spring'))).toBe(norm(curve));
+    for (const name of ['dur-micro', 'dur-short', 'dur-ind', 'dur-page', 'dur-page-out', 'dur-pair', 'dur-swap']) {
+      const ms = parseInt(prop(css, ':root {', name)!, 10);
+      expect(ms, `--${name}`).toBeGreaterThanOrEqual(180);
+      expect(ms, `--${name}`).toBeLessThanOrEqual(280);
+    }
+  });
+
+  it('Reduce Motion is resolved once into data-reduce-motion and zeroes every duration', () => {
     const names = [...css.matchAll(/--(dur-[a-z-]+|stagger):/g)].map((m) => m[1]);
     const unique = [...new Set(names)];
-    for (const sel of [":root[data-reduce-motion='true']", '@media (prefers-reduced-motion: reduce)']) {
-      for (const name of unique) expect(prop(css, sel, name), `${sel} --${name}`).toBe('0ms');
-      expect(prop(css, sel, 'press-scale')).toBe('1');
-    }
+    const sel = ":root[data-reduce-motion='true']";
+    for (const name of unique) expect(prop(css, sel, name), `${sel} --${name}`).toBe('0ms');
+    expect(prop(css, sel, 'press-scale')).toBe('1');
+    // No media query of its own: it would bypass the app's Animations switch.
+    expect(css).not.toContain('prefers-reduced-motion');
   });
 
   it('Reduce Transparency makes the sidebar and launch bar solid', () => {
@@ -97,6 +109,7 @@ describe('Wex tokens follow the reference', () => {
 describe('Theme state', () => {
   afterEach(() => {
     theme.setAppearance('auto');
+    theme.motionExplicitOn = false;
     theme.setReduceMotion(false);
     theme.setReduceTransparency(false);
     theme.systemReduceMotion = false;
@@ -118,7 +131,24 @@ describe('Theme state', () => {
     expect(root.dataset.theme).toBe('light');
   });
 
-  it('the app switch does not hide the system setting and vice versa', () => {
+  it('Animations turned on in Wex beat Windows "Animation effects" off; off always turns motion off', () => {
+    theme.systemReduceMotion = true;
+    theme.setMotionEnabled(true);
+    expect(theme.motionReduced).toBe(false);
+    expect(document.documentElement.dataset.reduceMotion).toBe('false');
+    expect(duration('indicator')).toBe(WexMotion.ms.indicator);
+    expect(localStorage.getItem('wex_motion_on')).toBe('1');
+
+    theme.setMotionEnabled(false);
+    expect(theme.motionReduced).toBe(true);
+    expect(localStorage.getItem('wex_motion_on')).toBeNull();
+
+    theme.systemReduceMotion = false;
+    theme.applyDom();
+    expect(theme.motionReduced).toBe(true); // the app switch is off
+  });
+
+  it('without an explicit choice the system setting applies', () => {
     theme.systemReduceMotion = true;
     theme.setReduceMotion(false);
     expect(theme.reduceMotion).toBe(false);

@@ -492,7 +492,7 @@
     position: relative;
     transform-style: preserve-3d;
     transform: rotateY(var(--turn, 0deg));
-    transition: transform 700ms var(--spring);
+    transition: transform var(--dur-page) var(--ease);
   }
   .rig.now {
     transition: none;
@@ -554,7 +554,7 @@
     animation: wave 1.1s ease-in-out infinite;
   }
   .rig :global(.j-cape .swing) {
-    transition: transform 600ms var(--ease);
+    transition: transform var(--dur-page) var(--ease);
   }
   .rig.pose-idle :global(.j-cape .swing),
   .rig.pose-wave :global(.j-cape .swing) {

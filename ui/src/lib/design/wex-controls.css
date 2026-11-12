@@ -480,3 +480,17 @@
   background: var(--blue-tint);
   transform: scale(1.02);
 }
+
+/* Tab content (build page, wardrobe, friends): what a tab shows rises in softly
+   instead of appearing at once. Runs whenever a block is inserted, so switching
+   tabs or swapping loading for content fades through opacity and transform.
+   Instant under Reduce Motion / Animations off (durations are 0). */
+.wx [role='tabpanel'] > * {
+  animation: wx-appear var(--dur-short) var(--ease) both;
+}
+@keyframes wx-appear {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}

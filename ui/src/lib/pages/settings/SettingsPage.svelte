@@ -12,6 +12,7 @@
   import { launch } from '../../shell/launch.svelte';
   import { indicator } from '../../shell/indicator';
   import { call } from '../../shell/ipc';
+  import { theme } from '../../design/theme.svelte';
   import { toasts } from '../../shell/toast.svelte';
   import { applyLook } from '../../shell/look';
   import { formatError } from '../../design/errors';
@@ -132,6 +133,13 @@
     } catch (e) {
       toasts.show(t('build.save_failed'), formatError(e, 'settings').description);
     }
+  }
+
+  /** On is an explicit choice that also beats Windows "Animation effects" off; off turns motion off. */
+  async function toggleMotion() {
+    const enable = theme.motionReduced;
+    theme.setMotionEnabled(enable);
+    await save({ reduce_motion: !enable });
   }
 
   function flip(key: string) {
@@ -335,8 +343,11 @@
           </div>
         </div>
         <div class="srow" data-k={t('settings2.k_motion')}>
-          <div><div class="l">{t('settings2.motion')}</div><div class="d">{t('settings2.motion_d')}</div></div>
-          <button type="button" class="switch" role="switch" aria-checked={!!s && !s.reduce_motion} aria-label={t('settings2.motion')} disabled={!s} onclick={() => save({ reduce_motion: !s?.reduce_motion })}></button>
+          <div>
+            <div class="l">{t('settings2.motion')}</div>
+            <div class="d">{theme.systemReduceMotion && theme.motionReduced ? t('settings2.motion_system_off') : t('settings2.motion_d')}</div>
+          </div>
+          <button type="button" class="switch" role="switch" aria-checked={!!s && !theme.motionReduced} aria-label={t('settings2.motion')} disabled={!s} onclick={toggleMotion}></button>
         </div>
         <div class="srow" data-k={t('settings2.k_transparency')}>
           <div><div class="l">{t('settings2.transparency')}</div><div class="d">{t('settings2.transparency_d')}</div></div>

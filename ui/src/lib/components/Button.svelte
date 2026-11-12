@@ -254,18 +254,6 @@
     }
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .apple-button {
-      transition: none !important;
-    }
-    .apple-button:active:not(:disabled) {
-      transform: none !important;
-    }
-    .spinner {
-      animation: none !important;
-      opacity: 0.85;
-    }
-  }
 
   :global([data-effects="off"]) .apple-button,
   :global([data-reduce-motion="true"]) .apple-button {

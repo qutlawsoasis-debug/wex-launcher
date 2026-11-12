@@ -197,16 +197,6 @@
     background: transparent;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .track-fill,
-    .slider-thumb {
-      transition: none !important;
-    }
-    .apple-slider-container:has(.range-input:active) .slider-thumb,
-    .slider-track-area:active .slider-thumb {
-      transform: none !important;
-    }
-  }
 
   :global([data-reduce-motion="true"]) .track-fill,
   :global([data-reduce-motion="true"]) .slider-thumb {

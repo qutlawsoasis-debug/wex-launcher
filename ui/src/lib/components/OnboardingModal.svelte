@@ -1151,7 +1151,7 @@
   .prewarm-fill {
     height: 100%;
     background: var(--blue);
-    transition: width 300ms ease;
+    transition: width var(--dur-page) var(--ease);
   }
 
   .prewarm-fill.indeterminate {
@@ -1520,19 +1520,6 @@
   }
 
   /* Reduce Motion overrides */
-  @media (prefers-reduced-motion: reduce) {
-    .onboarding-scrim,
-    .onboarding-card,
-    .step-pane,
-    .step-dot,
-    .prewarm-fill,
-    .version-card,
-    .card-check {
-      animation: none !important;
-      transition: none !important;
-      transform: none !important;
-    }
-  }
 
   :global([data-reduce-motion='true']) .onboarding-scrim,
   :global([data-reduce-motion='true']) .onboarding-card,

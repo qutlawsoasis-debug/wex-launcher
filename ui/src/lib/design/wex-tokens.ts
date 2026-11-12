@@ -54,18 +54,18 @@ export const WexLayout = {
 } as const;
 
 export const WexMotion = {
-  ease: 'cubic-bezier(0.32, 0.72, 0, 1)',
-  spring: 'cubic-bezier(0.34, 1.32, 0.64, 1)',
+  ease: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+  spring: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
   ms: {
-    micro: 120,
-    short: 240,
-    indicator: 420,
-    page: 380,
+    micro: 180,
+    short: 220,
+    indicator: 260,
+    page: 280,
     pageOut: 180,
-    pair: 640,
-    swap: 360,
-    started: 900,
-    stagger: 60,
+    pair: 280,
+    swap: 220,
+    started: 600,
+    stagger: 40,
     countUp: 700,
     toast: 2600,
   },
@@ -75,15 +75,9 @@ export const WexMotion = {
 
 export type WexDuration = keyof typeof WexMotion.ms;
 
-/** True when the system asks for less motion or the app's Animations switch is off. */
+/** True when motion is reduced as theme resolved it (app switch over system, see theme.svelte.ts). */
 export function motionReduced(): boolean {
-  if (typeof document !== 'undefined' && document.documentElement.dataset.reduceMotion === 'true') {
-    return true;
-  }
-  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  }
-  return false;
+  return typeof document !== 'undefined' && document.documentElement.dataset.reduceMotion === 'true';
 }
 
 /** A duration in ms, or 0 when motion is reduced (for JS-driven animation). */

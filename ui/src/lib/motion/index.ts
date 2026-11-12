@@ -122,8 +122,8 @@ export const CARD_HOVER_Y = -2;
  * Checks system prefers-reduced-motion media query
  */
 export function isSystemReduceMotion(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Resolved by theme: the system setting unless the user turned Animations on in Wex.
+  return typeof document !== 'undefined' && document.documentElement.getAttribute('data-reduce-motion') === 'true';
 }
 
 /**

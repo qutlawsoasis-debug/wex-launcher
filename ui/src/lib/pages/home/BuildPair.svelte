@@ -155,13 +155,13 @@
     transform: translate(calc(var(--px, 0) * -18px), calc(var(--py, 0) * -10px));
     transition:
       opacity var(--dur-short),
-      transform 900ms var(--ease);
+      transform var(--dur-page) var(--ease);
   }
   .pane:not(.open) .pane-ver {
     opacity: 0;
   }
   .pane.open .pane-ver {
-    animation: ver-in 900ms var(--ease) both;
+    animation: ver-in var(--dur-page) var(--ease) both;
   }
   @keyframes ver-in {
     from {
@@ -221,7 +221,7 @@
     min-width: calc(100cqw - 116px);
   }
   .pane-body > * {
-    animation: rise 520ms var(--ease) both;
+    animation: rise var(--dur-page) var(--ease) both;
   }
   .pane-body > :nth-child(2) {
     animation-delay: 70ms;
@@ -300,11 +300,5 @@
   :global(:root[data-reduce-motion='true']) .pane-body > *,
   :global(:root[data-reduce-motion='true']) .pane.open .pane-ver {
     animation: none;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .pane-body > *,
-    .pane.open .pane-ver {
-      animation: none;
-    }
   }
 </style>

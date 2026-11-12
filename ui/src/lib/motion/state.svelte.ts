@@ -23,15 +23,8 @@ class MotionStateManager {
 
   constructor() {
     if (typeof window !== 'undefined') {
-      // 1. Listen to system prefers-reduced-motion
-      if (typeof window.matchMedia === 'function') {
-        const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-        this.systemReduceMotion = motionQuery.matches;
-        motionQuery.addEventListener('change', (e) => {
-          this.systemReduceMotion = e.matches;
-          this.syncDomAttributes();
-        });
-      }
+      // 1. Reduced motion is decided by theme (system setting vs the app's switch)
+      //    and handed in through systemReduceMotion; no own media listener.
 
       // 2. Listen to visibility change to pause rAF when window is minimized or hidden
       if (typeof document !== 'undefined' && !this.visibilityListenerAttached) {
@@ -84,7 +77,6 @@ class MotionStateManager {
     if (typeof document === 'undefined') return;
     const root = document.documentElement;
     root.setAttribute('data-effects', this.mode);
-    root.setAttribute('data-reduce-motion', String(this.isReduced));
   }
 
   /**

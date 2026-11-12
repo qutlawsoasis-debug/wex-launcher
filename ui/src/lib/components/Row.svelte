@@ -274,14 +274,6 @@
     align-items: center;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .apple-row {
-      transition: none !important;
-    }
-    .apple-row.cascade-in {
-      animation: none !important;
-    }
-  }
 
   :global([data-reduce-motion="true"]) .apple-row {
     transition: none !important;

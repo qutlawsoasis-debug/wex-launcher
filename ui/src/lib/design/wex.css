@@ -111,18 +111,21 @@
   --control-h-big: 52px;
   --gutter: 24px;
 
-  /* Motion */
-  --ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --spring: cubic-bezier(0.34, 1.32, 0.64, 1);
-  --dur-micro: 120ms;
-  --dur-short: 240ms;
-  --dur-ind: 420ms;
-  --dur-page: 380ms;
+  /* Motion: quick but smooth (owner's rule, 2026-11-12). One ease-out curve
+     without overshoot for everything; --spring is kept as a name and is the same
+     curve, so nothing bounces. Transitions 180–280 ms; states change through
+     opacity and transform. HIG › Motion: brief, purposeful, never in the way. */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --spring: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-micro: 180ms;
+  --dur-short: 220ms;
+  --dur-ind: 260ms;
+  --dur-page: 280ms;
   --dur-page-out: 180ms;
-  --dur-pair: 640ms;
-  --dur-swap: 360ms;
-  --dur-started: 900ms;
-  --stagger: 60ms;
+  --dur-pair: 280ms;
+  --dur-swap: 220ms;
+  --dur-started: 600ms;
+  --stagger: 40ms;
   --press-scale: 0.97;
   --hover-lift: -2px;
 
@@ -219,21 +222,6 @@
   --press-scale: 1;
   --hover-lift: 0px;
 }
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --dur-micro: 0ms;
-    --dur-short: 0ms;
-    --dur-ind: 0ms;
-    --dur-page: 0ms;
-    --dur-page-out: 0ms;
-    --dur-pair: 0ms;
-    --dur-swap: 0ms;
-    --dur-started: 0ms;
-    --stagger: 0ms;
-    --press-scale: 1;
-    --hover-lift: 0px;
-  }
-}
 
 /* Base: reset, window, form controls. */
 *,
@@ -279,16 +267,6 @@ textarea {
 }
 
 /* Reduce Motion or Animations off: animations end at once, nothing loops (HIG › Motion). */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
-  }
-}
 :root[data-reduce-motion='true'] *,
 :root[data-reduce-motion='true'] *::before,
 :root[data-reduce-motion='true'] *::after {

@@ -172,12 +172,6 @@
     outline-offset: 1px;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .apple-search-field,
-    .clear-btn {
-      transition: none !important;
-    }
-  }
 
   :global([data-reduce-motion="true"]) .apple-search-field,
   :global([data-reduce-motion="true"]) .clear-btn {

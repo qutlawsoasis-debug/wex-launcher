@@ -221,7 +221,7 @@
     text-overflow: ellipsis;
   }
   .tick {
-    animation: tick 320ms var(--ease);
+    animation: tick var(--dur-short) var(--ease);
   }
   @keyframes tick {
     from {
@@ -278,14 +278,6 @@
   }
   :global(:root[data-reduce-motion='true']) .track::after {
     display: none;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .track::after {
-      display: none;
-    }
-    .track i {
-      transition: none;
-    }
   }
   .play {
     height: var(--control-h-big);

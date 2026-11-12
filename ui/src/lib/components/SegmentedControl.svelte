@@ -82,8 +82,7 @@
 
   function isReducedMotion(): boolean {
     if (typeof window === 'undefined') return false;
-    if (document.documentElement.getAttribute('data-reduce-motion') === 'true') return true;
-    return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+    return document.documentElement.getAttribute('data-reduce-motion') === 'true';
   }
 
   function applyFrame(curX: number, velocity: number) {
