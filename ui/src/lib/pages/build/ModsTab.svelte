@@ -1,15 +1,15 @@
 <!--
   Mods of the build (reference: Моды tab). Search, All / Enabled, toggles.
   HIG › Toggles: systemGreen when on. HIG › Search fields: filters as you type.
-  Adding: drop a .jar onto the window (core takes a file path; there is no file
-  dialog in core, so a plain «Добавить мод» picker is not offered).
+  Adding: «Добавить мод» opens the system file picker (tauri-plugin-dialog);
+  dropping .jar files onto the window works too.
   Not shown because core has no data: mod author, available updates, dependencies.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import { indicator } from '../../shell/indicator';
   import { onFileDrop } from '../../shell/fileDrop';
-  import { call } from '../../shell/ipc';
+  import { pickFiles } from '../../shell/filePick';
   import { toasts } from '../../shell/toast.svelte';
   import { formatError } from '../../design/errors';
   import { t, tn } from '../../i18n';
@@ -42,33 +42,30 @@
     }
   }
 
-  async function openFolder() {
+  async function add(paths: string[]) {
+    const jars = paths.filter((p) => /\.jar$/i.test(p));
+    if (!jars.length) {
+      if (paths.length) toasts.show(t('build.drop_need_jar'));
+      return;
+    }
     try {
-      await call('open_mods_dir', { version: build.version });
+      toasts.show(tn('build.mods_added', await build.addMods(jars)));
     } catch (e) {
-      toasts.show(t('build.open_failed'), formatError(e, 'mods').description);
+      const f = formatError(e, 'mods');
+      toasts.show(f.title, f.description);
     }
   }
 
-  onMount(() =>
-    onFileDrop({
-      hover: (v) => (over = v),
-      drop: async (paths) => {
-        const jars = paths.filter((p) => /\.jar$/i.test(p));
-        if (!jars.length) {
-          toasts.show(t('build.drop_need_jar'));
-          return;
-        }
-        try {
-          const n = await build.addMods(jars);
-          toasts.show(tn('build.mods_added', n));
-        } catch (e) {
-          const f = formatError(e, 'mods');
-          toasts.show(f.title, f.description);
-        }
-      },
-    })
-  );
+  /** «Добавить мод»: the system open panel, .jar only, several at once. */
+  async function choose() {
+    try {
+      await add(await pickFiles({ title: t('build.add_mod'), filterName: t('build.filter_mods'), extensions: ['jar'] }));
+    } catch (e) {
+      toasts.show(t('build.pick_failed'), formatError(e, 'mods').description);
+    }
+  }
+
+  onMount(() => onFileDrop({ hover: (v) => (over = v), drop: (paths) => void add(paths) }));
 </script>
 
 <div class="tools">
@@ -80,7 +77,7 @@
     <button type="button" aria-pressed={filter === 'all'} onclick={() => (filter = 'all')}>{t('build.filter_all')}</button>
     <button type="button" aria-pressed={filter === 'on'} onclick={() => (filter = 'on')}>{t('build.filter_on')}</button>
   </div>
-  <button type="button" class="btn" onclick={openFolder}>{t('build.mods_folder')}</button>
+  <button type="button" class="btn" onclick={choose}>{t('build.add_mod')}</button>
 </div>
 
 <div class="list" class:over>
@@ -112,7 +109,7 @@
     <p class="empty"><b>{t('build.mods_empty')}</b> {t('build.mods_drop_hint')}</p>
   {/if}
 </div>
-{#if build.mods?.length}<p class="hint">{t('build.mods_drop_hint')}</p>{/if}
+{#if build.mods?.length}<p class="hint">{t('build.mods_drop_also')}</p>{/if}
 
 <style>
   .lrow-mod {

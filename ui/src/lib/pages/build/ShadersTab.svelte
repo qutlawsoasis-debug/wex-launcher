@@ -6,6 +6,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { onFileDrop } from '../../shell/fileDrop';
+  import { pickFiles } from '../../shell/filePick';
   import { call } from '../../shell/ipc';
   import { toasts } from '../../shell/toast.svelte';
   import { formatError } from '../../design/errors';
@@ -40,28 +41,34 @@
     }
   }
 
-  onMount(() =>
-    onFileDrop({
-      hover: (v) => (over = v),
-      drop: async (paths) => {
-        if (!paths.some((p) => /\.zip$/i.test(p))) {
-          toasts.show(t('build.drop_need_zip'));
-          return;
-        }
-        try {
-          toasts.show(tn('build.shaders_added', await build.addPacks(paths, 'shaderpack')));
-        } catch (e) {
-          const f = formatError(e, 'workshop');
-          toasts.show(f.title, f.description);
-        }
-      },
-    })
-  );
+  async function add(paths: string[]) {
+    if (!paths.some((p) => /\.zip$/i.test(p))) {
+      if (paths.length) toasts.show(t('build.drop_need_zip'));
+      return;
+    }
+    try {
+      toasts.show(tn('build.shaders_added', await build.addPacks(paths, 'shaderpack')));
+    } catch (e) {
+      const f = formatError(e, 'workshop');
+      toasts.show(f.title, f.description);
+    }
+  }
+
+  async function pickAndAdd() {
+    try {
+      await add(await pickFiles({ title: t('build.add_shader'), filterName: t('build.filter_shaders'), extensions: ['zip'] }));
+    } catch (e) {
+      toasts.show(t('build.pick_failed'), formatError(e, 'workshop').description);
+    }
+  }
+
+  onMount(() => onFileDrop({ hover: (v) => (over = v), drop: (paths) => void add(paths) }));
 </script>
 
 <div class="tools">
   <span class="grow"></span>
   <button type="button" class="btn" onclick={openFolder}>{t('build.shaders_folder')}</button>
+  <button type="button" class="btn" onclick={pickAndAdd}>{t('build.add_shader')}</button>
 </div>
 
 <div class="list" class:over role="radiogroup" aria-label={t('build.tab_shaders')}>
@@ -88,7 +95,7 @@
     {/if}
   {/if}
 </div>
-{#if build.shaders?.length}<p class="hint">{t('build.shaders_drop_hint')}</p>{/if}
+{#if build.shaders?.length}<p class="hint">{t('build.shaders_drop_also')}</p>{/if}
 
 <style>
   .grow {

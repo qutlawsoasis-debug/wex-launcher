@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), drop: null as null | ((e: { payload: unknown }) => void) }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), open: vi.fn(), drop: null as null | ((e: { payload: unknown }) => void) }));
+vi.mock('@tauri-apps/plugin-dialog', () => ({ open: mocks.open }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
 vi.mock('@tauri-apps/api/webview', () => ({
@@ -156,6 +157,19 @@ describe('mods tab', () => {
     await vi.waitFor(() => expect(target.querySelector('.lrow .switch')?.getAttribute('aria-checked')).toBe('true'));
   });
 
+  it('«Добавить мод» opens the system picker for .jar files and adds what was picked', async () => {
+    mocks.open.mockResolvedValueOnce(['C:/Downloads/picked.jar']);
+    await open();
+    [...target.querySelectorAll<HTMLButtonElement>('.tools .btn')].find((b) => b.textContent === 'Добавить мод')!.click();
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('add_custom_mod', { version: '1.20.1', sourcePath: 'C:/Downloads/picked.jar' }));
+    expect(mocks.open).toHaveBeenCalledWith(expect.objectContaining({ multiple: true, directory: false, filters: [{ name: 'Моды Minecraft (.jar)', extensions: ['jar'] }] }));
+    mocks.open.mockResolvedValueOnce(null);
+    const calls = mocks.invoke.mock.calls.length;
+    [...target.querySelectorAll<HTMLButtonElement>('.tools .btn')].find((b) => b.textContent === 'Добавить мод')!.click();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(mocks.invoke.mock.calls.slice(calls).some(([c]) => c === 'add_custom_mod')).toBe(false);
+  });
+
   it('adds a mod from a .jar dropped onto the window', async () => {
     await open();
     await vi.waitFor(() => expect(mocks.drop).not.toBeNull());
@@ -188,6 +202,20 @@ describe('worlds tab', () => {
 });
 
 describe('workshop tabs', () => {
+  it('«Добавить ресурспак» and «Добавить шейдер» pick .zip files and add them with the right type', async () => {
+    await open();
+    mocks.open.mockResolvedValueOnce(['C:/d/pack.zip']);
+    tab('packs');
+    await vi.waitFor(() => expect(target.textContent).toContain('Добавить ресурспак'));
+    [...target.querySelectorAll<HTMLButtonElement>('.tools .btn')].find((b) => b.textContent === 'Добавить ресурспак')!.click();
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('workshop_add_pack_file', { sourcePath: 'C:/d/pack.zip', packType: 'resourcepack', version: '1.20.1' }));
+    mocks.open.mockResolvedValueOnce(['C:/d/shader.zip']);
+    tab('shaders');
+    await vi.waitFor(() => expect(target.textContent).toContain('Добавить шейдер'));
+    [...target.querySelectorAll<HTMLButtonElement>('.tools .btn')].find((b) => b.textContent === 'Добавить шейдер')!.click();
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('workshop_add_pack_file', { sourcePath: 'C:/d/shader.zip', packType: 'shaderpack', version: '1.20.1' }));
+  });
+
   it('shaders are a single choice and the choice is saved', async () => {
     await open();
     tab('shaders');

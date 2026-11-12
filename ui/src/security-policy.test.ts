@@ -31,6 +31,10 @@ describe('bundled WebView security boundary', () => {
     expect(capability.windows).toEqual(['main']);
     expect(capability.remote).toBeUndefined();
     expect(capability.permissions).toContain('launcher-ui');
+    // The dialog plugin may only open files: no save dialog, no message boxes, no file system access.
+    const dialog = capability.permissions.filter((p: unknown) => typeof p === 'string' && p.startsWith('dialog:'));
+    expect(dialog).toEqual(['dialog:allow-open']);
+    expect(capability.permissions.some((p: unknown) => typeof p === 'string' && p.startsWith('fs:'))).toBe(false);
     const permissions = read('permissions/launcher-ui.toml');
     expect(permissions).not.toMatch(/"(?:net_tunnel_start|extras_generate_csl_config|extras_save_skin)"/);
   });

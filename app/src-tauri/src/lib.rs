@@ -49,6 +49,8 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_notification::init())
+        // File picker only: the UI asks for paths of mods, packs and shader packs to add.
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();
