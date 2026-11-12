@@ -33,6 +33,7 @@
     font-size: var(--t-sub);
   }
   .square {
+    font-size: var(--t-body);
     border-radius: var(--r-s);
     width: 40px;
     height: 40px;

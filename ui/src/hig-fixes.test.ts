@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, unmount } from 'svelte';
 import Sheet from './lib/components/Sheet.svelte';
 import OnboardingModal from './lib/components/OnboardingModal.svelte';
-import WorkshopScreen from './lib/screens/WorkshopScreen.svelte';
 import ServersScreen from './lib/screens/ServersScreen.svelte';
 import { theme } from './lib/design/theme.svelte';
 
@@ -71,42 +70,6 @@ describe('Apple HIG Fixes Verification', () => {
     expect(document.querySelector('.sheet-card')).not.toBeNull();
     expect(document.querySelector('.sheet-error')).not.toBeNull();
     expect(document.querySelector('.sheet-error')?.textContent).toContain('Укажите название и адрес');
-
-    unmount(comp);
-  });
-
-  it('3. WorkshopScreen resource packs and shaders empty states interpolate version and do not leak literal {version}', async () => {
-    const comp = mount(WorkshopScreen, {
-      target,
-      props: {
-        selectedVersion: '1.21.1',
-      },
-    });
-
-    // Switch to Resource Packs tab
-    const buttons = Array.from(target.querySelectorAll('button'));
-    const packsBtn = buttons.find((b) => b.textContent?.includes('Ресурс-паки'));
-    expect(packsBtn).toBeDefined();
-    packsBtn?.click();
-    await new Promise((r) => setTimeout(r, 50));
-
-    const descEl = target.querySelector('.empty-description');
-    expect(descEl).not.toBeNull();
-    expect(descEl?.textContent).not.toContain('{version}');
-    expect(descEl?.textContent).toContain('1.21.1');
-
-    // Switch to Shaders tab
-    const shadersBtn = Array.from(target.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Шейдеры')
-    );
-    expect(shadersBtn).toBeDefined();
-    shadersBtn?.click();
-    await new Promise((r) => setTimeout(r, 50));
-
-    const shadersDesc = target.querySelector('.empty-description');
-    expect(shadersDesc).not.toBeNull();
-    expect(shadersDesc?.textContent).not.toContain('{version}');
-    expect(shadersDesc?.textContent).toContain('1.21.1');
 
     unmount(comp);
   });

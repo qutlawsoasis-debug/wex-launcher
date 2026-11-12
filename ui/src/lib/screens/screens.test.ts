@@ -4,10 +4,8 @@ import UpdateCard from '../components/UpdateCard.svelte';
 import ServersScreen from './ServersScreen.svelte';
 import LobbyScreen from './LobbyScreen.svelte';
 import FriendsScreen from './FriendsScreen.svelte';
-import ModsScreen from './ModsScreen.svelte';
 import SettingsScreen from './SettingsScreen.svelte';
 import WardrobeScreen from './WardrobeScreen.svelte';
-import WorkshopScreen from './WorkshopScreen.svelte';
 import SplashScreen from './SplashScreen.svelte';
 import { theme } from '../design/theme.svelte';
 import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
@@ -667,32 +665,6 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders ModsScreen with real IPC mod data, pack badges, add button, and status toggles', async () => {
-    const comp = mount(ModsScreen, { target });
-    await tick();
-    await new Promise((r) => setTimeout(r, 20));
-
-    expect(target.textContent).toContain('Fabric API');
-    expect(target.textContent).toContain('Xaero Minimap');
-    expect(target.textContent).toContain('Добавить мод...');
-    expect(target.textContent).toContain('Папка с модами');
-    expect(target.textContent).toContain('Пак Wex');
-    unmount(comp);
-  });
-
-  it('renders ModsScreen with authentic empty state when no mods exist', async () => {
-    const comp = mount(ModsScreen, {
-      target,
-      props: { initialVersion: '1.20.1' },
-    });
-    await tick();
-    await new Promise((r) => setTimeout(r, 20));
-
-    expect(target.textContent).toContain('Моды не найдены');
-    expect(target.textContent).toContain('В папке игры пока нет модов');
-    unmount(comp);
-  });
-
   it('renders SettingsScreen with RAM slider, Java options, Discord RPC, graphics presets, and About Wex', async () => {
     const comp = mount(SettingsScreen, { target });
     expect(target.textContent).toContain('Тема оформления');
@@ -972,100 +944,6 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders WorkshopScreen with tabs, version selector, and authentic empty states', () => {
-    const comp = mount(WorkshopScreen, {
-      target,
-      props: {
-        selectedVersion: '1.21.1',
-      },
-    });
-
-    // Check tabs
-    expect(target.textContent).toContain('Миры');
-    expect(target.textContent).toContain('Ресурс-паки');
-    expect(target.textContent).toContain('Шейдеры');
-    expect(target.textContent).toContain('Скриншоты');
-    expect(target.textContent).toContain('1.21.1');
-    expect(target.textContent).toContain('1.20.1');
-
-    // Without IPC data, must show authentic empty state
-    expect(target.textContent).toMatch(/Сохранённых миров нет|Миров пока нет/);
-    expect(target.textContent).toMatch(/Создайте одиночный мир|Создайте мир/);
-
-    // No fake/fabricated worlds
-    expect(target.textContent).not.toContain('Demo World');
-    expect(target.textContent).not.toContain('Hardcore Kingdom');
-
-    unmount(comp);
-  });
-
-  it('renders WorkshopScreen with screenshots empty state when switched to screenshots tab', async () => {
-    const comp = mount(WorkshopScreen, {
-      target,
-      props: {
-        selectedVersion: '1.20.1',
-      },
-    });
-
-    const buttons = Array.from(target.querySelectorAll('button'));
-    const screenshotsBtn = buttons.find((b) => b.textContent?.includes('Скриншоты'));
-    expect(screenshotsBtn).toBeDefined();
-
-    screenshotsBtn?.click();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    expect(target.textContent).toMatch(/Снимков экрана пока нет|Скриншотов пока нет/);
-    expect(target.textContent).toMatch(/Нажмите клавишу F2|Нажмите F2/);
-
-    unmount(comp);
-  });
-
-  it('renders WorkshopScreen with resource packs empty state and header actions when switched to resourcepacks tab', async () => {
-    const comp = mount(WorkshopScreen, {
-      target,
-      props: {
-        selectedVersion: '1.21.1',
-      },
-    });
-
-    const buttons = Array.from(target.querySelectorAll('button'));
-    const packsBtn = buttons.find((b) => b.textContent?.includes('Ресурс-паки'));
-    expect(packsBtn).toBeDefined();
-
-    packsBtn?.click();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    expect(target.textContent).toContain('Ресурс-паков пока нет');
-    expect(target.textContent).toContain('Поместите архив с ресурс-паком');
-    expect(target.textContent).toContain('Добавить архив…');
-    expect(target.textContent).toContain('Папка паков');
-
-    unmount(comp);
-  });
-
-  it('renders WorkshopScreen with shaders empty state and header actions when switched to shaders tab', async () => {
-    const comp = mount(WorkshopScreen, {
-      target,
-      props: {
-        selectedVersion: '1.21.1',
-      },
-    });
-
-    const buttons = Array.from(target.querySelectorAll('button'));
-    const shadersBtn = buttons.find((b) => b.textContent?.includes('Шейдеры'));
-    expect(shadersBtn).toBeDefined();
-
-    shadersBtn?.click();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    expect(target.textContent).toContain('Шейдер-паков пока нет');
-    expect(target.textContent).toContain('Поместите архив с шейдерами');
-    expect(target.textContent).toContain('Добавить архив…');
-    expect(target.textContent).toContain('Папка шейдеров');
-
-    unmount(comp);
-  });
-
   it('renders SplashScreen with wordmark logo, version badge, and initial status', () => {
     const comp = mount(SplashScreen, {
       target,
@@ -1318,36 +1196,6 @@ describe('Wex Launcher Screens', () => {
       unmount(comp);
     });
 
-    it('6. WorkshopScreen renders honest offline state while local worlds, packs, shaders, and screenshots work', async () => {
-      const { network } = await import('../design/network.svelte');
-      network.setOnlineForTesting(false);
-
-      const comp = mount(WorkshopScreen, { target });
-      await tick();
-
-      expect(target.textContent).toContain('Нет подключения');
-      expect(target.textContent).toContain('Одиночные миры, ресурс-паки, шейдеры и скриншоты полностью доступны офлайн');
-      expect(target.textContent).toContain('Повторить');
-
-      network.setOnlineForTesting(true);
-      unmount(comp);
-    });
-
-    it('7. ModsScreen renders honest offline state while installed mods management works', async () => {
-      const { network } = await import('../design/network.svelte');
-      network.setOnlineForTesting(false);
-
-      const comp = mount(ModsScreen, { target });
-      await tick();
-
-      expect(target.textContent).toContain('Нет подключения');
-      expect(target.textContent).toContain('Управление установленными модами и папка инстанса доступны офлайн');
-      expect(target.textContent).toContain('Повторить');
-
-      network.setOnlineForTesting(true);
-      unmount(comp);
-    });
-
     it('8. SettingsScreen renders honest offline state while local launcher settings work', async () => {
       const { network } = await import('../design/network.svelte');
       network.setOnlineForTesting(false);
@@ -1409,21 +1257,6 @@ describe('Wex Launcher Screens', () => {
 
     expect(target.textContent).toContain('Отчёт об ошибке');
     expect(target.textContent).toContain('Сохранить на рабочий стол (.zip)');
-    unmount(comp);
-  });
-
-  it('renders ModsScreen with protected pack mod ErrorState when deletion is rejected', async () => {
-    const comp = mount(ModsScreen, { target });
-    await tick();
-
-    // Trigger delete on pack mod
-    const deletePackBtn = target.querySelector('.pack-badge')
-      ?.closest('.row-trailing')
-      ?.querySelector('.delete-btn');
-
-    // Pack mod should not have a delete button, or if triggered internally:
-    expect(target.textContent).toContain('Пак Wex');
-
     unmount(comp);
   });
 

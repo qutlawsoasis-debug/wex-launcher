@@ -24,14 +24,13 @@
   import TopLine from './lib/shell/TopLine.svelte';
   import LaunchBar from './lib/shell/LaunchBar.svelte';
   import ToastHost from './lib/shell/ToastHost.svelte';
-  import PageTitle from './lib/shell/PageTitle.svelte';
   import HomePage from './lib/pages/home/HomePage.svelte';
+  import BuildPage from './lib/pages/build/BuildPage.svelte';
   import { router, buildIdOf, isRoute, buildRoute, type Route } from './lib/shell/router.svelte';
   import { builds } from './lib/shell/builds.svelte';
   import { launch } from './lib/shell/launch.svelte';
   import { toasts } from './lib/shell/toast.svelte';
   import { call, on, inTauri } from './lib/shell/ipc';
-  import { indicator } from './lib/shell/indicator';
   import { stagger } from './lib/shell/stagger';
 
   type ToastKind = 'info' | 'success' | 'warning' | 'error';
@@ -48,8 +47,6 @@
       lobby: () => import('./lib/screens/LobbyScreen.svelte'),
       wardrobe: () => import('./lib/screens/WardrobeScreen.svelte'),
       options: () => import('./lib/screens/SettingsScreen.svelte'),
-      mods: () => import('./lib/screens/ModsScreen.svelte'),
-      workshop: () => import('./lib/screens/WorkshopScreen.svelte'),
       splash: () => import('./lib/screens/SplashScreen.svelte'),
     };
     const load = loaders[name];
@@ -64,7 +61,6 @@
   let pendingDeepLink = $state<DeepLinkAction | DeepLinkActionDto | null>(null);
   let lobbyRoom = $state<LobbyRoom | null>(null);
   let friendsSubtab = $state<'friends' | 'requests' | 'achievements'>('friends');
-  let buildTab = $state<'mods' | 'workshop'>('mods');
   let mainEl: HTMLElement | undefined = $state();
 
   let CrashSheet = $state<any>(null);
@@ -77,7 +73,6 @@
   $effect(() => {
     const r = router.route;
     if (r === 'servers' || r === 'friends' || r === 'lobby' || r === 'wardrobe' || r === 'options') void loadScreen(r);
-    if (routeBuild) void loadScreen(buildTab);
   });
 
   $effect(() => {
@@ -123,7 +118,6 @@
       lobby: 'lobby',
     };
     if (tab === 'mods' || tab === 'workshop') {
-      buildTab = tab;
       router.go(buildRoute(builds.selectedId));
     } else if (map[tab]) {
       router.go(map[tab]);
@@ -330,34 +324,11 @@
   <main class="main" bind:this={mainEl}>
     <TopLine />
     {#key router.version}
-      <div class="page" class:wx={router.route === 'home'} use:stagger>
+      <div class="page" class:wx={router.route === 'home' || !!routeBuild} use:stagger>
         {#if router.route === 'home'}
           <HomePage />
         {:else if routeBuild}
-          <PageTitle title={t('shell.build_name', { ver: routeBuild })} />
-          <div>
-            <div class="tabs" role="tablist" aria-label={t('shell.build_tabs')} use:indicator={{ selector: '[aria-selected="true"]', key: buildTab, kind: 'underline' }}>
-              <button type="button" role="tab" aria-selected={buildTab === 'mods'} onclick={() => (buildTab = 'mods')}>{t('shell.build_tab_mods')}</button>
-              <button type="button" role="tab" aria-selected={buildTab === 'workshop'} onclick={() => (buildTab = 'workshop')}>{t('shell.build_tab_workshop')}</button>
-            </div>
-            <div class="legacy" role="tabpanel">
-              {#if buildTab === 'mods' && screens.mods}
-                {@const ModsScreen = screens.mods}
-                <ModsScreen initialVersion={routeBuild} />
-              {:else if buildTab === 'workshop' && screens.workshop}
-                {@const WorkshopScreen = screens.workshop}
-                <WorkshopScreen
-                  selectedVersion={routeBuild}
-                  ontoast={notify}
-                  playerName={builds.playerName}
-                  onopenlobby={(room: LobbyRoom) => {
-                    lobbyRoom = room;
-                    router.go('lobby');
-                  }}
-                />
-              {/if}
-            </div>
-          </div>
+          <BuildPage version={routeBuild} />
         {:else if router.route === 'servers' && screens.servers}
           {@const ServersScreen = screens.servers}
           <div class="legacy"><ServersScreen selectedVersion={builds.selectedId} playerName={builds.playerName} /></div>
@@ -467,43 +438,6 @@
     }
   }
 
-  /* Tabs (reference: .tabs): the selected tab is marked by a gliding underline. */
-  .tabs {
-    position: relative;
-    display: flex;
-    gap: 4px;
-    border-bottom: 1px solid var(--separator);
-  }
-  .tabs button {
-    position: relative;
-    z-index: 1;
-    height: 44px;
-    padding: 0 16px;
-    border: 0;
-    background: none;
-    color: var(--label-2);
-    font: inherit;
-    font-weight: var(--w-semibold);
-    cursor: pointer;
-    transition: color var(--dur-micro);
-  }
-  .tabs button:hover,
-  .tabs button[aria-selected='true'] {
-    color: var(--label);
-  }
-  .tabs :global(> .ind) {
-    position: absolute;
-    left: 0;
-    bottom: -1px;
-    height: 2px;
-    border-radius: 2px;
-    background: var(--blue-text);
-    pointer-events: none;
-    transition:
-      transform var(--dur-ind) var(--spring),
-      width var(--dur-ind) var(--spring),
-      opacity var(--dur-short);
-  }
   .legacy {
     margin-top: 16px;
     min-height: 0;

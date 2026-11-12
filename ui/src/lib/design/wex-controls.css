@@ -165,3 +165,298 @@
   background: var(--green);
   flex: none;
 }
+
+/* Lists (reference: .list / .lrow). HIG › Lists and tables: rows with a leading
+ * image, title and detail, a trailing control; separators between rows. */
+.wx .list {
+  border-radius: var(--r-l);
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--edge);
+  overflow: hidden;
+}
+.wx .lrow {
+  display: grid;
+  align-items: center;
+  gap: 16px;
+  min-height: 64px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--separator);
+  transition: background-color var(--dur-micro);
+}
+.wx .lrow:last-child {
+  border-bottom: 0;
+}
+.wx .lrow:hover {
+  background: var(--fill-3);
+}
+.wx .lrow > div {
+  min-width: 0;
+}
+.wx .lrow b {
+  display: block;
+  font-weight: var(--w-semibold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wx .lrow > div > span {
+  font-size: var(--t-foot);
+  color: var(--label-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+.wx .tag {
+  font-size: var(--t-cap);
+  font-weight: var(--w-semibold);
+  padding: 4px 8px;
+  border-radius: var(--r-xs);
+  background: var(--fill-3);
+  color: var(--label-2);
+  white-space: nowrap;
+}
+
+/* In list rows the reference sets tags at 13 px (its .lrow span rule). */
+.wx .lrow .tag {
+  font-size: var(--t-foot);
+}
+
+/* Toggle (reference: .switch). HIG › Toggles: systemGreen when on; spring knob. */
+.wx .switch {
+  width: 51px;
+  height: 31px;
+  border-radius: var(--r-pill);
+  background: var(--fill);
+  position: relative;
+  flex: none;
+  transition: background-color var(--dur-short);
+}
+.wx .switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: var(--label);
+  box-shadow: 0 3px 8px var(--shade);
+  transition: transform var(--dur-ind) var(--spring);
+}
+.wx .switch[aria-checked='true'] {
+  background: var(--green);
+}
+.wx .switch[aria-checked='true']::after {
+  transform: translateX(20px);
+}
+.wx .switch[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Tools row, search field, segmented control (reference: .tools / .search / .seg).
+ * HIG › Search fields; HIG › Segmented controls: the selected segment is a fill. */
+.wx .tools {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.wx .search {
+  flex: 1 1 260px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: var(--r-s);
+  background: var(--fill-3);
+  color: var(--label-3);
+}
+.wx .search input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: 0;
+  color: var(--label);
+  font: inherit;
+}
+.wx .search:focus-within {
+  box-shadow: inset 0 0 0 2px var(--blue);
+}
+.wx .search svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  flex: none;
+}
+.wx .seg {
+  position: relative;
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--r-s);
+  background: var(--fill-3);
+}
+.wx .seg button {
+  position: relative;
+  z-index: 1;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--r-xs);
+  font-size: var(--t-sub);
+  font-weight: var(--w-medium);
+  color: var(--label-2);
+  white-space: nowrap;
+  transition: color var(--dur-micro);
+}
+.wx .seg button[aria-pressed='true'] {
+  color: var(--label);
+}
+.wx .seg > .ind {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: var(--r-xs);
+  background: var(--fill);
+  transition:
+    transform var(--dur-ind) var(--spring),
+    width var(--dur-ind) var(--spring),
+    opacity var(--dur-short);
+}
+
+/* Tabs (reference: .tabs): a gliding underline under the selected tab. */
+.wx .tabs {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--separator);
+  margin-top: -8px;
+}
+.wx .tabs button {
+  position: relative;
+  z-index: 1;
+  height: 44px;
+  margin-bottom: -1px;
+  padding: 0 16px;
+  color: var(--label-2);
+  font-weight: var(--w-semibold);
+  white-space: nowrap;
+  transition: color var(--dur-micro);
+}
+.wx .tabs button:hover,
+.wx .tabs button[aria-selected='true'] {
+  color: var(--label);
+}
+.wx .tabs > .ind {
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--blue-text);
+  pointer-events: none;
+  transition:
+    transform var(--dur-ind) var(--spring),
+    width var(--dur-ind) var(--spring),
+    opacity var(--dur-short);
+}
+
+/* Forms (reference: .form / .frow / .field / select / range). HIG › Text fields. */
+.wx .form {
+  border-radius: var(--r-l);
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--edge);
+}
+.wx .frow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 24px;
+  align-items: center;
+  min-height: 64px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--separator);
+}
+.wx .frow:last-child {
+  border-bottom: 0;
+}
+.wx .frow.full {
+  grid-template-columns: 1fr;
+}
+.wx .frow .l {
+  font-weight: var(--w-medium);
+}
+.wx .frow .d {
+  font-size: var(--t-foot);
+  color: var(--label-2);
+}
+.wx .field {
+  height: 40px;
+  padding: 0 12px;
+  border-radius: var(--r-s);
+  border: 0;
+  background: var(--fill-3);
+  color: var(--label);
+  box-shadow: inset 0 0 0 1px var(--edge);
+  outline: 0;
+  font: inherit;
+  transition: box-shadow var(--dur-micro);
+}
+.wx .field:focus {
+  box-shadow: inset 0 0 0 2px var(--blue);
+}
+.wx .field.bad {
+  box-shadow: inset 0 0 0 2px var(--red);
+}
+.wx select {
+  height: 36px;
+  border-radius: var(--r-s);
+  padding: 0 12px;
+  background: var(--fill-2);
+  border: 0;
+  font: inherit;
+  color: inherit;
+}
+.wx input[type='range'] {
+  width: 100%;
+  font: inherit;
+  /* Browser default margin; the base reset in tokens.css removes it. */
+  margin: 2px;
+  accent-color: var(--blue);
+}
+.wx .btn.danger {
+  color: var(--red);
+}
+
+/* Drop zone (reference: .drop). Files are dropped from Explorer. */
+.wx .drop {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px;
+  border-radius: var(--r-m);
+  border: 1.5px dashed var(--separator);
+  background: var(--fill-3);
+  transition:
+    border-color var(--dur-micro),
+    background-color var(--dur-micro),
+    transform var(--dur-short) var(--spring);
+}
+.wx .drop b {
+  font-weight: var(--w-semibold);
+}
+.wx .drop span {
+  font-size: var(--t-foot);
+  color: var(--label-2);
+}
+.wx .drop.over {
+  border-color: var(--blue-text);
+  background: var(--blue-tint);
+  transform: scale(1.02);
+}

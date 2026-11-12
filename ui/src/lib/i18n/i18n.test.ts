@@ -125,8 +125,7 @@ describe('i18n Reactive Manager & Translation Helper', () => {
     const { default: SettingsScreen } = await import('../screens/SettingsScreen.svelte');
     const { default: LaunchBar } = await import('../shell/LaunchBar.svelte');
     const { default: ServersScreen } = await import('../screens/ServersScreen.svelte');
-    const { default: ModsScreen } = await import('../screens/ModsScreen.svelte');
-    const { default: WorkshopScreen } = await import('../screens/WorkshopScreen.svelte');
+    const { default: BuildPage } = await import('../pages/build/BuildPage.svelte');
     const { default: WardrobeScreen } = await import('../screens/WardrobeScreen.svelte');
     const { default: LobbyScreen } = await import('../screens/LobbyScreen.svelte');
     const { default: FriendsScreen } = await import('../screens/FriendsScreen.svelte');
@@ -162,26 +161,14 @@ describe('i18n Reactive Manager & Translation Helper', () => {
     unmount(compServers);
     target.innerHTML = '';
 
-    // 4. ModsScreen
-    const compMods = mount(ModsScreen, { target });
+    // 4. Build page: tabs for mods, worlds and the workshop
+    const compBuild = mount(BuildPage, { target, props: { version: '1.21.1' } });
     await tick();
-    expect(target.textContent).toContain('All Mods');
-    expect(target.textContent).toContain('Enabled');
-    expect(target.textContent).toContain('Wex Pack');
-    expect(target.textContent).toContain('Custom');
-    unmount(compMods);
-    target.innerHTML = '';
-
-    // 5. WorkshopScreen
-    const compWorkshop = mount(WorkshopScreen, { target });
-    await tick();
-    await vi.waitFor(() => expect(target.textContent).toContain('No Saved Worlds'), { timeout: 3000 });
-    expect(target.textContent).toContain('Worlds');
-    expect(target.textContent).toContain('Resource Packs');
-    expect(target.textContent).toContain('Shaders');
-    expect(target.textContent).toContain('Screenshots');
-    expect(target.textContent).toContain('No Saved Worlds');
-    unmount(compWorkshop);
+    for (const label of ['Mods', 'Worlds', 'Resource packs', 'Shaders', 'Screenshots', 'Backups', 'Build settings']) {
+      expect(target.textContent).toContain(label);
+    }
+    expect(target.textContent).toContain('Play');
+    unmount(compBuild);
     target.innerHTML = '';
 
     // 6. WardrobeScreen

@@ -231,11 +231,6 @@ export const ALLOWED_EXCEPTIONS: GuardException[] = [
     reason: 'Standard latency millisecond unit',
   },
   {
-    file: 'WorkshopScreen.svelte',
-    text: 'C:\\Downloads\\Pack.zip',
-    reason: 'Local file system path pattern illustration used in input field placeholder',
-  },
-  {
     file: 'Logo.svelte',
     text: 'ex',
     reason: 'Stylized brand logo accent letters "ex" in "Wex"',

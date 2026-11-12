@@ -6,8 +6,6 @@ import ServersScreen from './screens/ServersScreen.svelte';
 import LobbyScreen from './screens/LobbyScreen.svelte';
 import FriendsScreen from './screens/FriendsScreen.svelte';
 import WardrobeScreen from './screens/WardrobeScreen.svelte';
-import WorkshopScreen from './screens/WorkshopScreen.svelte';
-import ModsScreen from './screens/ModsScreen.svelte';
 import SettingsScreen from './screens/SettingsScreen.svelte';
 import Sheet from './components/Sheet.svelte';
 import SegmentedControl from './components/SegmentedControl.svelte';
@@ -94,8 +92,6 @@ describe('A11y Automated Axe-Core Audit Across All 8 Sections', () => {
     { name: 'LobbyScreen', component: LobbyScreen, props: {} },
     { name: 'FriendsScreen', component: FriendsScreen, props: {} },
     { name: 'WardrobeScreen', component: WardrobeScreen, props: { playerName: 'Player' } },
-    { name: 'WorkshopScreen', component: WorkshopScreen, props: { selectedVersion: '1.21.1' } },
-    { name: 'ModsScreen', component: ModsScreen, props: { initialVersion: '1.21.1' } },
     { name: 'SettingsScreen', component: SettingsScreen, props: {} },
   ];
 
