@@ -266,11 +266,6 @@ export const ALLOWED_EXCEPTIONS: GuardException[] = [
     reason: 'Path anonymization mask illustration shown in privacy badge explanation',
   },
   {
-    file: 'PlayScreen.svelte',
-    pattern: /Новое|Улучшено|Исправлено/,
-    reason: 'Changelog markdown tag parsing prefix regexes and strings',
-  },
-  {
     file: 'App.svelte',
     text: 'Игра догружается…',
     reason: 'Backend launch status message match emitted from Rust commands/launch.rs for prewarming state',

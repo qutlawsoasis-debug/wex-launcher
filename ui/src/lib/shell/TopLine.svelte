@@ -5,17 +5,10 @@
   disabled back/forward when there is nowhere to go.
 -->
 <script lang="ts">
-  import type { Snippet } from 'svelte';
   import { router } from './router.svelte';
   import { call } from './ipc';
   import { t } from '../i18n';
 
-  interface Props {
-    /** Centre slot: the search field arrives with the command palette. */
-    center?: Snippet;
-  }
-
-  let { center }: Props = $props();
   let maximized = $state(false);
 
   async function minimize() {
@@ -46,7 +39,12 @@
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" /></svg>
     </button>
   </div>
-  {@render center?.()}
+  <!-- Opens the command palette (stage 5) through the wex-open-command event. -->
+  <button type="button" class="search-top" aria-haspopup="dialog" onclick={() => window.dispatchEvent(new CustomEvent('wex-open-command'))}>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" /></svg>
+    <span>{t('shell.search')}</span>
+    <kbd>{t('shell.search_kbd')}</kbd>
+  </button>
   <div class="winctl" role="group" aria-label={t('shell.window')}>
     <button type="button" aria-label={t('app.minimize_window')} title={t('app.minimize_window')} onclick={minimize}>
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8" /></svg>
@@ -109,6 +107,43 @@
     stroke: currentColor;
     stroke-width: 2;
   }
+  .search-top {
+    margin-left: 8px;
+    flex: 0 1 360px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: var(--r-s);
+    background: var(--fill-3);
+    color: var(--label-3);
+    font-size: var(--t-sub);
+    text-align: left;
+    transition: background-color var(--dur-micro);
+  }
+  .search-top span {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .search-top svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    flex: none;
+  }
+  .search-top kbd {
+    font: 600 11px var(--font);
+    padding: 2px 8px;
+    border-radius: var(--r-xs);
+    background: var(--fill-2);
+    color: var(--label-2);
+  }
   .winctl {
     margin-left: auto;
     display: flex;
@@ -141,6 +176,8 @@
     stroke-width: 1.4;
   }
   button {
+    font: inherit;
+    color: inherit;
     background: none;
     border: 0;
     padding: 0;

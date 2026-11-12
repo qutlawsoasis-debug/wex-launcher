@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
 import axe from 'axe-core';
 
-import PlayScreen from './screens/PlayScreen.svelte';
 import ServersScreen from './screens/ServersScreen.svelte';
 import LobbyScreen from './screens/LobbyScreen.svelte';
 import FriendsScreen from './screens/FriendsScreen.svelte';
@@ -91,7 +90,6 @@ describe('A11y Automated Axe-Core Audit Across All 8 Sections', () => {
   });
 
   const screens = [
-    { name: 'PlayScreen', component: PlayScreen, props: { selectedVersion: '1.21.1', playerName: 'Player' } },
     { name: 'ServersScreen', component: ServersScreen, props: { selectedVersion: '1.21.1', playerName: 'Player' } },
     { name: 'LobbyScreen', component: LobbyScreen, props: {} },
     { name: 'FriendsScreen', component: FriendsScreen, props: {} },

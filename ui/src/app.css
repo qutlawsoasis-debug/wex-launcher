@@ -1,5 +1,6 @@
 @import './lib/design/tokens.css';
 @import './lib/design/wex.css';
+@import './lib/design/wex-controls.css';
 
 *,
 *::before,

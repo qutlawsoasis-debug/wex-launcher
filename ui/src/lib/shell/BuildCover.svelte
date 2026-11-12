@@ -31,6 +31,7 @@
     line-height: 0.8;
   }
   .lib {
+    font-size: var(--t-cap);
     width: 40px;
     height: 40px;
     padding: 4px;

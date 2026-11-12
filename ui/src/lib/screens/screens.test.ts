@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
-import PlayScreen from './PlayScreen.svelte';
 import UpdateCard from '../components/UpdateCard.svelte';
 import ServersScreen from './ServersScreen.svelte';
 import LobbyScreen from './LobbyScreen.svelte';
@@ -252,170 +251,6 @@ describe('Wex Launcher Screens', () => {
 
   afterEach(() => {
     target.remove();
-  });
-
-  it('renders PlayScreen with version selector, Play button, and dynamic Java 21 for 1.21.1', () => {
-    const comp = mount(PlayScreen, {
-      target,
-      props: {
-        selectedVersion: '1.21.1',
-        playerName: 'Steve',
-        clientStatus: 'Клиент Wex готов',
-        isLaunching: false,
-      },
-    });
-
-    expect(target.textContent).toContain('Minecraft');
-    expect(target.textContent).toContain('Клиент Wex');
-    const playBtn = target.querySelector('.dock-action button');
-    expect(playBtn).not.toBeNull();
-    expect(playBtn?.textContent).toContain('Играть');
-
-    const nicknameInput = target.querySelector('.nickname-input') as HTMLInputElement;
-    expect(nicknameInput?.value).toBe('Steve');
-
-    // Java runtime must strictly be Java 21 for 1.21.1
-    expect(target.textContent).toContain('Java 21 • 64-bit');
-
-    unmount(comp);
-  });
-
-  it('renders PlayScreen with dynamic Java 17 for 1.20.1 and empty status fallback', () => {
-    const comp = mount(PlayScreen, {
-      target,
-      props: {
-        selectedVersion: '1.20.1',
-        playerName: 'Alex',
-        clientStatus: '',
-        isLaunching: false,
-      },
-    });
-
-    // Java runtime must strictly be Java 17 for 1.20.1
-    expect(target.textContent).toContain('Java 17 • 64-bit');
-    unmount(comp);
-  });
-
-  it('renders PlayScreen progress bar when launching', () => {
-    const comp = mount(PlayScreen, {
-      target,
-      props: {
-        selectedVersion: '1.20.1',
-        playerName: 'Alex',
-        isLaunching: true,
-        progressPercentage: 55,
-        progressStage: 'Синхронизация сборки Wex',
-        progressDetail: 'Загрузка шейдеров...',
-      },
-    });
-
-    const progress = target.querySelector('.dock-progress');
-    expect(progress).not.toBeNull();
-    expect(target.querySelector('.progress-label')?.textContent).toBe('Синхронизация сборки Wex');
-
-    const cancelBtn = target.querySelector('.dock-cancel button');
-    expect(cancelBtn?.textContent).toContain('Отмена');
-
-    unmount(comp);
-  });
-
-  it('locks inputs and transforms Play button to neutral stop action when Minecraft is running', async () => {
-    let stopped = false;
-    const comp = mount(PlayScreen, {
-      target,
-      props: {
-        selectedVersion: '1.21.1',
-        playerName: 'Steve',
-        clientStatus: 'Сессия активна',
-        isLaunching: false,
-        isRunning: true,
-        onstop: () => {
-          stopped = true;
-        },
-      },
-    });
-
-    // In peace/running, progress bar must be hidden
-    expect(target.querySelector('.dock-progress')).toBeNull();
-
-    // Inputs are locked
-    const nicknameInput = target.querySelector('.nickname-input') as HTMLInputElement;
-    expect(nicknameInput.disabled).toBe(true);
-
-    // The primary action transforms to neutral button with «В игре • Остановить»
-    const stopBtn = target.querySelector('.dock-action button') as HTMLButtonElement;
-    expect(stopBtn).not.toBeNull();
-    expect(stopBtn.textContent).toContain('В игре');
-    expect(stopBtn.classList.contains('secondary')).toBe(true);
-
-    // Clicking calls onstop
-    stopBtn.click();
-    expect(stopped).toBe(true);
-
-    // Shows session status
-    expect(target.textContent).toContain('В игре');
-
-    unmount(comp);
-  });
-
-  it('hides changelog card when news source is absent (spec: если источника нет, блок скрыт) and shows server empty state', () => {
-    const comp = mount(PlayScreen, {
-      target,
-      props: {
-        selectedVersion: '1.21.1',
-        playerName: 'Steve',
-        initialNews: [],
-      },
-    });
-
-    // Without news data, the changelog block must be completely hidden (no fabricated cards)
-    expect(target.querySelector('.updates-card')).toBeNull();
-    expect(target.textContent).not.toContain('Журнал изменений');
-
-    // Recent server without data shows authentic empty state
-    expect(target.textContent).toContain('Вы ещё не играли на серверах');
-    expect(target.textContent).not.toContain('mc.wexmc.net');
-
-    unmount(comp);
-  });
-
-  it('renders PlayScreen changelog block with Apple HIG badges when news source is present', () => {
-    const comp = mount(PlayScreen, {
-      target,
-      props: {
-        selectedVersion: '1.21.1',
-        playerName: 'Steve',
-        initialNews: [
-          {
-            version: 'v1.0.0',
-            date_text: '7 ноября 2026',
-            short_title: 'Новый Wex',
-            is_current: true,
-            items: [
-              { category: 'new', text: 'Полный переход на Tauri 2 + Rust + Svelte 5', raw: '[Новое] Полный переход на Tauri 2 + Rust + Svelte 5' },
-              { category: 'improved', text: 'Плавность интерфейса', raw: '[Улучшено] Плавность интерфейса' },
-              { category: 'fixed', text: 'Сбои в фоновом режиме', raw: '[Исправлено] Сбои в фоновом режиме' },
-            ],
-          },
-        ],
-      },
-    });
-
-    expect(target.querySelector('.updates-card')).not.toBeNull();
-    expect(target.textContent).toContain('Журнал изменений');
-    expect(target.textContent).toContain('v1.0.0');
-    expect(target.textContent).toContain('7 ноября 2026');
-    expect(target.textContent).toContain('Полный переход на Tauri 2 + Rust + Svelte 5');
-
-    // Badges must be rendered
-    const newBadge = target.querySelector('.badge-new');
-    expect(newBadge?.textContent).toBe('Новое');
-    const improvedBadge = target.querySelector('.badge-improved');
-    expect(improvedBadge?.textContent).toBe('Улучшено');
-    const fixedBadge = target.querySelector('.badge-fixed');
-    expect(fixedBadge?.textContent).toBe('Исправлено');
-
-    unmount(comp);
   });
 
   it('renders unobtrusive update notification banner when update is available and allows dismissing it', async () => {
@@ -1421,46 +1256,7 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders PlayScreen with offline launch status message', () => {
-    const comp = mount(PlayScreen, {
-      target,
-      props: {
-        selectedVersion: '1.21.1',
-        playerName: 'Steve',
-        isLaunching: true,
-        progressPercentage: 10,
-        progressStage: 'Нет сети — запуск без обновления',
-        progressDetail: 'Запуск установленной версии 1.21.1',
-      },
-    });
-
-    expect(target.textContent).toContain('Нет сети — запуск без обновления');
-    unmount(comp);
-  });
-
   describe('wex-offline-states: Offline State for All 8 Screens', () => {
-    it('1. PlayScreen renders honest offline state and allows local launch', async () => {
-      const { network } = await import('../design/network.svelte');
-      network.setOnlineForTesting(false);
-
-      const comp = mount(PlayScreen, {
-        target,
-        props: { selectedVersion: '1.21.1', playerName: 'Alex' },
-      });
-      await tick();
-
-      expect(target.textContent).toContain('Нет подключения');
-      expect(target.textContent).toContain('Доступен запуск уже скачанной версии');
-      expect(target.textContent).toContain('Повторить');
-
-      const playBtn = target.querySelector('.dock-action button') as HTMLButtonElement;
-      expect(playBtn).not.toBeNull();
-      expect(playBtn.disabled).toBe(false);
-
-      network.setOnlineForTesting(true);
-      unmount(comp);
-    });
-
     it('2. ServersScreen renders honest offline state with retry action', async () => {
       const { network } = await import('../design/network.svelte');
       network.setOnlineForTesting(false);
@@ -1616,42 +1412,6 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders PlayScreen with launch ErrorState banner and actionable buttons', async () => {
-    let launchRetried = false;
-    let settingsOpened = false;
-
-    const comp = mount(PlayScreen, {
-      target,
-      props: {
-        selectedVersion: '1.21.1',
-        playerName: 'Steve',
-        launchError: 'Java runtime error: java binary not found in PATH',
-        onlaunch: () => {
-          launchRetried = true;
-        },
-        onopensettings: () => {
-          settingsOpened = true;
-        },
-      },
-    });
-
-    await tick();
-
-    // Must display human-friendly Apple HIG error
-    expect(target.textContent).toContain('Не найдена среда Java');
-    expect(target.textContent).toContain('Укажите путь к Java в настройках');
-
-    // Action button
-    const settingsBtn = target.querySelector('.launch-error-banner .error-actions-row button') as HTMLButtonElement;
-    expect(settingsBtn).not.toBeNull();
-    expect(settingsBtn.textContent).toContain('Настройки');
-
-    settingsBtn.click();
-    expect(settingsOpened || launchRetried).toBe(true);
-
-    unmount(comp);
-  });
-
   it('renders ModsScreen with protected pack mod ErrorState when deletion is rejected', async () => {
     const comp = mount(ModsScreen, { target });
     await tick();
@@ -1664,20 +1424,6 @@ describe('Wex Launcher Screens', () => {
     // Pack mod should not have a delete button, or if triggered internally:
     expect(target.textContent).toContain('Пак Wex');
 
-    unmount(comp);
-  });
-
-  it('opens ImportWizardSheet on PlayScreen when initialShowImportWizard is true', () => {
-    const comp = mount(PlayScreen, {
-      target,
-      props: {
-        selectedVersion: '1.21.1',
-        playerName: 'Steve',
-        initialShowImportWizard: true,
-      },
-    });
-
-    expect(target.textContent).toContain('Импорт из старого лаунчера');
     unmount(comp);
   });
 

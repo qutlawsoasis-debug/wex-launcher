@@ -30,8 +30,8 @@ export const WexColors = {
     label: '#f5f5f7',
     base: '#161618',
     card: '#1f1f22',
-    cover1211: '#2a6ae6',
-    cover1201: '#239a66',
+    cover1211: '#1e5fd8',
+    cover1201: '#1f8a5b',
   },
 } as const;
 

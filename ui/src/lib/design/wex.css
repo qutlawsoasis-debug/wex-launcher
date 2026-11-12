@@ -43,7 +43,8 @@
   --veil: rgba(245, 245, 247, 0.72);
   --veil-strong: rgba(255, 255, 255, 0.97);
 
-  /* Build covers: the build's colour with its version set in large type. */
+  /* Build covers: the build's colour with its version set in large type. Same in both
+     themes: the reference applies the palette colour (--pal-0, --pal-1) over its dark values. */
   --cover-ink: #ffffff;
   --cover-1211: #1e5fd8;
   --cover-1201: #1f8a5b;
@@ -155,8 +156,6 @@
     --shade: rgba(0, 0, 0, 0.4);
     --veil: rgba(10, 10, 12, 0.6);
     --veil-strong: rgba(30, 30, 33, 0.98);
-    --cover-1211: #2a6ae6;
-    --cover-1201: #239a66;
   }
 }
 
@@ -185,8 +184,6 @@
   --shade: rgba(0, 0, 0, 0.4);
   --veil: rgba(10, 10, 12, 0.6);
   --veil-strong: rgba(30, 30, 33, 0.98);
-  --cover-1211: #2a6ae6;
-  --cover-1201: #239a66;
 }
 
 :root[data-theme='light'] {

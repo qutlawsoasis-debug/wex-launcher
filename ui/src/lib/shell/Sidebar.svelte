@@ -75,7 +75,7 @@
   <div class="foot">
     {@render footer?.()}
     <a class="me" href="#wardrobe" aria-label={t('shell.profile_label')} onclick={(e) => open(e, 'wardrobe')}>
-      <Monogram name={builds.playerName} />
+      <Monogram name={builds.playerName} tone={2} />
       <div>
         <b>{builds.playerName}</b>
         <span class:off={!online}>{online ? t('shell.online') : t('shell.offline')}</span>
@@ -131,7 +131,6 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 2px;
   }
   .nav a,
   .lib a {
@@ -184,6 +183,8 @@
     stroke-linejoin: round;
   }
   .side-h {
+    /* 24 px line: the reference reserves it for the new-build button, which core does not offer. */
+    line-height: 24px;
     padding: 20px 12px 8px;
     font-size: var(--t-foot);
     font-weight: var(--w-semibold);
@@ -203,6 +204,7 @@
     font-size: var(--t-sub);
   }
   .lib-t span {
+    display: block;
     font-size: var(--t-cap);
     color: var(--label-3);
   }
@@ -238,11 +240,12 @@
     display: block;
     font-weight: var(--w-semibold);
   }
-  .me span {
+  .me div > span {
+    display: block;
     font-size: var(--t-cap);
     color: var(--green);
   }
-  .me span.off {
+  .me div > span.off {
     color: var(--label-3);
   }
 </style>

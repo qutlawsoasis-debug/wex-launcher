@@ -25,6 +25,7 @@
   import LaunchBar from './lib/shell/LaunchBar.svelte';
   import ToastHost from './lib/shell/ToastHost.svelte';
   import PageTitle from './lib/shell/PageTitle.svelte';
+  import HomePage from './lib/pages/home/HomePage.svelte';
   import { router, buildIdOf, isRoute, buildRoute, type Route } from './lib/shell/router.svelte';
   import { builds } from './lib/shell/builds.svelte';
   import { launch } from './lib/shell/launch.svelte';
@@ -329,9 +330,9 @@
   <main class="main" bind:this={mainEl}>
     <TopLine />
     {#key router.version}
-      <div class="page" use:stagger>
+      <div class="page" class:wx={router.route === 'home'} use:stagger>
         {#if router.route === 'home'}
-          <PageTitle title={t('shell.nav_home')} />
+          <HomePage />
         {:else if routeBuild}
           <PageTitle title={t('shell.build_name', { ver: routeBuild })} />
           <div>

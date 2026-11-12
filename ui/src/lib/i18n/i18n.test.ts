@@ -123,7 +123,7 @@ describe('i18n Reactive Manager & Translation Helper', () => {
   it('renders screens in authentic English when locale is set to en', async () => {
     const { mount, unmount, tick } = await import('svelte');
     const { default: SettingsScreen } = await import('../screens/SettingsScreen.svelte');
-    const { default: PlayScreen } = await import('../screens/PlayScreen.svelte');
+    const { default: LaunchBar } = await import('../shell/LaunchBar.svelte');
     const { default: ServersScreen } = await import('../screens/ServersScreen.svelte');
     const { default: ModsScreen } = await import('../screens/ModsScreen.svelte');
     const { default: WorkshopScreen } = await import('../screens/WorkshopScreen.svelte');
@@ -146,15 +146,11 @@ describe('i18n Reactive Manager & Translation Helper', () => {
     unmount(compSettings);
     target.innerHTML = '';
 
-    // 2. PlayScreen
-    const compPlay = mount(PlayScreen, {
-      target,
-      props: { selectedVersion: '1.21.1', playerName: 'Steve' },
-    });
+    // 2. Launch bar
+    const compPlay = mount(LaunchBar, { target });
     await tick();
-    expect(target.textContent).toContain('Wex Client');
     expect(target.textContent).toContain('Play');
-    expect(target.textContent).toContain('Version');
+    expect(target.querySelector('.play')?.getAttribute('aria-label')).toContain('Play Wex');
     unmount(compPlay);
     target.innerHTML = '';
 

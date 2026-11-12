@@ -1,0 +1,167 @@
+/* Shared controls of the redesigned pages (reference: .btn, .mini, .tile, .panel,
+ * .h-row, .empty, .live, .dot). Scoped under .wx so the previous screens, which
+ * still render inside the new frame until their stage, are not affected.
+ * HIG › Buttons: 40 px standard, 52 px large, press scales to 97 %; one blue
+ * (systemBlue) prominent action per area.
+ */
+
+.wx :where(button) {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.wx :where(a) {
+  color: inherit;
+  text-decoration: none;
+}
+.wx :where(h1, h2, h3) {
+  margin: 0;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+.wx .btn {
+  height: var(--control-h);
+  padding: 0 16px;
+  border-radius: var(--r-s);
+  background: var(--fill-2);
+  font-weight: var(--w-semibold);
+  font-size: var(--t-sub);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  transition:
+    background-color var(--dur-micro),
+    transform var(--dur-micro) var(--ease),
+    opacity var(--dur-micro);
+}
+.wx .btn:hover {
+  background: var(--fill);
+}
+.wx .btn:active,
+.wx .mini:active {
+  transform: scale(var(--press-scale));
+}
+.wx .btn.blue {
+  background: var(--blue);
+  color: var(--blue-ink);
+}
+.wx .btn.blue:hover {
+  background: var(--blue-hi);
+}
+.wx .btn.big {
+  height: var(--control-h-big);
+  padding: 0 28px;
+  font-size: 17px;
+  border-radius: var(--r-m);
+}
+.wx .btn svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+.wx .btn[disabled],
+.wx .mini[disabled] {
+  opacity: 0.5;
+  cursor: default;
+  transform: none;
+}
+
+.wx .mini {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--r-s);
+  background: var(--fill-2);
+  font-size: var(--t-foot);
+  font-weight: var(--w-semibold);
+  white-space: nowrap;
+  transition:
+    background-color var(--dur-micro),
+    transform var(--dur-micro) var(--ease);
+}
+.wx .mini:hover {
+  background: var(--fill);
+}
+.wx .mini.blue {
+  background: var(--blue);
+  color: var(--blue-ink);
+}
+.wx .mini.blue:hover {
+  background: var(--blue-hi);
+}
+
+.wx .tile {
+  position: relative;
+  border-radius: var(--r-l);
+  overflow: hidden;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--edge);
+  transition:
+    background-color var(--dur-short),
+    transform var(--dur-short) var(--ease),
+    box-shadow var(--dur-short);
+}
+.wx .tile:hover {
+  background: var(--card-hover);
+  transform: translateY(var(--hover-lift));
+  box-shadow:
+    inset 0 0 0 1px var(--edge),
+    var(--lift);
+}
+
+.wx .panel {
+  color: var(--label);
+  border-radius: var(--r-l);
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--edge);
+  padding: 8px;
+}
+
+.wx .h-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.wx .h-row h2 {
+  font-size: var(--t-t3);
+  font-weight: var(--w-bold);
+}
+.wx .h-row a,
+.wx .h-row button {
+  font-size: var(--t-sub);
+  color: var(--blue-text);
+  font-weight: var(--w-medium);
+}
+.wx .h-row a:hover,
+.wx .h-row button:hover {
+  text-decoration: underline;
+}
+
+.wx .empty {
+  padding: 24px 16px;
+  margin: 0;
+  color: var(--label-2);
+}
+.wx .empty b {
+  color: var(--label);
+}
+
+.wx .live {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.wx .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  flex: none;
+}
