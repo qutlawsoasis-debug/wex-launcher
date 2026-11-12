@@ -1703,4 +1703,7 @@ export const en = {
   'wardrobe2.ach_got_on': 'Earned {date}',
   'wardrobe2.ach_progress': '{n} of {m}',
   'home.choose_hint': 'Select to play',
+  'settings2.k_prewarm': 'prepare in advance background prewarm minecraft starts by itself window',
+  'settings2.prewarm': 'Prepare the game in advance',
+  'settings2.prewarm_d': 'Minecraft loads in the background so Play starts at once. The game window may currently show while it loads — turn this off if it gets in the way.',
 } as const;

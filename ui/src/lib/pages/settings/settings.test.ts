@@ -30,6 +30,7 @@ beforeEach(async () => {
     reduce_transparency: false,
     discord_rpc: true,
     fast_start_jvm: false,
+    fast_launch: true,
     friend_notifications: true,
     minimize_to_tray: true,
     game_window_behavior: 'minimize',
@@ -162,6 +163,10 @@ describe('settings page', () => {
     await vi.waitFor(() => expect(settings.discord_rpc).toBe(false));
     row('Быстрый запуск игры').querySelector<HTMLButtonElement>('.switch')!.click();
     await vi.waitFor(() => expect(settings.fast_start_jvm).toBe(true));
+    // «Готовить игру заранее» is fast_launch (prewarm); off stops it in core.
+    expect(row('Готовить игру заранее').querySelector('.switch')?.getAttribute('aria-checked')).toBe('true');
+    row('Готовить игру заранее').querySelector<HTMLButtonElement>('.switch')!.click();
+    await vi.waitFor(() => expect(settings.fast_launch).toBe(false));
     row('Сворачивать в трей при закрытии').querySelector<HTMLButtonElement>('.switch')!.click();
     await vi.waitFor(() => expect(settings.minimize_to_tray).toBe(false));
   });

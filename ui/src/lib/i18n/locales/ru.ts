@@ -1703,6 +1703,9 @@ export const ru = {
   'wardrobe2.ach_got_on': 'Получено {date}',
   'wardrobe2.ach_progress': '{n} из {m}',
   'home.choose_hint': 'Выбрать для запуска',
+  'settings2.k_prewarm': 'готовить заранее фон заготовка prewarm майнкрафт сам запускается окно',
+  'settings2.prewarm': 'Готовить игру заранее',
+  'settings2.prewarm_d': 'Minecraft загружается в фоне, чтобы «Играть» срабатывало сразу. Сейчас окно игры может появиться во время загрузки — выключите, если мешает.',
 } as const;
 
 export type TranslationKey = keyof typeof ru;

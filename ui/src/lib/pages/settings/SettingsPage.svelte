@@ -349,6 +349,11 @@
           <div><div class="l">{t('settings.fast_launch_title')}</div><div class="d">{t('settings.fast_launch_subtitle')}</div></div>
           <button type="button" class="switch" role="switch" aria-checked={on('fast_start_jvm')} aria-label={t('settings.fast_launch_title')} disabled={!s} onclick={() => flip('fast_start_jvm')}></button>
         </div>
+        <!-- fast_launch: core starts Minecraft in advance (prewarm). Turning it off stops the running one at once. -->
+        <div class="srow" data-k={t('settings2.k_prewarm')}>
+          <div><div class="l">{t('settings2.prewarm')}</div><div class="d">{t('settings2.prewarm_d')}</div></div>
+          <button type="button" class="switch" role="switch" aria-checked={on('fast_launch')} aria-label={t('settings2.prewarm')} disabled={!s} onclick={() => flip('fast_launch')}></button>
+        </div>
         <div class="srow" data-k={t('settings2.k_discord')}>
           <div><div class="l">{t('settings2.discord')}</div><div class="d">{t('settings2.discord_d')}</div></div>
           <button type="button" class="switch" role="switch" aria-checked={on('discord_rpc')} aria-label={t('settings2.discord')} disabled={!s} onclick={() => flip('discord_rpc')}></button>
