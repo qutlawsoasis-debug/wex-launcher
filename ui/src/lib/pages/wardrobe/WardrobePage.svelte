@@ -14,7 +14,7 @@
   import { indicator } from '../../shell/indicator';
   import { pickImageFile } from '../../shell/filePick';
   import { formatError } from '../../design/errors';
-  import { createDefaultSkinCanvas } from '../../design/skin3d';
+  import { createDefaultSkinCanvas } from './defaultSkin';
   import { t } from '../../i18n';
   import { buildRig, drawThumb, loadImage, toSkinCanvas, isCapeSize, NICK_RE, type CapeTexture } from './skinRig';
   import { wardrobe, fileToBase64, looksSlim, safeName, type SavedSkin } from './wardrobe.svelte';

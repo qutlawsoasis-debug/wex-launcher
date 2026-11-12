@@ -209,7 +209,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: var(--color-system-background);
+    background-color: var(--base);
     opacity: 1;
     transition: opacity 250ms cubic-bezier(0.16, 1, 0.3, 1);
   }
@@ -231,9 +231,9 @@
     justify-content: center;
     width: 380px;
     padding: 2.5rem 2rem 2rem;
-    border-radius: var(--radius-large);
-    background: var(--color-secondary-system-background);
-    border: 1px solid var(--color-separator);
+    border-radius: var(--r-l);
+    background: var(--card);
+    border: 1px solid var(--separator);
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
     backdrop-filter: blur(40px);
     -webkit-backdrop-filter: blur(40px);
@@ -254,11 +254,11 @@
   .version-badge {
     display: inline-block;
     padding: 0.15rem 0.6rem;
-    border-radius: var(--radius-pill);
-    background-color: var(--color-system-fill);
-    font-size: var(--font-size-footnote);
+    border-radius: var(--r-pill);
+    background-color: var(--fill);
+    font-size: var(--t-foot);
     font-weight: 500;
-    color: var(--color-secondary-label);
+    color: var(--label-2);
     letter-spacing: -0.01em;
   }
 
@@ -273,14 +273,14 @@
 
   .status-message {
     margin: 0;
-    font-size: var(--font-size-subheadline);
-    color: var(--color-secondary-label);
+    font-size: var(--t-sub);
+    color: var(--label-2);
     line-height: 1.4;
     transition: color 150ms ease;
   }
 
   .status-message.error {
-    color: var(--color-system-red);
+    color: var(--red);
     font-weight: 500;
   }
 
@@ -289,8 +289,8 @@
     margin-top: 1.25rem;
     width: 100%;
     padding: 0.85rem;
-    border-radius: var(--radius-medium);
-    background-color: var(--color-system-fill);
+    border-radius: var(--r-m);
+    background-color: var(--fill);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -300,8 +300,8 @@
 
   .network-error-desc {
     margin: 0;
-    font-size: var(--font-size-caption1);
-    color: var(--color-label);
+    font-size: var(--t-cap);
+    color: var(--label);
     line-height: 1.35;
   }
 

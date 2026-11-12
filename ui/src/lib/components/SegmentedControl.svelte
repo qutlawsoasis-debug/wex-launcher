@@ -596,7 +596,7 @@
   }
 
   .segment-button:focus-visible {
-    outline: 2px solid var(--color-system-blue, #007aff);
+    outline: 2px solid var(--blue);
     outline-offset: -2px;
     border-radius: 17px;
   }

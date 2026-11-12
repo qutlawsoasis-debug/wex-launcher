@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
 import { formatError, sanitizeUserMessage, type FormattedError } from './errors';
-import ErrorState from '../components/ErrorState.svelte';
 import { ERROR_CODES, type IpcError } from '../ipc/generated/error';
 
 const BANNED_TECHNICAL_WORDS = [
@@ -159,101 +158,6 @@ describe('Error Mapping (formatError)', () => {
   });
 });
 
-describe('ErrorState Component', () => {
-  let target: HTMLElement;
-
-  beforeEach(() => {
-    target = document.createElement('div');
-    document.body.appendChild(target);
-  });
-
-  afterEach(() => {
-    target.remove();
-  });
-
-  it('renders title, description and primary action button', async () => {
-    let actionFired = false;
-    const component = mount(ErrorState, {
-      target,
-      props: {
-        error: {
-          code: ERROR_CODES.LAUNCH_FAILED,
-          message: 'Failed to launch game',
-          technical: 'Stack trace line 1',
-        },
-        domain: 'launch',
-        onaction: () => {
-          actionFired = true;
-        },
-      },
-    });
-
-    await tick();
-
-    const titleEl = target.querySelector('.error-title');
-    expect(titleEl?.textContent).toBe('Не удалось запустить игру');
-
-    const descEl = target.querySelector('.error-description');
-    expect(descEl?.textContent).toContain('Проверьте целостность файлов');
-
-    const primaryBtn = target.querySelector('.error-actions-row button') as HTMLButtonElement;
-    expect(primaryBtn?.textContent).toContain('Повторить');
-
-    primaryBtn.click();
-    expect(actionFired).toBe(true);
-
-    unmount(component);
-  });
-
-  it('toggles collapsible technical details section and provides copy button', async () => {
-    // Mock navigator.clipboard
-    let copiedText = '';
-    Object.assign(navigator, {
-      clipboard: {
-        writeText: vi.fn(async (txt: string) => {
-          copiedText = txt;
-        }),
-      },
-    });
-
-    const component = mount(ErrorState, {
-      target,
-      props: {
-        title: 'Тестовая ошибка',
-        description: 'Описание действия',
-        technical: 'Detailed technical error log (os error 13)',
-      },
-    });
-
-    await tick();
-
-    // Details should initially be collapsed
-    expect(target.querySelector('.technical-details-box')).toBeNull();
-
-    // Click toggle button
-    const toggleBtn = target.querySelector('.disclosure-toggle-btn') as HTMLButtonElement;
-    expect(toggleBtn?.textContent).toContain('Подробнее');
-    toggleBtn.click();
-
-    await tick();
-
-    // Details box should now be visible
-    const detailsBox = target.querySelector('.technical-details-box');
-    expect(detailsBox).not.toBeNull();
-    expect(detailsBox?.textContent).toContain('Detailed technical error log (os error 13)');
-
-    // Click copy button
-    const copyBtn = target.querySelector('.copy-btn') as HTMLButtonElement;
-    copyBtn.click();
-
-    await tick();
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      'Detailed technical error log (os error 13)'
-    );
-
-    unmount(component);
-  });
-});
 
 describe('Strict Player-Facing Error Texts (wex-error-texts requirements)', () => {
   it('covers Scenario 1: нет интернета (no internet)', () => {

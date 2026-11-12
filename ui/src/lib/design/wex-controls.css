@@ -283,7 +283,7 @@
   outline: 0;
   color: var(--label);
   font: inherit;
-  /* Browser default field padding; the base reset in tokens.css removes it. */
+  /* Browser default field padding; the base reset in wex.css removes it. */
   padding: 1px 2px;
 }
 /* The field shows focus with its own 2 px ring (focus-within), not a second outline. */
@@ -432,7 +432,7 @@
 .wx input[type='range'] {
   width: 100%;
   font: inherit;
-  /* Browser default margin; the base reset in tokens.css removes it. */
+  /* Browser default margin; the base reset in wex.css removes it. */
   margin: 2px;
   accent-color: var(--blue);
 }

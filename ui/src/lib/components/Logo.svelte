@@ -41,21 +41,21 @@
   }
 
   .brand-wordmark {
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", var(--font-system);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", var(--font);
     font-weight: 800;
     line-height: 1;
     letter-spacing: -0.04em;
-    color: var(--color-label);
+    color: var(--label);
     display: flex;
     align-items: baseline;
   }
 
   .letter-w {
-    color: var(--color-system-blue);
+    color: var(--blue-text);
   }
 
   .letter-ex {
-    color: var(--color-label);
+    color: var(--label);
   }
 
   /* Size Presets */
@@ -81,9 +81,9 @@
 
   .brand-subtitle {
     margin-top: 0.35rem;
-    font-family: var(--font-system);
-    font-size: var(--font-size-caption1);
+    font-family: var(--font);
+    font-size: var(--t-cap);
     font-weight: 500;
-    color: var(--color-secondary-label);
+    color: var(--label-2);
   }
 </style>

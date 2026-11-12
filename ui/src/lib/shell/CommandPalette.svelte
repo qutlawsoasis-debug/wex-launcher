@@ -173,7 +173,7 @@
     font: inherit;
     font-size: var(--t-t3);
     color: var(--label);
-    /* Browser default field padding; the base reset in tokens.css removes it. */
+    /* Browser default field padding; the base reset in wex.css removes it. */
     padding: 1px 2px;
   }
   /* The palette itself shows where typing goes; no extra ring inside it (reference). */

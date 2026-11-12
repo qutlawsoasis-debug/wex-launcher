@@ -140,11 +140,11 @@
     <div class="update-banner-top">
       <div class="update-banner-icon {updateStage}">
         {#if updateStage === 'ready_to_restart'}
-          <Icon name="check" size={13} color="var(--color-system-green)" />
+          <Icon name="check" size={13} color="var(--green)" />
         {:else if updateStage === 'error'}
-          <Icon name="error" size={13} color="var(--color-system-red)" />
+          <Icon name="error" size={13} color="var(--red)" />
         {:else}
-          <Icon name="refresh" size={13} color="var(--color-system-blue)" />
+          <Icon name="refresh" size={13} color="var(--blue)" />
         {/if}
       </div>
       <span class="update-banner-headline" class:update-banner-headline-error={updateStage === 'error'}>
@@ -167,7 +167,7 @@
             title={updateStage === 'ready_to_restart' ? t('update_card.postpone_restart') : t('update_card.close')}
             aria-label={updateStage === 'ready_to_restart' ? t('update_card.postpone_restart') : t('update_card.close')}
           >
-            <Icon name="close" size={12} color="var(--color-secondary-label)" />
+            <Icon name="close" size={12} color="var(--label-2)" />
           </button>
         </div>
       {/if}
@@ -223,9 +223,9 @@
     flex-direction: column;
     gap: 8px;
     padding: 10px;
-    background: var(--color-tertiary-system-fill);
-    border: 1px solid var(--color-separator);
-    border-radius: var(--radius-md);
+    background: var(--fill-3);
+    border: 1px solid var(--separator);
+    border-radius: var(--r-m);
     min-width: 0;
   }
 
@@ -258,21 +258,21 @@
   .update-banner-headline {
     flex: 1;
     min-width: 0;
-    font-size: var(--text-footnote);
+    font-size: var(--t-foot);
     font-weight: 600;
     line-height: 1.3;
-    color: var(--color-label);
+    color: var(--label);
     overflow-wrap: anywhere;
   }
 
   .update-banner-headline-error {
-    color: var(--color-system-red);
+    color: var(--red);
   }
 
   .update-banner-subtext {
-    font-size: var(--text-caption-1);
+    font-size: var(--t-cap);
     line-height: 1.35;
-    color: var(--color-secondary-label);
+    color: var(--label-2);
     display: -webkit-box;
     -webkit-line-clamp: 3;
     line-clamp: 3;
@@ -299,6 +299,6 @@
   }
 
   .close-btn:hover {
-    background: var(--color-quaternary-system-fill);
+    background: var(--fill-3);
   }
 </style>

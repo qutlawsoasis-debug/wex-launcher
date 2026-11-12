@@ -235,9 +235,23 @@
   }
 }
 
-/* Base */
+/* Base: reset, window, form controls. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
 html,
 body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   background: var(--base);
   color: var(--label);
   font-family: var(--font);
@@ -248,4 +262,45 @@ body {
 
 [hidden] {
   display: none !important;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+/* Reduce Transparency: no blur anywhere (HIG › Accessibility). */
+:root[data-reduce-transparency='true'] * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Reduce Motion or Animations off: animations end at once, nothing loops (HIG › Motion). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+:root[data-reduce-motion='true'] *,
+:root[data-reduce-motion='true'] *::before,
+:root[data-reduce-motion='true'] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+/* The window is minimised or the game is running: animations pause (energy). */
+:root.app-idle *,
+:root.app-idle *::before,
+:root.app-idle *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
 }

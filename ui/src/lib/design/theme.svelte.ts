@@ -7,7 +7,7 @@
  *   The system settings are tracked separately and always win (HIG › Accessibility,
  *   Motion: "Make motion optional").
  *
- * DOM contract read by wex.css and tokens.css:
+ * DOM contract read by wex.css:
  *   data-theme="light|dark"            resolved theme
  *   data-reduce-motion="true|false"    system OR app OR effects off
  *   data-reduce-transparency="true|false"
@@ -110,13 +110,9 @@ class ThemeManager {
     if (typeof document === 'undefined') return;
     const root = document.documentElement;
     root.setAttribute('data-theme', this.isDark ? 'dark' : 'light');
-    root.setAttribute('data-accent', this.accent);
-    root.setAttribute('data-effects', this.effectsMode);
     root.setAttribute('data-reduce-motion', String(this.motionReduced));
     root.setAttribute('data-reduce-transparency', String(this.transparencyReduced));
     motionState.systemReduceMotion = this.motionReduced;
-    root.style.setProperty('--color-accent', this.currentAccentHex);
-    root.style.setProperty('--color-on-accent', this.currentOnAccentHex);
   }
 }
 

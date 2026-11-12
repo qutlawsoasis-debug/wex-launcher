@@ -5,13 +5,10 @@ import Toggle from './Toggle.svelte';
 import Slider from './Slider.svelte';
 import SegmentedControl from './SegmentedControl.svelte';
 import Row from './Row.svelte';
-import List from './List.svelte';
 import SearchField from './SearchField.svelte';
 import ProgressBar from './ProgressBar.svelte';
-import Toast from './Toast.svelte';
 import Logo from './Logo.svelte';
 import Sheet from './Sheet.svelte';
-import Popover from './Popover.svelte';
 import DeepLinkConfirmationModal from './DeepLinkConfirmationModal.svelte';
 import type { DeepLinkActionDto } from '../ipc/generated/models';
 
@@ -154,33 +151,6 @@ describe('Apple HIG Svelte 5 Components', () => {
     unmount(comp);
   });
 
-  it('renders List and Row with hierarchical layout and accessories', () => {
-    const comp = mount(List, {
-      target,
-      props: { header: 'Тестовая группа' },
-    });
-
-    expect(target.querySelector('.list-header')?.textContent).toBe('Тестовая группа');
-    unmount(comp);
-
-    const rowComp = mount(Row, {
-      target,
-      props: {
-        title: 'Заголовок строки',
-        subtitle: 'Подзаголовок',
-        trailingText: '128 ms',
-        showChevron: true,
-        clickable: true,
-      },
-    });
-
-    expect(target.querySelector('.row-title')?.textContent).toBe('Заголовок строки');
-    expect(target.querySelector('.row-subtitle')?.textContent).toBe('Подзаголовок');
-    expect(target.querySelector('.trailing-text')?.textContent).toBe('128 ms');
-    expect(target.querySelector('.chevron')).not.toBeNull();
-    unmount(rowComp);
-  });
-
   it('renders SearchField with search icon and clear button', async () => {
     let query = 'Sodium';
     const comp = mount(SearchField, {
@@ -225,34 +195,6 @@ describe('Apple HIG Svelte 5 Components', () => {
     expect(indet?.getAttribute('role')).toBe('progressbar');
     expect(indet?.getAttribute('aria-busy')).toBe('true');
     unmount(compIndet);
-  });
-
-  it('renders Toast with semantic status and dismiss handler', () => {
-    let dismissedId = '';
-    const comp = mount(Toast, {
-      target,
-      props: {
-        toast: {
-          id: 'test-toast',
-          type: 'success',
-          title: 'Успешно выполнено',
-          description: 'Тестовое описание',
-        },
-        ondismiss: (id) => {
-          dismissedId = id;
-        },
-      },
-    });
-
-    expect(target.querySelector('.apple-toast.success')).not.toBeNull();
-    expect(target.querySelector('.toast-title')?.textContent).toBe('Успешно выполнено');
-    expect(target.querySelector('.toast-description')?.textContent).toBe('Тестовое описание');
-
-    const dismissBtn = target.querySelector('.dismiss-btn') as HTMLButtonElement;
-    expect(dismissBtn).not.toBeNull();
-    dismissBtn.click();
-    expect(dismissedId).toBe('test-toast');
-    unmount(comp);
   });
 
   it('renders Logo wordmark with sizes and subtitle', () => {
@@ -316,30 +258,6 @@ describe('Apple HIG Svelte 5 Components', () => {
         },
       },
     });
-
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    expect(closed).toBe(true);
-    unmount(comp);
-  });
-
-  it('renders Popover with trigger and dialog semantics and handles Escape', () => {
-    let closed = false;
-    const comp = mount(Popover, {
-      target,
-      props: {
-        open: true,
-        title: 'Информация',
-        placement: 'bottom-start',
-        onclose: () => {
-          closed = true;
-        },
-      },
-    });
-
-    const dialog = target.querySelector('[role="dialog"]') as HTMLElement;
-    expect(dialog).not.toBeNull();
-    expect(dialog.classList.contains('bottom-start')).toBe(true);
-    expect(dialog.getAttribute('aria-label')).toBe('Информация');
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(closed).toBe(true);

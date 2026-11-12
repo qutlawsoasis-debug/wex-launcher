@@ -156,7 +156,7 @@
         <span class="info-pill version-pill" data-testid="pill-version">{version}</span>
         <span class="info-pill">Wex 0.9.2</span>
         <span class="info-pill secure-pill">
-          <Icon name="check" size={12} color="var(--color-system-green)" />
+          <Icon name="check" size={12} color="var(--green)" />
           <span>{t('report.anonymized_badge')}</span>
         </span>
       </div>
@@ -192,19 +192,19 @@
       <span class="section-label">{t('report.archive_includes')}</span>
       <div class="manifest-grid">
         <div class="manifest-item">
-          <Icon name="info" size={14} color="var(--color-system-blue)" />
+          <Icon name="info" size={14} color="var(--blue)" />
           <span class="manifest-text"><strong>latest.log</strong> {t('report.inc_latest_log')}</span>
         </div>
         <div class="manifest-item">
-          <Icon name="warning" size={14} color="var(--color-system-orange)" />
+          <Icon name="warning" size={14} color="var(--orange)" />
           <span class="manifest-text"><strong>crash-report</strong> {t('report.inc_crash_report')}</span>
         </div>
         <div class="manifest-item">
-          <Icon name="folder" size={14} color="var(--color-secondary-label)" />
+          <Icon name="folder" size={14} color="var(--label-2)" />
           <span class="manifest-text"><strong>mods.txt</strong> {t('report.inc_mods_txt')}</span>
         </div>
         <div class="manifest-item">
-          <Icon name="cpu" size={14} color="var(--color-secondary-label)" />
+          <Icon name="cpu" size={14} color="var(--label-2)" />
           <span class="manifest-text"><strong>system-info.txt</strong> {t('report.inc_system_info')}</span>
         </div>
       </div>
@@ -277,9 +277,9 @@
     flex-direction: column;
     gap: 10px;
     padding: 14px 16px;
-    border-radius: var(--radius-md);
-    background-color: var(--color-secondary-system-fill);
-    border: 1px solid var(--glass-border);
+    border-radius: var(--r-m);
+    background-color: var(--fill-2);
+    border: 1px solid var(--edge);
   }
 
   .info-pill-row {
@@ -293,35 +293,35 @@
     font-size: 11px;
     font-weight: 600;
     padding: 2px 8px;
-    border-radius: var(--radius-sm);
-    background-color: var(--color-tertiary-system-fill);
-    color: var(--color-secondary-label);
+    border-radius: var(--r-s);
+    background-color: var(--fill-3);
+    color: var(--label-2);
   }
 
   .info-pill.version-pill {
     background-color: rgba(0, 122, 255, 0.15);
-    color: var(--color-system-blue);
+    color: var(--blue-text);
   }
 
   .info-pill.secure-pill {
     background-color: rgba(48, 209, 88, 0.15);
-    color: var(--color-system-green);
+    color: var(--green);
     display: flex;
     align-items: center;
     gap: 4px;
   }
 
   .diagnosis-lead {
-    font-size: var(--text-headline);
+    font-size: var(--t-body);
     font-weight: 600;
-    color: var(--color-label);
+    color: var(--label);
     line-height: 1.35;
   }
 
   .security-notice {
     font-size: 12px;
     line-height: 1.45;
-    color: var(--color-secondary-label);
+    color: var(--label-2);
   }
 
   .security-notice code {
@@ -341,26 +341,26 @@
   .section-label {
     font-size: 12px;
     font-weight: 600;
-    color: var(--color-secondary-label);
+    color: var(--label-2);
   }
 
   .comment-textarea {
     width: 100%;
     padding: 10px 12px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--color-separator);
-    background-color: var(--color-secondary-system-grouped-background);
-    color: var(--color-label);
-    font-family: var(--font-system);
-    font-size: var(--text-subheadline);
+    border-radius: var(--r-s);
+    border: 1px solid var(--separator);
+    background-color: var(--card);
+    color: var(--label);
+    font-family: var(--font);
+    font-size: var(--t-sub);
     outline: none;
     box-sizing: border-box;
     resize: vertical;
-    transition: border-color var(--motion-duration-short) ease;
+    transition: border-color var(--dur-micro) ease;
   }
 
   .comment-textarea:focus {
-    border-color: var(--color-system-blue);
+    border-color: var(--blue-text);
     box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
   }
 
@@ -387,14 +387,14 @@
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    border-radius: var(--radius-sm);
-    background-color: var(--color-secondary-system-fill);
-    border: 1px solid var(--glass-border);
+    border-radius: var(--r-s);
+    background-color: var(--fill-2);
+    border: 1px solid var(--edge);
   }
 
   .manifest-text {
     font-size: 11px;
-    color: var(--color-label);
+    color: var(--label);
     line-height: 1.3;
   }
 
@@ -410,7 +410,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--color-system-blue);
+    color: var(--blue-text);
     font-size: 12px;
     cursor: pointer;
     padding: 0;
@@ -426,12 +426,12 @@
     margin: 0;
     padding: 10px 12px;
     background-color: rgba(0, 0, 0, 0.35);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-sm);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-s);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 11px;
     line-height: 1.45;
-    color: var(--color-secondary-label);
+    color: var(--label-2);
     max-height: 180px;
     overflow-y: auto;
     white-space: pre-wrap;
@@ -442,7 +442,7 @@
   .service-notice {
     font-size: 11px;
     line-height: 1.4;
-    color: var(--color-tertiary-label);
+    color: var(--label-3);
     font-style: italic;
   }
 

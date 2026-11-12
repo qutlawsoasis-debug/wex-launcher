@@ -474,7 +474,7 @@
             <div class="features-list">
               <div class="feature-item">
                 <div class="feature-icon">
-                  <Icon name="cpu" size={18} color="var(--color-system-blue)" />
+                  <Icon name="cpu" size={18} color="var(--blue)" />
                 </div>
                 <div class="feature-text">
                   <span class="feature-headline">{t('onboarding.feat_perf_title')}</span>
@@ -484,7 +484,7 @@
 
               <div class="feature-item">
                 <div class="feature-icon">
-                  <Icon name="friends" size={18} color="var(--color-system-green)" />
+                  <Icon name="friends" size={18} color="var(--green)" />
                 </div>
                 <div class="feature-text">
                   <span class="feature-headline">{t('onboarding.feat_friends_title')}</span>
@@ -494,7 +494,7 @@
 
               <div class="feature-item">
                 <div class="feature-icon">
-                  <Icon name="folder" size={18} color="var(--color-system-indigo, #5e5ce6)" />
+                  <Icon name="folder" size={18} color="var(--blue, #5e5ce6)" />
                 </div>
                 <div class="feature-text">
                   <span class="feature-headline">{t('onboarding.feat_order_title')}</span>
@@ -506,7 +506,7 @@
             <!-- Background download progress teaser -->
             <div class="prewarm-banner">
               <div class="prewarm-info">
-                <Icon name="refresh" size={14} color="var(--color-system-blue)" />
+                <Icon name="refresh" size={14} color="var(--blue)" />
                 <span class="prewarm-text">{prewarmStage}</span>
                 {#if prewarmProgress !== null && prewarmProgress > 0}
                   <span class="prewarm-pct">{prewarmProgress}%</span>
@@ -526,7 +526,7 @@
         {:else if currentStep === 'import'}
           <div class="step-pane import-pane">
             <div class="hero-badge icon-badge">
-              <Icon name="folder" size={28} color="var(--color-system-blue)" />
+              <Icon name="folder" size={28} color="var(--blue)" />
             </div>
 
             <h2 class="step-title">{t('onboarding.import_title')}</h2>
@@ -555,14 +555,14 @@
               </div>
 
               <div class="safe-notice">
-                <Icon name="info" size={14} color="var(--color-secondary-label)" />
+                <Icon name="info" size={14} color="var(--label-2)" />
                 <span>{t('onboarding.import_notice')}</span>
               </div>
             {/if}
 
             {#if importSuccess}
               <div class="import-status success">
-                <Icon name="check" size={16} color="var(--color-system-green)" />
+                <Icon name="check" size={16} color="var(--green)" />
                 <span>{t('onboarding.import_success')}</span>
               </div>
             {/if}
@@ -572,7 +572,7 @@
         {:else if currentStep === 'nickname'}
           <div class="step-pane nickname-pane">
             <div class="hero-badge icon-badge">
-              <Icon name="friends" size={28} color="var(--color-system-blue)" />
+              <Icon name="friends" size={28} color="var(--blue)" />
             </div>
 
             <h2 class="step-title">{t('onboarding.step1_title')}</h2>
@@ -601,7 +601,7 @@
                     title={t('onboarding.clear_nickname')}
                     aria-label={t('onboarding.clear_nickname')}
                   >
-                    <Icon name="clear" size={14} color="var(--color-secondary-label)" />
+                    <Icon name="clear" size={14} color="var(--label-2)" />
                   </button>
                 {/if}
               </div>
@@ -622,7 +622,7 @@
         {:else if currentStep === 'version'}
           <div class="step-pane version-pane">
             <div class="hero-badge icon-badge">
-              <Icon name="server" size={28} color="var(--color-system-blue)" />
+              <Icon name="server" size={28} color="var(--blue)" />
             </div>
 
             <h2 class="step-title">{t('onboarding.step2_title')}</h2>
@@ -689,7 +689,7 @@
         {:else if currentStep === 'memory'}
           <div class="step-pane memory-pane">
             <div class="hero-badge icon-badge">
-              <Icon name="cpu" size={28} color="var(--color-system-blue)" />
+              <Icon name="cpu" size={28} color="var(--blue)" />
             </div>
 
             <h2 class="step-title">{t('onboarding.step3_title')}</h2>
@@ -718,7 +718,7 @@
 
               <!-- Explanation based on Apple HIG Contextual Guidance -->
               <div class="ram-explanation-box">
-                <Icon name="info" size={16} color="var(--color-system-blue)" />
+                <Icon name="info" size={16} color="var(--blue)" />
                 <p class="explanation-text">{ramExplanation}</p>
               </div>
 
@@ -766,7 +766,7 @@
         {:else if currentStep === 'ready'}
           <div class="step-pane ready-pane">
             <div class="hero-badge success-badge">
-              <Icon name="check" size={32} color="var(--color-system-green)" />
+              <Icon name="check" size={32} color="var(--green)" />
             </div>
 
             <h2 class="step-title">{t('onboarding.step4_title')}</h2>
@@ -790,7 +790,7 @@
               <div class="summary-row status-row">
                 <span class="summary-label">{t('onboarding.ready_bg_download')}</span>
                 <span class="summary-value ready-status">
-                  <Icon name="check" size={14} color="var(--color-system-green)" />
+                  <Icon name="check" size={14} color="var(--green)" />
                   <span>{t('onboarding.ready_client_prepared')}</span>
                 </span>
               </div>
@@ -867,7 +867,7 @@
               size="regular"
               onclick={handleBack}
             >
-              <Icon name="chevron-left" size={14} color="var(--color-label)" />
+              <Icon name="chevron-left" size={14} color="var(--label)" />
               <span>{t('common.back')}</span>
             </Button>
 
@@ -913,9 +913,9 @@
     /* Fixed height: steps differ in content height, and a card that resizes
        on every step reads as a flash. Long steps scroll in .step-content. */
     height: min(640px, calc(100vh - 64px));
-    border-radius: var(--radius-xl, 18px);
-    background: var(--color-system-background, #1c1c1e);
-    border: 1px solid var(--color-separator, rgba(255, 255, 255, 0.12));
+    border-radius: var(--r-l, 18px);
+    background: var(--base, #1c1c1e);
+    border: 1px solid var(--separator, rgba(255, 255, 255, 0.12));
     box-shadow:
       0 24px 64px rgba(0, 0, 0, 0.45),
       0 4px 16px rgba(0, 0, 0, 0.25);
@@ -967,30 +967,30 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--color-tertiary-label, rgba(120, 120, 128, 0.36));
+    background: var(--label-3, rgba(120, 120, 128, 0.36));
     transition: all 200ms ease;
   }
 
   .step-dot.active {
     width: 18px;
     border-radius: 3px;
-    background: var(--color-system-blue, #0a84ff);
+    background: var(--blue);
   }
 
   .skip-action {
     background: transparent;
     border: none;
-    color: var(--color-secondary-label, #8e8e93);
-    font-size: var(--text-footnote, 13px);
-    font-family: var(--font-system);
+    color: var(--label-2, #8e8e93);
+    font-size: var(--t-foot, 13px);
+    font-family: var(--font);
     cursor: pointer;
     padding: 4px 8px;
-    border-radius: var(--radius-sm, 6px);
+    border-radius: var(--r-s, 6px);
     transition: color 150ms ease;
   }
 
   .skip-action:hover {
-    color: var(--color-label, #ffffff);
+    color: var(--label, #ffffff);
   }
 
   /* Content area */
@@ -1066,14 +1066,14 @@
     font-size: 24px;
     font-weight: 700;
     letter-spacing: -0.015em;
-    color: var(--color-label, #ffffff);
+    color: var(--label, #ffffff);
     margin: 0 0 8px;
   }
 
   .step-subtitle {
     font-size: 14px;
     line-height: 1.45;
-    color: var(--color-secondary-label, #8e8e93);
+    color: var(--label-2, #8e8e93);
     margin: 0 0 24px;
     max-width: 440px;
   }
@@ -1093,9 +1093,9 @@
     align-items: flex-start;
     gap: 14px;
     padding: 12px 14px;
-    border-radius: var(--radius-md, 12px);
-    background: var(--color-secondary-system-grouped-background, rgba(255, 255, 255, 0.04));
-    border: 1px solid var(--color-separator, rgba(255, 255, 255, 0.06));
+    border-radius: var(--r-m, 12px);
+    background: var(--card, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--separator, rgba(255, 255, 255, 0.06));
   }
 
   .feature-icon {
@@ -1118,12 +1118,12 @@
   .feature-headline {
     font-size: 14px;
     font-weight: 600;
-    color: var(--color-label, #ffffff);
+    color: var(--label, #ffffff);
   }
 
   .feature-desc {
     font-size: 12px;
-    color: var(--color-secondary-label, #8e8e93);
+    color: var(--label-2, #8e8e93);
     line-height: 1.35;
   }
 
@@ -1134,7 +1134,7 @@
     gap: 6px;
     width: 100%;
     padding: 10px 14px;
-    border-radius: var(--radius-md, 10px);
+    border-radius: var(--r-m, 10px);
     background: rgba(10, 132, 255, 0.08);
     border: 1px solid rgba(10, 132, 255, 0.16);
   }
@@ -1149,12 +1149,12 @@
   .prewarm-text {
     flex: 1;
     text-align: left;
-    color: var(--color-label, #ffffff);
+    color: var(--label, #ffffff);
   }
 
   .prewarm-pct {
     font-weight: 600;
-    color: var(--color-system-blue, #0a84ff);
+    color: var(--blue-text);
   }
 
   .prewarm-track {
@@ -1167,7 +1167,7 @@
 
   .prewarm-fill {
     height: 100%;
-    background: var(--color-system-blue, #0a84ff);
+    background: var(--blue);
     transition: width 300ms ease;
   }
 
@@ -1197,20 +1197,20 @@
     flex-direction: column;
     gap: 4px;
     padding: 12px 14px;
-    border-radius: var(--radius-md, 10px);
-    background: var(--color-secondary-system-grouped-background, rgba(255, 255, 255, 0.04));
-    border: 1px solid var(--color-separator, rgba(255, 255, 255, 0.06));
+    border-radius: var(--r-m, 10px);
+    background: var(--card, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--separator, rgba(255, 255, 255, 0.06));
   }
 
   .item-label {
     font-size: 11px;
-    color: var(--color-secondary-label, #8e8e93);
+    color: var(--label-2, #8e8e93);
   }
 
   .item-value {
     font-size: 15px;
     font-weight: 600;
-    color: var(--color-label, #ffffff);
+    color: var(--label, #ffffff);
   }
 
   .safe-notice {
@@ -1218,7 +1218,7 @@
     align-items: center;
     gap: 8px;
     font-size: 12px;
-    color: var(--color-secondary-label, #8e8e93);
+    color: var(--label-2, #8e8e93);
     margin-bottom: 8px;
     text-align: left;
   }
@@ -1227,7 +1227,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--color-system-green, #30d158);
+    color: var(--green, #30d158);
     font-size: 13px;
     font-weight: 500;
     margin-top: 8px;
@@ -1247,7 +1247,7 @@
   .input-label {
     font-size: 12px;
     font-weight: 500;
-    color: var(--color-secondary-label, #8e8e93);
+    color: var(--label-2, #8e8e93);
   }
 
   .apple-field-wrapper {
@@ -1255,19 +1255,19 @@
     display: flex;
     align-items: center;
     width: 100%;
-    background: var(--color-secondary-system-grouped-background, rgba(255, 255, 255, 0.06));
-    border: 1px solid var(--color-separator, rgba(255, 255, 255, 0.15));
-    border-radius: var(--radius-md, 10px);
+    background: var(--card, rgba(255, 255, 255, 0.06));
+    border: 1px solid var(--separator, rgba(255, 255, 255, 0.15));
+    border-radius: var(--r-m, 10px);
     transition: all 180ms ease;
   }
 
   .apple-field-wrapper:focus-within {
-    border-color: var(--color-system-blue, #0a84ff);
+    border-color: var(--blue-text);
     box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.25);
   }
 
   .apple-field-wrapper.has-error {
-    border-color: var(--color-system-red, #ff453a);
+    border-color: var(--red, #ff453a);
     box-shadow: 0 0 0 3px rgba(255, 69, 58, 0.2);
   }
 
@@ -1279,8 +1279,8 @@
     border: none;
     outline: none;
     font-size: 16px;
-    font-family: var(--font-system);
-    color: var(--color-label, #ffffff);
+    font-family: var(--font);
+    color: var(--label, #ffffff);
     box-sizing: border-box;
   }
 
@@ -1303,11 +1303,11 @@
   }
 
   .validation-msg.error {
-    color: var(--color-system-red, #ff453a);
+    color: var(--red, #ff453a);
   }
 
   .validation-msg.hint {
-    color: var(--color-secondary-label, #8e8e93);
+    color: var(--label-2, #8e8e93);
   }
 
   /* Version cards grid */
@@ -1324,9 +1324,9 @@
     flex-direction: column;
     gap: 6px;
     padding: 16px 44px 16px 16px;
-    border-radius: var(--radius-lg, 14px);
-    background: var(--color-secondary-system-grouped-background, rgba(255, 255, 255, 0.04));
-    border: 2px solid var(--color-separator, rgba(255, 255, 255, 0.08));
+    border-radius: var(--r-l, 14px);
+    background: var(--card, rgba(255, 255, 255, 0.04));
+    border: 2px solid var(--separator, rgba(255, 255, 255, 0.08));
     cursor: pointer;
     text-align: left;
     transition: all 180ms ease;
@@ -1337,7 +1337,7 @@
   }
 
   .version-card.selected {
-    border-color: var(--color-system-blue, #0a84ff);
+    border-color: var(--blue-text);
     background: rgba(10, 132, 255, 0.08);
   }
 
@@ -1350,7 +1350,7 @@
   .version-name {
     font-size: 16px;
     font-weight: 700;
-    color: var(--color-label, #ffffff);
+    color: var(--label, #ffffff);
   }
 
   .version-badge {
@@ -1361,19 +1361,19 @@
   }
 
   .version-badge.recommended {
-    background: var(--color-system-blue, #0a84ff);
+    background: var(--blue);
     color: #ffffff;
   }
 
   .version-badge.classic {
     background: rgba(120, 120, 128, 0.24);
-    color: var(--color-label, #ffffff);
+    color: var(--label, #ffffff);
   }
 
   .version-desc {
     font-size: 13px;
     line-height: 1.4;
-    color: var(--color-secondary-label, #8e8e93);
+    color: var(--label-2, #8e8e93);
     margin: 0;
   }
 
@@ -1384,7 +1384,7 @@
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    border: 1.5px solid var(--color-separator, rgba(255, 255, 255, 0.2));
+    border: 1.5px solid var(--separator, rgba(255, 255, 255, 0.2));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1392,8 +1392,8 @@
   }
 
   .card-check.active {
-    background: var(--color-system-blue, #0a84ff);
-    border-color: var(--color-system-blue, #0a84ff);
+    background: var(--blue);
+    border-color: var(--blue-text);
   }
 
   /* Memory slider card */
@@ -1403,9 +1403,9 @@
     gap: 16px;
     width: 100%;
     padding: 18px 20px;
-    border-radius: var(--radius-lg, 14px);
-    background: var(--color-secondary-system-grouped-background, rgba(255, 255, 255, 0.04));
-    border: 1px solid var(--color-separator, rgba(255, 255, 255, 0.08));
+    border-radius: var(--r-l, 14px);
+    background: var(--card, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--separator, rgba(255, 255, 255, 0.08));
     text-align: left;
   }
 
@@ -1417,13 +1417,13 @@
 
   .sys-ram-badge {
     font-size: 12px;
-    color: var(--color-secondary-label, #8e8e93);
+    color: var(--label-2, #8e8e93);
   }
 
   .current-ram-val {
     font-size: 15px;
     font-weight: 700;
-    color: var(--color-system-blue, #0a84ff);
+    color: var(--blue-text);
   }
 
   .ram-explanation-box {
@@ -1431,14 +1431,14 @@
     align-items: flex-start;
     gap: 10px;
     padding: 10px 12px;
-    border-radius: var(--radius-md, 8px);
+    border-radius: var(--r-m, 8px);
     background: rgba(10, 132, 255, 0.08);
   }
 
   .explanation-text {
     font-size: 12px;
     line-height: 1.4;
-    color: var(--color-label, #ffffff);
+    color: var(--label, #ffffff);
     margin: 0;
   }
 
@@ -1451,9 +1451,9 @@
   .preset-chip {
     padding: 5px 12px;
     border-radius: 12px;
-    border: 1px solid var(--color-separator, rgba(255, 255, 255, 0.12));
+    border: 1px solid var(--separator, rgba(255, 255, 255, 0.12));
     background: transparent;
-    color: var(--color-secondary-label, #8e8e93);
+    color: var(--label-2, #8e8e93);
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
@@ -1461,14 +1461,14 @@
   }
 
   .preset-chip:hover {
-    color: var(--color-label, #ffffff);
+    color: var(--label, #ffffff);
     background: rgba(255, 255, 255, 0.06);
   }
 
   .preset-chip.active {
-    background: var(--color-system-blue, #0a84ff);
+    background: var(--blue);
     color: #ffffff;
-    border-color: var(--color-system-blue, #0a84ff);
+    border-color: var(--blue-text);
   }
 
   /* Summary Card in Ready */
@@ -1478,9 +1478,9 @@
     gap: 10px;
     width: 100%;
     padding: 16px 18px;
-    border-radius: var(--radius-lg, 14px);
-    background: var(--color-secondary-system-grouped-background, rgba(255, 255, 255, 0.04));
-    border: 1px solid var(--color-separator, rgba(255, 255, 255, 0.08));
+    border-radius: var(--r-l, 14px);
+    background: var(--card, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--separator, rgba(255, 255, 255, 0.08));
     text-align: left;
   }
 
@@ -1492,29 +1492,29 @@
   }
 
   .summary-label {
-    color: var(--color-secondary-label, #8e8e93);
+    color: var(--label-2, #8e8e93);
   }
 
   .summary-value {
     font-weight: 600;
-    color: var(--color-label, #ffffff);
+    color: var(--label, #ffffff);
   }
 
   .summary-value.highlight {
-    color: var(--color-system-blue, #0a84ff);
+    color: var(--blue-text);
   }
 
   .ready-status {
     display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--color-system-green, #30d158);
+    color: var(--green, #30d158);
   }
 
   /* Footer actions */
   .card-footer {
     padding: 16px 28px 24px;
-    border-top: 1px solid var(--color-separator, rgba(255, 255, 255, 0.08));
+    border-top: 1px solid var(--separator, rgba(255, 255, 255, 0.08));
     background: rgba(0, 0, 0, 0.08);
   }
 

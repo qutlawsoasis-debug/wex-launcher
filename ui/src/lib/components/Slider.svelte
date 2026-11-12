@@ -97,7 +97,7 @@
     gap: 8px;
     width: 100%;
     user-select: none;
-    font-family: var(--font-system);
+    font-family: var(--font);
   }
 
   .apple-slider-container.disabled {
@@ -109,18 +109,18 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: var(--text-subheadline);
+    font-size: var(--t-sub);
   }
 
   .slider-label {
-    color: var(--color-label);
+    color: var(--label);
     font-weight: 500;
   }
 
   .slider-value {
-    color: var(--color-secondary-label);
+    color: var(--label-2);
     font-variant-numeric: tabular-nums;
-    font-size: var(--text-footnote);
+    font-size: var(--t-foot);
     font-weight: 600;
   }
 
@@ -136,18 +136,18 @@
     left: 0;
     right: 0;
     height: 4px;
-    border-radius: var(--radius-pill);
-    background-color: var(--color-quaternary-system-fill);
+    border-radius: var(--r-pill);
+    background-color: var(--fill-3);
   }
 
   .track-fill {
     position: absolute;
     left: 0;
     height: 4px;
-    border-radius: var(--radius-pill);
-    background-color: var(--color-system-blue);
+    border-radius: var(--r-pill);
+    background-color: var(--blue-text);
     pointer-events: none;
-    transition: width var(--motion-duration-short) ease;
+    transition: width var(--dur-micro) ease;
   }
 
   .slider-thumb {
@@ -161,8 +161,8 @@
       0 0 1px rgba(0, 0, 0, 0.18);
     pointer-events: none;
     transition:
-      left var(--motion-duration-short) ease,
-      transform var(--motion-duration-short) ease;
+      left var(--dur-micro) ease,
+      transform var(--dur-micro) ease;
   }
 
   .slider-track-area:hover .slider-thumb {
@@ -177,7 +177,7 @@
   }
 
   .apple-slider-container:has(.range-input:focus-visible) .slider-thumb {
-    outline: 2px solid var(--color-system-blue);
+    outline: 2px solid var(--blue);
     outline-offset: 2px;
     box-shadow:
       0 0 0 3px rgba(0, 145, 255, 0.35),

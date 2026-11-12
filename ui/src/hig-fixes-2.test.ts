@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
 import ProgressBar from './lib/components/ProgressBar.svelte';
-import List from './lib/components/List.svelte';
 import { theme } from './lib/design/theme.svelte';
 import { ru } from './lib/i18n/locales/ru';
 import { en } from './lib/i18n/locales/en';
@@ -59,75 +58,6 @@ describe('Apple HIG Fixes 2 Verification (Settings, Lobby, Friends)', () => {
     });
   });
 
-  describe('2. List Keyboard Navigation & Slider Independence (F19)', () => {
-    it('does not hijack ArrowUp/ArrowDown when focus is inside a slider/range input', async () => {
-      const comp = mount(List, {
-        target,
-        props: {
-          header: 'Тестовый список',
-        },
-      });
-
-      await tick();
-      const listContainer = target.querySelector<HTMLDivElement>('.list-container');
-      expect(listContainer).not.toBeNull();
-
-      // Create a slider inside the list container
-      const slider = document.createElement('input');
-      slider.type = 'range';
-      slider.min = '1024';
-      slider.max = '8192';
-      slider.step = '512';
-      slider.value = '4096';
-      listContainer?.appendChild(slider);
-      slider.focus();
-
-      const event = new KeyboardEvent('keydown', {
-        key: 'ArrowUp',
-        bubbles: true,
-        cancelable: true,
-      });
-
-      slider.dispatchEvent(event);
-      // Event must NOT be preventDefaulted, allowing native slider control
-      expect(event.defaultPrevented).toBe(false);
-
-      unmount(comp);
-    });
-
-    it('excludes elements with aria-hidden="true" or tabindex="-1" from navigation', async () => {
-      const comp = mount(List, {
-        target,
-        props: {
-          header: 'Навигация',
-        },
-      });
-
-      await tick();
-      const listContainer = target.querySelector<HTMLDivElement>('.list-container');
-      expect(listContainer).not.toBeNull();
-
-      const btn1 = document.createElement('button');
-      btn1.textContent = 'Кнопка 1';
-      const hiddenInput = document.createElement('input');
-      hiddenInput.setAttribute('aria-hidden', 'true');
-      const btn2 = document.createElement('button');
-      btn2.textContent = 'Кнопка 2';
-
-      listContainer?.appendChild(btn1);
-      listContainer?.appendChild(hiddenInput);
-      listContainer?.appendChild(btn2);
-
-      btn1.focus();
-      expect(document.activeElement).toBe(btn1);
-
-      listContainer?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-      // Focus should jump over aria-hidden input directly to btn2
-      expect(document.activeElement).toBe(btn2);
-
-      unmount(comp);
-    });
-  });
 
   describe('3. Settings Screen HIG Requirements (F16, F17, F18, F20, F21)', () => {
     it('sets initial data-theme on documentElement at startup (F18)', () => {

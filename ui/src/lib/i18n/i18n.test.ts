@@ -88,38 +88,6 @@ describe('i18n Reactive Manager & Translation Helper', () => {
     }
   });
 
-  it('reactively updates rendered Svelte component when locale changes without restart', async () => {
-    const { mount, unmount, tick } = await import('svelte');
-    const { default: OfflineState } = await import('../components/OfflineState.svelte');
-
-    const target = document.createElement('div');
-    document.body.appendChild(target);
-
-    i18n.setLocale('ru');
-    const comp = mount(OfflineState, { target });
-    await tick();
-
-    expect(target.textContent).toContain('Нет подключения');
-    expect(target.textContent).toContain('Повторить');
-
-    // Switch to English dynamically
-    i18n.setLocale('en');
-    await tick();
-
-    expect(target.textContent).toContain('No Connection');
-    expect(target.textContent).toContain('Try Again');
-
-    // Switch back to Russian dynamically
-    i18n.setLocale('ru');
-    await tick();
-
-    expect(target.textContent).toContain('Нет подключения');
-    expect(target.textContent).toContain('Повторить');
-
-    unmount(comp);
-    target.remove();
-  });
-
   it('renders screens in authentic English when locale is set to en', async () => {
     const { mount, unmount, tick } = await import('svelte');
     const { default: SettingsPage } = await import('../pages/settings/SettingsPage.svelte');

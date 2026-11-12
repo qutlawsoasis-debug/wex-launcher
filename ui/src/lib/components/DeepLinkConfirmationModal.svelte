@@ -123,7 +123,7 @@
     >
       <div class="deeplink-icon-wrap">
         <div class="deeplink-icon-badge" class:server={action.kind === 'server'} class:join={action.kind === 'join'}>
-          <Icon name={iconName} size={28} color="var(--color-system-blue)" />
+          <Icon name={iconName} size={28} color="var(--blue)" />
         </div>
       </div>
 
@@ -195,17 +195,17 @@
     align-items: center;
     justify-content: center;
     padding: 24px;
-    animation: scrimFadeIn var(--motion-duration-fast, 180ms) cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: scrimFadeIn var(--dur-micro, 180ms) cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .deeplink-dialog {
     width: 100%;
     max-width: 440px;
-    background: var(--card-bg, rgba(30, 30, 32, 0.85));
+    background: var(--card, rgba(30, 30, 32, 0.85));
     backdrop-filter: blur(28px) saturate(180%);
     -webkit-backdrop-filter: blur(28px) saturate(180%);
-    border: 1px solid var(--color-separator);
-    border-radius: var(--radius-xl, 16px);
+    border: 1px solid var(--separator);
+    border-radius: var(--r-l, 16px);
     padding: 24px;
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
     display: flex;
@@ -213,7 +213,7 @@
     align-items: center;
     text-align: center;
     gap: 16px;
-    animation: modalSpringIn var(--motion-duration-normal, 240ms) var(--motion-curve-spring-gentle, cubic-bezier(0.16, 1, 0.3, 1)) both;
+    animation: modalSpringIn var(--dur-short, 240ms) var(--ease, cubic-bezier(0.16, 1, 0.3, 1)) both;
     outline: none;
     box-sizing: border-box;
   }
@@ -228,8 +228,8 @@
     width: 56px;
     height: 56px;
     border-radius: 14px;
-    background: var(--color-quaternary-system-fill, rgba(120, 120, 128, 0.12));
-    border: 1px solid var(--color-separator);
+    background: var(--fill-3, rgba(120, 120, 128, 0.12));
+    border: 1px solid var(--separator);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -245,9 +245,9 @@
   .deeplink-kind-badge {
     font-size: 11px;
     font-weight: 600;
-    color: var(--color-secondary-label);
-    background: var(--color-quaternary-system-fill, rgba(120, 120, 128, 0.12));
-    border: 1px solid var(--color-separator);
+    color: var(--label-2);
+    background: var(--fill-3, rgba(120, 120, 128, 0.12));
+    border: 1px solid var(--separator);
     padding: 2px 8px;
     border-radius: 6px;
   }
@@ -255,14 +255,14 @@
   .deeplink-title {
     font-size: 18px;
     font-weight: 700;
-    color: var(--color-label);
+    color: var(--label);
     margin: 0;
     line-height: 1.25;
   }
 
   .deeplink-desc {
     font-size: 13px;
-    color: var(--color-secondary-label);
+    color: var(--label-2);
     margin: 0;
     line-height: 1.4;
     max-width: 380px;
@@ -270,9 +270,9 @@
 
   .deeplink-card {
     width: 100%;
-    background: var(--color-quaternary-system-fill, rgba(120, 120, 128, 0.08));
-    border: 1px solid var(--color-separator);
-    border-radius: var(--radius-md, 10px);
+    background: var(--fill-3, rgba(120, 120, 128, 0.08));
+    border: 1px solid var(--separator);
+    border-radius: var(--r-m, 10px);
     padding: 12px 14px;
     display: flex;
     flex-direction: column;
@@ -288,18 +288,18 @@
   }
 
   .target-label {
-    color: var(--color-secondary-label);
+    color: var(--label-2);
   }
 
   .target-value {
     font-family: var(--font-family-mono, monospace);
     font-weight: 700;
-    color: var(--color-label);
+    color: var(--label);
   }
 
   .raw-uri-row {
     font-size: 11px;
-    color: var(--color-tertiary-label);
+    color: var(--label-3);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

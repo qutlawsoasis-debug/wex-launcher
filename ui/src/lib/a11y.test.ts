@@ -4,7 +4,6 @@ import axe from 'axe-core';
 
 import Sheet from './components/Sheet.svelte';
 import SegmentedControl from './components/SegmentedControl.svelte';
-import List from './components/List.svelte';
 import Row from './components/Row.svelte';
 import Toggle from './components/Toggle.svelte';
 import { theme } from './design/theme.svelte';
@@ -227,37 +226,5 @@ describe('A11y Automated Axe-Core Audit Across All 8 Sections', () => {
       unmount(comp);
     });
 
-    it('navigates interactive rows in List with ArrowDown/ArrowUp keys', async () => {
-      let clicked = '';
-      const comp = mount(List as any, {
-        target,
-        props: {
-          header: 'Список действий',
-        },
-      });
-
-      await tick();
-      const listContainer = target.querySelector<HTMLDivElement>('.list-container');
-      expect(listContainer).not.toBeNull();
-
-      // Create two buttons inside list
-      const btn1 = document.createElement('button');
-      btn1.textContent = 'Кнопка 1';
-      const btn2 = document.createElement('button');
-      btn2.textContent = 'Кнопка 2';
-      listContainer?.appendChild(btn1);
-      listContainer?.appendChild(btn2);
-
-      btn1.focus();
-      expect(document.activeElement).toBe(btn1);
-
-      listContainer?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-      expect(document.activeElement).toBe(btn2);
-
-      listContainer?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
-      expect(document.activeElement).toBe(btn1);
-
-      unmount(comp);
-    });
   });
 });
