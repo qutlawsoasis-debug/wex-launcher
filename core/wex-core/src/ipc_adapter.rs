@@ -19,6 +19,8 @@ pub struct WexLauncherCore {
     event_handler: Arc<dyn EventHandler>,
     running_processes: Arc<Mutex<HashMap<String, GameProcess>>>,
     active_cancel_tokens: Arc<Mutex<HashMap<String, CancellationToken>>>,
+    /// Exit code of each instance's last process, recorded when it ends.
+    exit_codes: Arc<Mutex<HashMap<String, Option<i32>>>>,
 }
 
 impl WexLauncherCore {
@@ -37,6 +39,7 @@ impl WexLauncherCore {
             event_handler: events,
             running_processes: Arc::new(Mutex::new(HashMap::new())),
             active_cancel_tokens: Arc::new(Mutex::new(HashMap::new())),
+            exit_codes: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -141,6 +144,7 @@ impl LauncherCore for WexLauncherCore {
         {
             Ok(process) => {
                 let pid = process.pid;
+                self.exit_codes.lock().await.remove(&request.version);
                 let mut map = self.running_processes.lock().await;
                 map.insert(request.version.clone(), process);
 
@@ -173,8 +177,12 @@ impl LauncherCore for WexLauncherCore {
         let mut map = self.running_processes.lock().await;
         if let Some(process) = map.get_mut(instance_id) {
             match process.child.try_wait() {
-                Ok(Some(_)) => {
+                Ok(Some(status)) => {
                     map.remove(instance_id);
+                    self.exit_codes
+                        .lock()
+                        .await
+                        .insert(instance_id.to_string(), status.code());
                     Ok(false)
                 }
                 Ok(None) => Ok(true),
@@ -183,6 +191,15 @@ impl LauncherCore for WexLauncherCore {
         } else {
             Ok(false)
         }
+    }
+
+    async fn last_exit_code(&self, instance_id: &str) -> Option<i32> {
+        self.exit_codes
+            .lock()
+            .await
+            .get(instance_id)
+            .copied()
+            .flatten()
     }
 
     async fn kill_game(&self, instance_id: &str) -> IpcResult<()> {

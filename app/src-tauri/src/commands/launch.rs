@@ -7,7 +7,7 @@ use wex_core::config::WexPaths;
 use wex_core::event::{Event, EventHandler, LogLevel};
 use wex_core::playtime::{PlaytimeStore, PlaytimeSummary};
 use wex_core::WexLauncherCore;
-use wex_extras::crash::{analyze_crash, CrashKind};
+use wex_extras::crash::{analyze_crash, analyze_crash_since, clean_exit, CrashKind};
 use wex_extras::discord::{Activity, DiscordRpcClient, DEFAULT_DISCORD_APP_ID};
 use wex_ipc::commands::{LaunchGameRequest, LaunchGameResponse};
 use wex_ipc::core_trait::LauncherCore;
@@ -858,16 +858,23 @@ pub async fn start_game<R: tauri::Runtime>(
             let playtime_file = state.paths.playtime_file.clone();
             let version_clone = version.clone();
             let session_start = std::time::Instant::now();
+            let session_wall = std::time::SystemTime::now();
             let state_clone = state.inner().clone();
 
             tauri::async_runtime::spawn(async move {
+                let mut exit_code: Option<i32> = None;
                 loop {
                     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     let mut lock = active_proc_clone.lock().await;
                     if let Some(proc) = lock.as_mut() {
                         match proc.child.try_wait() {
                             Ok(None) => continue,
-                            _ => {
+                            Ok(Some(status)) => {
+                                exit_code = status.code();
+                                *lock = None;
+                                break;
+                            }
+                            Err(_) => {
                                 *lock = None;
                                 break;
                             }
@@ -902,37 +909,29 @@ pub async fn start_game<R: tauri::Runtime>(
                     clear_discord_rpc(&discord_clone).await;
                 }
 
-                // Run crash diagnosis on instance logs
-                let diagnosis = analyze_crash(&instance_dir, None);
+                // A stop the user asked for, or exit code 0, is a normal end of the
+                // session. Only otherwise are the logs of this session diagnosed, with
+                // the real exit code.
+                let stopped = stop_requested_clone.swap(false, Ordering::SeqCst);
+                let diagnosis = if stopped || exit_code == Some(0) {
+                    clean_exit()
+                } else {
+                    analyze_crash_since(&instance_dir, exit_code, Some(session_wall))
+                };
                 let (status_state, status_msg) = match &diagnosis.kind {
+                    _ if stopped => ("idle".to_string(), "Игра остановлена".to_string()),
                     CrashKind::Unknown { exit_code: Some(0) } => {
-                        ("idle".to_string(), "Minecraft закрыт штатно".to_string())
+                        ("idle".to_string(), "Игра закрыта".to_string())
                     }
+                    // No exit code and nothing in the logs: don't claim a crash.
                     CrashKind::Unknown { exit_code: None } => {
-                        if diagnosis.title.contains("Неизвестный сбой")
-                            || diagnosis.technical_summary.is_empty()
-                        {
-                            ("idle".to_string(), "Сессия игры завершена".to_string())
-                        } else {
-                            (
-                                "error".to_string(),
-                                format!("{}: {}", diagnosis.title, diagnosis.user_advice),
-                            )
-                        }
+                        ("idle".to_string(), "Сессия игры завершена".to_string())
                     }
                     _ => (
                         "error".to_string(),
                         format!("{}: {}", diagnosis.title, diagnosis.user_advice),
                     ),
                 };
-
-                // A stop the user asked for is a normal end of the session, not a crash.
-                let (status_state, status_msg) =
-                    if stop_requested_clone.swap(false, Ordering::SeqCst) {
-                        ("idle".to_string(), "Игра остановлена".to_string())
-                    } else {
-                        (status_state, status_msg)
-                    };
 
                 let _ = app_clone.emit(
                     EVT_LAUNCH_STATUS,
@@ -1083,6 +1082,7 @@ pub async fn start_game<R: tauri::Runtime>(
             let version_clone = version.clone();
             let playtime_file = state.paths.playtime_file.clone();
             let session_start = std::time::Instant::now();
+            let session_wall = std::time::SystemTime::now();
 
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -1092,6 +1092,7 @@ pub async fn start_game<R: tauri::Runtime>(
                         _ => break,
                     }
                 }
+                let exit_code = core_clone.last_exit_code(&version_clone).await;
 
                 // Record session duration into persistent playtime store
                 let elapsed_sec = session_start.elapsed().as_secs();
@@ -1123,37 +1124,29 @@ pub async fn start_game<R: tauri::Runtime>(
                     clear_discord_rpc(&discord_clone).await;
                 }
 
-                // Run crash diagnosis on instance logs
-                let diagnosis = analyze_crash(&instance_dir, None);
+                // A stop the user asked for, or exit code 0, is a normal end of the
+                // session. Only otherwise are the logs of this session diagnosed, with
+                // the real exit code.
+                let stopped = stop_requested_clone.swap(false, Ordering::SeqCst);
+                let diagnosis = if stopped || exit_code == Some(0) {
+                    clean_exit()
+                } else {
+                    analyze_crash_since(&instance_dir, exit_code, Some(session_wall))
+                };
                 let (status_state, status_msg) = match &diagnosis.kind {
+                    _ if stopped => ("idle".to_string(), "Игра остановлена".to_string()),
                     CrashKind::Unknown { exit_code: Some(0) } => {
-                        ("idle".to_string(), "Minecraft закрыт штатно".to_string())
+                        ("idle".to_string(), "Игра закрыта".to_string())
                     }
+                    // No exit code and nothing in the logs: don't claim a crash.
                     CrashKind::Unknown { exit_code: None } => {
-                        if diagnosis.title.contains("Неизвестный сбой")
-                            || diagnosis.technical_summary.is_empty()
-                        {
-                            ("idle".to_string(), "Сессия игры завершена".to_string())
-                        } else {
-                            (
-                                "error".to_string(),
-                                format!("{}: {}", diagnosis.title, diagnosis.user_advice),
-                            )
-                        }
+                        ("idle".to_string(), "Сессия игры завершена".to_string())
                     }
                     _ => (
                         "error".to_string(),
                         format!("{}: {}", diagnosis.title, diagnosis.user_advice),
                     ),
                 };
-
-                // A stop the user asked for is a normal end of the session, not a crash.
-                let (status_state, status_msg) =
-                    if stop_requested_clone.swap(false, Ordering::SeqCst) {
-                        ("idle".to_string(), "Игра остановлена".to_string())
-                    } else {
-                        (status_state, status_msg)
-                    };
 
                 let _ = app_clone.emit(
                     EVT_LAUNCH_STATUS,

@@ -2,6 +2,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CrashKind {
@@ -50,9 +51,10 @@ const GPU_MARKERS: &[&str] = &[
     "GLFW error",
     "GL_OUT_OF_MEMORY",
     "CompileShader",
-    "net.irisshaders",
-    "me.jellysquid.mods.sodium",
 ];
+// Not markers on their own: the Iris/Sodium package names and the driver DLL
+// appear in every normal log of the pack ("Found graphics adapter … nvoglv64.dll").
+// Markers are only searched in the crash region (see `crash_region`).
 
 const CORRUPTION_MARKERS: &[&str] = &[
     "SessionLock",
@@ -66,12 +68,73 @@ const CORRUPTION_MARKERS: &[&str] = &[
 ];
 
 pub fn analyze_crash(game_dir: &Path, exit_code: Option<i32>) -> CrashDiagnosis {
-    let combined_log = collect_recent_logs(game_dir, exit_code);
+    analyze_crash_since(game_dir, exit_code, None)
+}
+
+/// Like `analyze_crash`, but crash reports and hs_err files older than `since`
+/// (the session start) are ignored, so an old crash never explains a new exit.
+pub fn analyze_crash_since(
+    game_dir: &Path,
+    exit_code: Option<i32>,
+    since: Option<SystemTime>,
+) -> CrashDiagnosis {
+    let combined_log = collect_recent_logs(game_dir, exit_code, since);
     analyze_log_text(exit_code, &combined_log)
 }
 
-pub fn analyze_log_text(exit_code: Option<i32>, log_text: &str) -> CrashDiagnosis {
-    let snippet = build_snippet(exit_code, log_text);
+/// Exit code 0 is a normal close of the game, whatever the log says.
+pub fn clean_exit() -> CrashDiagnosis {
+    CrashDiagnosis {
+        kind: CrashKind::Unknown { exit_code: Some(0) },
+        title: "Игра закрыта".to_string(),
+        user_advice: String::new(),
+        technical_summary: String::new(),
+    }
+}
+
+/// The part of the logs that describes a failure: crash reports and hs_err in full,
+/// and from latest.log only ERROR/FATAL lines with the stack traces that follow them.
+/// INFO and WARN lines (driver paths, optional mixin targets, shader warnings) are left out.
+pub fn crash_region(log_text: &str) -> String {
+    let level_re =
+        Regex::new(r"^\[\d{2}:\d{2}:\d{2}\] \[[^\]]*/(?P<lvl>[A-Z]+)\]").expect("valid regex");
+    let mut out = String::new();
+    let mut section_full = false;
+    let mut seen_timestamp = false;
+    let mut in_error = false;
+    for line in log_text.lines() {
+        if line.starts_with("--- ") && line.ends_with(" ---") {
+            section_full = line.contains("CrashReport") || line.contains("NativeCrash");
+            in_error = false;
+            continue;
+        }
+        if section_full {
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+        if let Some(caps) = level_re.captures(line) {
+            seen_timestamp = true;
+            in_error = matches!(&caps["lvl"], "ERROR" | "FATAL");
+            if in_error {
+                out.push_str(line);
+                out.push('\n');
+            }
+        } else if in_error || !seen_timestamp {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+pub fn analyze_log_text(exit_code: Option<i32>, full_text: &str) -> CrashDiagnosis {
+    if exit_code == Some(0) {
+        return clean_exit();
+    }
+    let region = crash_region(full_text);
+    let log_text = region.as_str();
+    let snippet = build_snippet(exit_code, log_text, full_text);
 
     // 1. Missing Fabric Dependency
     // e.g.: Mod 'iris' (1.7.0) requires 'sodium' (0.5.8), but only 0.5.2 is present!
@@ -314,19 +377,37 @@ fn class_ver_to_java(class_ver: u32) -> String {
     }
 }
 
-fn build_snippet(exit_code: Option<i32>, log_text: &str) -> String {
+/// The exit code, then the failure itself: from the first exception in the crash
+/// region, plus the root cause (last "Caused by"). Without a region, the log tail.
+fn build_snippet(exit_code: Option<i32>, region: &str, full_text: &str) -> String {
     let mut out = String::new();
     if let Some(code) = exit_code {
         out.push_str(&format!("ExitCode: {}\n", code));
     }
-    let lines: Vec<&str> = log_text.lines().collect();
-    if lines.is_empty() {
-        return out;
+    let lines: Vec<&str> = region
+        .lines()
+        .filter(|l| !l.starts_with("ExitCode:"))
+        .collect();
+    let first = lines.iter().position(|l| {
+        l.contains("Exception")
+            || l.contains("Error:")
+            || l.contains("Caused by:")
+            || l.contains("Description:")
+    });
+    if let Some(start) = first {
+        let end = (start + 40).min(lines.len());
+        out.push_str(&lines[start..end].join("\n"));
+        if let Some(root) = lines.iter().rposition(|l| l.contains("Caused by:")) {
+            if root >= end {
+                out.push_str("\n...\n");
+                out.push_str(&lines[root..(root + 8).min(lines.len())].join("\n"));
+            }
+        }
+    } else {
+        let all: Vec<&str> = full_text.lines().collect();
+        let tail_count = 40.min(all.len());
+        out.push_str(&all[all.len() - tail_count..].join("\n"));
     }
-
-    let tail_count = 80.min(lines.len());
-    let tail = &lines[lines.len() - tail_count..];
-    out.push_str(&tail.join("\n"));
     if out.len() > 3000 {
         out.truncate(3000);
         out.push_str("\n... [обрезано]");
@@ -334,7 +415,22 @@ fn build_snippet(exit_code: Option<i32>, log_text: &str) -> String {
     out
 }
 
-fn collect_recent_logs(game_dir: &Path, exit_code: Option<i32>) -> String {
+fn fresh(entry: &fs::DirEntry, since: Option<SystemTime>) -> bool {
+    match since {
+        None => true,
+        Some(t) => entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .map(|m| m >= t)
+            .unwrap_or(false),
+    }
+}
+
+fn collect_recent_logs(
+    game_dir: &Path,
+    exit_code: Option<i32>,
+    since: Option<SystemTime>,
+) -> String {
     let mut combined = String::new();
     if let Some(code) = exit_code {
         combined.push_str(&format!("ExitCode: {}\n", code));
@@ -351,6 +447,7 @@ fn collect_recent_logs(game_dir: &Path, exit_code: Option<i32>) -> String {
                         .extension()
                         .map(|ext| ext == "txt")
                         .unwrap_or(false)
+                        && fresh(e, since)
                 })
                 .collect();
             files.sort_by_key(|e| {
@@ -371,7 +468,9 @@ fn collect_recent_logs(game_dir: &Path, exit_code: Option<i32>) -> String {
     if let Ok(entries) = fs::read_dir(game_dir) {
         let mut hs_files: Vec<_> = entries
             .filter_map(|e| e.ok())
-            .filter(|e| e.file_name().to_string_lossy().starts_with("hs_err_pid"))
+            .filter(|e| {
+                e.file_name().to_string_lossy().starts_with("hs_err_pid") && fresh(e, since)
+            })
             .collect();
         hs_files.sort_by_key(|e| {
             e.metadata()
@@ -401,6 +500,76 @@ fn collect_recent_logs(game_dir: &Path, exit_code: Option<i32>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Lines from a real, healthy 1.21.1 session (NVIDIA, Iris/Sodium pack).
+    const HEALTHY_LOG: &str = r#"[22:53:24] [main/WARN]: Error loading class: mezz/jei/fabric/platform/RenderHelper (java.lang.ClassNotFoundException: mezz/jei/fabric/platform/RenderHelper)
+[22:53:26] [main/INFO]: Found graphics adapter: AdapterInfo{vendor=NVIDIA, description='NVIDIA GeForce GTX 1660 SUPER', openglIcdFilePath='C:\Windows\System32\DriverStore\FileRepository\nvmdi.inf_amd64\nvoglv64.dll'}
+[22:53:30] [main/INFO]: Loading net.irisshaders.iris and me.jellysquid.mods.sodium
+[22:53:33] [Render thread/ERROR]: No data fixer registered for grizzly_bear
+[22:53:55] [Render thread/WARN]: Game took 48.659 seconds to start
+[22:58:24] [Render thread/INFO]: Stopping!
+"#;
+
+    #[test]
+    fn healthy_log_with_exit_code_zero_is_a_normal_close() {
+        let diag = analyze_log_text(Some(0), HEALTHY_LOG);
+        assert_eq!(diag.kind, CrashKind::Unknown { exit_code: Some(0) });
+    }
+
+    #[test]
+    fn driver_path_and_mod_packages_in_info_lines_are_not_a_gpu_crash() {
+        let diag = analyze_log_text(Some(1), HEALTHY_LOG);
+        assert!(
+            !matches!(diag.kind, CrashKind::GraphicsDriverOrShader { .. }),
+            "{:?}",
+            diag.kind
+        );
+        assert_eq!(diag.kind, CrashKind::Unknown { exit_code: Some(1) });
+        assert!(diag.title.contains("код 1"));
+    }
+
+    #[test]
+    fn a_real_driver_crash_in_hs_err_is_still_found() {
+        let text = format!(
+            "{HEALTHY_LOG}\n--- NativeCrash (hs_err) ---\n# EXCEPTION_ACCESS_VIOLATION\n# C  [nvoglv64.dll+0xd0f3a5]\n"
+        );
+        let diag = analyze_log_text(Some(-1073741819), &text);
+        assert!(matches!(
+            diag.kind,
+            CrashKind::GraphicsDriverOrShader { .. }
+        ));
+    }
+
+    #[test]
+    fn snippet_starts_at_the_first_exception_and_keeps_the_root_cause() {
+        let log = "[10:00:00] [main/INFO]: hello\n[10:00:01] [Render thread/ERROR]: Unreported exception thrown!\njava.lang.IllegalStateException: boom\n\tat a.B.c(B.java:1)\nCaused by: java.io.IOException: disk\n\tat d.E.f(E.java:2)\n";
+        let diag = analyze_log_text(Some(255), log);
+        assert!(diag.technical_summary.starts_with("ExitCode: 255\n"));
+        assert!(diag
+            .technical_summary
+            .contains("IllegalStateException: boom"));
+        assert!(diag
+            .technical_summary
+            .contains("Caused by: java.io.IOException: disk"));
+        assert!(!diag.technical_summary.contains("hello"));
+    }
+
+    #[test]
+    fn crash_reports_older_than_the_session_are_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let reports = dir.path().join("crash-reports");
+        fs::create_dir_all(&reports).unwrap();
+        fs::write(
+            reports.join("crash-old.txt"),
+            "java.lang.OutOfMemoryError: Java heap space",
+        )
+        .unwrap();
+        let later = SystemTime::now() + std::time::Duration::from_secs(60);
+        let diag = analyze_crash_since(dir.path(), Some(1), Some(later));
+        assert!(!matches!(diag.kind, CrashKind::OutOfMemory));
+        let diag = analyze_crash_since(dir.path(), Some(1), None);
+        assert!(matches!(diag.kind, CrashKind::OutOfMemory));
+    }
 
     #[test]
     fn test_diagnose_out_of_memory_error() {

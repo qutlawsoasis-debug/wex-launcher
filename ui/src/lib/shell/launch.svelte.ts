@@ -187,6 +187,8 @@ class Launch {
     this.version = version;
     this.startedAt = Date.now();
     if (fresh) this.startCount++;
+    // A launch may have just downloaded the game and its mods: read them again.
+    void builds.load();
   }
 
   private fail(error: unknown): void {
@@ -196,6 +198,8 @@ class Launch {
   }
 
   private reset(): void {
+    // After a launch attempt or a session the files may have changed (installed, mods updated).
+    if (this.phase !== 'idle') void builds.load();
     this.phase = 'idle';
     this.stage = '';
     this.percent = null;

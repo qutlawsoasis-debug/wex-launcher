@@ -40,6 +40,12 @@ pub trait LauncherCore: Send + Sync {
 
     /// Forcefully terminate a running game instance.
     async fn kill_game(&self, instance_id: &str) -> IpcResult<()>;
+
+    /// Exit code of the instance's last process, once `is_running` has seen it end.
+    /// `None` when unknown (still running, killed without a code, or not tracked).
+    async fn last_exit_code(&self, _instance_id: &str) -> Option<i32> {
+        None
+    }
 }
 
 /// In-memory mock implementation of `LauncherCore` for testing and UI prototyping.

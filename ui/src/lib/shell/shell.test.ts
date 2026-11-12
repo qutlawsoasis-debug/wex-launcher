@@ -226,6 +226,17 @@ describe('launch bar', () => {
     }
   });
 
+  it('after a launch the builds are read again: a fresh install shows as downloaded with its mods', async () => {
+    await attachLaunch();
+    // At window open the game was not downloaded yet and the mods folder was empty.
+    builds.list = builds.list.map((b) => ({ ...b, installed: false, mods: 0 }));
+    emit('launch-status', { state: 'running', message: 'Minecraft запущен' });
+    await vi.waitFor(() => expect(builds.list[0]).toMatchObject({ installed: true, mods: 132 }));
+    builds.list = builds.list.map((b) => ({ ...b, mods: 0 }));
+    emit('launch-status', { state: 'idle', message: 'Игра закрыта' });
+    await vi.waitFor(() => expect(builds.list[0].mods).toBe(132));
+  });
+
   it('a failed launch returns to ready and explains the error once', async () => {
     await attachLaunch();
     mocks.invoke.mockImplementation(async (cmd: string) => {
