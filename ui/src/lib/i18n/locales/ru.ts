@@ -1697,6 +1697,12 @@ export const ru = {
   'rooms.no_open_hint': 'Откройте свой мир — и он появится у друзей.',
   'shell.friends_online_count': 'Друзей в сети: {n}',
   'servers2.address_placeholder': 'Например, mc.example.net',
+  'wardrobe2.achievements': 'Достижения',
+  'wardrobe2.achievements_count': '{n} из {m}',
+  'wardrobe2.ach_got': 'Получено',
+  'wardrobe2.ach_got_on': 'Получено {date}',
+  'wardrobe2.ach_progress': '{n} из {m}',
+  'home.choose_hint': 'Выбрать для запуска',
 } as const;
 
 export type TranslationKey = keyof typeof ru;

@@ -81,7 +81,7 @@
 
   <div class="foot">
     {@render footer?.()}
-    <a class="me" href="#wardrobe" aria-label={t('shell.profile_label')} onclick={(e) => open(e, 'wardrobe')}>
+    <a class="me" href="#wardrobe" title={t('shell.profile_label')} onclick={(e) => open(e, 'wardrobe')}>
       <Monogram name={builds.playerName} tone={2} />
       <div>
         <b>{builds.playerName}</b>

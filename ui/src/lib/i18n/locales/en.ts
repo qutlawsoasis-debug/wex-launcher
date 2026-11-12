@@ -1697,4 +1697,10 @@ export const en = {
   'rooms.no_open_hint': 'Open your world and it shows up for friends.',
   'shell.friends_online_count': 'Friends online: {n}',
   'servers2.address_placeholder': 'For example, mc.example.net',
+  'wardrobe2.achievements': 'Achievements',
+  'wardrobe2.achievements_count': '{n} of {m}',
+  'wardrobe2.ach_got': 'Earned',
+  'wardrobe2.ach_got_on': 'Earned {date}',
+  'wardrobe2.ach_progress': '{n} of {m}',
+  'home.choose_hint': 'Select to play',
 } as const;

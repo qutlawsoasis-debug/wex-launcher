@@ -18,6 +18,8 @@
   import { t } from '../../i18n';
   import { buildRig, drawThumb, loadImage, toSkinCanvas, isCapeSize, NICK_RE, type CapeTexture } from './skinRig';
   import { wardrobe, fileToBase64, looksSlim, safeName, type SavedSkin } from './wardrobe.svelte';
+  import { call } from '../../shell/ipc';
+  import { formatDate } from '../../shell/format';
 
   type Tab = 'skins' | 'capes' | 'profile';
   type Pose = 'idle' | 'walk' | 'run' | 'wave';
@@ -35,10 +37,41 @@
   let nickOk = $state(true);
   let busy = $state(false);
 
+  /** Achievements are kept locally by core (social_list_achievements): definitions and progress. */
+  interface Achievement {
+    id: string;
+    title: string;
+    description: string;
+    target: number;
+    current: number;
+    unlocked: boolean;
+    unlockedAt: string | null;
+  }
+  let achievements = $state<Achievement[]>([]);
+  let showAch = $state(false);
+  const unlocked = $derived(achievements.filter((a) => a.unlocked).length);
+
+  async function loadAchievements() {
+    try {
+      const r = await call<{
+        achievements: Array<{ id: string; title: string; description: string; target: number }>;
+        progress: Array<{ id: string; current: number; unlocked: boolean; unlocked_at?: string | null }>;
+      }>('social_list_achievements', {});
+      const prog = new Map((r?.progress ?? []).map((p) => [p.id, p]));
+      achievements = (r?.achievements ?? []).map((d) => {
+        const p = prog.get(d.id);
+        return { ...d, current: p?.current ?? 0, unlocked: p?.unlocked ?? false, unlockedAt: p?.unlocked_at ?? null };
+      });
+    } catch {
+      achievements = [];
+    }
+  }
+
   const slim = $derived(wardrobe.state.model === 'Slim');
   const skinLabel = $derived(wardrobe.state.skin_base64 ? wardrobe.state.skin_name || t('wardrobe2.skin') : t('wardrobe2.default_skin'));
 
   onMount(() => {
+    void loadAchievements();
     void wardrobe.load().then(() => {
       // Do not overwrite what the user has started typing.
       if (!nickTouched) nick = wardrobe.state.nickname || builds.playerName;
@@ -349,6 +382,38 @@
           <input id="wd-nick" class="field" class:bad={!nickOk} bind:value={nick} oninput={onNick} maxlength="16" autocomplete="off" spellcheck="false" aria-invalid={!nickOk} aria-describedby="wd-nick-hint" />
           <div class="d" class:bad={!nickOk} id="wd-nick-hint">{nickOk ? t('wardrobe2.nick_hint') : t('wardrobe2.nick_bad')}</div>
         </div>
+        {#if achievements.length}
+          <button type="button" class="wrow ach-row" aria-expanded={showAch} aria-controls="ach-list" onclick={() => (showAch = !showAch)}>
+            <div>
+              <div class="l">{t('wardrobe2.achievements')}</div>
+              <div class="d">{t('wardrobe2.achievements_count', { n: unlocked, m: achievements.length })}</div>
+            </div>
+            <svg class="chev" class:open={showAch} viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" /></svg>
+          </button>
+          {#if showAch}
+            <div class="list" id="ach-list">
+              {#each achievements as a (a.id)}
+                <div class="lrow lrow-ach" class:done={a.unlocked}>
+                  <span class="ach-ic" aria-hidden="true">
+                    {#if a.unlocked}<svg viewBox="0 0 16 16"><path d="M3 8.5l3.2 3L13 4.5" /></svg>{/if}
+                  </span>
+                  <div>
+                    <b>{a.title}</b>
+                    <span>{a.description}</span>
+                  </div>
+                  {#if a.unlocked}
+                    <span class="tag up">{a.unlockedAt ? t('wardrobe2.ach_got_on', { date: formatDate(a.unlockedAt) }) : t('wardrobe2.ach_got')}</span>
+                  {:else}
+                    <div class="ach-meter" role="progressbar" aria-label={a.title} aria-valuemin="0" aria-valuemax={a.target} aria-valuenow={Math.min(a.current, a.target)}>
+                      <span>{t('wardrobe2.ach_progress', { n: Math.floor(Math.min(a.current, a.target)), m: a.target })}</span>
+                      <i style:--w={(Math.min(a.current, a.target) / Math.max(1, a.target)).toFixed(3)}></i>
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
+        {/if}
       {/if}
     </div>
   </section>
@@ -719,6 +784,73 @@
   }
   .d.bad {
     color: var(--red);
+  }
+  .ach-row {
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+  }
+  .chev {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: var(--label-3);
+    stroke-width: 2;
+    transition: transform var(--dur-short) var(--ease);
+  }
+  .chev.open {
+    transform: rotate(90deg);
+  }
+  .lrow-ach {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    min-height: 56px;
+  }
+  .ach-ic {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--fill-2);
+  }
+  .done .ach-ic {
+    background: var(--green);
+  }
+  .ach-ic svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: var(--cover-ink);
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .tag.up {
+    background: var(--blue-tint);
+    color: var(--blue-text);
+  }
+  .ach-meter {
+    display: grid;
+    gap: 6px;
+    width: 96px;
+    font-size: var(--t-cap);
+    color: var(--label-2);
+    text-align: right;
+  }
+  .ach-meter i {
+    display: block;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--fill-2);
+    overflow: hidden;
+  }
+  .ach-meter i::after {
+    content: '';
+    display: block;
+    height: 100%;
+    background: var(--blue-text);
+    transform: scaleX(var(--w));
+    transform-origin: left;
   }
   .cape-grid {
     display: grid;

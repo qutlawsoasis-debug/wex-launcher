@@ -104,6 +104,17 @@ beforeEach(async () => {
         return null;
       case 'get_installed_versions':
         return [];
+      case 'social_list_achievements':
+        return {
+          achievements: [
+            { id: 'first', title: 'Первый запуск', description: 'Запустите игру', target: 1 },
+            { id: 'hours', title: 'Десять часов', description: 'Проведите в игре 10 часов', target: 10 },
+          ],
+          progress: [
+            { id: 'first', current: 1, unlocked: true, unlocked_at: '2026-11-10T12:00:00Z' },
+            { id: 'hours', current: 3.5, unlocked: false, unlocked_at: null },
+          ],
+        };
       default:
         return null;
     }
@@ -133,6 +144,23 @@ async function open() {
 }
 
 describe('wardrobe page', () => {
+  it('profile: «Достижения, N из M» from core opens the list with progress', async () => {
+    await open();
+    (target.querySelectorAll<HTMLButtonElement>('.wd-panel [role="tab"]')[2]).click();
+    await vi.waitFor(() => expect(target.querySelector('.ach-row')).not.toBeNull());
+    const row = target.querySelector<HTMLButtonElement>('.ach-row')!;
+    expect(row.textContent).toContain('Достижения');
+    expect(row.textContent).toContain('1 из 2');
+    expect(row.getAttribute('aria-expanded')).toBe('false');
+    row.click();
+    flushSync();
+    const items = target.querySelectorAll('.lrow-ach');
+    expect(items.length).toBe(2);
+    expect(items[0].textContent).toContain('Получено');
+    expect(items[1].querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('3.5');
+    expect(items[1].textContent).toContain('3 из 10');
+  });
+
   it('shows the stage with nickname, poses, turn tools and the current skin', async () => {
     await open();
     expect(target.querySelector('.nametag')?.textContent).toBe('Player');

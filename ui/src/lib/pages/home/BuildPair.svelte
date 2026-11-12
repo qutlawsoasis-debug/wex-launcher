@@ -74,15 +74,16 @@
       style:--hero-c={coverVar(b.id)}
       role={open ? undefined : 'button'}
       tabindex={open ? undefined : 0}
-      aria-label={open ? undefined : t('home.choose_build', { ver: b.id })}
       onclick={() => !open && choose(b)}
       onkeydown={(e) => !open && onKey(e, b)}
       onpointermove={open ? follow : undefined}
     >
       <span class="pane-ver" aria-hidden="true">{b.id}</span>
-      <div class="pane-side" aria-hidden="true">
+      <!-- The visible text is the accessible name; the hint says what pressing does. -->
+      <div class="pane-side" aria-hidden={open}>
         <b>{b.id}</b>
         {#if b.mods !== null}<span>{tn('shell.mods', b.mods)}</span>{/if}
+        {#if !open}<span class="sr">{t('home.choose_hint')}</span>{/if}
       </div>
       {#if open}
         <div class="pane-body">
@@ -196,6 +197,14 @@
     font-size: var(--t-foot);
     font-weight: var(--w-semibold);
     opacity: 0.8;
+  }
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
   .pane.open .pane-side {
     opacity: 0;
