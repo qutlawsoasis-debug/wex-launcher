@@ -34,7 +34,7 @@ interface HistoryItem {
 }
 
 const DEFAULT: WardrobeState = {
-  nickname: 'Player',
+  nickname: '',
   skin_name: '',
   skin_base64: null,
   model: 'Classic',

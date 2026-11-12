@@ -27,7 +27,7 @@
 
   let {
     open = $bindable(false),
-    version = '1.21.1',
+    version = '',
     errorText = '',
     diagnosisTitle = '',
     playerName = '',
@@ -36,6 +36,16 @@
   }: Props = $props();
 
   let userComment = $state('');
+  /** Launcher version and OS as core reports them (get_system_info); omitted until known. */
+  let sys = $state<{ launcher_version?: string; os_version?: string } | null>(null);
+  $effect(() => {
+    if (!open || sys) return;
+    if (typeof window === 'undefined' || !(window as any).__TAURI_INTERNALS__) return;
+    void import('@tauri-apps/api/core')
+      .then(({ invoke }) => invoke<{ launcher_version: string; os_version: string }>('get_system_info'))
+      .then((info) => (sys = info))
+      .catch(() => {});
+  });
   let isSavingZip = $state(false);
   let isCopying = $state(false);
   let copyFeedback = $state(false);
@@ -61,10 +71,9 @@
     JSON.stringify(
       {
         launcher: 'Wex Launcher',
-        launcher_version: '0.9.2',
-        game_version: version,
-        os: 'Windows 64-bit',
-        java: version.startsWith('1.20') ? 'Java 17 (Mojang Runtime)' : 'Java 21 (Mojang Runtime)',
+        launcher_version: sys?.launcher_version || undefined,
+        game_version: version || undefined,
+        os: sys?.os_version || undefined,
         diagnosis: diagnosisTitle || undefined,
         error_details: anonymizedError || undefined,
         user_comment: anonymizedComment || undefined,
@@ -95,12 +104,8 @@
           );
         }
       } else {
-        // Mock fallback for browser / vitest
-        ontoast?.(
-          'success',
-          t('report.saved_to_desktop'),
-          `Wex-report-${version}.zip`
-        );
+        // Outside the app nothing is saved; say so instead of claiming a file.
+        ontoast?.('error', t('report.save_failed'));
       }
     } catch (e: any) {
       ontoast?.('error', t('report.save_failed'), String(e?.message || e));
@@ -124,7 +129,8 @@
       }
 
       if (!textToCopy) {
-        textToCopy = `### ${t('report.report_title')}\n- **${t('report.game_ver_lbl')}:** \`${version}\`\n- **${t('report.launcher_ver_lbl')}:** \`0.9.2\`\n- **${t('report.diagnosis_lbl')}:** ${diagnosisTitle || t('report.game_crash_default')}\n\n**${t('report.comment_lbl')}:**\n${anonymizedComment || t('report.no_comment')}\n\n**${t('report.error_lbl')}:**\n\`\`\`\n${anonymizedError || t('report.no_tech_details')}\n\`\`\``;
+        const launcherLine = sys?.launcher_version ? `\n- **${t('report.launcher_ver_lbl')}:** \`${sys.launcher_version}\`` : '';
+        textToCopy = `### ${t('report.report_title')}\n- **${t('report.game_ver_lbl')}:** \`${version}\`${launcherLine}\n- **${t('report.diagnosis_lbl')}:** ${diagnosisTitle || t('report.game_crash_default')}\n\n**${t('report.comment_lbl')}:**\n${anonymizedComment || t('report.no_comment')}\n\n**${t('report.error_lbl')}:**\n\`\`\`\n${anonymizedError || t('report.no_tech_details')}\n\`\`\``;
       }
 
       if (navigator.clipboard) {
@@ -154,7 +160,7 @@
     <div class="report-header-card">
       <div class="info-pill-row">
         <span class="info-pill version-pill" data-testid="pill-version">{version}</span>
-        <span class="info-pill">Wex 0.9.2</span>
+        {#if sys?.launcher_version}<span class="info-pill">Wex {sys.launcher_version}</span>{/if}
         <span class="info-pill secure-pill">
           <Icon name="check" size={12} color="var(--green)" />
           <span>{t('report.anonymized_badge')}</span>

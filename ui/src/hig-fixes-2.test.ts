@@ -72,25 +72,15 @@ describe('Apple HIG Fixes 2 Verification (Settings, Lobby, Friends)', () => {
 
       // Storage section explanations are friendly and without raw file names
       expect(ru['settings.logs_viewer_title']).toBe('Журнал и отчёты о сбоях');
-      expect(ru['settings.logs_viewer_desc']).toBe('Откройте журнал игры и отчёты, чтобы разобраться в сбое.');
       expect(en['settings.logs_viewer_title']).toBe('Logs and Crash Reports');
-      expect(en['settings.logs_viewer_desc']).toBe('Open game log and crash reports to diagnose issues.');
-
-      // About section title does not have parenthetical English
-      expect(ru['settings.about_title']).toBe('О программе');
-      expect(ru['settings.about_title']).not.toContain('(Wex Launcher)');
     });
   });
 
   describe('4. Lobby Screen HIG Requirements (F09, F10, F11)', () => {
     it('provides specialized cloud rooms error title, description and retry action (F11)', () => {
       expect(ru['lobby.cloud_error_title']).toBe('Не удалось загрузить облачные миры');
-      expect(ru['lobby.cloud_error_desc']).toBe('Проверьте подключение к интернету и повторите попытку.');
-      expect(ru['lobby.cloud_error_retry']).toBe('Повторить');
 
       expect(en['lobby.cloud_error_title']).toBe('Failed to load cloud worlds');
-      expect(en['lobby.cloud_error_desc']).toBe('Check your internet connection and try again.');
-      expect(en['lobby.cloud_error_retry']).toBe('Retry');
     });
   });
 

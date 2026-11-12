@@ -158,7 +158,8 @@ describe('OnboardingModal Component (Apple HIG Onboarding)', () => {
     await tick();
 
     expect(target.textContent).toContain('Выделение оперативной памяти');
-    expect(target.textContent).toContain('Всего в ПК');
+    // Without core specs the PC's total memory is unknown and not shown.
+    expect(target.textContent).not.toContain('Всего в ПК');
     expect(target.querySelector('.ram-explanation-box')).toBeTruthy();
   });
 

@@ -239,7 +239,7 @@
         <div class="option-item">
           <div class="option-details">
             <span class="option-title">{t('import.version')}</span>
-            <span class="option-subtitle">{oldData.selected_version || '1.21.1'}</span>
+            {#if oldData.selected_version}<span class="option-subtitle">{oldData.selected_version}</span>{/if}
           </div>
           <Toggle bind:checked={importVersion} label={t('import.transfer_version')} />
         </div>

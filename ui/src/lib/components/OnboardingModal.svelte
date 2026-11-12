@@ -55,7 +55,8 @@
   let modalEl: HTMLElement | undefined = $state();
 
   // Discovered system & environment specs
-  let totalMemoryMb = $state(16384);
+  /** From core (onboarding_get_specs); 0 until known, then nothing about it is shown. */
+  let totalMemoryMb = $state(0);
   let ramMb = $state(4096);
   let ramExplanation = $state(
     t('onboarding.ram_exp_default')
@@ -67,7 +68,7 @@
   let importSuccess = $state(false);
 
   // User configured choices
-  let nickname = $state('Player');
+  let nickname = $state('');
   let selectedVersion = $state<'1.21.1' | '1.20.1'>('1.21.1');
   let nicknameTouched = $state(false);
 
@@ -91,6 +92,10 @@
 
   // Calculate RAM explanation on-the-fly when user changes slider
   function updateRamExplanation(val: number) {
+    if (totalMemoryMb <= 0) {
+      ramExplanation = t('onboarding.ram_exp_default');
+      return;
+    }
     const totalGb = Math.round(totalMemoryMb / 1024);
     const chosenGb = (val / 1024).toFixed(val % 1024 === 0 ? 0 : 1);
     const freeGb = Math.max(0, Math.round((totalMemoryMb - val) / 1024));
@@ -260,7 +265,7 @@
         if (specs.detected_aura_dir) {
           detectedAuraDir = specs.detected_aura_dir;
         }
-        if (specs.default_nickname && nickname === 'Player') {
+        if (specs.default_nickname && !nickname) {
           nickname = specs.default_nickname;
         }
         if (specs.default_version === '1.20.1' || specs.default_version === '1.21.1') {
@@ -268,13 +273,7 @@
         }
       }
     } catch {
-      // Fallback heuristics: detect navigator.deviceMemory if available
-      if (typeof navigator !== 'undefined' && (navigator as any).deviceMemory) {
-        const memGb = (navigator as any).deviceMemory;
-        totalMemoryMb = memGb * 1024;
-        ramMb = Math.min(4096, Math.max(2048, (totalMemoryMb * 0.5)));
-        updateRamExplanation(ramMb);
-      }
+      // Without core the PC's memory is unknown; no browser guess (deviceMemory is capped at 8 GB).
     }
   }
 
@@ -392,22 +391,6 @@
     const stepParam = params.get('onboarding-step');
     if (stepParam && ['welcome', 'import', 'nickname', 'version', 'memory', 'ready'].includes(stepParam)) {
       currentStep = stepParam as OnboardingStep;
-      if (stepParam === 'import' && !oldLauncherData) {
-        detectedAuraDir = '%APPDATA%\\.aura';
-        oldLauncherData = {
-          nickname: 'DragonSlayer',
-          ram_mb: 6144,
-          selected_version: '1.21.1',
-          graphics_preset: 'High',
-          total_play_time_seconds: BigInt(3600),
-          total_game_launches: 10,
-          servers: [{ name: 'Aura Survival', ip: 'play.auramc.ru:25565', icon: null }],
-          skins: [{ file_name: 'steve_custom.png', path: '', hash: 'abc', is_slim: false }],
-          capes: [],
-          wardrobe_history: [],
-          worlds: [],
-        };
-      }
     }
   }
 
@@ -699,14 +682,14 @@
 
             <div class="memory-slider-card">
               <div class="slider-header-row">
-                <span class="sys-ram-badge">{t('onboarding.ram_total_pc', { total: Math.round(totalMemoryMb / 1024) })}</span>
+                {#if totalMemoryMb > 0}<span class="sys-ram-badge">{t('onboarding.ram_total_pc', { total: Math.round(totalMemoryMb / 1024) })}</span>{/if}
                 <span class="current-ram-val">{formatRamLabel(ramMb)}</span>
               </div>
 
               <Slider
                 value={ramMb}
                 min={1024}
-                max={totalMemoryMb}
+                max={totalMemoryMb > 0 ? totalMemoryMb : 16384}
                 step={512}
                 formatValue={formatRamLabel}
                 onchange={(val) => {

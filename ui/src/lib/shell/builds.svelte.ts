@@ -38,7 +38,7 @@ export function coverVar(id: string): string {
 class Builds {
   list = $state<Build[]>([]);
   selectedId = $state('1.21.1');
-  playerName = $state('Player');
+  playerName = $state('');
   ramMb = $state<number | null>(null);
   /** The full launcher settings as last read or saved. */
   settings = $state<LauncherSettings>({});

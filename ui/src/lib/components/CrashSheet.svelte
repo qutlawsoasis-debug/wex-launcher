@@ -33,7 +33,7 @@
   let {
     open = $bindable(false),
     diagnosis = null,
-    version = '1.21.1',
+    version = '',
     onclose,
     onnavigate,
     ontoast,

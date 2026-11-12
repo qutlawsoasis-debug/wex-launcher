@@ -44,35 +44,30 @@ describe('i18n Reactive Manager & Translation Helper', () => {
   });
 
   it('returns Russian translation by default', () => {
-    expect(t('sidebar.play')).toBe('Играть');
-    expect(t('sidebar.settings')).toBe('Настройки');
-    expect(t('offline.title')).toBe('Нет подключения');
+    expect(t('shell.play')).toBe('Играть');
+    expect(t('shell.nav_options')).toBe('Настройки');
+    expect(t('shell.offline')).toBe('Не в сети');
   });
 
   it('switches to English immediately without restart', () => {
     i18n.setLocale('en');
 
-    expect(t('sidebar.play')).toBe('Play');
-    expect(t('sidebar.settings')).toBe('Settings');
-    expect(t('offline.title')).toBe('No Connection');
+    expect(t('shell.play')).toBe('Play');
+    expect(t('shell.nav_options')).toBe('Settings');
+    expect(t('shell.offline')).toBe('Offline');
 
     // Switch back to Russian
     i18n.setLocale('ru');
-    expect(t('sidebar.play')).toBe('Играть');
+    expect(t('shell.play')).toBe('Играть');
   });
 
   it('interpolates single and multiple parameters accurately', () => {
     i18n.setLocale('ru');
-    expect(t('servers.ping_ms', { ms: 42 })).toBe('42 мс');
-    expect(t('play.update_description', { version: '1.2.0' })).toBe(
-      'Доступна новая версия 1.2.0. Нажмите для обновления.'
-    );
+    expect(t('shell.memory_gb', { gb: 6 })).toBe('6 ГБ памяти');
+    expect(t('shell.of', { done: '1 МБ', total: '2 МБ' })).toBe('1 МБ из 2 МБ');
 
     i18n.setLocale('en');
-    expect(t('servers.ping_ms', { ms: 42 })).toBe('42 ms');
-    expect(t('play.update_description', { version: '1.2.0' })).toBe(
-      'Version 1.2.0 is available.'
-    );
+    expect(t('shell.memory_gb', { gb: 6 })).toBe('6 GB memory');
   });
 
   it('falls back to key string when translation key is not defined', () => {

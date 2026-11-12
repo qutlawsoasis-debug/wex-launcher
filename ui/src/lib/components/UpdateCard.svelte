@@ -88,8 +88,9 @@
   }
 
   async function handleOpenDownloadUrl() {
-    const url =
-      updateInfo?.download_url || 'https://github.com/qutlawsoasis-debug/wex-launcher/releases';
+    // Only the address the updater reported; no built-in fallback page.
+    const url = updateInfo?.download_url;
+    if (!url) return;
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('updater_open_download_url', { url });
@@ -200,7 +201,7 @@
         <Button variant="primary" size="small" fullWidth onclick={handleStartUpdate} title={t('update_card.update_title')}>
           <span>{t('update_card.update')}</span>
         </Button>
-      {:else}
+      {:else if updateInfo?.download_url}
         <Button variant="secondary" size="small" fullWidth onclick={handleOpenDownloadUrl} title={t('update_card.open_download_title')}>
           <span>{t('update_card.open_download')}</span>
         </Button>

@@ -160,8 +160,8 @@ export class FriendsLiveService {
   private windowsNotificationListeners: Set<(n: FriendsLiveNotification) => void> = new Set();
   private joinListeners: Set<(code: string, room?: LobbyRoom) => void> = new Set();
   private errorListeners = new Set<(error: unknown, context: 'friends' | 'lobby') => void>();
-  private playerName = 'Player';
-  private gameVersion = '1.21.1';
+  private playerName = '';
+  private gameVersion = '';
   private runningGameVersion: string | null = null;
   private lobbyRoom: LobbyRoom | null = null;
   private presenceQueue: Promise<void> = Promise.resolve();

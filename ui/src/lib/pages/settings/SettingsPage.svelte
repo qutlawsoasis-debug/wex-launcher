@@ -55,19 +55,22 @@
   let importOpen = $state(false);
   let visibleCount = $state(1);
 
-  const totalGb = $derived(s && Number(s.total_memory_mb) > 0 ? Math.round(Number(s.total_memory_mb) / 1024) : 16);
+  /** Memory in use right now, from core (get_system_info: total − free); null until known. */
+  let usedMb = $state<number | null>(null);
+  const totalMb = $derived(s && Number(s.total_memory_mb) > 0 ? Number(s.total_memory_mb) : 0);
+  const totalGb = $derived(Math.round(totalMb / 1024));
   const maxGb = $derived(Math.max(2, Math.min(totalGb - 2, 32)));
-  /** Memory kept for Windows and apps, as the reference shows it (and its advice: leave 4 GB). */
-  const SYSTEM_GB = 4;
-  const freeGb = $derived(Math.max(0, totalGb - SYSTEM_GB - memGb));
-  const memWarn = $derived(memGb > totalGb - SYSTEM_GB);
+  /** Windows and apps use what core measures now; nothing is assumed when it is unknown. */
+  const usedGb = $derived(usedMb !== null ? Math.round((usedMb / 1024) * 10) / 10 : null);
+  const freeGb = $derived(usedGb !== null ? Math.max(0, Math.round((totalMb / 1024 - usedGb - memGb) * 10) / 10) : null);
+  const memWarn = $derived(usedGb !== null && totalMb > 0 && memGb > totalMb / 1024 - usedGb);
 
-  /** Graphics presets as core applies them (wex-extras presets.rs: render distance per tier). */
-  const PRESETS: Array<[string, string, number]> = [
-    ['Low', 'settings2.preset_low', 6],
-    ['Medium', 'settings2.preset_medium', 8],
-    ['High', 'settings2.preset_high', 8],
-    ['Ultra', 'settings2.preset_ultra', 10],
+  /** Graphics presets core knows (graphics_preset). Their contents live in core and are not repeated here. */
+  const PRESETS: Array<[string, string]> = [
+    ['Low', 'settings2.preset_low'],
+    ['Medium', 'settings2.preset_medium'],
+    ['High', 'settings2.preset_high'],
+    ['Ultra', 'settings2.preset_ultra'],
   ];
 
   /** Shortcuts handled in shell/hotkeys.ts. Key names come from the dictionary (Ctrl, Alt, Enter, Esc). */
@@ -106,9 +109,19 @@
     if (upd?.app_version) version = upd.app_version;
   }
 
+  async function loadMemory() {
+    try {
+      const info = await call<{ total_memory_mb: number; free_memory_mb: number }>('get_system_info');
+      if (info.total_memory_mb > 0 && info.free_memory_mb >= 0) usedMb = info.total_memory_mb - info.free_memory_mb;
+    } catch {
+      usedMb = null;
+    }
+  }
+
   onMount(() => {
     void load();
     void loadExtras();
+    void loadMemory();
   });
 
   /** Save fields through core; apply the look right away. */
@@ -267,18 +280,21 @@
               <div class="l">{t('build.memory')}</div>
               <div class="d">{memWarn ? t('settings2.memory_warn') : t('build.memory_shared')}</div>
             </div>
-            <b class="val">{t('shell.gb', { n: memGb })}</b>
+            {#if s}<b class="val">{t('shell.gb', { n: memGb })}</b>{/if}
           </div>
-          <div class="ram" aria-hidden="true">
-            <i class="sys" style:--f={SYSTEM_GB / totalGb}></i>
-            <i class="mc" class:warn={memWarn} style:--f={memGb / totalGb}></i>
-            <i class="free" style:--f={freeGb / totalGb}></i>
-          </div>
-          <div class="ram-legend">
-            <span><i class="sys"></i>{t('settings2.ram_rest', { gb: SYSTEM_GB })}</span>
-            <span><i class="mc"></i>{t('settings2.ram_minecraft', { gb: memGb })}</span>
-            <span><i class="free"></i>{t('settings2.ram_free', { gb: freeGb })}</span>
-          </div>
+          {#if totalMb > 0}
+            {@const total = totalMb / 1024}
+            <div class="ram" aria-hidden="true">
+              {#if usedGb !== null}<i class="sys" style:--f={usedGb / total}></i>{/if}
+              <i class="mc" class:warn={memWarn} style:--f={memGb / total}></i>
+              {#if freeGb !== null}<i class="free" style:--f={freeGb / total}></i>{/if}
+            </div>
+            <div class="ram-legend">
+              {#if usedGb !== null}<span><i class="sys"></i>{t('settings2.ram_rest', { gb: usedGb })}</span>{/if}
+              <span><i class="mc"></i>{t('settings2.ram_minecraft', { gb: memGb })}</span>
+              {#if freeGb !== null}<span><i class="free"></i>{t('settings2.ram_free', { gb: freeGb })}</span>{/if}
+            </div>
+          {/if}
           <input type="range" min="2" max={maxGb} step="1" value={memGb} aria-label={t('build.memory')} disabled={!s} oninput={onMem} />
         </div>
       </div>
@@ -287,11 +303,10 @@
     <section class="sgroup" id="sec-gfx">
       <h2>{t('settings2.sec_gfx')}</h2>
       <div class="presets" data-k={t('settings2.k_graphics')} role="radiogroup" aria-label={t('settings2.sec_gfx')}>
-        {#each PRESETS as [value, label, dist], i (value)}
+        {#each PRESETS as [value, label], i (value)}
           <button type="button" class="preset" role="radio" aria-checked={s?.graphics_preset === value} disabled={!s} onclick={() => save({ graphics_preset: value })}>
             <span class="bars" aria-hidden="true">{#each [0, 1, 2, 3] as n (n)}<i class:on={n <= i}></i>{/each}</span>
             <b>{t(label)}</b>
-            <span>{t('settings2.preset_dist', { n: dist })}</span>
           </button>
         {/each}
       </div>

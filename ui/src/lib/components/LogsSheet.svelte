@@ -20,6 +20,7 @@
   import SegmentedControl from './SegmentedControl.svelte';
   import Icon from './icons/Icon.svelte';
   import { t } from '../i18n';
+  import { builds } from '../shell/builds.svelte';
 
   export interface LogFileInfo {
     file_name: string;
@@ -58,13 +59,14 @@
 
   let {
     open = $bindable(false),
-    version = '1.21.1',
+    version = builds.selectedId,
     initialFileName = 'latest.log',
     onclose,
     ontoast,
   }: Props = $props();
 
-  let currentVersion = $state('1.21.1');
+  // svelte-ignore state_referenced_locally
+  let currentVersion = $state(version);
   let selectedFileName = $state('latest.log');
   let searchQuery = $state('');
   let levelFilter = $state('ALL'); // 'ALL' | 'ERROR' | 'WARN' | 'INFO'
@@ -225,10 +227,7 @@
         <!-- Version Selector -->
         <div class="version-control">
           <SegmentedControl
-            options={[
-              { value: '1.21.1', label: '1.21.1' },
-              { value: '1.20.1', label: '1.20.1' },
-            ]}
+            options={builds.list.map((b) => ({ value: b.id, label: b.id }))}
             bind:value={currentVersion}
             onchange={handleVersionChange}
           />

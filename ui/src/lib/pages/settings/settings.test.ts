@@ -37,6 +37,8 @@ beforeEach(async () => {
   };
   mocks.invoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
     switch (cmd) {
+      case 'get_system_info':
+        return { total_memory_mb: 16384, free_memory_mb: 12288 };
       case 'get_launcher_settings':
         return { ...settings };
       case 'save_launcher_settings':
@@ -117,7 +119,8 @@ describe('settings page', () => {
   it('memory: bar and legend from the real total, saved through core', async () => {
     await open();
     expect(target.querySelector('.ram-legend')?.textContent).toContain('Minecraft, 6 ГБ');
-    expect(target.querySelector('.ram-legend')?.textContent).toContain('Windows и программы, 4 ГБ');
+    // In use now = total − free from get_system_info, not an assumed 4 GB.
+    expect(target.querySelector('.ram-legend')?.textContent).toContain('Сейчас занято Windows и программами, 4 ГБ');
     expect(target.querySelector('.ram-legend')?.textContent).toContain('Свободно, 6 ГБ');
     const range = target.querySelector<HTMLInputElement>('input[type="range"]')!;
     expect(range.max).toBe('14');
@@ -125,7 +128,7 @@ describe('settings page', () => {
     range.dispatchEvent(new Event('input', { bubbles: true }));
     flushSync();
     expect(target.querySelector('.ram .mc')?.classList.contains('warn')).toBe(true);
-    expect(target.textContent).toContain('Оставьте системе хотя бы 4 ГБ');
+    expect(target.textContent).toContain('Столько свободной памяти сейчас нет');
     await vi.waitFor(() => expect(settings.ram_mb).toBe(13 * 1024), { timeout: 2000 });
   });
 
@@ -133,7 +136,8 @@ describe('settings page', () => {
     await open();
     const presets = target.querySelectorAll<HTMLButtonElement>('.preset');
     expect(presets[1].getAttribute('aria-checked')).toBe('true');
-    expect(presets[0].textContent).toContain('6 чанков');
+    // Preset contents live in core; the page does not repeat render distances.
+    expect(presets[0].textContent).not.toMatch(/чанк/);
     presets[3].click();
     await vi.waitFor(() => expect(settings.graphics_preset).toBe('Ultra'));
 

@@ -22,14 +22,12 @@
   interface Props {
     initialVersion?: string;
     autoStart?: boolean;
-    simulateNetworkError?: boolean;
     oncomplete?: () => void;
   }
 
   let {
-    initialVersion = 'v0.9.2',
+    initialVersion = '',
     autoStart = true,
-    simulateNetworkError = false,
     oncomplete,
   }: Props = $props();
 
@@ -85,13 +83,9 @@
   }
 
   export async function checkUpdates() {
-    statusText = t('splash.status_check_updates');
+    // No update check runs here (the updater banner does it later), so the
+    // splash does not claim one.
     hasNetworkError = false;
-
-    if (simulateNetworkError) {
-      handleNetworkFailure(t('splash.err_network_check'));
-      return;
-    }
 
     // Launcher updates are checked by the real updater (`updater_check`) and
     // offered as a banner on the Play screen; the splash never blocks on them.
@@ -163,7 +157,7 @@
 
     <!-- Launcher Version Tag -->
     <div class="version-tag">
-      <span class="version-badge">{appVersion}</span>
+      {#if appVersion}<span class="version-badge">{appVersion}</span>{/if}
     </div>
 
     <!-- Dynamic Status or Progress -->

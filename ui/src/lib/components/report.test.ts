@@ -60,7 +60,7 @@ describe('ReportSheet Component (SPEC 2.10 & wex-parity)', () => {
     unmount(comp);
   });
 
-  it('handles save zip action and triggers success notification', async () => {
+  it('outside the app saving says it failed instead of claiming a file', async () => {
     let toastType = '';
     let toastTitle = '';
 
@@ -82,8 +82,8 @@ describe('ReportSheet Component (SPEC 2.10 & wex-parity)', () => {
     await tick();
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(toastType).toBe('success');
-    expect(toastTitle).toContain('Отчёт сохранён на рабочий стол');
+    expect(toastType).toBe('error');
+    expect(toastTitle).not.toContain('сохранён');
     unmount(comp);
   });
 

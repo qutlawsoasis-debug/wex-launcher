@@ -432,43 +432,6 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders SplashScreen network error state with retry and offline skip buttons', async () => {
-    let completed = false;
-    const comp = mount(SplashScreen, {
-      target,
-      props: {
-        initialVersion: 'v0.1.0',
-        autoStart: false,
-        simulateNetworkError: true,
-        oncomplete: () => {
-          completed = true;
-        },
-      },
-    });
-
-    // Manually trigger initialization with simulated error
-    await comp.startInitialization();
-
-    expect(target.textContent).toContain('Сетевая ошибка');
-    expect(target.textContent).toContain('Повторить');
-    expect(target.textContent).toContain('Пропустить');
-
-    // Click offline skip button
-    const skipBtn = Array.from(target.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Пропустить')
-    );
-    expect(skipBtn).toBeDefined();
-    skipBtn?.click();
-
-    // Allow 250ms cross-fade transition to complete
-    await new Promise((r) => setTimeout(r, 300));
-
-    // Verify offline skip invokes completion handler
-    expect(completed).toBe(true);
-
-    unmount(comp);
-  });
-
   it('immediately transitions when Reduce Motion is enabled without delay', async () => {
     let completed = false;
     theme.setReduceMotion(true);
