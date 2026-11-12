@@ -49,7 +49,7 @@ The Rust entry point `app/src-tauri/src/main.rs` calls `wex_app_lib::run`. Tauri
 1. Creates `WexPaths::new(None)` and attempts `ensure_dirs`.
 2. Creates `NetworkState`, starts its background connectivity supervisor (TCP DNS endpoint probes every five seconds), and registers it with Tauri.
 3. Creates `StartupState` for startup diagnostics, directory verification, and preflight update checks (`commands/startup.rs`).
-4. Creates `PlayState::new_real`: a `WexLauncherCore` with `TauriEventHandler`, flags/current version, paths, running process handle, background prewarm instance and `is_prewarming` state, and a Discord client connection started in the background. If `fast_launch` is enabled in config and system RAM meets the >= 16 GB threshold, background prewarming is triggered.
+4. Creates `PlayState::new_real`: a `WexLauncherCore` with `TauriEventHandler`, flags/current version, paths, running process handle, background prewarm instance and `is_prewarming` state, and a Discord client connection started in the background. If `fast_launch` is enabled in config (off by default), background prewarming is triggered.
 5. Registers `FriendsState`, legacy `AppState`, and `LobbyState` with Lobby API clients, session/heartbeat/tunnel storage, and a `NetEventBus`.
 6. Registers `TrayState` for system tray management and `DeepLinkState` for `wex://` protocol handling.
 7. Registers the 199 command functions, configures the system tray (`setup_tray`), registers deep link handlers, and starts Tauri's event loop.
@@ -107,7 +107,7 @@ The offline preflight checks `get_installed_versions`. In the current core adapt
 
 ### Fast launch and prewarm lifecycle
 
-When `fast_launch` is enabled in configuration (defaulting to enabled only when total system RAM is >= 16 GB / 15,360 MB via `default_fast_launch`):
+When `fast_launch` is enabled in configuration (off by default, `default_fast_launch`; the user turns it on in Settings):
 
 1. **JVM probe (`prewarm_jvm`):** Executes `java -Xms16m -Xmx32m -version` to populate the operating system's disk cache for `jvm.dll` and runtime libraries.
 2. **Hidden background instance:** If the instance passes fast-path verification, `prepare_and_prewarm` spawns the game client in the background with a hidden GLFW window and prewarm JVM flags:

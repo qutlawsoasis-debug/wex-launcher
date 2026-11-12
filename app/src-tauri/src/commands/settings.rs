@@ -71,7 +71,8 @@ pub struct LauncherSettingsDto {
 }
 
 pub fn default_fast_launch_dto() -> bool {
-    get_total_ram_mb() >= 15360
+    // Off by default, same as wex_core::config::default_fast_launch.
+    false
 }
 
 fn default_true() -> bool {

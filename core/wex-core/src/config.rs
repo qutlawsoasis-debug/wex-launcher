@@ -383,8 +383,10 @@ pub fn get_system_total_memory_mb() -> u32 {
 }
 
 pub fn default_fast_launch() -> bool {
-    // Enabled by default only when system RAM >= 16 GB (~15360 MB)
-    get_system_total_memory_mb() >= 15360
+    // Off by default: prewarm starts a real Minecraft window that can appear
+    // over other fullscreen apps while it loads. The user turns it on in
+    // Settings › Лаунчер › «Готовить игру заранее».
+    false
 }
 
 fn default_true() -> bool {
@@ -495,6 +497,14 @@ impl LauncherConfig {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn fast_launch_is_off_by_default() {
+        // Prewarm opens a real game window; it must never start unless the user turned it on.
+        assert!(!LauncherConfig::default().fast_launch);
+        let cfg: LauncherConfig = serde_json::from_str("{}").unwrap();
+        assert!(!cfg.fast_launch);
+    }
 
     #[test]
     fn test_wex_paths() {
