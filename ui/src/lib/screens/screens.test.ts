@@ -4,7 +4,6 @@ import UpdateCard from '../components/UpdateCard.svelte';
 import ServersScreen from './ServersScreen.svelte';
 import LobbyScreen from './LobbyScreen.svelte';
 import FriendsScreen from './FriendsScreen.svelte';
-import SettingsScreen from './SettingsScreen.svelte';
 import WardrobeScreen from './WardrobeScreen.svelte';
 import SplashScreen from './SplashScreen.svelte';
 import { theme } from '../design/theme.svelte';
@@ -420,19 +419,6 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders SettingsScreen with launcher update check row', async () => {
-    const comp = mount(SettingsScreen, { target });
-    await tick();
-
-    expect(target.textContent).toContain('Обновление лаунчера');
-    const checkBtn = Array.from(target.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Проверить')
-    );
-    expect(checkBtn).not.toBeUndefined();
-
-    unmount(comp);
-  });
-
   it('renders ServersScreen with empty state when without IPC data and has add server action', () => {
     const comp = mount(ServersScreen, { target });
     expect(target.textContent).toContain('Список серверов пуст');
@@ -662,140 +648,6 @@ describe('Wex Launcher Screens', () => {
     expect(target.textContent).toContain('Нет входящих заявок');
     expect(target.textContent).toContain('Когда другие игроки отправят вам заявку');
 
-    unmount(comp);
-  });
-
-  it('renders SettingsScreen with RAM slider, Java options, Discord RPC, graphics presets, and About Wex', async () => {
-    const comp = mount(SettingsScreen, { target });
-    expect(target.textContent).toContain('Тема оформления');
-    expect(target.textContent).not.toContain('Цветовой акцент');
-    expect(target.textContent).toContain('Уменьшение движения');
-    expect(target.textContent).toContain('Уменьшение прозрачности');
-    expect(target.textContent).toContain('Выделение оперативной памяти');
-    expect(target.textContent).toContain('Графический пресет');
-    expect(target.textContent).toContain('Поведение окна');
-    expect(target.textContent).toContain('Во время игры');
-    expect(target.textContent).toContain('Оставить');
-    expect(target.textContent).toContain('Свернуть');
-    expect(target.textContent).toContain('Скрыть в трей');
-    expect(target.textContent).toContain('Выбор исполняемого файла Java');
-    expect(target.textContent).toContain('Discord Rich Presence');
-    expect(target.textContent).toContain('Поведение окна');
-    expect(target.textContent).not.toContain('Сворачивать в трей при запуске игры');
-    expect(target.textContent).toContain('Язык интерфейса');
-    expect(target.textContent).toContain('О программе');
-    expect(target.textContent).toContain('Windows 10/11, 64-бит');
-    expect(target.textContent).toContain('Проверить файлы игры');
-    expect(target.textContent).toContain('Очистить кэш');
-    expect(target.textContent).not.toContain('.minecraft');
-    expect(target.textContent).toContain('Wex');
-    expect(target.textContent).toContain('Журнал и отчёты о сбоях');
-
-    const openLogsBtn = target.querySelector('[data-testid="btn-open-logs-sheet"]') as HTMLElement;
-    expect(openLogsBtn).not.toBeNull();
-    openLogsBtn.click();
-    await tick();
-    expect(target.textContent).toContain('latest.log');
-
-    // Storage section (SPEC items 40–41: wex-verify-files)
-    expect(target.textContent).toContain('Хранилище');
-    expect(target.textContent).toContain('Проверить файлы игры');
-    expect(target.textContent).toContain('Очистить кэш');
-    unmount(comp);
-  });
-
-  it('renders SettingsScreen with disabled storage actions when game is running', async () => {
-    const comp = mount(SettingsScreen, {
-      target,
-      props: {
-        isGameRunning: true,
-      },
-    });
-
-    expect(target.textContent).toContain('Хранилище');
-    const buttons = target.querySelectorAll('button');
-    const verifyBtn = Array.from(buttons).find((b) => b.textContent?.includes('Проверить'));
-    const clearBtn = Array.from(buttons).find((b) => b.textContent?.includes('Очистить'));
-
-    expect(verifyBtn).not.toBeNull();
-    expect(clearBtn).not.toBeNull();
-    expect((verifyBtn as HTMLButtonElement).disabled).toBe(true);
-    expect((clearBtn as HTMLButtonElement).disabled).toBe(true);
-    unmount(comp);
-  });
-
-  it('renders SettingsScreen with authentic System Info section, warnings, and support copy button', async () => {
-    const comp = mount(SettingsScreen, { target });
-    await new Promise((r) => setTimeout(r, 50));
-    await tick();
-
-    expect(target.textContent).toContain('О системе');
-    expect(target.textContent).toContain('Java (1.21.1)');
-    expect(target.textContent).toContain('Мало свободного места на диске');
-
-    const copyBtn = Array.from(target.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Скопировать для поддержки')
-    );
-    expect(copyBtn).toBeDefined();
-
-    copyBtn?.click();
-    await tick();
-
-    unmount(comp);
-  });
-
-  it('allows clicking verify and clear cache when game is not running', async () => {
-    const comp = mount(SettingsScreen, {
-      target,
-      props: {
-        isGameRunning: false,
-      },
-    });
-
-    const buttons = target.querySelectorAll('button');
-    const verifyBtn = Array.from(buttons).find((b) => b.textContent?.includes('Проверить')) as HTMLButtonElement;
-    const clearBtn = Array.from(buttons).find((b) => b.textContent?.includes('Очистить')) as HTMLButtonElement;
-
-    expect(verifyBtn.disabled).toBe(false);
-    expect(clearBtn.disabled).toBe(false);
-
-    verifyBtn.click();
-    clearBtn.click();
-
-    unmount(comp);
-  });
-
-  it('triggers verify instance files and clean cache in SettingsScreen', async () => {
-    const comp = mount(SettingsScreen, { target });
-    await tick();
-
-    const buttons = Array.from(target.querySelectorAll('button'));
-    const verifyBtn = buttons.find((b) => b.textContent?.includes('Проверить'));
-    const cleanBtn = buttons.find((b) => b.textContent?.includes('Очистить'));
-
-    expect(verifyBtn).toBeDefined();
-    expect(cleanBtn).toBeDefined();
-
-    verifyBtn?.click();
-    await tick();
-
-    cleanBtn?.click();
-    await tick();
-
-    unmount(comp);
-  });
-
-  it('renders SettingsScreen with actual Discord RPC status preview card and no mock fakes', async () => {
-    const comp = mount(SettingsScreen, { target });
-    expect(target.textContent).toContain('Discord Rich Presence');
-    expect(target.textContent).toContain('Просмотр статуса в Discord');
-    expect(target.textContent).toContain('Wex Launcher');
-    expect(target.textContent).toContain('В главном меню');
-    expect(target.textContent).toContain('Выбирает режим игры');
-    expect(target.textContent).not.toContain('Скачать Wex Launcher');
-    expect(target.textContent).not.toContain('ИГРАЕТ В ИГРУ');
-    expect(target.textContent).not.toContain('Модов: 142');
-    expect(target.textContent).not.toContain('auramc');
     unmount(comp);
   });
 
@@ -1196,20 +1048,6 @@ describe('Wex Launcher Screens', () => {
       unmount(comp);
     });
 
-    it('8. SettingsScreen renders honest offline state while local launcher settings work', async () => {
-      const { network } = await import('../design/network.svelte');
-      network.setOnlineForTesting(false);
-
-      const comp = mount(SettingsScreen, { target });
-      await tick();
-
-      expect(target.textContent).toContain('Нет подключения');
-      expect(target.textContent).toContain('Локальные параметры сохранены');
-      expect(target.textContent).toContain('Повторить');
-
-      network.setOnlineForTesting(true);
-      unmount(comp);
-    });
   });
 
   it('renders CrashSheet with honest unknown diagnosis without fake reasons', () => {
@@ -1271,81 +1109,4 @@ describe('Wex Launcher Screens', () => {
     window.removeEventListener('wex-escape', onEscape);
   });
 
-  describe('SettingsScreen Search Filtering Tests', () => {
-    it('renders Apple HIG search bar with placeholder', () => {
-      const comp = mount(SettingsScreen, { target });
-      const searchInput = target.querySelector('.search-input') as HTMLInputElement | null;
-      expect(searchInput).not.toBeNull();
-      expect(searchInput?.placeholder).toContain('Поиск настроек');
-      unmount(comp);
-    });
-
-    it('filters settings by keyword "память", displaying Memory group and hiding unrelated groups', async () => {
-      const comp = mount(SettingsScreen, { target });
-      await tick();
-
-      const searchInput = target.querySelector('.search-input') as HTMLInputElement;
-      expect(searchInput).not.toBeNull();
-
-      searchInput.value = 'память';
-      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-      await tick();
-
-      expect(target.textContent).toContain('Память и производительность');
-      expect(target.textContent).toContain('Выделение оперативной памяти');
-      // Unrelated groups should be hidden
-      expect(target.textContent).not.toContain('Звук и музыка');
-      expect(target.textContent).not.toContain('Уведомления о друзьях');
-
-      unmount(comp);
-    });
-
-    it('filters settings by keyword "музыка", showing Sound & Music group', async () => {
-      const comp = mount(SettingsScreen, { target });
-      await tick();
-
-      const searchInput = target.querySelector('.search-input') as HTMLInputElement;
-      expect(searchInput).not.toBeNull();
-
-      searchInput.value = 'музыка';
-      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-      await tick();
-
-      expect(target.textContent).toContain('Звук и музыка');
-      expect(target.textContent).toContain('Фоновая музыка');
-      expect(target.textContent).not.toContain('Выделение оперативной памяти');
-
-      unmount(comp);
-    });
-
-    it('displays empty state when search matches nothing and allows clearing search', async () => {
-      const comp = mount(SettingsScreen, { target });
-      await tick();
-
-      const searchInput = target.querySelector('.search-input') as HTMLInputElement;
-      expect(searchInput).not.toBeNull();
-
-      searchInput.value = 'xyz_nonexistent_setting_12345';
-      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-      await tick();
-
-      const emptyState = target.querySelector('.empty-search-state');
-      expect(emptyState).not.toBeNull();
-      expect(emptyState?.textContent).toContain('Ничего не найдено');
-      expect(emptyState?.textContent).toContain('xyz_nonexistent_setting_12345');
-
-      // Clear search via clear button
-      const clearBtn = emptyState?.querySelector('button');
-      expect(clearBtn).not.toBeNull();
-      clearBtn?.click();
-      await tick();
-
-      // Empty state should disappear and groups should be restored
-      expect(target.querySelector('.empty-search-state')).toBeNull();
-      expect(target.textContent).toContain('Память и производительность');
-      expect(target.textContent).toContain('Внешний вид');
-
-      unmount(comp);
-    });
-  });
 });

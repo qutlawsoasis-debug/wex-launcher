@@ -14,6 +14,7 @@
   import { toasts } from '../../shell/toast.svelte';
   import { formatError } from '../../design/errors';
   import { t } from '../../i18n';
+  import { pickFiles } from '../../shell/filePick';
   import { build } from './build.svelte';
 
   interface Props {
@@ -76,6 +77,18 @@
     void save({ java_mode: 'custom', custom_java_path: javaPath.trim() || null });
   }
 
+  /** «Выбрать…»: the system open panel for javaw.exe / java.exe. */
+  async function pickJava() {
+    try {
+      const [path] = await pickFiles({ title: t('build.java_path'), filterName: t('build.filter_java'), extensions: ['exe'], multiple: false });
+      if (!path) return;
+      javaPath = path;
+      onJavaPath();
+    } catch (e) {
+      toasts.show(t('build.pick_failed'), formatError(e, 'settings').description);
+    }
+  }
+
   async function openFolder() {
     const dir = build.instanceDir();
     if (!dir) return;
@@ -136,8 +149,9 @@
       <option value="custom">{t('build.java_custom')}</option>
     </select>
     {#if javaMode === 'custom'}
+      <div class="path">
       <input
-        class="field path"
+        class="field"
         type="text"
         spellcheck="false"
         autocomplete="off"
@@ -146,6 +160,8 @@
         bind:value={javaPath}
         onchange={onJavaPath}
       />
+      <button type="button" class="btn" onclick={pickJava}>{t('build.java_pick')}</button>
+      </div>
     {/if}
   </div>
   <div class="frow">
@@ -176,7 +192,12 @@
   }
   .path {
     grid-column: 1 / -1;
-    width: 100%;
+    display: flex;
+    gap: 8px;
     margin-top: 8px;
+  }
+  .path .field {
+    flex: 1;
+    min-width: 0;
   }
 </style>

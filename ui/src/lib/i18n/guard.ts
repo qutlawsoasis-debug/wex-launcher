@@ -276,11 +276,6 @@ export const ALLOWED_EXCEPTIONS: GuardException[] = [
     reason: 'Heuristic keyword substring matching for error messages returned from remote lobby server',
   },
   {
-    file: 'SettingsScreen.svelte',
-    pattern: /манифест|заблокирован/,
-    reason: 'Heuristic keyword substring matching for storage integrity check and cache cleanup error inspection',
-  },
-  {
     file: '*',
     text: '•',
     reason: 'Standard typography divider dot',

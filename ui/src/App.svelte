@@ -29,6 +29,8 @@
   import { handleHotkey } from './lib/shell/hotkeys';
   import HomePage from './lib/pages/home/HomePage.svelte';
   import BuildPage from './lib/pages/build/BuildPage.svelte';
+  import SettingsPage from './lib/pages/settings/SettingsPage.svelte';
+  import { applyLook } from './lib/shell/look';
   import { router, buildIdOf, isRoute, buildRoute, type Route } from './lib/shell/router.svelte';
   import { builds } from './lib/shell/builds.svelte';
   import { launch } from './lib/shell/launch.svelte';
@@ -49,7 +51,6 @@
       friends: () => import('./lib/screens/FriendsScreen.svelte'),
       lobby: () => import('./lib/screens/LobbyScreen.svelte'),
       wardrobe: () => import('./lib/screens/WardrobeScreen.svelte'),
-      options: () => import('./lib/screens/SettingsScreen.svelte'),
       splash: () => import('./lib/screens/SplashScreen.svelte'),
     };
     const load = loaders[name];
@@ -75,7 +76,7 @@
 
   $effect(() => {
     const r = router.route;
-    if (r === 'servers' || r === 'friends' || r === 'lobby' || r === 'wardrobe' || r === 'options') void loadScreen(r);
+    if (r === 'servers' || r === 'friends' || r === 'lobby' || r === 'wardrobe') void loadScreen(r);
   });
 
   $effect(() => {
@@ -97,13 +98,6 @@
     if (mainEl) mainEl.scrollTop = 0;
   });
 
-  // Settings still live on the previous screen and may change the build or nickname.
-  let lastRoute: Route = router.route;
-  $effect(() => {
-    const r = router.route;
-    if (lastRoute === 'options' && r !== 'options') void builds.load();
-    lastRoute = r;
-  });
 
   $effect(() => {
     friendsLive.setSessionContext({ playerName: builds.playerName, gameVersion: launch.version ?? builds.selectedId, lobby: lobbyRoom });
@@ -246,6 +240,8 @@
     const stops: Array<() => void> = [];
     stops.push(launch.attach());
     void builds.load().then(() => {
+      // Theme, motion, transparency and language come from the saved settings.
+      applyLook(builds.settings);
       if (builds.error) {
         const f = formatError(builds.error, 'general');
         toasts.show(t('shell.builds_failed'), f.description);
@@ -335,7 +331,7 @@
   <main class="main" bind:this={mainEl}>
     <TopLine />
     {#key router.version}
-      <div class="page" class:wx={router.route === 'home' || !!routeBuild} use:stagger>
+      <div class="page" class:wx={router.route === 'home' || router.route === 'options' || !!routeBuild} use:stagger>
         {#if router.route === 'home'}
           <HomePage />
         {:else if routeBuild}
@@ -359,11 +355,8 @@
         {:else if router.route === 'wardrobe' && screens.wardrobe}
           {@const WardrobeScreen = screens.wardrobe}
           <div class="legacy"><WardrobeScreen playerName={builds.playerName} ontoast={notify} /></div>
-        {:else if router.route === 'options' && screens.options}
-          {@const SettingsScreen = screens.options}
-          <div class="legacy">
-            <SettingsScreen isGameRunning={isRunning} version={builds.selectedId} onopenonboarding={() => (showOnboarding = true)} />
-          </div>
+        {:else if router.route === 'options'}
+          <SettingsPage onopenonboarding={() => (showOnboarding = true)} />
         {/if}
       </div>
     {/key}

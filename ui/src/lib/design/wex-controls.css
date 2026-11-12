@@ -283,6 +283,8 @@
   outline: 0;
   color: var(--label);
   font: inherit;
+  /* Browser default field padding; the base reset in tokens.css removes it. */
+  padding: 1px 2px;
 }
 /* The field shows focus with its own 2 px ring (focus-within), not a second outline. */
 .wx .search input:focus-visible {

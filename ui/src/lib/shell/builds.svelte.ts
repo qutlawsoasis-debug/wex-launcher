@@ -39,6 +39,8 @@ class Builds {
   selectedId = $state('1.21.1');
   playerName = $state('Player');
   ramMb = $state<number | null>(null);
+  /** The full launcher settings as last read or saved. */
+  settings = $state<LauncherSettings>({});
   loaded = $state(false);
   error = $state<unknown>(null);
 
@@ -67,6 +69,7 @@ class Builds {
   }
 
   applySettings(settings: LauncherSettings): void {
+    this.settings = settings;
     if (typeof settings.selected_version === 'string' && settings.selected_version) {
       this.selectedId = settings.selected_version;
     }
@@ -85,6 +88,18 @@ class Builds {
     } catch {
       // Mod count stays unknown; the sidebar then shows no count rather than a guess.
     }
+  }
+
+  /**
+   * Save some fields of the launcher settings through core without touching the
+   * others (get, merge, save). Returns the saved settings.
+   */
+  async saveSettings(patch: LauncherSettings): Promise<LauncherSettings> {
+    const current = await call<LauncherSettings>('get_launcher_settings');
+    const next = { ...current, ...patch };
+    await call('save_launcher_settings', { newSettings: next });
+    this.applySettings(next);
+    return next;
   }
 
   /** Choose the build Play starts; saved to the launcher config. */

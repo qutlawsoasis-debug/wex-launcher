@@ -122,7 +122,7 @@ describe('i18n Reactive Manager & Translation Helper', () => {
 
   it('renders screens in authentic English when locale is set to en', async () => {
     const { mount, unmount, tick } = await import('svelte');
-    const { default: SettingsScreen } = await import('../screens/SettingsScreen.svelte');
+    const { default: SettingsPage } = await import('../pages/settings/SettingsPage.svelte');
     const { default: LaunchBar } = await import('../shell/LaunchBar.svelte');
     const { default: ServersScreen } = await import('../screens/ServersScreen.svelte');
     const { default: BuildPage } = await import('../pages/build/BuildPage.svelte');
@@ -135,13 +135,12 @@ describe('i18n Reactive Manager & Translation Helper', () => {
 
     i18n.setLocale('en');
 
-    // 1. SettingsScreen
-    const compSettings = mount(SettingsScreen, { target });
+    // 1. Settings page
+    const compSettings = mount(SettingsPage, { target });
     await tick();
-    expect(target.textContent).toContain('Performance & Memory');
-    expect(target.textContent).toContain('Memory for Minecraft');
-    expect(target.textContent).toContain('Interface Language');
-    expect(target.textContent).toContain('Reset to Defaults');
+    for (const label of ['Game', 'Graphics', 'Appearance', 'Launcher', 'Data', 'Keys', 'Memory for the game', 'Reset settings']) {
+      expect(target.textContent).toContain(label);
+    }
     unmount(compSettings);
     target.innerHTML = '';
 

@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
 import ProgressBar from './lib/components/ProgressBar.svelte';
 import List from './lib/components/List.svelte';
-import SettingsScreen from './lib/screens/SettingsScreen.svelte';
 import LobbyScreen from './lib/screens/LobbyScreen.svelte';
 import FriendsScreen from './lib/screens/FriendsScreen.svelte';
 import { theme } from './lib/design/theme.svelte';
@@ -133,34 +132,6 @@ describe('Apple HIG Fixes 2 Verification (Settings, Lobby, Friends)', () => {
   });
 
   describe('3. Settings Screen HIG Requirements (F16, F17, F18, F20, F21)', () => {
-    it('enforces single window behavior control without duplicate game_tray toggle (F16)', () => {
-      const comp = mount(SettingsScreen, { target });
-
-      const text = target.textContent || '';
-      // F16: Single window control "При запуске игры" / "Поведение окна"
-      expect(text).toContain(ru['settings.window_behavior_title']);
-
-      // Duplicate toggle "Сворачивать в трей при запуске игры" must not be present in settings
-      const toggles = Array.from(target.querySelectorAll('[role="switch"]'));
-      const trayToggle = toggles.find((t) =>
-        t.getAttribute('aria-label')?.includes(ru['settings.minimize_to_tray_title'])
-      );
-      expect(trayToggle).toBeUndefined();
-
-      unmount(comp);
-    });
-
-    it('removes 8-color accent picker row and enforces default blue accent (F17)', () => {
-      const comp = mount(SettingsScreen, { target });
-
-      // No accent picker dots in DOM
-      expect(target.querySelector('.accent-picker')).toBeNull();
-      expect(target.querySelector('.accent-dot')).toBeNull();
-      expect(theme.accent).toBe('blue');
-
-      unmount(comp);
-    });
-
     it('sets initial data-theme on documentElement at startup (F18)', () => {
       expect(document.documentElement.getAttribute('data-theme')).toMatch(/^(dark|light)$/);
     });
