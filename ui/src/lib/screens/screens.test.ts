@@ -4,7 +4,6 @@ import UpdateCard from '../components/UpdateCard.svelte';
 import ServersScreen from './ServersScreen.svelte';
 import LobbyScreen from './LobbyScreen.svelte';
 import FriendsScreen from './FriendsScreen.svelte';
-import WardrobeScreen from './WardrobeScreen.svelte';
 import SplashScreen from './SplashScreen.svelte';
 import { theme } from '../design/theme.svelte';
 import ImportWizardSheet from '../components/ImportWizardSheet.svelte';
@@ -651,151 +650,6 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
-  it('renders WardrobeScreen with 2D character preview, model selector, capes, and authentic empty history', () => {
-    const comp = mount(WardrobeScreen, {
-      target,
-      props: {
-        playerName: 'Steve',
-      },
-    });
-
-    // Check preview and model controls
-    expect(target.querySelector('canvas.character-canvas')).not.toBeNull();
-    expect(target.textContent).toContain('Классическая (4 пикселя)');
-    expect(target.textContent).toContain('Тонкая (3 пикселя)');
-    expect(target.textContent).toContain('Спереди');
-    expect(target.textContent).toContain('Сзади');
-
-    // Check cape options per SPEC 1.6
-    expect(target.textContent).toContain('Без плаща');
-    expect(target.textContent).toContain('Свой файл');
-    expect(target.textContent).not.toContain('Aura Cyan');
-    expect(target.textContent).not.toContain('Aura Silver');
-    expect(target.textContent).toContain('Стандартный скин');
-
-    // Check action buttons
-    expect(target.textContent).toContain('Загрузить скин (.png)');
-    expect(target.textContent).toContain('Сбросить на стандартный');
-    expect(target.textContent).toContain('Применить к игре');
-
-    // Check authentic empty state
-    expect(target.textContent).toContain('История гардероба пуста');
-
-    unmount(comp);
-  });
-
-  it('renders WardrobeScreen skins library with quick-switch and deletion', async () => {
-    const { invoke } = await import('@tauri-apps/api/core');
-    (invoke as any).mockImplementation((cmd: string, args: any) => {
-      if (cmd === 'extras_list_skin_history') {
-        return Promise.resolve({
-          items: [
-            {
-              id: 'skin_123',
-              item_type: 'skin',
-              name: 'Warrior Alex',
-              hash: '1234567890abcdef',
-              model: 'slim',
-              relative_path: 'skins/1234567890abcdef.png',
-              created_utc: '2026-11-08T18:00:00Z',
-            },
-          ],
-        });
-      }
-      if (cmd === 'wardrobe_get_skin') {
-        return Promise.resolve({
-          item: {
-            id: 'skin_123',
-            name: 'Warrior Alex',
-            model: 'slim',
-          },
-          skin_bytes_base64:
-            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-        });
-      }
-      if (cmd === 'wardrobe_delete_history') {
-        return Promise.resolve({ success: true });
-      }
-      return Promise.resolve(null);
-    });
-
-    const comp = mount(WardrobeScreen, {
-      target,
-      props: {
-        playerName: 'Player1',
-        initialHistory: [
-          {
-            id: 'skin_123',
-            item_type: 'skin',
-            name: 'Warrior Alex',
-            hash: '1234567890abcdef',
-            model: 'slim',
-            relative_path: 'skins/1234567890abcdef.png',
-            created_utc: '2026-11-08T18:00:00Z',
-          },
-        ],
-      },
-    });
-
-    await tick();
-    await new Promise((r) => setTimeout(r, 20));
-
-    // Verify skins library rendered item
-    expect(target.textContent).toContain('Библиотека скинов');
-    expect(target.textContent).toContain('Warrior Alex');
-    expect(target.textContent).toContain('Тонкая');
-
-    // Click on "Выбрать" button in history actions to quick-switch
-    const selectBtn = target.querySelector('.history-actions button') as HTMLButtonElement;
-    expect(selectBtn).not.toBeNull();
-    selectBtn.click();
-
-    await tick();
-    await new Promise((r) => setTimeout(r, 20));
-
-    // Verify skin name input updated to Warrior Alex
-    const skinInput = target.querySelector('.skin-name-input') as HTMLInputElement;
-    expect(skinInput).not.toBeNull();
-    expect(skinInput.value).toBe('Warrior Alex');
-
-    // Click delete button
-    const deleteBtn = target.querySelector('[aria-label="Удалить из истории"]') as HTMLButtonElement;
-    expect(deleteBtn).not.toBeNull();
-    deleteBtn.click();
-
-    await tick();
-    await new Promise((r) => setTimeout(r, 20));
-
-    expect(target.textContent).toContain('История гардероба пуста');
-
-    unmount(comp);
-  });
-
-  it('falls back to 2D character preview in WardrobeScreen when WebGL is unavailable', () => {
-    const comp = mount(WardrobeScreen, {
-      target,
-      props: {
-        playerName: 'Alex',
-      },
-    });
-
-    // In jsdom without WebGL, fallback triggers automatically
-    const canvas2d = target.querySelector('canvas.character-canvas-2d');
-    expect(canvas2d).not.toBeNull();
-    expect(canvas2d?.classList.contains('hidden')).toBe(false);
-
-    // 3D canvas is present but marked hidden in fallback mode
-    const canvas3d = target.querySelector('canvas.character-canvas-3d');
-    expect(canvas3d).not.toBeNull();
-    expect(canvas3d?.classList.contains('hidden')).toBe(true);
-
-    // 2D view controls (front/back) are active
-    expect(target.textContent).toContain('Спереди');
-    expect(target.textContent).toContain('Сзади');
-
-    unmount(comp);
-  });
-
   it('renders SplashScreen with wordmark logo, version badge, and initial status', () => {
     const comp = mount(SplashScreen, {
       target,
@@ -1024,25 +878,6 @@ describe('Wex Launcher Screens', () => {
 
       expect(target.textContent).toContain('Нет подключения');
       expect(target.textContent).toContain('Повторить');
-
-      network.setOnlineForTesting(true);
-      unmount(comp);
-    });
-
-    it('5. WardrobeScreen renders honest offline state while local skins and preview work', async () => {
-      const { network } = await import('../design/network.svelte');
-      network.setOnlineForTesting(false);
-
-      const comp = mount(WardrobeScreen, { target });
-      await tick();
-
-      expect(target.textContent).toContain('Нет подключения');
-      expect(target.textContent).toContain('Локальные скины и 3D-просмотр работают офлайн');
-      expect(target.textContent).toContain('Повторить');
-
-      // Apply button and local controls must remain functional
-      const applyBtn = target.querySelector('.apply-bar button') as HTMLButtonElement;
-      expect(applyBtn).not.toBeNull();
 
       network.setOnlineForTesting(true);
       unmount(comp);

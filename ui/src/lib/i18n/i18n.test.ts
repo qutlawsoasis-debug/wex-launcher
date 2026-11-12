@@ -126,7 +126,7 @@ describe('i18n Reactive Manager & Translation Helper', () => {
     const { default: LaunchBar } = await import('../shell/LaunchBar.svelte');
     const { default: ServersScreen } = await import('../screens/ServersScreen.svelte');
     const { default: BuildPage } = await import('../pages/build/BuildPage.svelte');
-    const { default: WardrobeScreen } = await import('../screens/WardrobeScreen.svelte');
+    const { default: WardrobePage } = await import('../pages/wardrobe/WardrobePage.svelte');
     const { default: LobbyScreen } = await import('../screens/LobbyScreen.svelte');
     const { default: FriendsScreen } = await import('../screens/FriendsScreen.svelte');
 
@@ -170,14 +170,12 @@ describe('i18n Reactive Manager & Translation Helper', () => {
     unmount(compBuild);
     target.innerHTML = '';
 
-    // 6. WardrobeScreen
-    const compWardrobe = mount(WardrobeScreen, { target });
+    // 6. Wardrobe
+    const compWardrobe = mount(WardrobePage, { target });
     await tick();
-    expect(target.textContent).toContain('Character Model');
-    expect(target.textContent).toContain('Classic (4 px)');
-    expect(target.textContent).toContain('Slim (3 px)');
-    expect(target.textContent).toContain('No Cape');
-    expect(target.textContent).toContain('Apply to Game');
+    for (const label of ['Wardrobe', 'Skins', 'Capes', 'Profile', 'Stands', 'Walks', 'Upload skin', 'Arm model']) {
+      expect(target.textContent).toContain(label);
+    }
     unmount(compWardrobe);
     target.innerHTML = '';
 

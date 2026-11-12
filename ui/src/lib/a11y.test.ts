@@ -5,7 +5,6 @@ import axe from 'axe-core';
 import ServersScreen from './screens/ServersScreen.svelte';
 import LobbyScreen from './screens/LobbyScreen.svelte';
 import FriendsScreen from './screens/FriendsScreen.svelte';
-import WardrobeScreen from './screens/WardrobeScreen.svelte';
 import Sheet from './components/Sheet.svelte';
 import SegmentedControl from './components/SegmentedControl.svelte';
 import List from './components/List.svelte';
@@ -90,7 +89,6 @@ describe('A11y Automated Axe-Core Audit Across All 8 Sections', () => {
     { name: 'ServersScreen', component: ServersScreen, props: { selectedVersion: '1.21.1', playerName: 'Player' } },
     { name: 'LobbyScreen', component: LobbyScreen, props: {} },
     { name: 'FriendsScreen', component: FriendsScreen, props: {} },
-    { name: 'WardrobeScreen', component: WardrobeScreen, props: { playerName: 'Player' } },
   ];
 
   for (const { name, component, props } of screens) {

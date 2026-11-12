@@ -30,6 +30,7 @@
   import HomePage from './lib/pages/home/HomePage.svelte';
   import BuildPage from './lib/pages/build/BuildPage.svelte';
   import SettingsPage from './lib/pages/settings/SettingsPage.svelte';
+  import WardrobePage from './lib/pages/wardrobe/WardrobePage.svelte';
   import { applyLook } from './lib/shell/look';
   import { router, buildIdOf, isRoute, buildRoute, type Route } from './lib/shell/router.svelte';
   import { builds } from './lib/shell/builds.svelte';
@@ -50,7 +51,6 @@
       servers: () => import('./lib/screens/ServersScreen.svelte'),
       friends: () => import('./lib/screens/FriendsScreen.svelte'),
       lobby: () => import('./lib/screens/LobbyScreen.svelte'),
-      wardrobe: () => import('./lib/screens/WardrobeScreen.svelte'),
       splash: () => import('./lib/screens/SplashScreen.svelte'),
     };
     const load = loaders[name];
@@ -76,7 +76,7 @@
 
   $effect(() => {
     const r = router.route;
-    if (r === 'servers' || r === 'friends' || r === 'lobby' || r === 'wardrobe') void loadScreen(r);
+    if (r === 'servers' || r === 'friends' || r === 'lobby') void loadScreen(r);
   });
 
   $effect(() => {
@@ -331,7 +331,7 @@
   <main class="main" bind:this={mainEl}>
     <TopLine />
     {#key router.version}
-      <div class="page" class:wx={router.route === 'home' || router.route === 'options' || !!routeBuild} use:stagger>
+      <div class="page" class:wx={router.route === 'home' || router.route === 'options' || router.route === 'wardrobe' || !!routeBuild} use:stagger>
         {#if router.route === 'home'}
           <HomePage />
         {:else if routeBuild}
@@ -352,9 +352,8 @@
               onroomchange={(room: LobbyRoom | null) => (lobbyRoom = room)}
             />
           </div>
-        {:else if router.route === 'wardrobe' && screens.wardrobe}
-          {@const WardrobeScreen = screens.wardrobe}
-          <div class="legacy"><WardrobeScreen playerName={builds.playerName} ontoast={notify} /></div>
+        {:else if router.route === 'wardrobe'}
+          <WardrobePage />
         {:else if router.route === 'options'}
           <SettingsPage onopenonboarding={() => (showOnboarding = true)} />
         {/if}
