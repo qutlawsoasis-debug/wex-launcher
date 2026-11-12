@@ -297,10 +297,12 @@ textarea {
   transition-duration: 0.001ms !important;
 }
 
-/* The window is minimised or the game is running: animations pause (energy). */
+/* The window is minimised or the game is running: no animation at all (energy).
+   Animations are removed, not paused: a paused entrance ("rise", fill both) would
+   hold a new page at opacity 0 and the page would look empty. */
 :root.app-idle *,
 :root.app-idle *::before,
 :root.app-idle *::after {
-  animation-play-state: paused !important;
+  animation: none !important;
   transition: none !important;
 }

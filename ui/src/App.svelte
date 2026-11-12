@@ -417,9 +417,10 @@
     }
   }
 
-  /* While the game runs the launcher idles: no animation, no blur (energy). */
+  /* While the game runs the launcher idles: no animation, no blur (energy).
+     Removed rather than paused, so pages opened meanwhile are fully drawn. */
   :global(.app.game-active *) {
-    animation-play-state: paused !important;
+    animation: none !important;
   }
   :global(.app.game-active .side),
   :global(.app.game-active .bar) {

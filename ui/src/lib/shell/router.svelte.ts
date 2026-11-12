@@ -55,7 +55,10 @@ class Router {
     // The old page fades out through View Transitions (reference: vt-out); the new
     // one rises block by block (stagger). Skipped under Reduce Motion.
     const doc = typeof document !== 'undefined' ? (document as Document & { startViewTransition?: (cb: () => Promise<void>) => unknown }) : null;
-    if (doc?.startViewTransition && !motionReduced()) {
+    // Also skipped while the launcher idles (game running, window hidden): the
+    // snapshot would freeze over the page until the window is drawn again.
+    const idle = typeof document !== 'undefined' && document.documentElement.classList.contains('app-idle');
+    if (doc?.startViewTransition && !motionReduced() && !idle) {
       doc.startViewTransition(async () => {
         apply();
         await tick();
