@@ -645,6 +645,48 @@
           "markdownDescription": "Enables the close_lobby_room command without any pre-configured scope."
         },
         {
+          "description": "Enables the cloud_create command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cloud-create",
+          "markdownDescription": "Enables the cloud_create command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the cloud_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cloud-delete",
+          "markdownDescription": "Enables the cloud_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the cloud_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cloud-list",
+          "markdownDescription": "Enables the cloud_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the cloud_share command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cloud-share",
+          "markdownDescription": "Enables the cloud_share command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the cloud_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cloud-start",
+          "markdownDescription": "Enables the cloud_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the cloud_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cloud-status",
+          "markdownDescription": "Enables the cloud_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the cloud_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cloud-stop",
+          "markdownDescription": "Enables the cloud_stop command without any pre-configured scope."
+        },
+        {
           "description": "Enables the connect_lan_world command without any pre-configured scope.",
           "type": "string",
           "const": "allow-connect-lan-world",
@@ -1861,6 +1903,48 @@
           "type": "string",
           "const": "deny-close-lobby-room",
           "markdownDescription": "Denies the close_lobby_room command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cloud_create command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cloud-create",
+          "markdownDescription": "Denies the cloud_create command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cloud_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cloud-delete",
+          "markdownDescription": "Denies the cloud_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cloud_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cloud-list",
+          "markdownDescription": "Denies the cloud_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cloud_share command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cloud-share",
+          "markdownDescription": "Denies the cloud_share command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cloud_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cloud-start",
+          "markdownDescription": "Denies the cloud_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cloud_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cloud-status",
+          "markdownDescription": "Denies the cloud_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cloud_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cloud-stop",
+          "markdownDescription": "Denies the cloud_stop command without any pre-configured scope."
         },
         {
           "description": "Denies the connect_lan_world command without any pre-configured scope.",

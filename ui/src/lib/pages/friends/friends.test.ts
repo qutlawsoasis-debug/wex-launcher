@@ -166,7 +166,7 @@ describe('friends page', () => {
   it('without accounts: honest empty state, no own code and no «Добавить друга»', async () => {
     comp = mount(FriendsPage, { target });
     await tick();
-    expect([...target.querySelectorAll('[role="tab"]')].map((b) => b.textContent)).toEqual(['Друзья', 'Комнаты', 'Свой сервер']);
+    expect([...target.querySelectorAll('[role="tab"]')].map((b) => b.textContent)).toEqual(['Друзья', 'Комнаты', 'Свой сервер', 'Облачные миры']);
     expect(target.textContent).toContain('Друзья появятся, когда подключим аккаунты.');
     expect(target.textContent).not.toMatch(/WEX-|Добавить друга|kotya/);
   });

@@ -1,7 +1,8 @@
 <!--
   Friends (reference: V.friends) with Rooms as a second tab (owner decision:
   Lobby lives in Friends) and «Свой сервер» as the third (a dedicated server for
-  the group). Friends come from friendsLive (social_sync); until
+  the group on this PC) and «Облачные миры» as the fourth (worlds hosted 24/7
+  on the Aura server). Friends come from friendsLive (social_sync); until
   accounts are connected the list is empty and says so, and nothing that needs an
   account (own code, «Добавить друга») is shown.
   HIG › Lists and tables; Segmented controls (All / In game / Online).
@@ -17,9 +18,10 @@
   import Monogram from '../../shell/Monogram.svelte';
   import RoomsTab from './RoomsTab.svelte';
   import ServerTab from './ServerTab.svelte';
+  import CloudTab from './CloudTab.svelte';
   import { friendsIntent } from './friendsIntent.svelte';
 
-  let tab = $state<'friends' | 'rooms' | 'server'>(friendsIntent.tab);
+  let tab = $state<'friends' | 'rooms' | 'server' | 'cloud'>(friendsIntent.tab);
   friendsIntent.tab = 'friends';
   let filter = $state<'all' | 'game' | 'online'>('all');
   let friends = $state<FriendItem[]>([...friendsLive.friends]);
@@ -75,12 +77,15 @@
     <button type="button" role="tab" aria-selected={tab === 'friends'} onclick={() => (tab = 'friends')}>{t('friends2.tab_friends')}</button>
     <button type="button" role="tab" aria-selected={tab === 'rooms'} onclick={() => (tab = 'rooms')}>{t('friends2.tab_rooms')}</button>
     <button type="button" role="tab" aria-selected={tab === 'server'} onclick={() => (tab = 'server')}>{t('friends2.tab_server')}</button>
+    <button type="button" role="tab" aria-selected={tab === 'cloud'} onclick={() => (tab = 'cloud')}>{t('friends2.tab_cloud')}</button>
   </div>
   <div class="body" role="tabpanel">
     {#if tab === 'rooms'}
       <RoomsTab />
     {:else if tab === 'server'}
       <ServerTab />
+    {:else if tab === 'cloud'}
+      <CloudTab />
     {:else}
       {#if requests.length}
         <section class="requests">

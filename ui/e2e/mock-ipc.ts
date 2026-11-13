@@ -60,6 +60,14 @@ export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
   };
 
   let running = false;
+  const cloudWorld = (over: Record<string, unknown>) => ({
+    id: 'w1', name: 'Дача', owner: 'Steve', seed: null, allowedPlayers: ['Alex'], state: 'running', port: 25601,
+    address: '10.0.0.7:25601', onlinePlayers: ['Alex'], maxPlayers: 8, isOwner: true, stageText: null, progress: 100,
+    gameVersion: '1.21.1', lastPlayed: 2, ...over,
+  });
+  let cloud: Array<ReturnType<typeof cloudWorld> & Record<string, any>> = full
+    ? [cloudWorld({}), cloudWorld({ id: 's1', name: 'Замок', owner: 'Alex', isOwner: false, state: 'sleeping', port: null, address: null, onlinePlayers: [], gameVersion: '1.20.1', lastPlayed: 1 })]
+    : [];
   const handlers: Record<string, (args: Record<string, any>) => unknown> = {
     'plugin:event|listen': (a) => {
       listeners.set(a.event, [...(listeners.get(a.event) ?? []), a.handler]);
@@ -152,6 +160,28 @@ export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
           ]
         : [],
     own_server_console: () => null,
+    // «Облачные миры» (commands/cloud.rs). 'empty' has no secret: the tab says why.
+    cloud_status: () =>
+      full
+        ? { available: true, reason: null, owner: 'Steve', host: '10.0.0.7' }
+        : { available: false, reason: 'Не задан ключ облачного сервера (WEX_CLOUD_SECRET)', owner: null, host: null },
+    cloud_list: () => ({ owner: 'Steve', maxActive: 3, activeCount: cloud.filter((w) => w.state !== 'sleeping').length, worlds: cloud }),
+    cloud_start: (a) => {
+      cloud = cloud.map((w) => (w.id === a.id ? { ...w, state: 'starting', progress: 35, stageText: 'Загрузка мира' } : w));
+      return { worldId: a.id, state: 'starting', port: 25602, address: '10.0.0.7:25602' };
+    },
+    cloud_stop: (a) => {
+      cloud = cloud.map((w) => (w.id === a.id ? { ...w, state: 'sleeping', port: null, address: null, onlinePlayers: [] } : w));
+      return null;
+    },
+    cloud_share: (a) => {
+      cloud = cloud.map((w) => (w.id === a.id ? { ...w, allowedPlayers: a.add ? [...w.allowedPlayers, a.player] : w.allowedPlayers.filter((p: string) => p !== a.player) } : w));
+      return cloud.find((w) => w.id === a.id)?.allowedPlayers ?? [];
+    },
+    cloud_delete: (a) => {
+      cloud = cloud.filter((w) => w.id !== a.id);
+      return null;
+    },
     list_lan_worlds: () => [],
     list_open_rooms: () => [],
     get_pending_deep_link: () => null,

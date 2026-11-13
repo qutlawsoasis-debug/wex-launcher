@@ -161,6 +161,38 @@ test('own server tab with no servers offers to create one', async ({ page }) => 
   expect(await axeProblems(page)).toEqual([]);
 });
 
+for (const scheme of ['light', 'dark'] as const) {
+  test(`cloud worlds tab: my running world to join, a friend's world to start, access list (${scheme})`, async ({ page }) => {
+    const errors = await openApp(page, '#friends', { mode: 'full', scheme });
+    await page.getByRole('tab', { name: 'Облачные миры' }).click();
+    await expect(page.getByText('Мои миры')).toBeVisible();
+    await expect(page.getByText('10.0.0.7:25601')).toBeVisible();
+    await expect(page.getByText('В сети · игроков 1 из 8')).toBeVisible();
+    await expect(page.getByText('Спит · владелец Alex')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Удалить мир' })).toBeDisabled();
+    await page.getByRole('button', { name: 'Доступ (1)' }).click();
+    await page.getByLabel('Ник друга').fill('Bob_1');
+    await page.getByRole('button', { name: 'Открыть доступ' }).click();
+    await expect(page.getByRole('button', { name: 'Доступ (2)' })).toBeVisible();
+    expect(await ipcCalls(page, 'cloud_share')).toEqual([{ id: 'w1', player: 'Bob_1', add: true }]);
+    await page.getByRole('button', { name: 'Запустить' }).click();
+    await expect(page.getByText('Загрузка мира')).toBeVisible();
+    expect(await ipcCalls(page, 'cloud_start')).toEqual([{ id: 's1' }]);
+    expect(await axeProblems(page)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+}
+
+test('cloud worlds tab without a secret says why and lists nothing', async ({ page }) => {
+  await openApp(page, '#friends', { mode: 'empty' });
+  await page.getByRole('dialog', { name: 'Вход в аккаунт' }).getByRole('button', { name: 'Отмена' }).click();
+  await page.getByRole('tab', { name: 'Облачные миры' }).click();
+  await expect(page.getByText('Облачные миры недоступны.')).toBeVisible();
+  await expect(page.getByText('WEX_CLOUD_SECRET', { exact: false }).first()).toBeVisible();
+  expect(await ipcCalls(page, 'cloud_list')).toEqual([]);
+  expect(await axeProblems(page)).toEqual([]);
+});
+
 for (const [w, h] of [[880, 600], [1080, 720]] as const) {
   test(`window ${w}×${h} (minimum and default): no page spills sideways, wardrobe keeps two columns`, async ({ page }) => {
     await page.setViewportSize({ width: w, height: h });
