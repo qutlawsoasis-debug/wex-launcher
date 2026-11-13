@@ -128,6 +128,38 @@ pub fn get_servers_dat_path(paths: &wex_core::config::WexPaths, version: Option<
     inst_dir.join("servers.dat")
 }
 
+/// Servers that earlier Wex builds wrote into an empty `servers.dat` on their own.
+/// They never existed; a list that still has them exactly (same name and address)
+/// gets them removed once. Entries the player added are never touched.
+const OLD_SEEDED_SERVERS: &[(&str, &str)] = &[
+    ("Aura Official — Survival & PvP", "mc.auramc.net"),
+    ("Aura Pack Community Server", "pack.auramc.net"),
+];
+
+/// Removes the old seeded entries; returns true if anything was removed.
+pub fn remove_old_seeded_servers(root: &mut NbtTag) -> bool {
+    let Some(NbtTag::List { elements, .. }) = root.get_mut("servers") else {
+        return false;
+    };
+    let before = elements.len();
+    elements.retain(|elem| {
+        let NbtTag::Compound(fields) = elem else {
+            return true;
+        };
+        let field = |key: &str| {
+            fields.iter().find_map(|(k, v)| match v {
+                NbtTag::String(s) if k == key => Some(s.as_str()),
+                _ => None,
+            })
+        };
+        let (name, ip) = (field("name").unwrap_or(""), field("ip").unwrap_or(""));
+        !OLD_SEEDED_SERVERS
+            .iter()
+            .any(|(n, a)| *n == name && *a == ip)
+    });
+    elements.len() != before
+}
+
 /// Helper to parse all servers out of a root NBT compound.
 pub fn parse_servers_from_nbt(root: &NbtTag) -> Vec<ServerEntryModel> {
     let mut result = Vec::new();
@@ -185,7 +217,14 @@ pub async fn list_servers(
     let servers_dat_path = get_servers_dat_path(&state.paths, version.as_deref());
 
     // Only the player's own servers: Wex has no public server to put in the list.
-    let root = load_servers_dat(&servers_dat_path).map_err(|e| e.to_string())?;
+    let mut root = load_servers_dat(&servers_dat_path).map_err(|e| e.to_string())?;
+    if remove_old_seeded_servers(&mut root) {
+        tracing::info!(
+            "removed the old seeded servers from {}",
+            servers_dat_path.display()
+        );
+        save_servers_dat(&servers_dat_path, &root).map_err(|e| e.to_string())?;
+    }
     Ok(parse_servers_from_nbt(&root))
 }
 

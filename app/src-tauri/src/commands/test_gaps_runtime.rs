@@ -260,6 +260,49 @@ async fn list_servers_success_clones_managed_state() {
     );
 }
 #[tokio::test]
+async fn list_servers_removes_the_old_seeded_servers_once_and_keeps_the_players() {
+    let f = Fixture::new().await;
+    // What earlier builds wrote, plus the player's own servers (one reuses a name).
+    crate::add_server(
+        None,
+        "Aura Official — Survival & PvP".into(),
+        "mc.auramc.net".into(),
+        f.play(),
+    )
+    .await
+    .unwrap();
+    crate::add_server(
+        None,
+        "Aura Pack Community Server".into(),
+        "pack.auramc.net".into(),
+        f.play(),
+    )
+    .await
+    .unwrap();
+    crate::add_server(
+        None,
+        "Our server".into(),
+        "play.example.org".into(),
+        f.play(),
+    )
+    .await
+    .unwrap();
+    crate::add_server(
+        None,
+        "Aura Official — Survival & PvP".into(),
+        "10.0.0.5".into(),
+        f.play(),
+    )
+    .await
+    .unwrap();
+    let list = crate::list_servers(None, f.play()).await.unwrap();
+    let addrs: Vec<_> = list.iter().map(|s| s.address.as_str()).collect();
+    assert_eq!(addrs, ["play.example.org", "10.0.0.5"]);
+    // Saved: a second read finds the same list.
+    let again = crate::list_servers(None, f.play()).await.unwrap();
+    assert_eq!(again.len(), 2);
+}
+#[tokio::test]
 async fn list_servers_error_corrupt_file() {
     let f = Fixture::new().await;
     let path = f.paths.instance_dir("1.21.1").join("servers.dat");
