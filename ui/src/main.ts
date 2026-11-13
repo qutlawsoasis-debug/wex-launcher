@@ -1,5 +1,6 @@
 import { mount } from 'svelte'
 import './app.css'
+import './lib/design/winter/winter.css'
 import App from './App.svelte'
 
 // Focus rings are for keyboard navigation only (Apple HIG, Focus and selection).

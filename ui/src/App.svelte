@@ -40,6 +40,12 @@
   import AccountSheet from './lib/components/AccountSheet.svelte';
   import Snowfall from './lib/design/Snowfall.svelte';
   import { season } from './lib/design/season.svelte';
+  import WinterScene from './lib/design/winter/WinterScene.svelte';
+
+  // Winter look: one class on <html> for the scene and the frosted panels (winter.css).
+  $effect(() => {
+    document.documentElement.classList.toggle('winter', season.winter);
+  });
   import { launch } from './lib/shell/launch.svelte';
   import { toasts } from './lib/shell/toast.svelte';
   import { call, on, inTauri } from './lib/shell/ipc';
@@ -352,6 +358,7 @@
   <LaunchBar />
   <ToastHost />
 
+  {#if season.winter}<WinterScene />{/if}
   {#if season.winter && !theme.motionReduced}<Snowfall />{/if}
   <CommandPalette />
 
