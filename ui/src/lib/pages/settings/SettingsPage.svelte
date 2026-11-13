@@ -24,6 +24,7 @@
   import AccountSheet from '../../components/AccountSheet.svelte';
   import Monogram from '../../shell/Monogram.svelte';
   import { accounts } from '../../shell/accounts.svelte';
+  import { accountUi } from '../../shell/accountUi.svelte';
 
   interface Props {
     onopenonboarding?: () => void;
@@ -267,7 +268,15 @@
   /** Sign-out asks twice, like Reset: it deletes the saved sign-in from this computer. */
   let signOutArmed = $state<string | null>(null);
   let accountBusy = $state(false);
-  onMount(() => void accounts.load());
+  onMount(() => {
+    void accounts.load();
+    // Opened from the account menu: go straight to its section.
+    const want = accountUi.settingsSection;
+    if (want) {
+      accountUi.settingsSection = null;
+      requestAnimationFrame(() => root?.querySelector(`#sec-${want}`)?.scrollIntoView({ block: 'start' }));
+    }
+  });
 
   function addAccount(startOn: 'choose' | 'microsoft' = 'choose') {
     accountSheetStart = startOn;

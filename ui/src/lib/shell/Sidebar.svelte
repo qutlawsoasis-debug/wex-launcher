@@ -13,6 +13,9 @@
   import { t, tn } from '../i18n';
   import BuildCover from './BuildCover.svelte';
   import Monogram from './Monogram.svelte';
+  import AccountMenu from './AccountMenu.svelte';
+  import { accounts } from './accounts.svelte';
+  import { openSignIn } from './accountUi.svelte';
   import { onMount } from 'svelte';
   import { friendsLive } from '../services/friendsLive';
 
@@ -38,6 +41,16 @@
   }
 
   const currentBuild = $derived(buildIdOf(router.route));
+
+  let menuOpen = $state(false);
+  let meBtn = $state<HTMLButtonElement | null>(null);
+  /** No account yet: the profile is the way to sign in. */
+  const signedOut = $derived(accounts.loaded && !accounts.list.length);
+
+  function onMe() {
+    if (signedOut) openSignIn();
+    else menuOpen = !menuOpen;
+  }
 
   /** Friends online, shown next to «Друзья» only when core reports any (reference: .count). */
   let friendsOnline = $state(friendsLive.friends.filter((f) => f.status !== 'offline').length);
@@ -81,13 +94,33 @@
 
   <div class="foot">
     {@render footer?.()}
-    <a class="me" href="#wardrobe" title={t('shell.profile_label')} onclick={(e) => open(e, 'wardrobe')}>
-      <Monogram name={builds.playerName} tone={2} />
-      <div>
-        <b>{builds.playerName}</b>
-        <span class:off={!online}>{online ? t('shell.online') : t('shell.offline')}</span>
-      </div>
-    </a>
+    <div class="me-wrap">
+      <AccountMenu bind:open={menuOpen} anchor={meBtn} />
+      <button
+        type="button"
+        class="me"
+        bind:this={meBtn}
+        aria-haspopup={signedOut ? 'dialog' : 'menu'}
+        aria-expanded={signedOut ? undefined : menuOpen}
+        title={t('shell.profile_label')}
+        onclick={onMe}
+      >
+        {#if signedOut}
+          <Monogram name="?" tone={2} />
+          <div>
+            <b>{t('acc.sign_in')}</b>
+            <span class="off">{t('acc.sign_in_d')}</span>
+          </div>
+        {:else}
+          <Monogram name={builds.playerName} tone={2} />
+          <div>
+            <b>{builds.playerName}</b>
+            <span class:off={!online}>{online ? t('shell.online') : t('shell.offline')}</span>
+          </div>
+        {/if}
+        <svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 10l3-3 3 3" /></svg>
+      </button>
+    </div>
   </div>
 </aside>
 
@@ -234,7 +267,16 @@
     gap: 8px;
     padding-top: 12px;
   }
+  .me-wrap {
+    position: relative;
+  }
   .me {
+    width: 100%;
+    border: 0;
+    background: none;
+    font: inherit;
+    text-align: left;
+    cursor: default;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -244,8 +286,22 @@
     text-decoration: none;
     transition: background-color var(--dur-micro);
   }
-  .me:hover {
+  .me:hover,
+  .me[aria-expanded='true'] {
     background: var(--fill-3);
+  }
+  .me > div {
+    flex: 1;
+    min-width: 0;
+  }
+  .chev {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: var(--label-3);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
   .me b {
     display: block;

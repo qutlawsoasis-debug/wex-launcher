@@ -6,6 +6,8 @@
  * Actions call start_game, cancel_launch and shell_stop_game. Nothing is simulated.
  */
 
+import { accounts } from './accounts.svelte';
+import { openSignIn } from './accountUi.svelte';
 import { call, on } from './ipc';
 import { uiLog } from './uiLog';
 import { builds, type Build } from './builds.svelte';
@@ -94,6 +96,11 @@ class Launch {
 
   async start(server: string | null = null): Promise<void> {
     if (this.busy) return;
+    // Nobody to play as yet: sign in first (Play stays the way into the game).
+    if (accounts.loaded && !accounts.error && !accounts.list.length) {
+      openSignIn();
+      return;
+    }
     const version = builds.selectedId;
     this.enterLaunching(version, server);
     uiLog('info', `Play pressed: ${version}${server ? ` -> ${server}` : ''}`);

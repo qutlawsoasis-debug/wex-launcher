@@ -36,6 +36,8 @@
   import { router, buildIdOf, isRoute, buildRoute, type Route } from './lib/shell/router.svelte';
   import { builds } from './lib/shell/builds.svelte';
   import { accounts } from './lib/shell/accounts.svelte';
+  import { accountUi, openSignIn } from './lib/shell/accountUi.svelte';
+  import AccountSheet from './lib/components/AccountSheet.svelte';
   import { launch } from './lib/shell/launch.svelte';
   import { toasts } from './lib/shell/toast.svelte';
   import { call, on, inTauri } from './lib/shell/ipc';
@@ -232,7 +234,10 @@
     stops.push(initScrollIndicators());
     void builds.load().then(() => {
       // The active account decides the player name shown everywhere.
-      void accounts.load();
+      // First start (or every account signed out): choose how to play.
+      void accounts.load().then(() => {
+        if (!accounts.error && !accounts.list.length && !showOnboarding) openSignIn();
+      });
       // Theme, motion, transparency and language come from the saved settings.
       applyLook(builds.settings);
       if (builds.error) {
@@ -353,6 +358,8 @@
   {#if crashSheetOpen && CrashSheet}
     <CrashSheet bind:open={crashSheetOpen} diagnosis={crashDiagnosis} version={launch.version ?? builds.selectedId} onnavigate={openLegacyTab} ontoast={notify} />
   {/if}
+
+  <AccountSheet bind:open={accountUi.sheetOpen} start={accountUi.start} />
 
   {#if showOnboarding && OnboardingModal}
     <OnboardingModal

@@ -89,16 +89,42 @@ fn http_client() -> reqwest::Client {
         .unwrap_or_default()
 }
 
-/// The overview for a data root; also migrates an old install's nickname into an offline account.
+/// Marker: the lone default «Player» account that builds before the sign-in sheet
+/// created on their own has been removed (once, so a player who later picks the
+/// name «Player» keeps it).
+const PLACEHOLDER_CLEARED: &str = "accounts.placeholder-cleared";
+
+/// The overview for a data root; also migrates an old install's nickname into an
+/// offline account. The default nickname («Player») is not a choice the player
+/// made, so it is not migrated: the player gets the sign-in sheet instead.
 pub fn overview_at(
     root: &std::path::Path,
     config_file: &std::path::Path,
 ) -> Result<AccountsOverview, IpcError> {
     let mut store = AccountStore::open(root).map_err(err)?;
+    let default_name = LauncherConfig::default().nickname;
+    let marker = root.join(PLACEHOLDER_CLEARED);
+    if !marker.exists() {
+        let lone_default = match store.accounts() {
+            [only] => only.kind == AccountKind::Offline && only.name == default_name,
+            _ => false,
+        };
+        if lone_default {
+            // Offline: no tokens; re-adding the same name gives the same UUID.
+            let id = store.accounts()[0].id.clone();
+            store.sign_out(&id).map_err(err)?;
+            tracing::info!(
+                "removed the default «{}» account created without the player",
+                default_name
+            );
+        }
+        let _ = std::fs::write(&marker, b"");
+    }
     if store.accounts().is_empty() {
         let cfg = LauncherConfig::load_or_default(config_file);
-        if accounts::is_valid_offline_name(cfg.nickname.trim()) {
-            store.add_offline(cfg.nickname.trim()).map_err(err)?;
+        let nick = cfg.nickname.trim();
+        if nick != default_name && accounts::is_valid_offline_name(nick) {
+            store.add_offline(nick).map_err(err)?;
         }
     }
     Ok(AccountsOverview {
@@ -363,6 +389,50 @@ mod tests {
                 "no client id: Microsoft sign-in is shown unavailable"
             );
         }
+    }
+
+    #[test]
+    fn the_default_nickname_is_not_an_account_the_player_signs_in() {
+        let tmp = tempdir().unwrap();
+        let cfg_file = tmp.path().join("config.json");
+        LauncherConfig::default().save(&cfg_file).unwrap();
+        let o = overview_at(tmp.path(), &cfg_file).unwrap();
+        assert!(
+            o.accounts.is_empty(),
+            "«Player» from the default config is not migrated"
+        );
+        assert!(o.active_id.is_none());
+    }
+
+    #[test]
+    fn the_old_lone_player_account_is_removed_once() {
+        let tmp = tempdir().unwrap();
+        let cfg_file = tmp.path().join("config.json");
+        let default_name = LauncherConfig::default().nickname;
+        AccountStore::open(tmp.path())
+            .unwrap()
+            .add_offline(&default_name)
+            .unwrap();
+        let o = overview_at(tmp.path(), &cfg_file).unwrap();
+        assert!(o.accounts.is_empty());
+        // Chosen by the player afterwards: kept.
+        AccountStore::open(tmp.path())
+            .unwrap()
+            .add_offline(&default_name)
+            .unwrap();
+        let o = overview_at(tmp.path(), &cfg_file).unwrap();
+        assert_eq!(o.accounts.len(), 1);
+    }
+
+    #[test]
+    fn a_real_account_next_to_player_is_left_alone() {
+        let tmp = tempdir().unwrap();
+        let cfg_file = tmp.path().join("config.json");
+        let mut store = AccountStore::open(tmp.path()).unwrap();
+        store.add_offline("Player").unwrap();
+        store.add_offline("Steve").unwrap();
+        let o = overview_at(tmp.path(), &cfg_file).unwrap();
+        assert_eq!(o.accounts.len(), 2);
     }
 
     #[test]
