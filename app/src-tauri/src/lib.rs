@@ -65,6 +65,7 @@ pub fn run() {
             app.manage(network_state);
             app.manage(startup_state);
             app.manage(commands::friends::FriendsState::new(paths.clone()));
+            app.manage(commands::own_server::OwnServerState::new(paths.clone()));
             app.manage(AppState::default());
             let lobby_state = commands::lobby::LobbyState::new(
                 paths.root.join("tools"),
@@ -183,6 +184,19 @@ pub fn run() {
             commands::overview::overview_get_playtime,
             commands::overview::overview_record_playtime,
             // Servers commands (commands/servers.rs)
+            commands::own_server::own_server_list,
+            commands::own_server::own_server_create,
+            commands::own_server::own_server_update,
+            commands::own_server::own_server_accept_eula,
+            commands::own_server::own_server_install,
+            commands::own_server::own_server_start,
+            commands::own_server::own_server_stop,
+            commands::own_server::own_server_console,
+            commands::own_server::own_server_command,
+            commands::own_server::own_server_whitelist,
+            commands::own_server::own_server_delete,
+            commands::own_server::own_server_add_to_servers,
+            commands::own_server::own_server_open_eula,
             commands::servers::list_servers,
             commands::servers::ping_server,
             commands::servers::ping_server_details,
@@ -320,6 +334,14 @@ pub fn run() {
             commands::onboarding::onboarding_complete,
             commands::onboarding::onboarding_prewarm_game,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            // A friends' server gets `stop` (saves the world) before Wex exits.
+            if let tauri::RunEvent::Exit = event {
+                if let Some(servers) = app.try_state::<commands::own_server::OwnServerState>() {
+                    tauri::async_runtime::block_on(servers.stop_all());
+                }
+            }
+        });
 }

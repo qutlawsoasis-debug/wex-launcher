@@ -108,6 +108,28 @@ test('servers: add a server through core', async ({ page }) => {
   await expect(page.locator('.lrow-srv')).toHaveCount(3);
 });
 
+for (const scheme of ['light', 'dark'] as const) {
+  test(`own server tab: status, EULA switch, address, console and settings (${scheme})`, async ({ page }) => {
+    const errors = await openApp(page, '#friends', { mode: 'full', scheme });
+    await page.getByRole('tab', { name: 'Свой сервер' }).click();
+    await expect(page.locator('.head-t b')).toHaveText('Дача');
+    await expect(page.getByRole('switch', { name: 'Я принимаю EULA Minecraft' })).toHaveAttribute('aria-checked', 'false');
+    await expect(page.getByRole('button', { name: 'Запустить' })).toBeDisabled();
+    await expect(page.getByText('192.168.1.5', { exact: true })).toBeVisible();
+    await expect(page.getByRole('log', { name: 'Консоль' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Добавить себе в Серверы' })).toBeVisible();
+    expect(await axeProblems(page)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+}
+
+test('own server tab with no servers offers to create one', async ({ page }) => {
+  await openApp(page, '#friends', { mode: 'empty' });
+  await page.getByRole('tab', { name: 'Свой сервер' }).click();
+  await expect(page.getByRole('button', { name: 'Создать сервер' })).toBeEnabled();
+  expect(await axeProblems(page)).toEqual([]);
+});
+
 for (const [w, h] of [[880, 600], [1080, 720]] as const) {
   test(`window ${w}×${h} (minimum and default): no page spills sideways, wardrobe keeps two columns`, async ({ page }) => {
     await page.setViewportSize({ width: w, height: h });

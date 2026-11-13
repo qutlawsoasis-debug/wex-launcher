@@ -10,6 +10,7 @@ pub mod music;
 pub mod network;
 pub mod onboarding;
 pub mod overview;
+pub mod own_server;
 pub mod report;
 pub mod servers;
 pub mod settings;

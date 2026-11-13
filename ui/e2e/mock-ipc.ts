@@ -104,6 +104,28 @@ export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
     wardrobe_get_state: () => ({ nickname: 'Player', skin_name: '', skin_base64: null, model: 'Classic', cape_id: 'none', cape_name: '', cape_base64: null }),
     wardrobe_apply: () => ({ success: true, message: 'ok' }),
     extras_list_skin_history: () => ({ items: [] }),
+    own_server_list: () =>
+      full
+        ? [
+            {
+              id: 'srv-0000aaaa',
+              version: '1.21.1',
+              createdAt: '2026-11-13T00:00:00Z',
+              settings: { name: 'Дача', maxPlayers: 8, gamemode: 'survival', difficulty: 'normal', whitelist: true, onlineMode: true, pvp: true, port: 25565, memoryMb: 3072, publicAddress: null },
+              eulaAccepted: false,
+              installed: { minecraft: '1.21.1', fabricLoader: '0.19.5', packVersion: '1', modSource: 'fabricModJson', mods: ['a.jar'] },
+              installing: false,
+              status: 'stopped',
+              players: [],
+              whitelist: ['Steve'],
+              lanAddress: '192.168.1.5',
+              localAddress: 'localhost',
+              publicAddress: null,
+              problem: null,
+            },
+          ]
+        : [],
+    own_server_console: () => null,
     list_lan_worlds: () => [],
     list_open_rooms: () => [],
     get_pending_deep_link: () => null,

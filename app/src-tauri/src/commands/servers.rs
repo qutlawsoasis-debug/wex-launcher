@@ -197,6 +197,16 @@ pub async fn add_server(
     address: String,
     state: State<'_, PlayState>,
 ) -> Result<ServerEntryModel, String> {
+    add_server_impl(&state.paths, version.as_deref(), &name, &address)
+}
+
+/// Adds `name`/`address` to `servers.dat` of the chosen instance.
+pub fn add_server_impl(
+    paths: &wex_core::config::WexPaths,
+    version: Option<&str>,
+    name: &str,
+    address: &str,
+) -> Result<ServerEntryModel, String> {
     let name_trimmed = name.trim().to_string();
     let addr_trimmed = address.trim().to_string();
 
@@ -204,7 +214,7 @@ pub async fn add_server(
         return Err("Название и адрес сервера не могут быть пустыми".to_string());
     }
 
-    let servers_dat_path = get_servers_dat_path(&state.paths, version.as_deref());
+    let servers_dat_path = get_servers_dat_path(paths, version);
     let mut root = if servers_dat_path.exists() {
         load_servers_dat(&servers_dat_path)
             .map_err(|e| format!("Не удалось прочитать {}: {}", servers_dat_path.display(), e))?

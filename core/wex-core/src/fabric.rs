@@ -74,6 +74,18 @@ pub async fn fetch_fabric_profile(
     Ok(profile)
 }
 
+/// Fabric profile for the dedicated server (main class `KnotServer`).
+pub async fn fetch_fabric_server_profile(
+    client: &reqwest::Client,
+    mc_version: &str,
+    loader_version: Option<&str>,
+) -> Result<FabricProfile> {
+    let loader = loader_version.unwrap_or(DEFAULT_FABRIC_LOADER);
+    let url = format!("{}/{}/{}/server/json", FABRIC_META_BASE, mc_version, loader);
+    let resp = client.get(&url).send().await?.error_for_status()?;
+    Ok(resp.json().await?)
+}
+
 pub fn resolve_fabric_libraries(paths: &WexPaths, profile: &FabricProfile) -> Vec<PathBuf> {
     let mut classpath_jars = Vec::new();
     for lib in &profile.libraries {
