@@ -17,6 +17,7 @@
   import SnowDrift from '../../design/SnowDrift.svelte';
   import Garland from '../../design/Garland.svelte';
   import SnowPlay from '../../design/SnowPlay.svelte';
+  import EveningScene from '../../design/EveningScene.svelte';
   import { home } from './home.svelte';
   import { t, tn } from '../../i18n';
 
@@ -79,7 +80,7 @@
     >
       <span class="pane-ver" aria-hidden="true">{b.id}</span>
       {#if season.winter}
-        <span class="pane-aurora" aria-hidden="true"><i></i><i></i><i></i></span>
+        {#if open}<EveningScene />{/if}
         <span class="pane-snow"><SnowDrift seed={b.id} height={open ? 44 : 22} span={open ? 1 : 0.12} /></span>
         <Garland step={open ? 46 : 52} />
       {/if}
@@ -155,75 +156,6 @@
     height: 44px;
     z-index: -1;
     pointer-events: none;
-  }
-  /* Winter look: northern lights drifting slowly across the open tile, in Apple
-     system colours (green, teal, purple) blended over the build colour. Apple has
-     no guidance for this; HIG › Motion: slow, decorative, still under Reduce Motion. */
-  .pane-aurora {
-    position: absolute;
-    inset: -30% -10% 25%;
-    z-index: -2;
-    pointer-events: none;
-    filter: blur(38px) saturate(130%);
-    mix-blend-mode: screen;
-    opacity: 0;
-    translate: calc(var(--px, 0) * 26px) calc(var(--py, 0) * 12px);
-    transition: opacity var(--dur-page) var(--ease);
-  }
-  .pane.open .pane-aurora {
-    opacity: 0.7;
-  }
-  .pane-aurora i {
-    position: absolute;
-    border-radius: 50%;
-    animation: aurora 18s ease-in-out infinite alternate;
-  }
-  .pane-aurora i:nth-child(1) {
-    left: 2%;
-    top: 20%;
-    width: 55%;
-    height: 34%;
-    background: #30d158;
-    rotate: -8deg;
-  }
-  .pane-aurora i:nth-child(2) {
-    left: 36%;
-    top: 10%;
-    width: 48%;
-    height: 30%;
-    background: #40c8e0;
-    rotate: 6deg;
-    animation-duration: 23s;
-    animation-delay: -7s;
-  }
-  .pane-aurora i:nth-child(3) {
-    left: 62%;
-    top: 26%;
-    width: 40%;
-    height: 26%;
-    background: #bf5af2;
-    rotate: -4deg;
-    animation-duration: 27s;
-    animation-delay: -13s;
-  }
-  @keyframes aurora {
-    0% {
-      transform: translateX(-8%) scaleX(1) skewX(-6deg);
-    }
-    50% {
-      transform: translateX(6%) scaleX(1.25) skewX(8deg);
-    }
-    100% {
-      transform: translateX(14%) scaleX(0.9) skewX(-4deg);
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .pane-aurora i {
-      animation: none;
-    }
-  }
-  :global(html[data-reduce-motion="true"]) .pane-aurora i {
-    animation: none;
   }
   .pane-ver {
     position: absolute;
