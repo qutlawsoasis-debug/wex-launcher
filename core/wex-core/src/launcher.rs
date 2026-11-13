@@ -1260,7 +1260,10 @@ mod tests {
         assert!(args.iter().any(|a| a == "-Daura.client.hiddenWindow=true"));
     }
 
-    fn identity_args(config: &LauncherConfig, version: &str) -> (Vec<String>, PathBuf, tempfile::TempDir) {
+    fn identity_args(
+        config: &LauncherConfig,
+        version: &str,
+    ) -> (Vec<String>, PathBuf, tempfile::TempDir) {
         let tmp = tempdir().unwrap();
         let paths = WexPaths::new(Some(tmp.path().join("Wex")));
         paths.ensure_instance_dirs(version).unwrap();
@@ -1286,7 +1289,9 @@ mod tests {
     }
 
     fn arg_after<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
-        args.iter().position(|a| a == flag).map(|i| args[i + 1].as_str())
+        args.iter()
+            .position(|a| a == flag)
+            .map(|i| args[i + 1].as_str())
     }
 
     #[test]
@@ -1298,7 +1303,10 @@ mod tests {
             };
             let (args, _, _tmp) = identity_args(&config, version);
             assert_eq!(arg_after(&args, "--username"), Some("Player"));
-            assert_eq!(arg_after(&args, "--uuid"), Some("a01e3843-e521-3998-958a-f459800e4d11"));
+            assert_eq!(
+                arg_after(&args, "--uuid"),
+                Some("a01e3843-e521-3998-958a-f459800e4d11")
+            );
             assert_eq!(arg_after(&args, "--accessToken"), Some("0"));
             assert_eq!(arg_after(&args, "--userType"), Some("legacy"));
             assert!(!args.iter().any(|a| a == "--xuid"));
@@ -1321,17 +1329,32 @@ mod tests {
             };
             let (args, args_file, _tmp) = identity_args(&config, version);
             assert_eq!(arg_after(&args, "--username"), Some("Notch"));
-            assert_eq!(arg_after(&args, "--uuid"), Some("069a79f444e94726a5befca90e38aaf5"));
-            assert_eq!(arg_after(&args, "--accessToken"), Some("eyJ-secret-minecraft-token"));
+            assert_eq!(
+                arg_after(&args, "--uuid"),
+                Some("069a79f444e94726a5befca90e38aaf5")
+            );
+            assert_eq!(
+                arg_after(&args, "--accessToken"),
+                Some("eyJ-secret-minecraft-token")
+            );
             assert_eq!(arg_after(&args, "--userType"), Some("msa"));
             assert_eq!(arg_after(&args, "--xuid"), Some("2535412345"));
 
             let on_disk = fs::read_to_string(&args_file).unwrap();
-            assert!(!on_disk.contains("eyJ-secret"), "token must not be written to argsFile.txt");
+            assert!(
+                !on_disk.contains("eyJ-secret"),
+                "token must not be written to argsFile.txt"
+            );
             assert!(on_disk.contains("Notch"));
 
             let (plain, secret) = split_secret_args(&args);
-            assert_eq!(secret, vec!["--accessToken".to_string(), "eyJ-secret-minecraft-token".to_string()]);
+            assert_eq!(
+                secret,
+                vec![
+                    "--accessToken".to_string(),
+                    "eyJ-secret-minecraft-token".to_string()
+                ]
+            );
             assert_eq!(plain.len() + 2, args.len());
         }
     }

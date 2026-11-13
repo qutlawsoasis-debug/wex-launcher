@@ -68,7 +68,10 @@ pub fn run() {
             app.manage(commands::own_server::OwnServerState::new(paths.clone()));
             app.manage(AppState::default());
             app.manage(commands::accounts::AccountsState::default());
-            commands::accounts::spawn_startup_refresh(paths.root.clone(), paths.config_file.clone());
+            commands::accounts::spawn_startup_refresh(
+                paths.root.clone(),
+                paths.config_file.clone(),
+            );
             let lobby_state = commands::lobby::LobbyState::new(
                 paths.root.join("tools"),
                 commands::lobby::DEFAULT_LOBBY_API_URL,
