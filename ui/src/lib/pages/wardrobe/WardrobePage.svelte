@@ -1,7 +1,8 @@
 <!--
-  Wardrobe (reference: V.wardrobe). A 3D model of the player made of CSS boxes
-  textured from the real 64×64 skin: head with the hat layer, body, arms (wide or
-  slim), legs, outer layers, cape. Drag to turn, ±90° buttons, auto-turn, poses
+  Wardrobe (reference: V.wardrobe). A 3D model of the player rendered with WebGL
+  (skinview3d, skinGl.ts) from the real 64×64 skin: head with the hat layer, body,
+  arms (wide or slim), legs, outer layers, cape, with perspective and light. Without
+  WebGL the CSS-box model (skinRig.ts) is used instead. Drag to turn, ±90° buttons, auto-turn, poses
   (stands, walks, runs, waves), nickname above the head.
   Tabs: Skins (upload PNG 64×64 / 64×32, saved skins, arm model), Capes, Profile.
   Every change is put on through core (wardrobe_apply).
@@ -17,6 +18,7 @@
   import { theme } from '../../design/theme.svelte';
   import { createDefaultSkinCanvas } from './defaultSkin';
   import { t } from '../../i18n';
+  import { SkinStage, webglAvailable } from './skinGl';
   import { buildRig, drawThumb, loadImage, toSkinCanvas, isCapeSize, NICK_RE, U, type CapeTexture } from './skinRig';
   import { wardrobe, fileToBase64, looksSlim, safeName, type SavedSkin } from './wardrobe.svelte';
   import { call } from '../../shell/ipc';
@@ -35,6 +37,9 @@
   /** Until the user touches the model it turns slowly by itself. */
   let touched = $state(false);
   let rigEl: HTMLElement | undefined = $state();
+  let glCanvas: HTMLCanvasElement | undefined = $state();
+  /** The WebGL model once it is ready; null means the CSS model is shown. */
+  let gl = $state<SkinStage | null>(null);
   let tex = $state<HTMLCanvasElement | null>(null);
   let cape = $state<CapeTexture | null>(null);
   let nick = $state('');
@@ -96,6 +101,12 @@
       const k = Math.max(0.4, Math.min(1, (bandBottom - bandTop) / (32 * U), (node.clientWidth - 40) / (20 * U)));
       node.style.setProperty('--k', k.toFixed(3));
       node.style.setProperty('--cy', `${Math.round((bandTop + bandBottom) / 2)}px`);
+      // WebGL: the canvas fills the band between the caption and the bar.
+      const glTop = top ? top.offsetTop + top.offsetHeight : 0;
+      const glBottom = bar ? bar.offsetTop : node.clientHeight;
+      node.style.setProperty('--gl-top', `${glTop}px`);
+      node.style.setProperty('--gl-h', `${Math.max(0, glBottom - glTop)}px`);
+      if (gl && glCanvas) gl.resize(node.clientWidth, Math.max(1, glBottom - glTop));
     };
     const ro = new ResizeObserver(fit);
     ro.observe(node);
@@ -105,11 +116,33 @@
   }
 
   onMount(() => {
+    let alive = true;
+    if (glCanvas && webglAvailable()) {
+      const cv = glCanvas;
+      const stage = cv.closest<HTMLElement>('.stage3d')!;
+      const h = parseFloat(stage.style.getPropertyValue('--gl-h')) || stage.clientHeight;
+      SkinStage.create(cv, stage.clientWidth || 600, h || 400)
+        .then((st) => {
+          if (!alive) return st.dispose();
+          gl = st;
+          // The band may have changed while three.js loaded (fitModel ran before).
+          const band = parseFloat(stage.style.getPropertyValue('--gl-h'));
+          if (band > 0) st.resize(stage.clientWidth, band);
+        })
+        .catch(() => {
+          // No WebGL after all: the CSS model stays.
+        });
+    }
     void loadAchievements();
     void wardrobe.load().then(() => {
       // Do not overwrite what the user has started typing.
       if (!nickTouched) nick = wardrobe.state.nickname || builds.playerName;
     });
+    return () => {
+      alive = false;
+      gl?.dispose();
+      gl = null;
+    };
   });
 
   // Texture from the current skin; the standard look when no skin is set.
@@ -141,7 +174,42 @@
   });
 
   $effect(() => {
-    if (rigEl && tex) buildRig(rigEl, tex, slim, cape);
+    if (!gl && rigEl && tex) buildRig(rigEl, tex, slim, cape);
+  });
+
+  // The WebGL model follows the same state as the CSS one.
+  $effect(() => {
+    if (gl && tex) gl.setSkin(tex, slim);
+  });
+  $effect(() => {
+    if (gl) gl.setCape(cape ? cape.canvas : null);
+  });
+  $effect(() => {
+    if (gl) gl.setTurn(turn, instant);
+  });
+  $effect(() => {
+    if (gl) gl.setReducedMotion(theme.motionReduced);
+  });
+  $effect(() => {
+    if (gl) gl.setPose(pose);
+  });
+  const tagName = $derived(nickOk ? nick || wardrobe.state.nickname : wardrobe.state.nickname);
+  $effect(() => {
+    if (gl) gl.setNick(tagName, getComputedStyle(document.documentElement).getPropertyValue('--font') || 'system-ui');
+  });
+  // Nothing to draw while the launcher idles or the window is hidden.
+  $effect(() => {
+    const st = gl;
+    if (!st) return;
+    const sync = () => st.setPaused(document.hidden || document.documentElement.classList.contains('app-idle'));
+    const mo = new MutationObserver(sync);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    document.addEventListener('visibilitychange', sync);
+    sync();
+    return () => {
+      mo.disconnect();
+      document.removeEventListener('visibilitychange', sync);
+    };
   });
 
   // Turning: drag, buttons, auto-turn (requestAnimationFrame, stops when off or the page closes).
@@ -342,9 +410,10 @@
     onkeydown={onStageKey}
     use:fitModel
   >
-    <div class="nametag">{nickOk ? nick || wardrobe.state.nickname : wardrobe.state.nickname}</div>
-    <div class="rig-wrap"><div class="rig pose-{pose}" class:now={instant} style:--turn="{turn}deg" bind:this={rigEl}></div></div>
-    <div class="floor" aria-hidden="true"></div>
+    <div class="nametag" hidden={!!gl}>{tagName}</div>
+    <canvas class="gl" class:on={!!gl} bind:this={glCanvas} aria-hidden="true"></canvas>
+    <div class="rig-wrap" hidden={!!gl}><div class="rig pose-{pose}" class:now={instant} style:--turn="{turn}deg" bind:this={rigEl}></div></div>
+    <div class="floor" class:gl-floor={!!gl} aria-hidden="true"></div>
     <div class="stage-top">
       <b>{skinLabel}</b>
       <span>{slim ? t('wardrobe2.model_slim_long') : t('wardrobe2.model_wide_long')}{#if wardrobe.state.cape_id === 'custom'}, {t('wardrobe2.cape_named', { name: wardrobe.state.cape_name || t('wardrobe2.cape_own') })}{/if}</span>
@@ -511,6 +580,28 @@
   }
   .stage3d:active {
     cursor: grabbing;
+  }
+  .gl {
+    position: absolute;
+    left: 0;
+    top: var(--gl-top, 0);
+    width: 100%;
+    height: var(--gl-h, 100%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-short) var(--ease);
+  }
+  .gl.on {
+    opacity: 1;
+  }
+  .rig-wrap[hidden],
+  .nametag[hidden] {
+    display: none;
+  }
+  /* Under the WebGL model: the shadow sits at the feet near the bottom of the band. */
+  .floor.gl-floor {
+    top: calc(var(--gl-top, 0px) + var(--gl-h, 100%) * 0.9);
+    scale: 1;
   }
   .rig-wrap {
     position: absolute;

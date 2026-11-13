@@ -4,12 +4,13 @@ import { openApp } from './helpers';
 const sample = (page: Page) =>
   page.evaluate(() => ({
     turn: getComputedStyle(document.querySelector('.rig')!).getPropertyValue('--turn'),
-    arm: getComputedStyle(document.querySelector('.j-armR .swing')!).transform,
-    leg: getComputedStyle(document.querySelector('.j-legL .swing')!).transform,
+    // The WebGL model (skinview3d): a frame of the canvas.
+    frame: (document.querySelector('canvas.gl.on') as HTMLCanvasElement | null)?.toDataURL() ?? '',
   }));
 
 async function modelMoves(page: Page) {
   await openApp(page, '#wardrobe');
+  await expect(page.locator('canvas.gl.on'), 'the WebGL model is drawn').toBeVisible();
   const a = await sample(page);
   await page.waitForTimeout(500);
   const b = await sample(page);
@@ -19,8 +20,7 @@ async function modelMoves(page: Page) {
   const w1 = await sample(page);
   await page.waitForTimeout(250);
   const w2 = await sample(page);
-  expect(w2.arm, 'walking swings the arms').not.toBe(w1.arm);
-  expect(w2.leg, 'walking swings the legs').not.toBe(w1.leg);
+  expect(w2.frame, 'walking moves the arms and legs').not.toBe(w1.frame);
   // Touching the model ends the idle spin.
   const box = (await page.locator('.stage3d').boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);

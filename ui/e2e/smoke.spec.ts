@@ -176,14 +176,16 @@ for (const [w, h] of [[880, 600], [1080, 720]] as const) {
     await openApp(page, '#wardrobe');
     const cols = await page.locator('.wd2').evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
     expect(cols).toBe(2);
-    // The whole model stands inside the scene: the nickname tag sits between its top and the bottom bar.
+    // The whole model stands inside the scene: the WebGL canvas fills the band
+    // between the caption and the bottom bar, across the whole scene.
     await expect
       .poll(() =>
         page.evaluate(() => {
           const s = document.querySelector('.stage3d')!.getBoundingClientRect();
-          const tag = document.querySelector('.nametag')!.getBoundingClientRect();
+          const top = document.querySelector('.stage-top')!.getBoundingClientRect();
+          const gl = document.querySelector('canvas.gl.on')?.getBoundingClientRect();
           const bar = document.querySelector('.stage-bar')!.getBoundingClientRect();
-          return tag.top >= s.top && tag.top < bar.top;
+          return !!gl && gl.top >= top.bottom - 1 && gl.bottom <= bar.top + 1 && gl.height > 200 && Math.abs(gl.width - s.width) < 2;
         })
       )
       .toBe(true);
