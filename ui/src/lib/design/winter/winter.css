@@ -32,10 +32,6 @@ html.winter {
      reads the same everywhere (no lighter or darker patches). */
   --frost-glass: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(4, 8, 24, 0.42);
   --frost-glass-hover: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(4, 8, 24, 0.34);
-  /* Sidebar and launch bar: a light veil with a soft blur, so the scene runs on
-     under them the same as under the content. */
-  --frost-bar: rgba(4, 8, 24, 0.12);
-  --frost-bar-blur: blur(6px);
   --frost-edge: color-mix(in srgb, var(--frost-ice) 50%, transparent);
   --frost-glow: rgba(10, 132, 255, 0.3);
   --frost-hi: rgba(255, 255, 255, 0.1);
@@ -56,7 +52,6 @@ html.winter[data-theme='light'] {
   --frost-tint: rgba(0, 122, 255, 0.05);
   --frost-glass: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(255, 255, 255, 0.58);
   --frost-glass-hover: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(255, 255, 255, 0.7);
-  --frost-bar: rgba(255, 255, 255, 0.16);
   --frost-edge: rgba(0, 122, 255, 0.28);
   --frost-glow: rgba(0, 122, 255, 0.16);
   --frost-hi: rgba(255, 255, 255, 0.7);
@@ -85,11 +80,14 @@ html.winter .app > .main {
 }
 
 /* Sidebar and launch bar: glass over the scene (Liquid Glass: bars float). */
+/* Sidebar and launch bar have no surface of their own in winter: the scene runs
+   on under them exactly as under the content, so the window is one picture and
+   the sidebar is just its buttons. */
 html.winter .app > .side,
 html.winter .app > .bar {
-  background: var(--frost-bar);
-  backdrop-filter: var(--frost-bar-blur);
-  -webkit-backdrop-filter: var(--frost-bar-blur);
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 /* The bar joins the sidebar: no glow or edge spilling past its left side. The
    snow cap on its top edge separates it from the content. */
