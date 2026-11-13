@@ -973,7 +973,4 @@ export const en = {
   'cloud.deleted': 'World “{name}” deleted',
   'cloud.err_list': 'Could not get the list of cloud worlds',
   'cloud.err_generic': 'The cloud world action failed',
-  'settings2.winter_sounds': 'Winter sounds',
-  'settings2.winter_sounds_d': 'Quiet sleigh bells, crunching snow and a chime for a finished snowman',
-  'settings2.k_winter_sounds': 'winter sound sounds audio bells snow snowballs',
 } as const;

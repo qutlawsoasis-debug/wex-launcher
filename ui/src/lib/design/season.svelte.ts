@@ -3,8 +3,6 @@
  * November to February while «Зимнее оформление» is on (saved as winter_look).
  * Apple has no guidance on seasonal decoration; it follows HIG › Motion
  * (decorative motion stays off under Reduce Motion, see Snowfall.svelte).
- * «Звуки зимы» (winter_sounds, off by default) gates winter/sounds.ts
- * (HIG › Playing audio: sounds are optional and quiet).
  */
 
 /** November, December, January, February. */
@@ -23,15 +21,8 @@ class Season {
     return this.enabled && isWinterSeason(this.now());
   }
 
-  /** «Звуки зимы» (winter_sounds): quiet synthesized sounds, off unless the player turned them on. */
-  sounds = $state(false);
-
   setEnabled(on: boolean): void {
     this.enabled = on;
-  }
-
-  setSounds(on: boolean): void {
-    this.sounds = on;
   }
 }
 

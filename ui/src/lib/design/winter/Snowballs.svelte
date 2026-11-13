@@ -7,8 +7,7 @@
   Apple has no guidance on seasonal decoration. The rules applied are HIG ›
   Motion: decorative motion is optional, never needed to use the app, and stays
   off under Reduce Motion (App.svelte leaves it out then; the handler checks
-  again). HIG › Playing audio: the crunch and puff (sounds.ts) are optional,
-  quiet and only while «Звуки зимы» is on; the throw is always visible.
+  again).
   The overlay never takes pointer input (pointer-events: none) and the window
   listener never calls preventDefault, so every click still does what it did.
   At most MAX_BALLS balls fly at once; flights are Web Animations, no frame loop.
@@ -16,7 +15,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { theme } from '../theme.svelte';
-  import { playWinter } from './sounds';
   import {
     admit,
     ClickTracker,
@@ -70,7 +68,6 @@
     const b: Flying = { id: nextId++, from, to, dur: flightMs(from, to), card };
     balls = admit(balls, b, MAX_BALLS);
     counter.add();
-    playWinter('crunch');
   }
 
   function land(b: Flying) {
@@ -80,7 +77,6 @@
     const s: Splat = { id: b.id, x: b.to.x, y: b.to.y, puffs: splatPuffs(onCard ? 9 : 7), onCard };
     splats = admit(splats, s, MAX_BALLS);
     setTimeout(() => (splats = splats.filter((x) => x.id !== s.id)), 700);
-    playWinter('puff');
     if (onCard) {
       const size = 38 + Math.random() * 16;
       const m: Mark = { id: b.id, x: b.to.x, y: b.to.y, size, rot: Math.random() * 360, clip: markClip(b.to, size, b.card!.getBoundingClientRect(), parseFloat(getComputedStyle(b.card!).borderTopLeftRadius) || 0) };

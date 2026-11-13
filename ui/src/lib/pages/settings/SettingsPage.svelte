@@ -468,10 +468,6 @@
           <div><div class="l">{t('settings2.winter')}</div><div class="d">{t('settings2.winter_d')}</div></div>
           <button type="button" class="switch" role="switch" aria-checked={!!s && s.winter_look !== false} aria-label={t('settings2.winter')} disabled={!s} onclick={() => save({ winter_look: s?.winter_look === false })}></button>
         </div>
-        <div class="srow" data-k={t('settings2.k_winter_sounds')}>
-          <div><div class="l">{t('settings2.winter_sounds')}</div><div class="d">{t('settings2.winter_sounds_d')}</div></div>
-          <button type="button" class="switch" role="switch" aria-checked={on('winter_sounds')} aria-label={t('settings2.winter_sounds')} disabled={!s} onclick={() => flip('winter_sounds')}></button>
-        </div>
       </div>
     </section>
 

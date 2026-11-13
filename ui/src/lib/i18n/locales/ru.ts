@@ -973,9 +973,6 @@ export const ru = {
   'cloud.deleted': 'Мир «{name}» удалён',
   'cloud.err_list': 'Не удалось получить список облачных миров',
   'cloud.err_generic': 'Не удалось выполнить действие с облачным миром',
-  'settings2.winter_sounds': 'Звуки зимы',
-  'settings2.winter_sounds_d': 'Тихие бубенцы Санты, хруст снега и звон готового снеговика',
-  'settings2.k_winter_sounds': 'зима звук звуки бубенцы снег снежки winter sound audio',
 } as const;
 
 export type TranslationKey = keyof typeof ru;
