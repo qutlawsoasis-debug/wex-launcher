@@ -16,7 +16,7 @@
 
 <span class="cover {size}" style:background={coverVar(id)} aria-hidden="true"
   >{#if season.winter}<svg class="snowcap" viewBox="0 0 40 9" preserveAspectRatio="none"
-      ><path d="M0 0h40v4.2c-2.2 0-2.6 3.6-5 3.6s-2.4-2.6-4.6-2.6-2.4 4-5.2 4-2.6-3.4-5-3.4-2.2 2.2-4.4 2.2S13 5 10.8 5 8.4 8.6 5.6 8.6 2.4 4.4 0 4.4z" /></svg
+      ><path d="M0 0h40v3.6c-2.6 0-3.2 3-6.2 3S30.2 4.4 27.4 4.4s-3.6 3.6-7 3.6-3.4-3-6.4-3-3.2 2.4-6.2 2.4S3.4 3.8 0 3.8z" /></svg
     >{/if}<b>{id}</b></span
 >
 

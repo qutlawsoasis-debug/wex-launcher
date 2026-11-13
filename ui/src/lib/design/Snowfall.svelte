@@ -11,7 +11,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { theme } from './theme.svelte';
-  import { layerCounts, makeFlake, stepFlake, type Flake, type Layer, type Pointer } from './snow';
+  import { drawCrystal, layerCounts, makeFlake, stepFlake, type Flake, type Layer, type Pointer } from './snow';
 
   let canvas = $state<HTMLCanvasElement | null>(null);
 
@@ -31,6 +31,15 @@
     /** Soft near flakes are drawn from a pre-rendered sprite (cheap blur). */
     let sprite: HTMLCanvasElement | null = null;
     let spriteDark: boolean | null = null;
+    /** Six-armed crystals, drawn once per appearance and scaled per flake. */
+    let crystal: HTMLCanvasElement | null = null;
+    const CRYSTAL = 48;
+    const makeCrystal = (dark: boolean) => {
+      const s = document.createElement('canvas');
+      s.width = s.height = CRYSTAL;
+      drawCrystal(s.getContext('2d')!, CRYSTAL, dark ? '#ffffff' : '#7f90a8');
+      return s;
+    };
 
     const makeSprite = (dark: boolean) => {
       const s = document.createElement('canvas');
@@ -46,8 +55,9 @@
       return s;
     };
 
+    let dpr = 1;
     const resize = () => {
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      dpr = Math.min(2, window.devicePixelRatio || 1);
       w = window.innerWidth;
       h = window.innerHeight;
       cv.width = Math.round(w * dpr);
@@ -88,6 +98,7 @@
       const dark = theme.isDark;
       if (spriteDark !== dark) {
         sprite = makeSprite(dark);
+        crystal = makeCrystal(dark);
         spriteDark = dark;
       }
       ctx.fillStyle = dark ? '#ffffff' : '#8e9db3';
@@ -98,13 +109,16 @@
           ctx.globalAlpha = f.alpha;
           const s = f.r * 4;
           ctx.drawImage(sprite, f.x - s / 2, f.y - s / 2, s, s);
-        } else {
-          // Small flakes catch the light now and then.
+        } else if (crystal) {
+          // Crystals turn slowly; far ones catch the light now and then.
           const tw = f.layer === 0 ? 0.75 + 0.25 * Math.sin(t * 2.3 + f.phase * 3) : 1;
-          ctx.globalAlpha = f.alpha * tw * (dark ? 1 : 0.8);
-          ctx.beginPath();
-          ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.globalAlpha = f.alpha * tw * (dark ? 1 : 0.85);
+          const s = f.r * 2;
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.translate(f.x, f.y);
+          ctx.rotate(f.rot);
+          ctx.drawImage(crystal, -s / 2, -s / 2, s, s);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         }
       }
       ctx.globalAlpha = 1;

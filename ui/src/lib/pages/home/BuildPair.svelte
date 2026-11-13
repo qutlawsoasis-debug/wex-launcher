@@ -14,6 +14,7 @@
   import { formatError } from '../../design/errors';
   import { parallax } from '../../motion/parallax';
   import { season } from '../../design/season.svelte';
+  import SnowDrift from '../../design/SnowDrift.svelte';
   import { home } from './home.svelte';
   import { t, tn } from '../../i18n';
 
@@ -77,7 +78,7 @@
       <span class="pane-ver" aria-hidden="true">{b.id}</span>
       {#if season.winter}
         <span class="pane-aurora" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span class="pane-snow" aria-hidden="true"></span>
+        <span class="pane-snow"><SnowDrift seed={b.id} height={open ? 44 : 22} span={open ? 1 : 0.12} /></span>
       {/if}
       <!-- The visible text is the accessible name; the hint says what pressing does. -->
       <div class="pane-side" aria-hidden={open}>
@@ -141,16 +142,15 @@
   .pane:not(.open):hover {
     filter: brightness(1.06);
   }
-  /* Winter look: snow lying along the top of the tile (static; season.svelte.ts). */
+  /* Winter look: a snowdrift along the bottom of the tile (SnowDrift.svelte).
+     Behind the text and the Play button, in front of the version digits, which
+     sink into the snow. */
   .pane-snow {
     position: absolute;
-    inset: 0 0 auto;
-    height: 18px;
-    z-index: 1;
+    inset: auto 0 0;
+    height: 44px;
+    z-index: -1;
     pointer-events: none;
-    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 9'%3E%3Cpath fill='%23fff' d='M0 0h40v4.2c-2.2 0-2.6 3.6-5 3.6s-2.4-2.6-4.6-2.6-2.4 4-5.2 4-2.6-3.4-5-3.4-2.2 2.2-4.4 2.2S13 5 10.8 5 8.4 8.6 5.6 8.6 2.4 4.4 0 4.4z'/%3E%3C/svg%3E") repeat-x 0 0 / auto 100%;
-    opacity: 0.92;
-    filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.18));
   }
   /* Winter look: northern lights drifting slowly across the open tile, in Apple
      system colours (green, teal, purple) blended over the build colour. Apple has

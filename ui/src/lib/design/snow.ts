@@ -21,6 +21,9 @@ export interface Flake {
   sway: number;
   phase: number;
   alpha: number;
+  /** Crystal angle and its slow spin, rad and rad/s. */
+  rot: number;
+  spin: number;
 }
 
 export interface Pointer {
@@ -30,8 +33,8 @@ export interface Pointer {
 
 /** How each depth looks and moves. */
 export const LAYERS: Record<Layer, { r: [number, number]; vy: [number, number]; alpha: [number, number]; wind: number }> = {
-  0: { r: [0.6, 1.2], vy: [10, 20], alpha: [0.25, 0.45], wind: 0.35 },
-  1: { r: [1.2, 2.4], vy: [24, 44], alpha: [0.5, 0.85], wind: 0.7 },
+  0: { r: [1.6, 2.6], vy: [10, 20], alpha: [0.3, 0.5], wind: 0.35 },
+  1: { r: [3.5, 6.5], vy: [24, 44], alpha: [0.6, 0.95], wind: 0.7 },
   2: { r: [5, 9], vy: [55, 80], alpha: [0.12, 0.22], wind: 1 },
 };
 
@@ -64,6 +67,8 @@ export function makeFlake(w: number, h: number, rnd: () => number, anywhere = fa
     sway: 6 + rnd() * 14,
     phase: rnd() * Math.PI * 2,
     alpha: lerp(L.alpha, k),
+    rot: rnd() * Math.PI,
+    spin: (rnd() - 0.5) * 1.2,
   };
 }
 
@@ -101,10 +106,48 @@ export function stepFlake(
   // Sideways velocity eases toward the wind (about 0.6 s).
   f.vx += (wind * L.wind - f.vx) * Math.min(1, dt / 0.6);
   f.y += f.vy * dt;
+  f.rot += f.spin * dt;
   f.x += (Math.sin(t * 0.8 + f.phase) * f.sway + f.vx) * dt;
   const m = f.r * 2 + 8;
   if (f.y > h + m) {
     Object.assign(f, makeFlake(w, h, rnd, false, f.layer));
   } else if (f.x < -m) f.x = w + m;
   else if (f.x > w + m) f.x = -m;
+}
+
+/**
+ * A six-armed snow crystal on a square canvas of `size` px, centred: each arm
+ * has two pairs of side branches at 60°, like a real dendrite flake.
+ */
+export function drawCrystal(c: CanvasRenderingContext2D, size: number, color: string): void {
+  const R = size / 2;
+  c.save();
+  c.translate(R, R);
+  c.strokeStyle = color;
+  c.lineCap = 'round';
+  c.lineWidth = Math.max(1, size * 0.07);
+  c.shadowColor = color;
+  c.shadowBlur = size * 0.08;
+  const arm = R * 0.86;
+  for (let i = 0; i < 6; i++) {
+    c.save();
+    c.rotate((i * Math.PI) / 3);
+    c.beginPath();
+    c.moveTo(0, 0);
+    c.lineTo(0, -arm);
+    for (const [at, len] of [
+      [0.42, 0.3],
+      [0.68, 0.22],
+    ] as const) {
+      const y = -arm * at;
+      const l = arm * len;
+      c.moveTo(0, y);
+      c.lineTo(-l * Math.sin(Math.PI / 3), y - l * Math.cos(Math.PI / 3));
+      c.moveTo(0, y);
+      c.lineTo(l * Math.sin(Math.PI / 3), y - l * Math.cos(Math.PI / 3));
+    }
+    c.stroke();
+    c.restore();
+  }
+  c.restore();
 }
