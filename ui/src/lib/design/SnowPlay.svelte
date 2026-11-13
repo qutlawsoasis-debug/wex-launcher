@@ -188,6 +188,21 @@
     persist();
   }
 
+  let melting = $state(false);
+  /** «Убрать снеговиков»: the snow melts away and the drift is clean for new ones. */
+  function clearAll() {
+    if (!balls.length || melting) return;
+    const done = () => {
+      balls = [];
+      known = new Set();
+      melting = false;
+      persist();
+    };
+    if (theme.motionReduced) return done();
+    melting = true;
+    setTimeout(done, 450);
+  }
+
   function celebrate() {
     const now = new Set(snowmen(balls).map((m) => `${m.base}-${m.middle}-${m.head}`));
     for (const k of now) {
@@ -205,7 +220,13 @@
   onMount(() => () => persist());
 </script>
 
-<span class="play" class:still={theme.motionReduced} bind:this={layer} use:measure aria-hidden="true">
+{#if balls.length}
+  <button type="button" class="clear-snow" disabled={melting} onclick={clearAll}>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v13M2.4 4.75l11.2 6.5M2.4 11.25l11.2-6.5M6.2 2.6 8 4.2l1.8-1.6M6.2 13.4 8 11.8l1.8 1.6" /></svg>
+    {t('home.snow_clear')}
+  </button>
+{/if}
+<span class="play" class:still={theme.motionReduced} class:melting bind:this={layer} use:measure aria-hidden="true">
   <!-- A pointer toy inside an aria-hidden layer: nothing for assistive tech or the keyboard. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <span class="snow-hit" style:height="{driftH}px" title={t('home.snow_hint')} onpointerdown={onSnowDown}></span>
@@ -236,6 +257,57 @@
 </span>
 
 <style>
+  /* Secondary action (HIG › Buttons): a small glass pill under «Открыть сборку»;
+     Play stays the one prominent button on the tile. */
+  .clear-snow {
+    position: absolute;
+    top: 62px;
+    right: 28px;
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--r-pill);
+    background: rgb(255 255 255 / 0.16);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.22);
+    color: #fff;
+    font: inherit;
+    font-size: var(--t-foot);
+    font-weight: var(--w-semibold);
+    cursor: default;
+    transition: background-color var(--dur-micro);
+  }
+  .clear-snow:hover {
+    background: rgb(255 255 255 / 0.26);
+  }
+  .clear-snow:disabled {
+    opacity: 0.6;
+  }
+  .clear-snow svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.4;
+    stroke-linecap: round;
+  }
+  :global(html[data-reduce-transparency='true']) .clear-snow {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: rgb(0 0 0 / 0.35);
+  }
+  .melting .ball {
+    transition:
+      transform 0.45s ease-in,
+      opacity 0.45s ease-in;
+    transform: scale(0.2) translateY(40%);
+    opacity: 0;
+  }
   .play {
     position: absolute;
     inset: 0;

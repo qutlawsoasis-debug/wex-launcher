@@ -66,4 +66,10 @@ test('winter: roll three snowballs of different sizes on the snow and stack them
   await expect(page.locator('.pane.open .ball .nose')).toHaveCount(1);
   // Play still works where the snow lies over it.
   await expect(page.locator('.pane-play')).toBeEnabled();
+  // «Убрать снеговиков» clears the drift for new ones, and the empty scene is kept.
+  await page.getByRole('button', { name: 'Убрать снеговиков' }).click();
+  await expect(page.locator('.pane.open .ball')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Убрать снеговиков' })).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('.pane.open .ball')).toHaveCount(0);
 });

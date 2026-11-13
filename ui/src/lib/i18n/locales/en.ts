@@ -390,6 +390,7 @@ export const en = {
   'home.server_no_answer': 'Not responding',
   'home.together': 'Play together',
   'home.snowman_done': 'Snowman built!',
+  'home.snow_clear': 'Clear the Snow',
   'home.snow_hint': 'Press and drag on the snow to roll a snowball. Pick a snowball up and put it on another.',
   'home.together_empty_title': 'No one to play with yet.',
   'home.together_empty_text': 'Add a friends\' server or open your world in Rooms.',
