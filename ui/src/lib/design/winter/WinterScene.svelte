@@ -457,7 +457,7 @@
 
   /* Reduce Transparency: a plain solid sky, no art behind the solid materials. */
   :global(html[data-reduce-transparency='true']) .winter-scene {
-    background: var(--ws-sky-solid);
+    background: transparent;
   }
   :global(html[data-reduce-transparency='true']) .winter-scene > * {
     display: none;

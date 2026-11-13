@@ -237,12 +237,13 @@
 <span class="play" class:still={theme.motionReduced} class:melting bind:this={layer} use:measure aria-hidden="true">
   <!-- A pointer toy inside an aria-hidden layer: nothing for assistive tech or the keyboard. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <span class="snow-hit" style:height="{driftH}px" title={t('home.snow_hint')} onpointerdown={onSnowDown}></span>
+  <span class="snow-hit" data-no-snowball style:height="{driftH}px" title={t('home.snow_hint')} onpointerdown={onSnowDown}></span>
   {#each balls as b (b.id)}
     {@const isHead = heads.has(b.id)}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <span
       class="ball"
+      data-no-snowball
       class:held={active === b.id}
       class:spark={sparkle === b.id}
       style:left="{b.x - b.r}px"

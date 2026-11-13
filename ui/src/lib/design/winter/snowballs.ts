@@ -48,22 +48,11 @@ const INTERACTIVE = [
   '[role="alertdialog"]',
   '[tabindex]:not([tabindex="-1"])',
   '[draggable="true"]',
-  '[data-tauri-drag-region]',
   '[data-no-snowball]',
 ].join(',');
 
-/** Places that are never empty: the build tile with its snow, the sidebar and launch bar, toasts. */
-const OFF_LIMITS = ['.pane', '.pair', '.app > .side', '.app > .bar', '.toast', '.toasts'].join(',');
-
-/** Pictures and media are content too. */
-const CONTENT_TAGS = new Set(['IMG', 'SVG', 'CANVAS', 'VIDEO', 'PICTURE', 'IFRAME', 'svg', 'image', 'path', 'text', 'HR']);
-
-/** Glass cards a ball splats against (the frosted surfaces of winter.css). */
-export const CARD_SELECTOR = ['.panel', '.tile', '.list', '.form', '.fact', '.preset', '.theme-card'].join(',');
-
-/** Layers that are the window background. */
-const BACKGROUND = new Set(['HTML', 'BODY']);
-const BACKGROUND_SELECTOR = '#app, .app, .main, .page, .winter-scene';
+/** Glass cards a ball splats against (the frosted surfaces of winter.css and the open build tile). */
+export const CARD_SELECTOR = ['.pane', '.panel', '.tile', '.list', '.form', '.fact', '.preset', '.theme-card'].join(',');
 
 export type Hit = { kind: 'blocked' } | { kind: 'background' } | { kind: 'card'; card: Element };
 
@@ -77,23 +66,19 @@ export function hasOwnText(el: Element): boolean {
 
 /**
  * What a click at a point lands on, given the elements under it from the top
- * (document.elementsFromPoint). Anything interactive or text-bearing, the build
- * tile, a picture, or anything under an open modal blocks the throw. A card's
- * own surface (or a bare wrapper inside it) is a splat on the card; the window
- * or page background is a throw into the scene.
+ * (document.elementsFromPoint). Only the element the click actually reaches
+ * matters: if it is (or sits inside) a control, the snowman toy or an opt-out,
+ * or a modal is open, nothing is thrown. Text, pictures, the winter scene, the
+ * sidebar and launch bar are all fair game, since a click there does nothing
+ * else. Over a glass card (or the open build tile) the ball splats on it.
  */
 export function hitTest(stack: readonly Element[], doc: Document | null = typeof document !== 'undefined' ? document : null): Hit {
   if (doc?.querySelector('dialog[open], [aria-modal="true"]')) return { kind: 'blocked' };
-  for (const el of stack) {
-    if (el.closest(INTERACTIVE) || el.closest(OFF_LIMITS)) return { kind: 'blocked' };
-    if (CONTENT_TAGS.has(el.tagName) || el.closest('svg')) return { kind: 'blocked' };
-    if (BACKGROUND.has(el.tagName)) return { kind: 'background' };
-    if (el.matches(CARD_SELECTOR)) return hasOwnText(el) ? { kind: 'blocked' } : { kind: 'card', card: el };
-    if (hasOwnText(el)) return { kind: 'blocked' };
-    if (el.matches(BACKGROUND_SELECTOR)) return { kind: 'background' };
-    // A bare wrapper (a row, a grid): look at what lies under it.
-  }
-  return stack.length ? { kind: 'background' } : { kind: 'blocked' };
+  const top = stack[0];
+  if (!top) return { kind: 'blocked' };
+  if (top.closest(INTERACTIVE)) return { kind: 'blocked' };
+  const card = top.closest(CARD_SELECTOR);
+  return card ? { kind: 'card', card } : { kind: 'background' };
 }
 
 /** Tells a click (press and release in place) from a drag or a long press. */

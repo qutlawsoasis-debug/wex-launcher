@@ -39,39 +39,31 @@ describe('hit-test for empty space', () => {
     expect(hitTest([document.body, document.documentElement]).kind).toBe('background');
   });
 
-  it('controls, links and text are never empty', () => {
+  it('controls and links are never empty', () => {
     const $ = page(
-      '<button class="b"><span class="in"></span></button><a class="l" href="#x">x</a><p class="t">Текст</p><div class="sw" role="switch"></div><input class="i" /><div class="tab" tabindex="0"></div>'
+      '<button class="b"><span class="in"></span></button><a class="l" href="#x">x</a><div class="sw" role="switch"></div><input class="i" /><div class="tab" tabindex="0"></div><div class="pane" role="button" tabindex="0"><b class="pb">1.20.1</b></div>'
     );
-    for (const sel of ['.b', '.in', '.l', '.t', '.sw', '.i', '.tab']) expect(hitTest(stackAt($(sel))).kind, sel).toBe('blocked');
+    for (const sel of ['.b', '.in', '.l', '.sw', '.i', '.tab', '.pb']) expect(hitTest(stackAt($(sel))).kind, sel).toBe('blocked');
   });
 
-  it('the build tile, the sidebar and the launch bar are off limits', () => {
-    const $ = page('<section class="pair"><div class="pane open"><div class="pane-body"><div class="pane-top"></div></div></div></section>');
-    expect(hitTest(stackAt($('.pane-top'))).kind).toBe('blocked');
-    expect(hitTest(stackAt($('.pair'))).kind).toBe('blocked');
-    expect(hitTest(stackAt($('.side .gap'))).kind).toBe('blocked');
-    expect(hitTest(stackAt($('.bar .room'))).kind).toBe('blocked');
+  it('text, pictures, the sidebar and the launch bar are fair game', () => {
+    const $ = page('<p class="t">Текст</p><img class="im" alt="" /><svg class="ic"><path class="p" d="M0 0"/></svg>');
+    for (const sel of ['.t', '.im', '.p', '.side .gap', '.bar .room']) expect(hitTest(stackAt($(sel))).kind, sel).toBe('background');
   });
 
-  it('pictures are content', () => {
-    const $ = page('<img class="im" alt="" /><svg class="ic"><path class="p" d="M0 0"/></svg>');
-    expect(hitTest(stackAt($('.im'))).kind).toBe('blocked');
-    expect(hitTest(stackAt($('.p'))).kind).toBe('blocked');
+  it('only the element the click reaches counts', () => {
+    const $ = page('<button class="under"></button><div class="over"></div>');
+    expect(hitTest([$('.over'), $('.under')]).kind).toBe('background');
   });
 
-  it('a card surface or a bare wrapper inside it is a splat on the card', () => {
-    const $ = page('<div class="panel"><div class="row"><b>Заголовок</b></div></div>');
-    const hit = hitTest(stackAt($('.panel')));
+  it('a card, anything inside it and the open build tile are a splat on the card', () => {
+    const $ = page('<div class="panel"><div class="row"><b>Заголовок</b></div></div><section class="pair"><div class="pane open"><div class="pane-top"></div></div></section>');
+    const hit = hitTest(stackAt($('.panel b')));
     expect(hit.kind).toBe('card');
     expect(hit.kind === 'card' && hit.card).toBe($('.panel'));
     expect(hitTest(stackAt($('.row'))).kind).toBe('card');
-    expect(hitTest(stackAt($('.panel b'))).kind).toBe('blocked');
-  });
-
-  it('a card with its own text is content', () => {
-    const $ = page('<div class="tile">Только текст</div>');
-    expect(hitTest(stackAt($('.tile'))).kind).toBe('blocked');
+    const tile = hitTest(stackAt($('.pane-top')));
+    expect(tile.kind === 'card' && tile.card).toBe($('.pane'));
   });
 
   it('nothing is thrown while a modal is open', () => {

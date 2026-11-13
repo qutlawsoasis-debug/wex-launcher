@@ -222,16 +222,20 @@ html.winter .app.game-active .topline * {
 
 /* Reduce Transparency (HIG › Materials, Accessibility): solid surfaces, no blur,
    no glow. wex.css already removes every backdrop-filter. */
+/* One solid colour for the whole window: the sidebar, launch bar and top line
+   keep no surface of their own (as in the normal winter look), so there is no
+   seam between them and the page. */
 html.winter[data-reduce-transparency='true'],
-html.winter[data-reduce-transparency='true'] body {
-  background: var(--base);
-}
+html.winter[data-reduce-transparency='true'] body,
 html.winter[data-reduce-transparency='true'] .app {
-  background: var(--base);
+  background: var(--frost-solid-bar);
 }
 html.winter[data-reduce-transparency='true'] .app > .side,
-html.winter[data-reduce-transparency='true'] .app > .bar {
-  background: var(--frost-solid-bar);
+html.winter[data-reduce-transparency='true'] .app > .bar,
+html.winter[data-reduce-transparency='true'] .topline {
+  background: transparent;
+  box-shadow: none;
+  border-color: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -262,11 +266,14 @@ html.winter[data-reduce-transparency='true'] .topline .search-top {
   html.winter,
   html.winter body,
   html.winter .app {
-    background: var(--base);
+    background: var(--frost-solid-bar);
   }
   html.winter .app > .side,
-  html.winter .app > .bar {
-    background: var(--frost-solid-bar);
+  html.winter .app > .bar,
+  html.winter .topline {
+    background: transparent;
+    box-shadow: none;
+    border-color: transparent;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
