@@ -15,6 +15,7 @@
   import { parallax } from '../../motion/parallax';
   import { season } from '../../design/season.svelte';
   import SnowDrift from '../../design/SnowDrift.svelte';
+  import Garland from '../../design/Garland.svelte';
   import { home } from './home.svelte';
   import { t, tn } from '../../i18n';
 
@@ -79,6 +80,7 @@
       {#if season.winter}
         <span class="pane-aurora" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="pane-snow"><SnowDrift seed={b.id} height={open ? 44 : 22} span={open ? 1 : 0.12} /></span>
+        <Garland step={open ? 46 : 52} />
       {/if}
       <!-- The visible text is the accessible name; the hint says what pressing does. -->
       <div class="pane-side" aria-hidden={open}>
