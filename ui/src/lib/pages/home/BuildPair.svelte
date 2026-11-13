@@ -75,7 +75,10 @@
       onkeydown={(e) => !open && onKey(e, b)}
     >
       <span class="pane-ver" aria-hidden="true">{b.id}</span>
-      {#if season.winter}<span class="pane-snow" aria-hidden="true"></span>{/if}
+      {#if season.winter}
+        <span class="pane-aurora" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="pane-snow" aria-hidden="true"></span>
+      {/if}
       <!-- The visible text is the accessible name; the hint says what pressing does. -->
       <div class="pane-side" aria-hidden={open}>
         <b>{b.id}</b>
@@ -148,6 +151,75 @@
     background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 9'%3E%3Cpath fill='%23fff' d='M0 0h40v4.2c-2.2 0-2.6 3.6-5 3.6s-2.4-2.6-4.6-2.6-2.4 4-5.2 4-2.6-3.4-5-3.4-2.2 2.2-4.4 2.2S13 5 10.8 5 8.4 8.6 5.6 8.6 2.4 4.4 0 4.4z'/%3E%3C/svg%3E") repeat-x 0 0 / auto 100%;
     opacity: 0.92;
     filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.18));
+  }
+  /* Winter look: northern lights drifting slowly across the open tile, in Apple
+     system colours (green, teal, purple) blended over the build colour. Apple has
+     no guidance for this; HIG › Motion: slow, decorative, still under Reduce Motion. */
+  .pane-aurora {
+    position: absolute;
+    inset: -30% -10% 25%;
+    z-index: -2;
+    pointer-events: none;
+    filter: blur(38px) saturate(130%);
+    mix-blend-mode: screen;
+    opacity: 0;
+    translate: calc(var(--px, 0) * 26px) calc(var(--py, 0) * 12px);
+    transition: opacity var(--dur-page) var(--ease);
+  }
+  .pane.open .pane-aurora {
+    opacity: 0.7;
+  }
+  .pane-aurora i {
+    position: absolute;
+    border-radius: 50%;
+    animation: aurora 18s ease-in-out infinite alternate;
+  }
+  .pane-aurora i:nth-child(1) {
+    left: 2%;
+    top: 20%;
+    width: 55%;
+    height: 34%;
+    background: #30d158;
+    rotate: -8deg;
+  }
+  .pane-aurora i:nth-child(2) {
+    left: 36%;
+    top: 10%;
+    width: 48%;
+    height: 30%;
+    background: #40c8e0;
+    rotate: 6deg;
+    animation-duration: 23s;
+    animation-delay: -7s;
+  }
+  .pane-aurora i:nth-child(3) {
+    left: 62%;
+    top: 26%;
+    width: 40%;
+    height: 26%;
+    background: #bf5af2;
+    rotate: -4deg;
+    animation-duration: 27s;
+    animation-delay: -13s;
+  }
+  @keyframes aurora {
+    0% {
+      transform: translateX(-8%) scaleX(1) skewX(-6deg);
+    }
+    50% {
+      transform: translateX(6%) scaleX(1.25) skewX(8deg);
+    }
+    100% {
+      transform: translateX(14%) scaleX(0.9) skewX(-4deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pane-aurora i {
+      animation: none;
+    }
+  }
+  :global(html[data-reduce-motion="true"]) .pane-aurora i {
+    animation: none;
   }
   .pane-ver {
     position: absolute;

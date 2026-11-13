@@ -1,41 +1,110 @@
-/** Snowflake motion for Snowfall.svelte: plain numbers, frame-rate independent. */
+/**
+ * Snowflake motion for Snowfall.svelte: plain numbers, frame-rate independent.
+ * Three depths: far (tiny, slow, dim), mid, and near (big soft flakes close to the
+ * glass, few of them). Wind from the pointer: a quick sweep blows the snow
+ * sideways, and flakes drift out of the way of the cursor.
+ */
+
+export type Layer = 0 | 1 | 2;
 
 export interface Flake {
+  layer: Layer;
   x: number;
   y: number;
   /** Radius, px. */
   r: number;
-  /** Fall speed, px/s (bigger flakes are nearer and fall faster). */
+  /** Fall speed, px/s. */
   vy: number;
-  /** Sideways sway amplitude, px/s, and its phase. */
+  /** Sideways velocity from wind and the cursor, px/s (eases back to 0). */
+  vx: number;
+  /** Sway amplitude, px/s, and its phase. */
   sway: number;
   phase: number;
   alpha: number;
 }
 
-/** About one flake per 16 000 px² of window, at most 120: light, never a blizzard. */
-export function flakeCount(w: number, h: number): number {
-  return Math.max(0, Math.min(120, Math.round((w * h) / 16000)));
+export interface Pointer {
+  x: number;
+  y: number;
 }
 
-export function makeFlake(w: number, h: number, rnd: () => number, anywhere = false): Flake {
-  const depth = rnd();
+/** How each depth looks and moves. */
+export const LAYERS: Record<Layer, { r: [number, number]; vy: [number, number]; alpha: [number, number]; wind: number }> = {
+  0: { r: [0.6, 1.2], vy: [10, 20], alpha: [0.25, 0.45], wind: 0.35 },
+  1: { r: [1.2, 2.4], vy: [24, 44], alpha: [0.5, 0.85], wind: 0.7 },
+  2: { r: [5, 9], vy: [55, 80], alpha: [0.12, 0.22], wind: 1 },
+};
+
+/** Flakes per depth: about one per 16 000 px² in all, at most 140; near flakes stay rare. */
+export function layerCounts(w: number, h: number): [number, number, number] {
+  const total = Math.max(0, Math.min(140, Math.round((w * h) / 16000)));
+  const near = Math.min(7, Math.round(total * 0.06));
+  const far = Math.round((total - near) * 0.55);
+  return [far, total - near - far, near];
+}
+
+export function flakeCount(w: number, h: number): number {
+  const [a, b, c] = layerCounts(w, h);
+  return a + b + c;
+}
+
+const lerp = (a: [number, number], k: number) => a[0] + (a[1] - a[0]) * k;
+
+export function makeFlake(w: number, h: number, rnd: () => number, anywhere = false, layer: Layer = 1): Flake {
+  const L = LAYERS[layer];
+  const k = rnd();
+  const r = lerp(L.r, k);
   return {
+    layer,
     x: rnd() * w,
-    y: anywhere ? rnd() * h : -4,
-    r: 0.8 + depth * 1.8,
-    vy: 16 + depth * 38,
+    y: anywhere ? rnd() * h : -r * 2,
+    r,
+    vy: lerp(L.vy, k),
+    vx: 0,
     sway: 6 + rnd() * 14,
     phase: rnd() * Math.PI * 2,
-    alpha: 0.35 + depth * 0.5,
+    alpha: lerp(L.alpha, k),
   };
 }
 
-/** Moves a flake by dt seconds; a flake that left the window comes back at the top. */
-export function stepFlake(f: Flake, dt: number, t: number, w: number, h: number, rnd: () => number): void {
-  f.y += f.vy * dt;
-  f.x += Math.sin(t * 0.8 + f.phase) * f.sway * dt;
-  if (f.y > h + 4 || f.x < -8 || f.x > w + 8) {
-    Object.assign(f, makeFlake(w, h, rnd));
+/** Radius around the cursor that flakes drift out of, px. */
+export const CURSOR_R = 110;
+
+/**
+ * Moves a flake by dt seconds under `wind` (px/s, from the pointer's sweep); flakes
+ * near `pointer` are pushed away from it. A flake that left the window comes back
+ * at the top.
+ */
+export function stepFlake(
+  f: Flake,
+  dt: number,
+  t: number,
+  w: number,
+  h: number,
+  rnd: () => number,
+  wind = 0,
+  pointer: Pointer | null = null
+): void {
+  const L = LAYERS[f.layer];
+  if (pointer) {
+    const dx = f.x - pointer.x;
+    const dy = f.y - pointer.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < CURSOR_R * CURSOR_R && d2 > 0.01) {
+      const d = Math.sqrt(d2);
+      // Up to 220 px/s at the cursor, nothing at the edge of the circle.
+      const push = (1 - d / CURSOR_R) * 220 * L.wind * dt;
+      f.x += (dx / d) * push;
+      f.y += (dy / d) * push;
+    }
   }
+  // Sideways velocity eases toward the wind (about 0.6 s).
+  f.vx += (wind * L.wind - f.vx) * Math.min(1, dt / 0.6);
+  f.y += f.vy * dt;
+  f.x += (Math.sin(t * 0.8 + f.phase) * f.sway + f.vx) * dt;
+  const m = f.r * 2 + 8;
+  if (f.y > h + m) {
+    Object.assign(f, makeFlake(w, h, rnd, false, f.layer));
+  } else if (f.x < -m) f.x = w + m;
+  else if (f.x > w + m) f.x = -m;
 }

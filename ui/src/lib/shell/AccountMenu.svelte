@@ -139,7 +139,7 @@
       animation: none;
     }
   }
-  :global(html.reduce-motion) .menu {
+  :global(html[data-reduce-motion="true"]) .menu {
     animation: none;
   }
   button {
