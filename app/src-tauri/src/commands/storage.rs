@@ -739,6 +739,7 @@ mod tests {
                 }
                 .to_string(),
                 url: Some(format!("{}/broken", server.uri())),
+                side: None,
             })
             .collect();
             let manifest = Manifest {
@@ -811,6 +812,7 @@ mod tests {
                 size: genuine_content.len() as u64,
                 mode: "sync".to_string(),
                 url: Some(format!("{}/release/testmod.jar", mock_server.uri())),
+                side: None,
             }],
         };
 
@@ -868,6 +870,7 @@ mod tests {
                 size: content.len() as u64,
                 mode: "sync".to_string(),
                 url: None,
+                side: None,
             }],
         };
 

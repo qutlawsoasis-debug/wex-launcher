@@ -36,6 +36,9 @@ pub struct DownloadItem {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersionDownloads {
     pub client: DownloadItem,
+    /// The dedicated server jar (used by «Свой сервер»).
+    #[serde(default)]
+    pub server: Option<DownloadItem>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

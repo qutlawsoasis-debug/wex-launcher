@@ -1173,6 +1173,84 @@
           "markdownDescription": "Enables the overview_record_playtime command without any pre-configured scope."
         },
         {
+          "description": "Enables the own_server_accept_eula command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-accept-eula",
+          "markdownDescription": "Enables the own_server_accept_eula command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_add_to_servers command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-add-to-servers",
+          "markdownDescription": "Enables the own_server_add_to_servers command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_command command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-command",
+          "markdownDescription": "Enables the own_server_command command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_console command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-console",
+          "markdownDescription": "Enables the own_server_console command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_create command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-create",
+          "markdownDescription": "Enables the own_server_create command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-delete",
+          "markdownDescription": "Enables the own_server_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_install command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-install",
+          "markdownDescription": "Enables the own_server_install command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-list",
+          "markdownDescription": "Enables the own_server_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_open_eula command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-open-eula",
+          "markdownDescription": "Enables the own_server_open_eula command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-start",
+          "markdownDescription": "Enables the own_server_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-stop",
+          "markdownDescription": "Enables the own_server_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-update",
+          "markdownDescription": "Enables the own_server_update command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_whitelist command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-whitelist",
+          "markdownDescription": "Enables the own_server_whitelist command without any pre-configured scope."
+        },
+        {
           "description": "Enables the parse_deep_link_uri command without any pre-configured scope.",
           "type": "string",
           "const": "allow-parse-deep-link-uri",
@@ -2311,6 +2389,84 @@
           "type": "string",
           "const": "deny-overview-record-playtime",
           "markdownDescription": "Denies the overview_record_playtime command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_accept_eula command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-accept-eula",
+          "markdownDescription": "Denies the own_server_accept_eula command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_add_to_servers command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-add-to-servers",
+          "markdownDescription": "Denies the own_server_add_to_servers command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_command command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-command",
+          "markdownDescription": "Denies the own_server_command command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_console command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-console",
+          "markdownDescription": "Denies the own_server_console command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_create command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-create",
+          "markdownDescription": "Denies the own_server_create command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-delete",
+          "markdownDescription": "Denies the own_server_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_install command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-install",
+          "markdownDescription": "Denies the own_server_install command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-list",
+          "markdownDescription": "Denies the own_server_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_open_eula command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-open-eula",
+          "markdownDescription": "Denies the own_server_open_eula command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-start",
+          "markdownDescription": "Denies the own_server_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-stop",
+          "markdownDescription": "Denies the own_server_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-update",
+          "markdownDescription": "Denies the own_server_update command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_whitelist command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-whitelist",
+          "markdownDescription": "Denies the own_server_whitelist command without any pre-configured scope."
         },
         {
           "description": "Denies the parse_deep_link_uri command without any pre-configured scope.",

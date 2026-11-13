@@ -49,6 +49,10 @@ pub enum WexError {
     #[error("Process exited with code {0}")]
     ProcessFailed(i32),
 
+    /// «Свой сервер»: the message is already a sentence for the player.
+    #[error("{0}")]
+    Server(String),
+
     #[error("Operation cancelled")]
     Cancelled,
 
@@ -225,6 +229,7 @@ impl From<WexError> for wex_ipc::error::IpcError {
                     )
                 }
             }
+            WexError::Server(msg) => Self::new("OWN_SERVER", msg, None),
             WexError::Cancelled => Self::new(
                 "OPERATION_CANCELLED",
                 "Операция отменена. Вы можете повторить её в любое время.",

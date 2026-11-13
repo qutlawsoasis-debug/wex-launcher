@@ -12,6 +12,7 @@ pub mod launcher;
 pub mod minecraft;
 pub mod pack;
 pub mod playtime;
+pub mod server;
 pub mod system_info;
 
 pub use accounts::{Account, AccountKind, AccountStore, GameSession};

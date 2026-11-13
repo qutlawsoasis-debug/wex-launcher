@@ -27,6 +27,27 @@ pub struct ManifestFileEntry {
     pub mode: String,
     #[serde(default)]
     pub url: Option<String>,
+    /// Where the file is needed: `client`, `server` or `both`. Optional; the
+    /// current Aura-Pack manifests do not set it yet (see `server::install`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side: Option<String>,
+}
+
+/// Primary and fallback download URLs of a pack file.
+pub fn pack_file_urls(version: &str, file: &ManifestFileEntry) -> (String, Option<String>) {
+    let clean_path = file.path.replace('\\', "/");
+    let escaped: Vec<String> = clean_path.split('/').map(urlencoding_encode).collect();
+    let raw_pack_url = format!(
+        "https://raw.githubusercontent.com/{}/{}/{}{}",
+        DEFAULT_PACK_REPO,
+        DEFAULT_PACK_BRANCH,
+        get_repo_prefix(version),
+        escaped.join("/")
+    );
+    match &file.url {
+        Some(custom) => (custom.clone(), Some(raw_pack_url)),
+        None => (raw_pack_url, None),
+    }
 }
 
 fn default_file_mode() -> String {
@@ -196,10 +217,6 @@ pub async fn sync_aura_pack_cancellable(
     };
     let settings = fetch_pack_settings(client, None, None).await;
 
-    let repo_prefix = get_repo_prefix(version);
-    let repo = DEFAULT_PACK_REPO;
-    let branch = DEFAULT_PACK_BRANCH;
-
     let force_set: HashSet<String> = settings
         .force_configs
         .iter()
@@ -254,18 +271,7 @@ pub async fn sync_aura_pack_cancellable(
             message: format!("Aura-Pack: will download {} ({})", clean_path, reason),
         });
 
-        let escaped_segments: Vec<String> = clean_path.split('/').map(urlencoding_encode).collect();
-        let escaped_path = escaped_segments.join("/");
-        let raw_pack_url = format!(
-            "https://raw.githubusercontent.com/{}/{}/{}{}",
-            repo, branch, repo_prefix, escaped_path
-        );
-
-        let (download_url, fallback_url) = if let Some(custom_url) = &file.url {
-            (custom_url.clone(), Some(raw_pack_url))
-        } else {
-            (raw_pack_url, None)
-        };
+        let (download_url, fallback_url) = pack_file_urls(version, file);
 
         download_tasks.push(DownloadTask {
             url: download_url,
@@ -526,6 +532,7 @@ mod tests {
             size: test_data.len() as u64,
             mode: "sync".to_string(),
             url: None,
+            side: None,
         };
 
         let clean_path = entry.path.replace('\\', "/");
@@ -569,6 +576,7 @@ mod tests {
             size: 50,
             mode: "default".to_string(),
             url: None,
+            side: None,
         };
         let clean_path1 = entry_default.path.replace('\\', "/");
         let is_forced1 = force_set.contains(&clean_path1.to_lowercase());
@@ -586,6 +594,7 @@ mod tests {
             size: 100,
             mode: "default".to_string(),
             url: None,
+            side: None,
         };
         let clean_path2 = entry_forced.path.replace('\\', "/");
         let is_forced2 = force_set.contains(&clean_path2.to_lowercase());
@@ -610,6 +619,7 @@ mod tests {
             size: content.len() as u64,
             mode: "sync".to_string(),
             url: None,
+            side: None,
         };
         let mut download_needed = true;
         if synced_mod.exists() {
@@ -802,6 +812,7 @@ mod tests {
                 size: mod_content.len() as u64,
                 mode: "sync".to_string(),
                 url: None,
+                side: None,
             }],
         };
 
