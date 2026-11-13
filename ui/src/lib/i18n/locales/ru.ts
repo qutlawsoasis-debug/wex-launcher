@@ -389,6 +389,8 @@ export const ru = {
   'home.ping_ms': 'пинг {ms} мс',
   'home.server_no_answer': 'Не отвечает',
   'home.together': 'Играть вместе',
+  'home.snowman_done': 'Снеговик готов!',
+  'home.snow_hint': 'Зажмите и тяните по снегу, чтобы скатать снежок. Снежок можно взять и поставить на другой.',
   'home.together_empty_title': 'Пока не с кем.',
   'home.together_empty_text': 'Добавьте сервер друзей или откройте свой мир в «Комнатах».',
   'home.lan_world': 'Мир в локальной сети',

@@ -16,6 +16,7 @@
   import { season } from '../../design/season.svelte';
   import SnowDrift from '../../design/SnowDrift.svelte';
   import Garland from '../../design/Garland.svelte';
+  import SnowPlay from '../../design/SnowPlay.svelte';
   import { home } from './home.svelte';
   import { t, tn } from '../../i18n';
 
@@ -112,6 +113,7 @@
             <span class="ready" class:upd={!ready.ok}><i aria-hidden="true"></i>{ready.text}</span>
           </div>
         </div>
+        {#if season.winter}<SnowPlay seed={b.id} driftH={44} />{/if}
       {/if}
     </div>
   {/each}
