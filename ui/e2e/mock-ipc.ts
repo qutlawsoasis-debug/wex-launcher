@@ -32,6 +32,14 @@ export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
     minimize_to_tray: true,
     game_window_behavior: 'minimize',
   };
+  const accounts = {
+    accounts: full
+      ? [{ id: 'offline-player', kind: 'offline', name: 'Player', uuid: 'a01e3843e5213998958af459800e4d11', needs_sign_in: false, last_used_at: null }]
+      : ([] as Array<{ id: string; kind: string; name: string; uuid: string; needs_sign_in: boolean; last_used_at: string | null }>),
+    active_id: full ? 'offline-player' : (null as string | null),
+    microsoft_available: false,
+    token_storage: 'dpapi-user',
+  };
   const mods = (version: string) =>
     full
       ? [
@@ -58,6 +66,24 @@ export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
       return a.handler;
     },
     'plugin:event|unlisten': () => null,
+    // Accounts (commands/accounts.rs). No client ID in tests: Microsoft is shown unavailable.
+    accounts_list: () => JSON.parse(JSON.stringify(accounts)),
+    accounts_add_offline: (a) => {
+      const id = `offline-${a.name}`;
+      if (!accounts.accounts.some((x) => x.id === id)) accounts.accounts.push({ id, kind: 'offline', name: a.name, uuid: '0', needs_sign_in: false, last_used_at: null });
+      accounts.active_id = id;
+      settings.player_name = a.name;
+      return JSON.parse(JSON.stringify(accounts));
+    },
+    accounts_switch: (a) => {
+      accounts.active_id = a.id;
+      return JSON.parse(JSON.stringify(accounts));
+    },
+    accounts_sign_out: (a) => {
+      accounts.accounts = accounts.accounts.filter((x) => x.id !== a.id);
+      if (accounts.active_id === a.id) accounts.active_id = accounts.accounts[0]?.id ?? null;
+      return JSON.parse(JSON.stringify(accounts));
+    },
     get_launcher_settings: () => ({ ...settings }),
     save_launcher_settings: (a) => {
       Object.assign(settings, a.newSettings);

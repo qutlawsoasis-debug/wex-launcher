@@ -66,6 +66,8 @@ pub fn run() {
             app.manage(startup_state);
             app.manage(commands::friends::FriendsState::new(paths.clone()));
             app.manage(AppState::default());
+            app.manage(commands::accounts::AccountsState::default());
+            commands::accounts::spawn_startup_refresh(paths.root.clone(), paths.config_file.clone());
             let lobby_state = commands::lobby::LobbyState::new(
                 paths.root.join("tools"),
                 commands::lobby::DEFAULT_LOBBY_API_URL,
@@ -319,6 +321,15 @@ pub fn run() {
             commands::onboarding::onboarding_get_specs,
             commands::onboarding::onboarding_complete,
             commands::onboarding::onboarding_prewarm_game,
+            // Accounts: Microsoft and offline sign-in
+            commands::accounts::accounts_list,
+            commands::accounts::accounts_add_offline,
+            commands::accounts::accounts_switch,
+            commands::accounts::accounts_sign_out,
+            commands::accounts::accounts_ms_begin,
+            commands::accounts::accounts_ms_finish,
+            commands::accounts::accounts_ms_cancel,
+            commands::accounts::accounts_ms_open_page,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -20,6 +20,7 @@
   import { buildRig, drawThumb, loadImage, toSkinCanvas, isCapeSize, NICK_RE, U, type CapeTexture } from './skinRig';
   import { wardrobe, fileToBase64, looksSlim, safeName, type SavedSkin } from './wardrobe.svelte';
   import { call } from '../../shell/ipc';
+  import { accounts } from '../../shell/accounts.svelte';
   import { formatDate } from '../../shell/format';
 
   type Tab = 'skins' | 'capes' | 'profile';
@@ -40,6 +41,11 @@
   let nickTouched = false;
   let nickOk = $state(true);
   let busy = $state(false);
+  /** A licensed account's name comes from its Minecraft profile and cannot be edited here. */
+  const nameLocked = $derived(accounts.active?.kind === 'microsoft');
+  $effect(() => {
+    if (nameLocked && accounts.active) nick = accounts.active.name;
+  });
 
   /** Achievements are kept locally by core (social_list_achievements): definitions and progress. */
   interface Achievement {
@@ -425,8 +431,13 @@
       {:else}
         <div class="wrow col">
           <label class="l" for="wd-nick">{t('wardrobe2.nick')}</label>
-          <input id="wd-nick" class="field" class:bad={!nickOk} bind:value={nick} oninput={onNick} maxlength="16" autocomplete="off" spellcheck="false" aria-invalid={!nickOk} aria-describedby="wd-nick-hint" />
-          <div class="d" class:bad={!nickOk} id="wd-nick-hint">{nickOk ? t('wardrobe2.nick_hint') : t('wardrobe2.nick_bad')}</div>
+          {#if nameLocked}
+            <input id="wd-nick" class="field" value={accounts.active?.name ?? ''} readonly aria-readonly="true" aria-describedby="wd-nick-hint" />
+            <div class="d" id="wd-nick-hint">{t('acc.ms_name_locked')}</div>
+          {:else}
+            <input id="wd-nick" class="field" class:bad={!nickOk} bind:value={nick} oninput={onNick} maxlength="16" autocomplete="off" spellcheck="false" aria-invalid={!nickOk} aria-describedby="wd-nick-hint" />
+            <div class="d" class:bad={!nickOk} id="wd-nick-hint">{nickOk ? t('wardrobe2.nick_hint') : t('wardrobe2.nick_bad')}</div>
+          {/if}
         </div>
         {#if achievements.length}
           <button type="button" class="wrow ach-row" aria-expanded={showAch} aria-controls="ach-list" onclick={() => (showAch = !showAch)}>

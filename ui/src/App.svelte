@@ -35,6 +35,7 @@
   import { applyLook } from './lib/shell/look';
   import { router, buildIdOf, isRoute, buildRoute, type Route } from './lib/shell/router.svelte';
   import { builds } from './lib/shell/builds.svelte';
+  import { accounts } from './lib/shell/accounts.svelte';
   import { launch } from './lib/shell/launch.svelte';
   import { toasts } from './lib/shell/toast.svelte';
   import { call, on, inTauri } from './lib/shell/ipc';
@@ -230,6 +231,8 @@
     stops.push(launch.attach());
     stops.push(initScrollIndicators());
     void builds.load().then(() => {
+      // The active account decides the player name shown everywhere.
+      void accounts.load();
       // Theme, motion, transparency and language come from the saved settings.
       applyLook(builds.settings);
       if (builds.error) {
@@ -356,6 +359,7 @@
       bind:open={showOnboarding}
       oncomplete={async (data: { nickname: string; version: string; launchImmediately?: boolean }) => {
         await builds.load();
+        await accounts.load();
         toasts.show(t('app.onboarding_completed_title'), t('app.onboarding_welcome_toast', { name: data.nickname }));
         if (data.launchImmediately) void launch.start();
       }}

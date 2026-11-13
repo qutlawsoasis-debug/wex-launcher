@@ -555,6 +555,54 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the accounts_add_offline command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-add-offline",
+          "markdownDescription": "Enables the accounts_add_offline command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-list",
+          "markdownDescription": "Enables the accounts_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_ms_begin command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-ms-begin",
+          "markdownDescription": "Enables the accounts_ms_begin command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_ms_cancel command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-ms-cancel",
+          "markdownDescription": "Enables the accounts_ms_cancel command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_ms_finish command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-ms-finish",
+          "markdownDescription": "Enables the accounts_ms_finish command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_ms_open_page command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-ms-open-page",
+          "markdownDescription": "Enables the accounts_ms_open_page command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_sign_out command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-sign-out",
+          "markdownDescription": "Enables the accounts_sign_out command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_switch command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-switch",
+          "markdownDescription": "Enables the accounts_switch command without any pre-configured scope."
+        },
+        {
           "description": "Enables the add_custom_mod command without any pre-configured scope.",
           "type": "string",
           "const": "allow-add-custom-mod",
@@ -1645,6 +1693,54 @@
           "type": "string",
           "const": "allow-workshop-toggle-resource-pack",
           "markdownDescription": "Enables the workshop_toggle_resource_pack command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_add_offline command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-add-offline",
+          "markdownDescription": "Denies the accounts_add_offline command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-list",
+          "markdownDescription": "Denies the accounts_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_ms_begin command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-ms-begin",
+          "markdownDescription": "Denies the accounts_ms_begin command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_ms_cancel command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-ms-cancel",
+          "markdownDescription": "Denies the accounts_ms_cancel command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_ms_finish command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-ms-finish",
+          "markdownDescription": "Denies the accounts_ms_finish command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_ms_open_page command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-ms-open-page",
+          "markdownDescription": "Denies the accounts_ms_open_page command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_sign_out command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-sign-out",
+          "markdownDescription": "Denies the accounts_sign_out command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_switch command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-switch",
+          "markdownDescription": "Denies the accounts_switch command without any pre-configured scope."
         },
         {
           "description": "Denies the add_custom_mod command without any pre-configured scope.",

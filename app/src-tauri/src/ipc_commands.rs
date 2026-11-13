@@ -183,4 +183,12 @@ pub const IPC_COMMANDS: &[&str] = &[
     "onboarding_get_specs",
     "onboarding_complete",
     "onboarding_prewarm_game",
+    "accounts_list",
+    "accounts_add_offline",
+    "accounts_switch",
+    "accounts_sign_out",
+    "accounts_ms_begin",
+    "accounts_ms_finish",
+    "accounts_ms_cancel",
+    "accounts_ms_open_page",
 ];

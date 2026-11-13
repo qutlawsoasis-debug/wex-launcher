@@ -203,6 +203,20 @@ pub struct LauncherConfig {
         alias = "gameWindowBehavior"
     )]
     pub game_window_behavior: String,
+
+    /// Azure application (client) ID for Microsoft sign-in, set by the user.
+    /// The `WEX_MS_CLIENT_ID` environment variable takes precedence (accounts::microsoft_client_id).
+    #[serde(
+        default,
+        alias = "microsoftClientId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub microsoft_client_id: Option<String>,
+
+    /// Launch identity resolved from the active account just before launch.
+    /// Runtime only: never written to config.json.
+    #[serde(skip)]
+    pub session: Option<crate::accounts::GameSession>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -420,6 +434,8 @@ impl Default for LauncherConfig {
             minimize_to_tray: default_minimize_to_tray(),
             friend_notifications: true,
             game_window_behavior: default_game_window_behavior(),
+            microsoft_client_id: None,
+            session: None,
         }
     }
 }
@@ -451,6 +467,8 @@ impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
             minimize_to_tray: default_minimize_to_tray(),
             friend_notifications: default_true(),
             game_window_behavior: default_game_window_behavior(),
+            microsoft_client_id: None,
+            session: None,
         }
     }
 }

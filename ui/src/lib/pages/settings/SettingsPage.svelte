@@ -21,6 +21,9 @@
   import { t } from '../../i18n';
   import LogsSheet from '../../components/LogsSheet.svelte';
   import ImportWizardSheet from '../../components/ImportWizardSheet.svelte';
+  import AccountSheet from '../../components/AccountSheet.svelte';
+  import Monogram from '../../shell/Monogram.svelte';
+  import { accounts } from '../../shell/accounts.svelte';
 
   interface Props {
     onopenonboarding?: () => void;
@@ -28,8 +31,9 @@
 
   let { onopenonboarding }: Props = $props();
 
-  type Sec = 'game' | 'gfx' | 'look' | 'launcher' | 'data' | 'keys';
+  type Sec = 'accounts' | 'game' | 'gfx' | 'look' | 'launcher' | 'data' | 'keys';
   const SECTIONS: Array<[Sec, string]> = [
+    ['accounts', 'acc.section'],
     ['game', 'settings2.sec_game'],
     ['gfx', 'settings2.sec_gfx'],
     ['look', 'settings2.sec_look'],
@@ -256,6 +260,49 @@
   }
 
   const on = (k: string) => !!s?.[k];
+
+  // Accounts (HIG › Managing accounts; HIG › Lists and tables: the active one has a checkmark).
+  let accountSheetOpen = $state(false);
+  let accountSheetStart = $state<'choose' | 'microsoft'>('choose');
+  /** Sign-out asks twice, like Reset: it deletes the saved sign-in from this computer. */
+  let signOutArmed = $state<string | null>(null);
+  let accountBusy = $state(false);
+  onMount(() => void accounts.load());
+
+  function addAccount(startOn: 'choose' | 'microsoft' = 'choose') {
+    accountSheetStart = startOn;
+    accountSheetOpen = true;
+  }
+
+  async function useAccount(id: string) {
+    if (accountBusy) return;
+    accountBusy = true;
+    try {
+      await accounts.switchTo(id);
+      toasts.show(t('acc.switched', { name: accounts.active?.name ?? '' }));
+    } catch (e) {
+      toasts.show(t('acc.switch_failed'), formatError(e, 'auth').description);
+    } finally {
+      accountBusy = false;
+    }
+  }
+
+  async function signOut(id: string) {
+    if (signOutArmed !== id) {
+      signOutArmed = id;
+      return;
+    }
+    signOutArmed = null;
+    accountBusy = true;
+    try {
+      await accounts.signOut(id);
+      toasts.show(t('acc.signed_out'));
+    } catch (e) {
+      toasts.show(t('acc.sign_out_failed'), formatError(e, 'auth').description);
+    } finally {
+      accountBusy = false;
+    }
+  }
 </script>
 
 <div class="page-title">
@@ -278,6 +325,61 @@
     {#if !visibleCount}
       <p class="empty"><b>{t('settings2.nothing')}</b> {t('settings2.nothing_hint')}</p>
     {/if}
+
+    <section class="sgroup" id="sec-accounts">
+      <h2>{t('acc.section')}</h2>
+      <div class="form">
+        {#each accounts.list as a (a.id)}
+          {@const isActive = a.id === accounts.activeId}
+          <div class="srow acc-row" data-k={t('acc.k_accounts')}>
+            <div class="acc-who">
+              <Monogram name={a.name} />
+              <div>
+                <div class="l">{a.name}</div>
+                <div class="d">
+                  {a.kind === 'microsoft' ? t('acc.kind_microsoft') : t('acc.kind_offline')}{#if a.needs_sign_in} · <span class="warn">{t('acc.needs_sign_in')}</span>{/if}
+                </div>
+              </div>
+            </div>
+            <div class="acc-actions">
+              {#if isActive}
+                <span class="acc-current" role="img" aria-label={t('acc.current')}>
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>{t('acc.current')}
+                </span>
+              {:else}
+                <button type="button" class="btn" disabled={accountBusy} onclick={() => useAccount(a.id)}>{t('acc.use')}</button>
+              {/if}
+              {#if a.needs_sign_in}
+                <button type="button" class="btn" disabled={!accounts.microsoftAvailable} onclick={() => addAccount('microsoft')}>{t('acc.sign_in_again')}</button>
+              {/if}
+              <button
+                type="button"
+                class="btn danger"
+                disabled={accountBusy}
+                aria-label={t('acc.sign_out_label', { name: a.name })}
+                onblur={() => signOutArmed === a.id && (signOutArmed = null)}
+                onclick={() => signOut(a.id)}>{signOutArmed === a.id ? t('build.press_again') : t('acc.sign_out')}</button
+              >
+            </div>
+          </div>
+        {/each}
+        {#if accounts.loaded && !accounts.list.length}
+          <div class="srow" data-k={t('acc.k_accounts')}>
+            <div><div class="l">{t('acc.none')}</div><div class="d">{t('acc.none_d')}</div></div>
+          </div>
+        {/if}
+        <div class="srow" data-k={t('acc.k_accounts')}>
+          <div>
+            <div class="l">{t('acc.add')}</div>
+            <div class="d">{accounts.microsoftAvailable ? t('acc.add_d') : t('acc.add_d_offline_only')}</div>
+          </div>
+          <button type="button" class="btn" onclick={() => addAccount()}>{t('acc.add_btn')}</button>
+        </div>
+      </div>
+      {#if signOutArmed}
+        <p class="hint" role="status">{accounts.list.find((x) => x.id === signOutArmed)?.kind === 'microsoft' ? t('acc.sign_out_ms_warn') : t('acc.sign_out_off_warn')}</p>
+      {/if}
+    </section>
 
     <section class="sgroup" id="sec-game">
       <h2>{t('settings2.sec_game')}</h2>
@@ -443,6 +545,8 @@
     </section>
   </div>
 </div>
+
+<AccountSheet bind:open={accountSheetOpen} start={accountSheetStart} />
 
 {#if logsOpen}
   <LogsSheet bind:open={logsOpen} version={builds.selectedId} ontoast={(_t, title, d) => toasts.show(title, d)} />
@@ -776,5 +880,36 @@
     .presets {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+  }
+  .acc-who {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+  .acc-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+  }
+  .acc-current {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--t-foot);
+    color: var(--label-2);
+  }
+  .acc-current svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .warn {
+    color: var(--red);
   }
 </style>

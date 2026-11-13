@@ -14,6 +14,8 @@ import SettingsPage from './SettingsPage.svelte';
 
 let settings: Record<string, unknown>;
 let oldLauncher: string | null;
+type Acc = { id: string; kind: 'offline' | 'microsoft'; name: string; uuid: string; needs_sign_in: boolean; last_used_at: string | null };
+let accs: { accounts: Acc[]; active_id: string | null; microsoft_available: boolean; token_storage: string };
 
 beforeEach(async () => {
   mocks.invoke.mockReset();
@@ -35,8 +37,32 @@ beforeEach(async () => {
     minimize_to_tray: true,
     game_window_behavior: 'minimize',
   };
+  accs = {
+    accounts: [
+      { id: 'offline-a', kind: 'offline', name: 'Player', uuid: 'a01e3843e5213998958af459800e4d11', needs_sign_in: false, last_used_at: null },
+      { id: 'ms-b', kind: 'microsoft', name: 'Notch', uuid: '069a79f444e94726a5befca90e38aaf5', needs_sign_in: false, last_used_at: null },
+    ],
+    active_id: 'offline-a',
+    microsoft_available: false,
+    token_storage: 'dpapi-user',
+  };
   mocks.invoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
     switch (cmd) {
+      case 'accounts_list':
+        return structuredClone(accs);
+      case 'accounts_switch':
+        accs.active_id = args!.id as string;
+        return structuredClone(accs);
+      case 'accounts_sign_out':
+        accs.accounts = accs.accounts.filter((a) => a.id !== args!.id);
+        if (accs.active_id === args!.id) accs.active_id = accs.accounts[0]?.id ?? null;
+        return structuredClone(accs);
+      case 'accounts_add_offline': {
+        const name = args!.name as string;
+        accs.accounts.push({ id: `offline-${name}`, kind: 'offline', name, uuid: 'x', needs_sign_in: false, last_used_at: null });
+        accs.active_id = `offline-${name}`;
+        return structuredClone(accs);
+      }
       case 'get_system_info':
         return { total_memory_mb: 16384, free_memory_mb: 12288 };
       case 'get_launcher_settings':
@@ -97,11 +123,96 @@ async function open() {
 
 const row = (label: string) => [...target.querySelectorAll<HTMLElement>('.srow')].find((r) => r.querySelector('.l')?.textContent === label)!;
 
+describe('settings › accounts', () => {
+  const accRow = (name: string) => [...target.querySelectorAll<HTMLElement>('.acc-row')].find((r) => r.querySelector('.l')?.textContent === name)!;
+  const button = (label: string) => [...target.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.trim() === label)!;
+
+  it('lists accounts, marks the active one with a checkmark and switches', async () => {
+    await open();
+    await vi.waitFor(() => expect(target.querySelectorAll('.acc-row').length).toBe(2));
+    expect(accRow('Player').textContent).toContain('Без лицензии');
+    expect(accRow('Player').querySelector('.acc-current')?.textContent).toContain('Выбран');
+    expect(accRow('Notch').textContent).toContain('Microsoft · лицензия');
+    [...accRow('Notch').querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Выбрать')!.click();
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('accounts_switch', { id: 'ms-b' }));
+    await vi.waitFor(() => expect(builds.playerName).toBe('Notch'));
+    await vi.waitFor(() => expect(accRow('Notch').querySelector('.acc-current')).not.toBeNull());
+  });
+
+  it('sign-out asks twice and explains what is deleted', async () => {
+    await open();
+    await vi.waitFor(() => expect(target.querySelectorAll('.acc-row').length).toBe(2));
+    const out = () => accRow('Notch').querySelector<HTMLButtonElement>('.btn.danger')!;
+    out().click();
+    flushSync();
+    expect(mocks.invoke).not.toHaveBeenCalledWith('accounts_sign_out', expect.anything());
+    expect(target.textContent).toContain('удалит сохранённый вход Microsoft');
+    out().click();
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('accounts_sign_out', { id: 'ms-b' }));
+    await vi.waitFor(() => expect(target.querySelectorAll('.acc-row').length).toBe(1));
+  });
+
+  it('sign-in sheet: Microsoft is unavailable without a client ID; offline validates the name', async () => {
+    await open();
+    await vi.waitFor(() => expect(target.querySelectorAll('.acc-row').length).toBe(2));
+    button('Добавить…').click();
+    await vi.waitFor(() => expect(target.querySelector('[role="dialog"]')).not.toBeNull());
+    const ways = [...target.querySelectorAll<HTMLButtonElement>('.way')];
+    expect(ways[0].textContent).toContain('Войти через Microsoft');
+    expect(ways[0].disabled).toBe(true);
+    expect(ways[0].textContent).toContain('WEX_MS_CLIENT_ID');
+    ways[1].click();
+    flushSync();
+    const input = target.querySelector<HTMLInputElement>('#acc-nick')!;
+    input.value = 'no';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+    const submit = target.querySelector<HTMLButtonElement>('.offline button[type="submit"]')!;
+    expect(submit.disabled).toBe(true);
+    expect(target.querySelector('#acc-nick-hint')?.textContent).toContain('от 3 до 16');
+    input.value = 'Friend_2';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+    expect(submit.disabled).toBe(false);
+    submit.click();
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('accounts_add_offline', { name: 'Friend_2' }));
+    await vi.waitFor(() => expect(target.querySelector('[role="dialog"]')).toBeNull());
+    expect(builds.playerName).toBe('Friend_2');
+  });
+
+  it('Microsoft sign-in shows the device code, opens the page and saves the account', async () => {
+    accs.microsoft_available = true;
+    let finish: () => void = () => {};
+    const base = mocks.invoke.getMockImplementation()!;
+    mocks.invoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === 'accounts_ms_begin') return { flow_id: 'f1', user_code: 'ABCD-EFGH', verification_uri: 'https://www.microsoft.com/link', expires_in: 900 };
+      if (cmd === 'accounts_ms_finish') {
+        await new Promise<void>((r) => (finish = r));
+        accs.active_id = 'ms-b';
+        return structuredClone(accs);
+      }
+      return base(cmd, args);
+    });
+    await open();
+    await vi.waitFor(() => expect(target.querySelectorAll('.acc-row').length).toBe(2));
+    button('Добавить…').click();
+    await vi.waitFor(() => expect(target.querySelector<HTMLButtonElement>('.way')?.disabled).toBe(false));
+    target.querySelector<HTMLButtonElement>('.way')!.click();
+    await vi.waitFor(() => expect(target.querySelector('.code-text')?.textContent).toBe('ABCD-EFGH'));
+    expect(target.textContent).toContain('Ждём подтверждения');
+    button('Открыть страницу Microsoft').click();
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('accounts_ms_open_page', { flowId: 'f1' }));
+    finish();
+    await vi.waitFor(() => expect(target.querySelector('[role="dialog"]')).toBeNull());
+    expect(builds.playerName).toBe('Notch');
+  });
+});
+
 describe('settings page', () => {
   it('has the reference sections and only settings core supports', async () => {
     await open();
-    expect([...target.querySelectorAll('.sgroup h2')].map((h) => h.textContent)).toEqual(['Игра', 'Графика', 'Внешний вид', 'Лаунчер', 'Данные', 'Клавиши']);
-    expect([...target.querySelectorAll('.subnav a')].map((a) => a.textContent)).toEqual(['Игра', 'Графика', 'Внешний вид', 'Лаунчер', 'Данные', 'Клавиши']);
+    expect([...target.querySelectorAll('.sgroup h2')].map((h) => h.textContent)).toEqual(['Аккаунты', 'Игра', 'Графика', 'Внешний вид', 'Лаунчер', 'Данные', 'Клавиши']);
+    expect([...target.querySelectorAll('.subnav a')].map((a) => a.textContent)).toEqual(['Аккаунты', 'Игра', 'Графика', 'Внешний вид', 'Лаунчер', 'Данные', 'Клавиши']);
     // Not in core, so not shown at all (owner rule).
     for (const missing of ['Окно игры', 'Полноэкранный', 'Аргументы Java', 'Дальность прорисовки', 'Ограничение кадров', 'Distant Horizons', 'Плотность', 'Цвет Wex', 'вместе с Windows', 'Канал обновлений', 'Одновременных загрузок', 'Изменить']) {
       expect(target.textContent).not.toContain(missing);

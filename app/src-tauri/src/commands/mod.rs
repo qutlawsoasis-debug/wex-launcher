@@ -1,3 +1,4 @@
+pub mod accounts;
 pub mod crash;
 pub mod deeplink;
 pub mod friends;

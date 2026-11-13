@@ -52,6 +52,14 @@ pub enum WexError {
     #[error("Operation cancelled")]
     Cancelled,
 
+    /// Account sign-in or token refresh failed. `message` is shown to the player as is.
+    #[error("Auth error {code}: {message}")]
+    Auth {
+        code: &'static str,
+        message: String,
+        details: Option<String>,
+    },
+
     #[error("Not enough disk space for {path}: {source}")]
     DiskFull {
         path: PathBuf,
@@ -84,6 +92,11 @@ impl From<WexError> for wex_ipc::error::IpcError {
                 )
             }
             WexError::Io(e) => e.into(),
+            WexError::Auth {
+                code,
+                message,
+                details,
+            } => Self::new(code, message, details),
             WexError::Network(e) => {
                 let code = if e.is_timeout() {
                     "IO_TIMED_OUT"

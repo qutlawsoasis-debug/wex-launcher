@@ -81,6 +81,29 @@ test('settings: theme applies at once and is saved', async ({ page }) => {
   expect(saved.at(-1)?.newSettings.appearance).toBe('dark');
 });
 
+test('accounts: add an offline account, it becomes the player; Microsoft is honestly unavailable', async ({ page }) => {
+  await openApp(page, '#options');
+  const section = page.locator('#sec-accounts');
+  await expect(section.locator('.acc-row')).toHaveCount(1);
+  await expect(section.locator('.acc-row')).toContainText('Без лицензии');
+  await section.getByRole('button', { name: 'Добавить…' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Вход в аккаунт' });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.locator('.way').first()).toBeDisabled();
+  await expect(sheet.locator('.way').first()).toContainText('WEX_MS_CLIENT_ID');
+  expect(await axeProblems(page)).toEqual([]);
+  await sheet.locator('.way', { hasText: 'Играть без лицензии' }).click();
+  await sheet.locator('#acc-nick').fill('Friend_2');
+  await sheet.getByRole('button', { name: 'Добавить аккаунт' }).click();
+  await expect(sheet).toBeHidden();
+  await expect(section.locator('.acc-row')).toHaveCount(2);
+  expect(await ipcCalls(page, 'accounts_add_offline')).toEqual([{ name: 'Friend_2' }]);
+  await expect(page.locator('.side .me b')).toHaveText('Friend_2');
+  // Back to the first account.
+  await section.locator('.acc-row', { hasText: 'Player' }).getByRole('button', { name: 'Выбрать' }).click();
+  await expect(page.locator('.side .me b')).toHaveText('Player');
+});
+
 test('wardrobe: 3D model with all parts, poses, achievements in Profile', async ({ page }) => {
   await openApp(page, '#wardrobe');
   await expect(page.locator('.rig .joint')).toHaveCount(6);
