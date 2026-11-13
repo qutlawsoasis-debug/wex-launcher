@@ -2,6 +2,8 @@
  * Data for the home page, all from the backend:
  *   worlds per build   workshop_list_worlds(version)
  *   news               overview_get_news (the launcher changelog)
+ *   play together      list_servers (the player's own servers) + ping_server_details,
+ *                      list_lan_worlds (worlds opened to LAN nearby)
  *   friends online     friendsLive (social_sync); empty until accounts are connected
  */
 
@@ -22,9 +24,35 @@ interface ReleaseNote {
   items: Array<{ text: string }>;
 }
 
+export interface PlayServer {
+  name: string;
+  address: string;
+}
+
+export interface ServerPing {
+  ok: boolean;
+  online?: number;
+  max?: number;
+  ms?: number;
+}
+
+export interface LanWorld {
+  motd: string;
+  address: string;
+  port: number;
+}
+
+/** How many saved servers Home shows; the rest are on the Servers page. */
+export const HOME_SERVERS = 3;
+
 class Home {
   worlds = $state<Record<string, number>>({});
   news = $state<NewsItem[]>([]);
+  servers = $state<PlayServer[]>([]);
+  /** Total saved servers (Home shows the first HOME_SERVERS). */
+  serverCount = $state(0);
+  pings = $state<Record<string, ServerPing>>({});
+  lan = $state<LanWorld[]>([]);
   friends = $state<FriendItem[]>([]);
   /** True once friendsLive has delivered at least one sync with friends data. */
   friendsKnown = $state(false);
@@ -32,7 +60,7 @@ class Home {
   private stopFriends: (() => void) | null = null;
 
   async load(buildIds: string[]): Promise<void> {
-    await Promise.all([this.loadWorlds(buildIds), this.loadNews()]);
+    await Promise.all([this.loadWorlds(buildIds), this.loadNews(), this.loadTogether()]);
   }
 
   async loadWorlds(buildIds: string[]): Promise<void> {
@@ -63,6 +91,33 @@ class Home {
     } catch {
       this.news = [];
     }
+  }
+
+  async loadTogether(): Promise<void> {
+    const [servers, lan] = await Promise.all([
+      call<PlayServer[]>('list_servers', { version: null }).catch(() => [] as PlayServer[]),
+      call<LanWorld[]>('list_lan_worlds').catch(() => [] as LanWorld[]),
+    ]);
+    this.serverCount = servers?.length ?? 0;
+    this.servers = (servers ?? []).slice(0, HOME_SERVERS).map((s) => ({ name: s.name, address: s.address }));
+    this.lan = lan ?? [];
+    await this.refreshPings();
+  }
+
+  async refreshPings(): Promise<void> {
+    await Promise.all(
+      this.servers.map(async (s) => {
+        let p: ServerPing = { ok: false };
+        try {
+          const r = await call<{ success: boolean; latency_ms?: number | null; online?: number | null; max_players?: number | null }>('ping_server_details', {
+            address: s.address,
+            timeoutMs: null,
+          });
+          if (r.success) p = { ok: true, online: r.online ?? undefined, max: r.max_players ?? undefined, ms: r.latency_ms ?? undefined };
+        } catch {}
+        this.pings = { ...this.pings, [s.address]: p };
+      })
+    );
   }
 
   watchFriends(): () => void {

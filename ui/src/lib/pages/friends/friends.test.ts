@@ -110,7 +110,7 @@ describe('servers page', () => {
     comp = mount(ServersPage, { target });
     await vi.waitFor(() => expect(target.querySelectorAll('.lrow-srv').length).toBe(2));
     await vi.waitFor(() => expect(target.querySelector('.lrow-srv .meter')?.textContent).toContain('214 из 500, пинг 23 мс'));
-    expect(target.querySelectorAll('.lrow-srv')[1].textContent).toContain('Сервер сейчас не отвечает');
+    expect(target.querySelectorAll('.lrow-srv')[1].textContent).toContain('Не отвечает');
     // Description from the server (colour codes removed), then the address.
     expect(target.querySelector('.lrow-srv > div > span')?.textContent).toBe('Выживание и PvP, mc.auramc.net');
     expect(target.textContent).not.toMatch(/Aura Creative|Aura Minigames|примеры/);

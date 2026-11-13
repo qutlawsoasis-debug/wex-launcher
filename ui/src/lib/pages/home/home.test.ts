@@ -16,12 +16,19 @@ import HomePage from './HomePage.svelte';
 let settings: Record<string, unknown>;
 let installed: Record<string, boolean>;
 let ping: Record<string, unknown>;
+let servers: Array<{ id?: string; name: string; address: string }>;
+let lan: Array<{ motd: string; address: string; port: number }>;
 
 beforeEach(async () => {
   mocks.invoke.mockReset();
   settings = { selected_version: '1.21.1', player_name: 'Player', ram_mb: 6144 };
   installed = { '1.21.1': true, '1.20.1': false };
-  ping = { success: true, latency_ms: 23, online: 214, max_players: 500 };
+  ping = { success: true, latency_ms: 23, online: 3, max_players: 10 };
+  servers = [
+    { id: 's1', name: 'Сервер нашей компании', address: 'play.example.org' },
+    { id: 's2', name: 'Мир Миши', address: '192.168.1.20:25565' },
+  ];
+  lan = [];
   mocks.invoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
     switch (cmd) {
       case 'get_launcher_settings':
@@ -45,12 +52,11 @@ beforeEach(async () => {
           { version: '0.9.0', date_text: '20 октября', short_title: 'Старое', items: [] },
         ];
       case 'list_servers':
-        return [
-          { id: 'aura-main', name: 'Aura Official — Survival & PvP', address: 'mc.auramc.net' },
-          { id: 'x', name: 'Other', address: 'other.example' },
-        ];
+        return servers;
+      case 'list_lan_worlds':
+        return lan;
       case 'ping_server_details':
-        return ping;
+        return args!.address === 'play.example.org' ? ping : { success: false };
       case 'start_game':
         return new Promise(() => {});
       default:
@@ -62,6 +68,10 @@ beforeEach(async () => {
   toasts.dismiss();
   launch.onStatus({ state: 'idle', message: '' });
   launch.prewarm = 'idle';
+  home.servers = [];
+  home.serverCount = 0;
+  home.pings = {};
+  home.lan = [];
   await builds.load();
 });
 
@@ -127,9 +137,52 @@ describe('home page', () => {
   it('no public server block: Wex is for playing with friends', async () => {
     await render();
     expect(target.textContent).not.toContain('Сервер Aura');
-    expect(target.querySelector('.continue')).toBeNull();
-    expect(mocks.invoke).not.toHaveBeenCalledWith('list_servers', expect.anything());
-    expect(mocks.invoke).not.toHaveBeenCalledWith('ping_server_details', expect.anything());
+    expect(target.textContent).not.toMatch(/auramc|Aura Official/);
+  });
+
+  it('Играть вместе: the player\'s own servers with live ping; Join connects to the address', async () => {
+    await render();
+    const panel = target.querySelector('.together')!;
+    await vi.waitFor(() => expect(panel.textContent).toContain('3 из 10, пинг 23 мс'));
+    const rows = [...panel.querySelectorAll('.prow')];
+    expect(rows.map((r) => r.querySelector('b')?.textContent)).toEqual(['Сервер нашей компании', 'Мир Миши']);
+    expect(rows[1].textContent).toContain('Не отвечает');
+    // Play is the one prominent action: Join here is a secondary button.
+    expect(rows[0].querySelector('button')?.classList.contains('blue')).toBe(false);
+    (rows[0].querySelector('button') as HTMLButtonElement).click();
+    await vi.waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith('start_game', expect.objectContaining({ server: 'play.example.org' }))
+    );
+    launch.onStatus({ state: 'cancelled', message: '' });
+  });
+
+  it('Играть вместе: LAN worlds nearby, at most three saved servers with a link to all', async () => {
+    servers = Array.from({ length: 5 }, (_, i) => ({ name: `S${i}`, address: `s${i}.example.org` }));
+    lan = [{ motd: 'Мир Кати', address: '192.168.1.30', port: 51234 }];
+    await render();
+    const panel = target.querySelector('.together')!;
+    await vi.waitFor(() => expect(panel.textContent).toContain('Мир Кати'));
+    expect(panel.querySelectorAll('.prow').length).toBe(4);
+    expect(target.textContent).toContain('Все серверы (5)');
+    const lanRow = [...panel.querySelectorAll('.prow')].at(-1)!;
+    (lanRow.querySelector('button') as HTMLButtonElement).click();
+    await vi.waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith('start_game', expect.objectContaining({ server: '192.168.1.30:51234' }))
+    );
+    launch.onStatus({ state: 'cancelled', message: '' });
+  });
+
+  it('Играть вместе: honest empty state with the ways to start', async () => {
+    servers = [];
+    await render();
+    const panel = target.querySelector('.together')!;
+    await vi.waitFor(() => expect(panel.textContent).toContain('Пока не с кем.'));
+    expect(panel.querySelectorAll('.prow').length).toBe(0);
+    expect(panel.textContent).toContain('Пока не с кем.');
+    const [rooms, add] = [...panel.querySelectorAll('.together-actions button')] as HTMLButtonElement[];
+    expect(add.textContent).toBe('Добавить сервер');
+    rooms.click();
+    expect(router.route).toBe('friends');
   });
 
   it('news are the two latest changelog entries', async () => {
@@ -142,7 +195,7 @@ describe('home page', () => {
 
   it('friends: honest empty state until accounts are connected, no sample friends', async () => {
     await render();
-    const panel = target.querySelector('.panel')!;
+    const panel = target.querySelector('.panel:not(.together)')!;
     expect(panel.querySelectorAll('.prow').length).toBe(0);
     expect(panel.textContent).toContain('Друзья появятся, когда подключим аккаунты.');
     home.friends = [

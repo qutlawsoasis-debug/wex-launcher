@@ -92,7 +92,7 @@ test('wardrobe: 3D model with all parts, poses, achievements in Profile', async 
 
 test('empty data: honest empty states, no sample content', async ({ page }) => {
   await openApp(page, '', { mode: 'empty' });
-  await expect(page.locator('.panel')).toContainText('Друзья появятся, когда подключим аккаунты.');
+  await expect(page.locator('.panel:not(.together)')).toContainText('Друзья появятся, когда подключим аккаунты.');
   await page.locator('.nav a', { hasText: 'Серверы' }).click();
   await expect(page.locator('.list .empty')).toContainText('Серверов пока нет.');
   await expect(page.locator('body')).not.toContainText(/kotya|Aura Creative|Aura Minigames/);

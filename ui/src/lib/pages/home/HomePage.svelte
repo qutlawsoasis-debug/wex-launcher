@@ -1,6 +1,9 @@
 <!--
-  Home (reference: V.home). The build pair, launcher news from the changelog,
-  friends online.
+  Home (reference: V.home). The build pair, «Играть вместе» (the player's own
+  servers with live ping and LAN worlds nearby, all from core), launcher news from
+  the changelog, friends online.
+  HIG › Buttons: Play stays the one prominent action; Join in the rows is a
+  secondary button. HIG › Lists and tables: rows of name, status and one action.
   Owner decision (2026-11-13): no «Сервер Aura» block. Wex is for playing with
   friends (LAN, a friend's room, the company's own server), not one public server.
 -->
@@ -8,21 +11,42 @@
   import { onMount } from 'svelte';
   import { builds } from '../../shell/builds.svelte';
   import { router } from '../../shell/router.svelte';
+  import { launch } from '../../shell/launch.svelte';
+  import { createIdleInterval } from '../../design/idleManager';
+  import { friendsIntent } from '../friends/friendsIntent.svelte';
   import { friendsLive, type FriendItem } from '../../services/friendsLive';
   import { toasts } from '../../shell/toast.svelte';
   import { formatError } from '../../design/errors';
-  import { t } from '../../i18n';
+  import { t, tn } from '../../i18n';
   import Monogram from '../../shell/Monogram.svelte';
   import BuildPair from './BuildPair.svelte';
-  import { home } from './home.svelte';
+  import { home, type ServerPing } from './home.svelte';
 
   onMount(() => {
     void home.load(builds.list.map((b) => b.id));
     const stopFriends = home.watchFriends();
+    const stopPing = createIdleInterval(() => void home.refreshPings(), 30_000);
     return () => {
       stopFriends();
+      stopPing();
     };
   });
+
+  /** «3 из 10, пинг 23 мс» — only what the server answered. */
+  function pingText(p: ServerPing | undefined): string {
+    if (!p) return t('servers2.pinging');
+    if (!p.ok) return t('home.server_no_answer');
+    const parts: string[] = [];
+    if (p.online !== undefined && p.max !== undefined) parts.push(t('servers2.players', { on: p.online, max: p.max }));
+    else if (p.online !== undefined) parts.push(tn('home.players_now', p.online));
+    if (p.ms !== undefined) parts.push(t('home.ping_ms', { ms: p.ms }));
+    return parts.join(', ');
+  }
+
+  function openRooms() {
+    friendsIntent.tab = 'rooms';
+    router.go('friends');
+  }
 
   function friendStatus(f: FriendItem): string {
     if (f.status === 'playing') return f.world_name ? t('home.friend_playing_in', { world: f.world_name }) : t('home.friend_playing');
@@ -45,6 +69,50 @@
 
 <div class="grid-3">
   <div class="col">
+    <section>
+      <div class="h-row">
+        <h2>{t('home.together')}</h2>
+        {#if home.serverCount > home.servers.length}
+          <a
+            href="#servers"
+            onclick={(e) => {
+              e.preventDefault();
+              router.go('servers');
+            }}>{t('home.all_servers', { n: home.serverCount })}</a
+          >
+        {/if}
+      </div>
+      <div class="panel together">
+        {#each home.servers as s (s.address)}
+          {@const p = home.pings[s.address]}
+          <div class="prow">
+            <Monogram name={s.name} />
+            <div>
+              <b>{s.name}</b>
+              <span>{#if p?.ok}<span class="dot" aria-hidden="true"></span>{/if}{pingText(p)}</span>
+            </div>
+            <button type="button" class="mini" disabled={launch.busy} onclick={() => launch.start(s.address)}>{t('home.join')}</button>
+          </div>
+        {/each}
+        {#each home.lan as w (w.address + ':' + w.port)}
+          <div class="prow">
+            <Monogram name={w.motd || 'LAN'} />
+            <div>
+              <b>{w.motd || t('home.lan_world')}</b>
+              <span><span class="dot" aria-hidden="true"></span>{t('home.lan_nearby')}</span>
+            </div>
+            <button type="button" class="mini" disabled={launch.busy} onclick={() => launch.start(`${w.address}:${w.port}`)}>{t('home.join')}</button>
+          </div>
+        {/each}
+        {#if !home.servers.length && !home.lan.length}
+          <p class="empty"><b>{t('home.together_empty_title')}</b> {t('home.together_empty_text')}</p>
+        {/if}
+        <div class="together-actions">
+          <button type="button" class="mini" onclick={openRooms}>{t('home.rooms')}</button>
+          <button type="button" class="mini" onclick={() => router.go('servers')}>{home.servers.length ? t('home.servers') : t('servers2.add')}</button>
+        </div>
+      </div>
+    </section>
     {#if home.news.length}
       <section>
         <div class="h-row"><h2>{t('home.news')}</h2></div>
@@ -108,6 +176,11 @@
     flex-direction: column;
     gap: 28px;
     min-width: 0;
+  }
+  .together-actions {
+    display: flex;
+    gap: 8px;
+    padding: 8px;
   }
   .news {
     display: grid;
