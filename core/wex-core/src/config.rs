@@ -217,6 +217,20 @@ pub struct LauncherConfig {
     )]
     pub microsoft_client_id: Option<String>,
 
+    /// «Облачные миры»: the Aura world manager's address, set by the user.
+    /// `WEX_CLOUD_URL` takes precedence (wex_social::cloud::CloudConfig).
+    #[serde(default, alias = "cloudUrl", skip_serializing_if = "Option::is_none")]
+    pub cloud_url: Option<String>,
+
+    /// The manager's shared secret, set by the user; never in the repository.
+    /// `WEX_CLOUD_SECRET` takes precedence.
+    #[serde(
+        default,
+        alias = "cloudSecret",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub cloud_secret: Option<String>,
+
     /// Launch identity resolved from the active account just before launch.
     /// Runtime only: never written to config.json.
     #[serde(skip)]
@@ -444,6 +458,8 @@ impl Default for LauncherConfig {
             friend_notifications: true,
             game_window_behavior: default_game_window_behavior(),
             microsoft_client_id: None,
+            cloud_url: None,
+            cloud_secret: None,
             session: None,
         }
     }
@@ -478,6 +494,8 @@ impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
             friend_notifications: default_true(),
             game_window_behavior: default_game_window_behavior(),
             microsoft_client_id: None,
+            cloud_url: None,
+            cloud_secret: None,
             session: None,
         }
     }
@@ -532,6 +550,27 @@ mod tests {
         assert!(!LauncherConfig::default().fast_launch);
         let cfg: LauncherConfig = serde_json::from_str("{}").unwrap();
         assert!(!cfg.fast_launch);
+    }
+
+    #[test]
+    fn cloud_settings_are_kept_and_not_written_when_unset() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("config.json");
+        LauncherConfig::default().save(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("cloud_"), "{text}");
+        std::fs::write(
+            &path,
+            r#"{"cloudUrl":"http://h.example:1/","cloudSecret":"s"}"#,
+        )
+        .unwrap();
+        let mut cfg = LauncherConfig::load_or_default(&path);
+        assert_eq!(cfg.cloud_url.as_deref(), Some("http://h.example:1/"));
+        assert_eq!(cfg.cloud_secret.as_deref(), Some("s"));
+        cfg.nickname = "Steve".into();
+        cfg.save(&path).unwrap();
+        let again = LauncherConfig::load_or_default(&path);
+        assert_eq!(again.cloud_secret.as_deref(), Some("s"));
     }
 
     #[test]

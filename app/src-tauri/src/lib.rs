@@ -66,6 +66,7 @@ pub fn run() {
             app.manage(startup_state);
             app.manage(commands::friends::FriendsState::new(paths.clone()));
             app.manage(commands::own_server::OwnServerState::new(paths.clone()));
+            app.manage(commands::cloud::CloudState::new(&paths));
             app.manage(AppState::default());
             app.manage(commands::accounts::AccountsState::default());
             commands::accounts::spawn_startup_refresh(
@@ -202,6 +203,14 @@ pub fn run() {
             commands::own_server::own_server_delete,
             commands::own_server::own_server_add_to_servers,
             commands::own_server::own_server_open_eula,
+            // «Облачные миры» (commands/cloud.rs)
+            commands::cloud::cloud_status,
+            commands::cloud::cloud_list,
+            commands::cloud::cloud_create,
+            commands::cloud::cloud_start,
+            commands::cloud::cloud_stop,
+            commands::cloud::cloud_share,
+            commands::cloud::cloud_delete,
             commands::servers::list_servers,
             commands::servers::ping_server,
             commands::servers::ping_server_details,

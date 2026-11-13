@@ -1,4 +1,5 @@
 pub mod achievements;
+pub mod cloud;
 pub mod friends;
 pub mod launcher_update;
 pub mod news;
@@ -7,6 +8,10 @@ pub mod workshop;
 pub use achievements::{
     get_standard_achievements, AchievementDefinition, AchievementError, AchievementManager,
     AchievementProgress, AchievementUnlockedEvent,
+};
+pub use cloud::{
+    CloudClient, CloudConfig, CloudError, CloudWorld, CloudWorlds, StartRequest, Unavailable,
+    WorldState,
 };
 pub use friends::{
     FriendApiClient, FriendError, FriendItem, FriendProfile, FriendRequestItem, LobbyInviteItem,
