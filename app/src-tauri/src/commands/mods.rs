@@ -26,7 +26,6 @@ struct FabricModJson {
     pub name: Option<String>,
     pub version: Option<String>,
     pub description: Option<String>,
-    #[allow(dead_code)]
     pub icon: Option<serde_json::Value>,
 }
 
@@ -53,6 +52,53 @@ fn parse_filename_fallback(file_name: &str) -> (String, String) {
     }
 }
 
+/// The largest icon file read from a jar, bytes (bigger ones are skipped to keep the list light).
+const MAX_ICON_BYTES: u64 = 256 * 1024;
+
+/// The eight bytes every PNG file starts with.
+const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+
+/// Picks the icon path from fabric.mod.json's `icon`: a path, or a map of
+/// size to path (the largest size up to 128, else the smallest).
+fn icon_path(icon: &serde_json::Value) -> Option<String> {
+    match icon {
+        serde_json::Value::String(p) => Some(p.clone()),
+        serde_json::Value::Object(map) => {
+            let mut sized: Vec<(u32, &str)> = map
+                .iter()
+                .filter_map(|(k, v)| Some((k.parse::<u32>().ok()?, v.as_str()?)))
+                .collect();
+            sized.sort_by_key(|(n, _)| *n);
+            sized
+                .iter()
+                .rev()
+                .find(|(n, _)| *n <= 128)
+                .or_else(|| sized.first())
+                .map(|(_, p)| p.to_string())
+        }
+        _ => None,
+    }
+}
+
+/// Reads the mod's icon from the jar as a PNG data URL, or None.
+fn read_icon(archive: &mut zip::ZipArchive<File>, icon: &serde_json::Value) -> Option<String> {
+    use base64::Engine as _;
+    let path = icon_path(icon)?;
+    let mut f = archive.by_name(path.trim_start_matches('/')).ok()?;
+    if f.size() > MAX_ICON_BYTES {
+        return None;
+    }
+    let mut bytes = Vec::with_capacity(f.size() as usize);
+    f.read_to_end(&mut bytes).ok()?;
+    if !bytes.starts_with(&PNG_SIGNATURE) {
+        return None;
+    }
+    Some(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&bytes)
+    ))
+}
+
 /// Extracts metadata from a Fabric mod JAR file.
 pub fn extract_mod_metadata(file_path: &Path) -> (String, String, String, String, Option<String>) {
     let file_name = file_path
@@ -64,10 +110,18 @@ pub fn extract_mod_metadata(file_path: &Path) -> (String, String, String, String
 
     if let Ok(file) = File::open(file_path) {
         if let Ok(mut archive) = zip::ZipArchive::new(file) {
-            if let Ok(mut mod_json_file) = archive.by_name("fabric.mod.json") {
-                let mut content = String::new();
-                if mod_json_file.read_to_string(&mut content).is_ok() {
+            let mut content = String::new();
+            let read = archive
+                .by_name("fabric.mod.json")
+                .map(|mut f| f.read_to_string(&mut content).is_ok())
+                .unwrap_or(false);
+            {
+                if read {
                     if let Ok(fabric_json) = serde_json::from_str::<FabricModJson>(&content) {
+                        let icon = fabric_json
+                            .icon
+                            .as_ref()
+                            .and_then(|i| read_icon(&mut archive, i));
                         let id = fabric_json.id.unwrap_or_else(|| fb_name.to_lowercase());
                         let name = fabric_json.name.unwrap_or_else(|| fb_name.clone());
                         let version = fabric_json.version.unwrap_or(fb_ver);
@@ -75,7 +129,7 @@ pub fn extract_mod_metadata(file_path: &Path) -> (String, String, String, String
                             .description
                             .unwrap_or_else(|| "Мод Fabric для Wex Client".to_string());
 
-                        return (id, name, version, description, None);
+                        return (id, name, version, description, icon);
                     }
                 }
             }
@@ -435,6 +489,50 @@ mod tests {
     use super::*;
     use std::io::Write;
     use tempfile::tempdir;
+
+    #[test]
+    fn reads_the_mod_icon_from_the_jar() {
+        let dir = tempdir().unwrap();
+        let jar = dir.path().join("iconmod.jar");
+        let file = File::create(&jar).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let o = zip::write::SimpleFileOptions::default();
+        zip.start_file("fabric.mod.json", o).unwrap();
+        zip.write_all(br#"{"id":"iconmod","name":"Icon Mod","icon":{"16":"assets/i16.png","64":"assets/i64.png","512":"assets/i512.png"}}"#).unwrap();
+        for name in ["assets/i16.png", "assets/i512.png"] {
+            zip.start_file(name, o).unwrap();
+            zip.write_all(b"not-this-one").unwrap();
+        }
+        zip.start_file("assets/i64.png", o).unwrap();
+        zip.write_all(&[&PNG_SIGNATURE[..], b"DATA"].concat())
+            .unwrap();
+        zip.finish().unwrap();
+        let (_, _, _, _, icon) = extract_mod_metadata(&jar);
+        let icon = icon.expect("icon");
+        assert!(icon.starts_with("data:image/png;base64,"));
+        use base64::Engine as _;
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(icon.trim_start_matches("data:image/png;base64,"))
+            .unwrap();
+        assert_eq!(&raw[8..], b"DATA");
+    }
+
+    #[test]
+    fn a_missing_or_non_png_icon_is_none() {
+        let dir = tempdir().unwrap();
+        let jar = dir.path().join("plain.jar");
+        create_dummy_jar(&jar, "plain", "Plain", "1.0");
+        assert_eq!(extract_mod_metadata(&jar).4, None);
+        assert_eq!(
+            icon_path(&serde_json::json!("a/b.png")).as_deref(),
+            Some("a/b.png")
+        );
+        assert_eq!(
+            icon_path(&serde_json::json!({"256": "big.png"})).as_deref(),
+            Some("big.png")
+        );
+        assert_eq!(icon_path(&serde_json::json!(5)), None);
+    }
 
     fn create_dummy_jar(path: &Path, mod_id: &str, mod_name: &str, mod_ver: &str) {
         let file = File::create(path).unwrap();

@@ -21,6 +21,8 @@ export interface ModEntry {
   file_name: string;
   enabled: boolean;
   is_pack_mod: boolean;
+  /** The mod's own icon from its jar (a PNG data URL), or null. */
+  icon?: string | null;
 }
 
 export type GameMode = 'Survival' | 'Creative' | 'Adventure' | 'Spectator' | 'Unknown' | number;

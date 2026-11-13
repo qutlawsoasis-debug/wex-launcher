@@ -12,7 +12,7 @@
   import { formatError } from '../../design/errors';
   import { formatSize } from '../../shell/format';
   import { t, tn } from '../../i18n';
-  import Monogram from '../../shell/Monogram.svelte';
+  import ItemIcon from './ItemIcon.svelte';
   import { build } from './build.svelte';
 
   let over = $state(false);
@@ -82,7 +82,7 @@
     </button>
     {#each build.shaders as s (s.file_name)}
       <button type="button" class="lrow lrow-pick" role="radio" aria-checked={s.is_active === true} onclick={() => choose(s.file_name)}>
-        <Monogram name={s.name} shape="square" tone={(s.name.length % 5) + 1} />
+        <ItemIcon kind="shader" />
         <div>
           <b>{s.name}{#if s.is_from_pack}<span class="tag in">{t('build.from_pack')}</span>{/if}</b>
           <span>{[s.description, formatSize(s.size_bytes)].filter(Boolean).join(', ')}</span>

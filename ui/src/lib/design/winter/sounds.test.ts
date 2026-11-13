@@ -58,17 +58,17 @@ describe('winter sounds', () => {
   it('synthesize every kind with oscillators and noise, no audio files', () => {
     const { s, m, advance } = setup();
     expect(s.play('bells')).toBe(true);
-    expect(m.made.osc).toBe(24);
-    advance(1000);
+    expect(m.made.osc).toBe(10);
+    expect(m.made.filter).toBe(1); // the master low-pass
     expect(s.play('crunch')).toBe(true);
-    expect(m.made.src).toBe(3);
-    expect(m.made.filter).toBe(3);
+    expect(m.made.src).toBe(1);
+    expect(m.made.filter).toBe(2);
     expect(s.play('puff')).toBe(true);
-    expect(m.made.src).toBe(4);
+    expect(m.made.src).toBe(2);
     expect(s.play('chime')).toBe(true);
-    expect(m.made.osc).toBe(26);
+    expect(m.made.osc).toBe(13);
     expect(m.made.buffers).toBe(1);
-    expect(m.made.started).toBe(30);
+    expect(m.made.started).toBe(15);
   });
 
   it('keep the master volume low', () => {

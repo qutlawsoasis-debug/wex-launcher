@@ -13,7 +13,7 @@
   import { formatError } from '../../design/errors';
   import { formatSize } from '../../shell/format';
   import { t, tn } from '../../i18n';
-  import Monogram from '../../shell/Monogram.svelte';
+  import ItemIcon from './ItemIcon.svelte';
   import { build, type PackItem } from './build.svelte';
 
   let over = $state(false);
@@ -75,7 +75,7 @@
   {:else if build.packs.length}
     {#each build.packs as p (p.file_name)}
       <div class="lrow lrow-mod">
-        <Monogram name={p.name} shape="square" tone={(p.name.length % 5) + 1} />
+        <ItemIcon kind="pack" />
         <div>
           <b>{p.name}</b>
           <span>{[p.description, formatSize(p.size_bytes)].filter(Boolean).join(', ')}</span>

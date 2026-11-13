@@ -13,7 +13,7 @@
   import { toasts } from '../../shell/toast.svelte';
   import { formatError } from '../../design/errors';
   import { t, tn } from '../../i18n';
-  import Monogram from '../../shell/Monogram.svelte';
+  import ItemIcon from './ItemIcon.svelte';
   import { build, buildIntent, type ModEntry } from './build.svelte';
 
   let q = $state(buildIntent.modQuery);
@@ -87,7 +87,7 @@
   {:else if shown.length}
     {#each shown as m (m.file_name)}
       <div class="lrow lrow-mod">
-        <Monogram name={m.name} shape="square" tone={(m.name.length % 5) + 1} />
+        <ItemIcon kind="mod" src={m.icon} />
         <div>
           <b>{m.name}</b>
           <span>{[m.version, m.description].filter(Boolean).join(', ')}</span>

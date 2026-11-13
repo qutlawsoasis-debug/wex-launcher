@@ -10,7 +10,7 @@
   import { formatError } from '../../design/errors';
   import { formatAgo } from '../../shell/format';
   import { t, tn } from '../../i18n';
-  import Monogram from '../../shell/Monogram.svelte';
+  import ItemIcon from './ItemIcon.svelte';
   import { build, type WorldItem } from './build.svelte';
 
   const MODE: Record<string, string> = {
@@ -56,7 +56,7 @@
   {:else if build.worlds.length}
     {#each build.worlds as w (w.folder_name)}
       <div class="lrow lrow-world">
-        <Monogram name={w.display_name} shape="square" tone={3} />
+        <ItemIcon kind="world" />
         <div>
           <b>{w.display_name}</b>
           <span>{detail(w)}</span>
