@@ -16,9 +16,18 @@
   let { step = 46 }: Props = $props();
   let width = $state(0);
   const g = $derived(garlandLayout(width, { step, perSpan: step > 46 ? 2 : 4 }));
+
+  /** Follows the tile's width (the open tile grows and shrinks). */
+  function measure(node: HTMLElement) {
+    width = node.clientWidth;
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => (width = node.clientWidth));
+    ro.observe(node);
+    return { destroy: () => ro.disconnect() };
+  }
 </script>
 
-<span class="garland" bind:clientWidth={width} aria-hidden="true">
+<span class="garland" use:measure aria-hidden="true">
   {#if width > 0}
     <svg width={width} height="34" viewBox="0 0 {width} 34">
       <path class="wire" d={g.wire} />
