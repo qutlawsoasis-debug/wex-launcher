@@ -151,6 +151,10 @@ pub struct LauncherConfig {
     #[serde(default, alias = "reduceTransparency")]
     pub reduce_transparency: bool,
 
+    /// Winter look in the season (snowfall, snow on the build tiles). On by default.
+    #[serde(default = "default_winter_look", alias = "winterLook")]
+    pub winter_look: bool,
+
     #[serde(
         default,
         alias = "quickPlayMultiplayer",
@@ -271,6 +275,10 @@ where
 
 fn default_version() -> String {
     "1.20.1".to_string()
+}
+
+fn default_winter_look() -> bool {
+    true
 }
 
 fn default_nickname() -> String {
@@ -425,6 +433,7 @@ impl Default for LauncherConfig {
             java_mode: default_java_mode(),
             reduce_motion: false,
             reduce_transparency: false,
+            winter_look: default_winter_look(),
             quick_play_multiplayer: None,
             appearance: default_appearance(),
             accent: default_accent(),
@@ -458,6 +467,7 @@ impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
             java_mode: default_java_mode(),
             reduce_motion: ipc.reduce_motion,
             reduce_transparency: ipc.reduce_transparency,
+            winter_look: default_winter_look(),
             quick_play_multiplayer: None,
             appearance: ipc.appearance,
             accent: ipc.accent,

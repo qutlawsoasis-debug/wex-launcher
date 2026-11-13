@@ -464,6 +464,10 @@
           <div><div class="l">{t('settings2.transparency')}</div><div class="d">{t('settings2.transparency_d')}</div></div>
           <button type="button" class="switch" role="switch" aria-checked={on('reduce_transparency')} aria-label={t('settings2.transparency')} disabled={!s} onclick={() => flip('reduce_transparency')}></button>
         </div>
+        <div class="srow" data-k={t('settings2.k_winter')}>
+          <div><div class="l">{t('settings2.winter')}</div><div class="d">{t('settings2.winter_d')}</div></div>
+          <button type="button" class="switch" role="switch" aria-checked={!!s && s.winter_look !== false} aria-label={t('settings2.winter')} disabled={!s} onclick={() => save({ winter_look: s?.winter_look === false })}></button>
+        </div>
       </div>
     </section>
 

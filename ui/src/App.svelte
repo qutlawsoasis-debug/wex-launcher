@@ -38,6 +38,8 @@
   import { accounts } from './lib/shell/accounts.svelte';
   import { accountUi, openSignIn } from './lib/shell/accountUi.svelte';
   import AccountSheet from './lib/components/AccountSheet.svelte';
+  import Snowfall from './lib/design/Snowfall.svelte';
+  import { season } from './lib/design/season.svelte';
   import { launch } from './lib/shell/launch.svelte';
   import { toasts } from './lib/shell/toast.svelte';
   import { call, on, inTauri } from './lib/shell/ipc';
@@ -349,6 +351,8 @@
 
   <LaunchBar />
   <ToastHost />
+
+  {#if season.winter && !theme.motionReduced}<Snowfall />{/if}
   <CommandPalette />
 
   {#if isStartingUp && SplashScreen}

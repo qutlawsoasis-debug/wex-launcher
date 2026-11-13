@@ -115,6 +115,13 @@ test('wardrobe: 3D model with all parts, poses, achievements in Profile', async 
 
 test('empty data: honest empty states, no sample content', async ({ page }) => {
   await openApp(page, '', { mode: 'empty' });
+  // No account yet: the first start asks how to play.
+  const signIn = page.getByRole('dialog', { name: 'Вход в аккаунт' });
+  await expect(signIn).toBeVisible();
+  await expect(signIn).toContainText('Играть без лицензии');
+  await signIn.getByRole('button', { name: 'Отмена' }).click();
+  await expect(signIn).toBeHidden();
+  await expect(page.locator('button.me')).toContainText('Войти');
   await expect(page.locator('.panel:not(.together)')).toContainText('Друзья появятся, когда подключим аккаунты.');
   await page.locator('.nav a', { hasText: 'Серверы' }).click();
   await expect(page.locator('.list .empty')).toContainText('Серверов пока нет.');
@@ -148,6 +155,7 @@ for (const scheme of ['light', 'dark'] as const) {
 
 test('own server tab with no servers offers to create one', async ({ page }) => {
   await openApp(page, '#friends', { mode: 'empty' });
+  await page.getByRole('dialog', { name: 'Вход в аккаунт' }).getByRole('button', { name: 'Отмена' }).click();
   await page.getByRole('tab', { name: 'Свой сервер' }).click();
   await expect(page.getByRole('button', { name: 'Создать сервер' })).toBeEnabled();
   expect(await axeProblems(page)).toEqual([]);
