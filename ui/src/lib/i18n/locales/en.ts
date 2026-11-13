@@ -386,7 +386,6 @@ export const en = {
   'shell.builds_unavailable': 'Couldn’t get the builds — press Retry',
   'build.java_builtin_auto': 'Built-in Java',
   'home.open_build': 'Open build',
-  'home.aura_server': 'Aura server',
   'home.ping_ms': 'ping {ms} ms',
   'home.server_no_answer': 'The server isn’t responding',
   'home.join': 'Join',

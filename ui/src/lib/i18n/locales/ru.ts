@@ -386,7 +386,6 @@ export const ru = {
   'shell.builds_unavailable': 'Не удалось получить сборки — нажмите «Повторить»',
   'build.java_builtin_auto': 'Встроенная Java',
   'home.open_build': 'Открыть сборку',
-  'home.aura_server': 'Сервер Aura',
   'home.ping_ms': 'пинг {ms} мс',
   'home.server_no_answer': 'Сервер сейчас не отвечает',
   'home.join': 'Зайти',

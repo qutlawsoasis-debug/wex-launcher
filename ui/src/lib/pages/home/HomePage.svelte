@@ -1,19 +1,17 @@
 <!--
-  Home (reference: V.home). The build pair, the Aura server with live players
-  and ping, launcher news from the changelog, friends online.
-  Owner decision: the reference's «Продолжить» is «Сервер Aura» until core
-  remembers the last server.
+  Home (reference: V.home). The build pair, launcher news from the changelog,
+  friends online.
+  Owner decision (2026-11-13): no «Сервер Aura» block. Wex is for playing with
+  friends (LAN, a friend's room, the company's own server), not one public server.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import { builds } from '../../shell/builds.svelte';
-  import { launch } from '../../shell/launch.svelte';
   import { router } from '../../shell/router.svelte';
-  import { createIdleInterval } from '../../design/idleManager';
   import { friendsLive, type FriendItem } from '../../services/friendsLive';
   import { toasts } from '../../shell/toast.svelte';
   import { formatError } from '../../design/errors';
-  import { t, tn } from '../../i18n';
+  import { t } from '../../i18n';
   import Monogram from '../../shell/Monogram.svelte';
   import BuildPair from './BuildPair.svelte';
   import { home } from './home.svelte';
@@ -21,21 +19,9 @@
   onMount(() => {
     void home.load(builds.list.map((b) => b.id));
     const stopFriends = home.watchFriends();
-    const stopPing = createIdleInterval(() => void home.refreshPing(), 30_000);
     return () => {
       stopFriends();
-      stopPing();
     };
-  });
-
-  /** "214 игроков сейчас, пинг 23 мс" — each part only if the server reported it. */
-  const liveText = $derived.by(() => {
-    const p = home.ping;
-    if (!p?.ok) return '';
-    const parts: string[] = [];
-    if (p.online !== undefined) parts.push(tn('home.players_now', p.online));
-    if (p.ms !== undefined) parts.push(t('home.ping_ms', { ms: p.ms }));
-    return parts.join(', ');
   });
 
   function friendStatus(f: FriendItem): string {
@@ -59,26 +45,6 @@
 
 <div class="grid-3">
   <div class="col">
-    {#if home.aura}
-      <section>
-        <div class="h-row"><h2>{t('home.aura_server')}</h2></div>
-        <div class="tile continue">
-          <Monogram name={home.aura.name} shape="large" tone={4} />
-          <div class="continue-t">
-            <b>{home.aura.name}</b>
-            {#if home.ping?.ok}
-              <span class="live">
-                <span class="dot" aria-hidden="true"></span>
-                <span>{liveText}</span>
-              </span>
-            {:else if home.ping}
-              <span>{t('home.server_no_answer')}</span>
-            {/if}
-          </div>
-          <button type="button" class="btn blue" disabled={launch.busy} onclick={() => home.aura && launch.start(home.aura.address)}>{t('home.join')}</button>
-        </div>
-      </section>
-    {/if}
     {#if home.news.length}
       <section>
         <div class="h-row"><h2>{t('home.news')}</h2></div>
@@ -142,30 +108,6 @@
     flex-direction: column;
     gap: 28px;
     min-width: 0;
-  }
-  .continue {
-    display: grid;
-    grid-template-columns: 56px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 20px;
-    padding: 16px;
-  }
-  .continue-t {
-    min-width: 0;
-  }
-  .continue b {
-    font-size: var(--t-t3);
-    font-weight: var(--w-bold);
-    display: block;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .continue-t > span {
-    display: flex;
-    width: fit-content;
-    color: var(--label-2);
-    font-size: var(--t-sub);
   }
   .news {
     display: grid;

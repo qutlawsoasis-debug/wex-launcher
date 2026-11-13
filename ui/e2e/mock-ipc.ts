@@ -42,8 +42,8 @@ export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
       : [];
   let servers = full
     ? [
-        { id: 'aura-main', name: 'Aura Official', address: 'mc.auramc.net' },
-        { id: 'aura-modded', name: 'Aura Pack Community Server', address: 'pack.auramc.net' },
+        { id: 's1', name: 'Сервер нашей компании', address: 'play.example.org' },
+        { id: 's2', name: 'Мир Миши', address: '192.168.1.20:25565' },
       ]
     : [];
 
@@ -87,7 +87,7 @@ export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
     overview_get_news: () =>
       full ? [{ version: '0.9.2', date_text: '10 ноября', short_title: 'Что нового в 0.9.2', items: [{ text: 'Обновление без окна установщика.' }] }] : [],
     list_servers: () => servers,
-    ping_server_details: (a) => (a.address === 'mc.auramc.net' ? { success: true, latency_ms: 23, online: 214, max_players: 500, motd: 'Выживание и PvP' } : { success: false }),
+    ping_server_details: (a) => (a.address === 'play.example.org' ? { success: true, latency_ms: 23, online: 3, max_players: 10, motd: 'Свои' } : { success: false }),
     add_server: (a) => {
       servers = [...servers, { id: a.address, name: a.name, address: a.address }];
       return servers[servers.length - 1];

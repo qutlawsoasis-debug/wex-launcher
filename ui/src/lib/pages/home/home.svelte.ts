@@ -2,7 +2,6 @@
  * Data for the home page, all from the backend:
  *   worlds per build   workshop_list_worlds(version)
  *   news               overview_get_news (the launcher changelog)
- *   Aura server        list_servers → the mc.auramc.net entry, ping_server_details for players and ping
  *   friends online     friendsLive (social_sync); empty until accounts are connected
  */
 
@@ -16,24 +15,6 @@ export interface NewsItem {
   text: string;
 }
 
-export interface AuraServer {
-  name: string;
-  address: string;
-}
-
-export interface Ping {
-  ok: boolean;
-  online?: number;
-  max?: number;
-  ms?: number;
-}
-
-interface ServerEntry {
-  id?: string;
-  name: string;
-  address: string;
-}
-
 interface ReleaseNote {
   version: string;
   date_text: string;
@@ -41,24 +22,9 @@ interface ReleaseNote {
   items: Array<{ text: string }>;
 }
 
-interface PingDetails {
-  success: boolean;
-  latency_ms?: number | null;
-  online?: number | null;
-  max_players?: number | null;
-}
-
-/** The official server: the backend seeds it as "aura-main" at mc.auramc.net. */
-export function findAuraServer(list: ServerEntry[]): AuraServer | null {
-  const s = list.find((x) => x.id === 'aura-main') ?? list.find((x) => /(^|\.)mc\.auramc\.net(:\d+)?$/i.test(x.address.trim()));
-  return s ? { name: s.name, address: s.address } : null;
-}
-
 class Home {
   worlds = $state<Record<string, number>>({});
   news = $state<NewsItem[]>([]);
-  aura = $state<AuraServer | null>(null);
-  ping = $state<Ping | null>(null);
   friends = $state<FriendItem[]>([]);
   /** True once friendsLive has delivered at least one sync with friends data. */
   friendsKnown = $state(false);
@@ -66,7 +32,7 @@ class Home {
   private stopFriends: (() => void) | null = null;
 
   async load(buildIds: string[]): Promise<void> {
-    await Promise.all([this.loadWorlds(buildIds), this.loadNews(), this.loadAura()]);
+    await Promise.all([this.loadWorlds(buildIds), this.loadNews()]);
   }
 
   async loadWorlds(buildIds: string[]): Promise<void> {
@@ -96,30 +62,6 @@ class Home {
       }));
     } catch {
       this.news = [];
-    }
-  }
-
-  async loadAura(): Promise<void> {
-    try {
-      this.aura = findAuraServer(await call<ServerEntry[]>('list_servers', { version: null }));
-    } catch {
-      this.aura = null;
-    }
-    await this.refreshPing();
-  }
-
-  async refreshPing(): Promise<void> {
-    if (!this.aura) {
-      this.ping = null;
-      return;
-    }
-    try {
-      const p = await call<PingDetails>('ping_server_details', { address: this.aura.address, timeoutMs: null });
-      this.ping = p.success
-        ? { ok: true, online: p.online ?? undefined, max: p.max_players ?? undefined, ms: p.latency_ms ?? undefined }
-        : { ok: false };
-    } catch {
-      this.ping = { ok: false };
     }
   }
 

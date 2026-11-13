@@ -128,24 +128,6 @@ pub fn get_servers_dat_path(paths: &wex_core::config::WexPaths, version: Option<
     inst_dir.join("servers.dat")
 }
 
-/// Official default Aura / Wex servers to seed when `servers.dat` is newly initialized.
-pub fn default_official_servers() -> Vec<PackServerEntry> {
-    vec![
-        PackServerEntry {
-            id: Some("aura-main".to_string()),
-            name: "Aura Official — Survival & PvP".to_string(),
-            ip: "mc.auramc.net".to_string(),
-            icon: None,
-        },
-        PackServerEntry {
-            id: Some("aura-modded".to_string()),
-            name: "Aura Pack Community Server".to_string(),
-            ip: "pack.auramc.net".to_string(),
-            icon: None,
-        },
-    ]
-}
-
 /// Helper to parse all servers out of a root NBT compound.
 pub fn parse_servers_from_nbt(root: &NbtTag) -> Vec<ServerEntryModel> {
     let mut result = Vec::new();
@@ -202,18 +184,9 @@ pub async fn list_servers(
 ) -> Result<Vec<ServerEntryModel>, String> {
     let servers_dat_path = get_servers_dat_path(&state.paths, version.as_deref());
 
-    let mut root = load_servers_dat(&servers_dat_path).map_err(|e| e.to_string())?;
-    let mut servers = parse_servers_from_nbt(&root);
-
-    // If servers list is completely empty, merge the official Aura servers
-    if servers.is_empty() {
-        let defaults = default_official_servers();
-        wex_net::merge_pack_servers(&mut root, &defaults);
-        let _ = save_servers_dat(&servers_dat_path, &root);
-        servers = parse_servers_from_nbt(&root);
-    }
-
-    Ok(servers)
+    // Only the player's own servers: Wex has no public server to put in the list.
+    let root = load_servers_dat(&servers_dat_path).map_err(|e| e.to_string())?;
+    Ok(parse_servers_from_nbt(&root))
 }
 
 /// Add a new server entry to `servers.dat` for the chosen instance.
@@ -514,16 +487,6 @@ pub fn import_servers_from_instances_internal(
             "Ошибка импорта серверов: {}. Файлы сохранены без перезаписи.",
             read_errors.join("; ")
         ));
-    }
-
-    // If completely empty across all files, seed with default official servers
-    if combined_servers.is_empty() {
-        for s in default_official_servers() {
-            let norm = normalize_address(&s.ip);
-            if seen_addresses.insert(norm) {
-                combined_servers.push(s);
-            }
-        }
     }
 
     // Build unified NbtTag compound

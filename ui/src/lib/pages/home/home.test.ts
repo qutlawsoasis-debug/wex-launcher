@@ -10,7 +10,7 @@ import { launch } from '../../shell/launch.svelte';
 import { router } from '../../shell/router.svelte';
 import { toasts } from '../../shell/toast.svelte';
 import { i18n } from '../../i18n';
-import { home, findAuraServer } from './home.svelte';
+import { home } from './home.svelte';
 import HomePage from './HomePage.svelte';
 
 let settings: Record<string, unknown>;
@@ -79,19 +79,10 @@ afterEach(() => {
 
 async function render() {
   comp = mount(HomePage, { target });
-  await vi.waitFor(() => expect(target.querySelector('.continue')).not.toBeNull());
+  await vi.waitFor(() => expect(target.querySelector('.pane.open')).not.toBeNull());
   await vi.waitFor(() => expect(target.querySelectorAll('.news-card').length).toBe(2));
   await tick();
 }
-
-describe('home data', () => {
-  it('finds the official Aura server by its id or address only', () => {
-    expect(findAuraServer([{ id: 'aura-main', name: 'A', address: 'mc.auramc.net' }])?.address).toBe('mc.auramc.net');
-    expect(findAuraServer([{ name: 'Custom name', address: 'mc.auramc.net:25565' }])?.name).toBe('Custom name');
-    expect(findAuraServer([{ name: 'Fake', address: 'mc.auramc.net.evil.example' }])).toBeNull();
-    expect(findAuraServer([{ name: 'Pack', address: 'pack.auramc.net' }])).toBeNull();
-  });
-});
 
 describe('home page', () => {
   it('open pane: real mod count, Java, world count and readiness from core — no invented facts', async () => {
@@ -133,26 +124,12 @@ describe('home page', () => {
     launch.onStatus({ state: 'cancelled', message: '' });
   });
 
-  it('Aura server card: live players and ping from the server, Join connects to its address', async () => {
+  it('no public server block: Wex is for playing with friends', async () => {
     await render();
-    const card = target.querySelector('.continue')!;
-    expect(target.querySelector('.h-row h2')?.textContent).toBe('Сервер Aura');
-    expect(card.querySelector('b')?.textContent).toBe('Aura Official — Survival & PvP');
-    expect(card.querySelector('.live')?.textContent?.trim()).toBe('214 игроков сейчас, пинг 23 мс');
-    (card.querySelector('.btn') as HTMLButtonElement).click();
-    await vi.waitFor(() =>
-      expect(mocks.invoke).toHaveBeenCalledWith('start_game', expect.objectContaining({ server: 'mc.auramc.net' }))
-    );
-    launch.onStatus({ state: 'cancelled', message: '' });
-  });
-
-  it('says the server is not answering instead of showing numbers when the ping fails', async () => {
-    ping = { success: false };
-    home.ping = null;
-    await render();
-    await vi.waitFor(() => expect(target.querySelector('.continue')?.textContent).toContain('Сервер сейчас не отвечает'));
-    expect(target.querySelector('.continue .live')).toBeNull();
-    expect(target.querySelector('.continue')?.textContent).toContain('Сервер сейчас не отвечает');
+    expect(target.textContent).not.toContain('Сервер Aura');
+    expect(target.querySelector('.continue')).toBeNull();
+    expect(mocks.invoke).not.toHaveBeenCalledWith('list_servers', expect.anything());
+    expect(mocks.invoke).not.toHaveBeenCalledWith('ping_server_details', expect.anything());
   });
 
   it('news are the two latest changelog entries', async () => {
