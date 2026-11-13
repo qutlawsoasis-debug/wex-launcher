@@ -1467,6 +1467,18 @@
           "markdownDescription": "Enables the social_check_launcher_update command without any pre-configured scope."
         },
         {
+          "description": "Enables the social_connect command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-social-connect",
+          "markdownDescription": "Enables the social_connect command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the social_connection_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-social-connection-status",
+          "markdownDescription": "Enables the social_connection_status command without any pre-configured scope."
+        },
+        {
           "description": "Enables the social_create_world_backup command without any pre-configured scope.",
           "type": "string",
           "const": "allow-social-create-world-backup",
@@ -2725,6 +2737,18 @@
           "type": "string",
           "const": "deny-social-check-launcher-update",
           "markdownDescription": "Denies the social_check_launcher_update command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the social_connect command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-social-connect",
+          "markdownDescription": "Denies the social_connect command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the social_connection_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-social-connection-status",
+          "markdownDescription": "Denies the social_connection_status command without any pre-configured scope."
         },
         {
           "description": "Denies the social_create_world_backup command without any pre-configured scope.",
