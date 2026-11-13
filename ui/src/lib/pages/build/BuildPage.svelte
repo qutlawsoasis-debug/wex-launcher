@@ -227,7 +227,9 @@
   }
   .facts {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    /* At most three facts: one row that shares the width, wrapping only when a
+       tile would get narrower than its number (no hole like 2 + 1). */
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 12px;
   }
   .fact {
@@ -251,10 +253,5 @@
   }
   .panel-body {
     margin-top: 16px;
-  }
-  @media (max-width: 1100px) {
-    .facts {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
   }
 </style>
