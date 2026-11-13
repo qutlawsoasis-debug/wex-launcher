@@ -338,7 +338,7 @@
   <main class="main" bind:this={mainEl}>
     <TopLine />
     {#key router.version}
-      <div class="page wx" use:stagger>
+      <div class="page wx" data-route={router.route} use:stagger>
         {#if router.route === 'home'}
           <HomePage />
         {:else if routeBuild}

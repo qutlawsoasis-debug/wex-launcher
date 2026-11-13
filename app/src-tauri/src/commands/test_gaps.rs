@@ -732,15 +732,12 @@ async fn social_set_presence_success_serializes_remote_status() {
     .unwrap();
 }
 #[tokio::test]
-async fn social_set_presence_error_missing_auth() {
+async fn social_set_presence_without_friends_sign_in_is_a_quiet_no_op() {
+    // Pressing Play before friends are connected must not show an error.
     let f = Fixture::new().await;
-    assert_eq!(
-        friends::social_set_presence(None, None, None, f.social())
-            .await
-            .unwrap_err()
-            .code,
-        "INVALID_ARGUMENT"
-    );
+    assert!(friends::social_set_presence(None, None, None, f.social())
+        .await
+        .is_ok());
 }
 #[tokio::test]
 async fn social_list_achievements_success_uses_explicit_temp_root() {

@@ -150,10 +150,12 @@ html.winter .wx .list,
 html.winter .wx .form {
   position: relative;
 }
-html.winter .wx .panel::before,
-html.winter .wx .tile::before,
-html.winter .wx .list::before,
-html.winter .wx .form::before {
+/* Only on Home: elsewhere (Settings, Servers, Friends…) the many stacked cards
+   with caps and glows turned into a mess, so there they are plain glass. */
+html.winter .wx[data-route='home'] .panel::before,
+html.winter .wx[data-route='home'] .tile::before,
+html.winter .wx[data-route='home'] .list::before,
+html.winter .wx[data-route='home'] .form::before {
   content: '';
   position: absolute;
   left: 0;
@@ -294,4 +296,27 @@ html.winter:not([data-reduce-transparency='true']) .topline {
 html.winter:not([data-theme='light']) .app > .bar,
 html.winter:not([data-theme='light']) .app > .side .foot {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55), 0 0 6px rgba(0, 0, 0, 0.35);
+}
+
+/* Outside Home: calm glass. A hairline edge and no glow, so stacked groups in
+   Settings and lists read as one quiet page (HIG › Materials: let content lead). */
+html.winter .wx:not([data-route='home']) .panel,
+html.winter .wx:not([data-route='home']) .tile,
+html.winter .wx:not([data-route='home']) .list,
+html.winter .wx:not([data-route='home']) .form,
+html.winter .wx:not([data-route='home']) .fact,
+html.winter .wx:not([data-route='home']) .preset,
+html.winter .wx:not([data-route='home']) .theme-card,
+html.winter .wx:not([data-route='home']) .set-search {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+html.winter[data-theme='light'] .wx:not([data-route='home']) .panel,
+html.winter[data-theme='light'] .wx:not([data-route='home']) .tile,
+html.winter[data-theme='light'] .wx:not([data-route='home']) .list,
+html.winter[data-theme='light'] .wx:not([data-route='home']) .form,
+html.winter[data-theme='light'] .wx:not([data-route='home']) .fact,
+html.winter[data-theme='light'] .wx:not([data-route='home']) .preset,
+html.winter[data-theme='light'] .wx:not([data-route='home']) .theme-card,
+html.winter[data-theme='light'] .wx:not([data-route='home']) .set-search {
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
 }

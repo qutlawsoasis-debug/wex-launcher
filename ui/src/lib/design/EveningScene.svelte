@@ -464,6 +464,21 @@
     pointer-events: none;
     overflow: visible;
   }
+  /* A small window: the village gives way to the text and the Play button. */
+  @container (max-width: 1150px) {
+    .village {
+      width: 48%;
+    }
+  }
+  @container (max-width: 900px) {
+    .village {
+      display: none;
+    }
+    .eve-tree {
+      width: 128px;
+      right: 4%;
+    }
+  }
   .grain {
     fill: none;
     stroke: #1f1940;

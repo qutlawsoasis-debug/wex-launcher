@@ -348,9 +348,15 @@ pub async fn social_set_presence(
     let (auth_dto, pres_dto) = match request {
         Some(r) => (r.auth, r.presence),
         None => {
-            let a = auth
-                .or_else(|| state.auth.try_lock().ok().and_then(|g| g.clone()))
-                .ok_or_else(|| IpcError::invalid_argument("Не указаны данные авторизации"))?;
+            // Not signed in to friends yet: there is nobody to tell, which is not an error
+            // (the player only pressed Play or closed the game).
+            let Some(a) = auth.or_else(|| state.auth.try_lock().ok().and_then(|g| g.clone()))
+            else {
+                tracing::debug!(
+                    "social_set_presence: not signed in to friends, nothing to publish"
+                );
+                return Ok(());
+            };
             let p = presence.unwrap_or(UserPresenceDto {
                 status: None,
                 game_version: None,

@@ -2,6 +2,7 @@ pub mod commands;
 pub mod ipc;
 pub mod launcher_log;
 mod navigation;
+pub mod window_size;
 
 pub use commands::servers::*;
 
@@ -56,6 +57,9 @@ pub fn run() {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();
             launcher_log::init(&paths.logs_dir);
+            if let Some(w) = app.get_webview_window("main") {
+                window_size::attach(&w, &paths.root);
+            }
             let network_state = commands::network::NetworkState::new();
             network_state.start_supervisor(app.handle().clone());
             let play_state =
