@@ -14,8 +14,9 @@ pub use cloud::{
     WorldState,
 };
 pub use friends::{
-    FriendApiClient, FriendError, FriendItem, FriendProfile, FriendRequestItem, LobbyInviteItem,
-    OnlineStatus, SyncResponse, UserAuth, UserPresence,
+    resolve_friends_api_url, FailureKind, FriendApiClient, FriendError, FriendItem, FriendProfile,
+    FriendRequestItem, LobbyInviteItem, OnlineStatus, SignIn, SyncResponse, UserAuth, UserPresence,
+    FRIENDS_API_URL_ENV,
 };
 pub use launcher_update::{
     check_update_from_manifest, check_update_from_url, is_newer_version, UpdateCheckResult,

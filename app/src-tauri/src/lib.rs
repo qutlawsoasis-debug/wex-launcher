@@ -68,7 +68,6 @@ pub fn run() {
             app.manage(play_state);
             app.manage(network_state);
             app.manage(startup_state);
-            app.manage(commands::friends::FriendsState::new(paths.clone()));
             app.manage(commands::own_server::OwnServerState::new(paths.clone()));
             app.manage(commands::cloud::CloudState::new(&paths));
             app.manage(AppState::default());
@@ -81,6 +80,10 @@ pub fn run() {
                 paths.root.join("tools"),
                 commands::lobby::DEFAULT_LOBBY_API_URL,
                 commands::lobby::DEFAULT_OLD_BACKEND_URL,
+            );
+            app.manage(
+                commands::friends::FriendsState::new(paths.clone())
+                    .with_lobby_session(lobby_state.active_session.clone()),
             );
             app.manage(lobby_state);
             app.manage(commands::tray::TrayState::default());
@@ -282,6 +285,8 @@ pub fn run() {
             commands::music::music_update_session,
             commands::music::music_check_command,
             // Friends & Social commands
+            commands::friends::social_connect,
+            commands::friends::social_connection_status,
             commands::friends::social_login,
             commands::friends::social_get_friends,
             commands::friends::social_send_friend_request,

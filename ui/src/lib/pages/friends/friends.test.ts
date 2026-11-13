@@ -87,6 +87,7 @@ beforeEach(async () => {
   rooms.error = '';
   friendsLive.friends = [];
   friendsLive.requests = [];
+  friendsLive.connection = { state: 'connecting' };
   await builds.load();
 });
 
@@ -163,12 +164,68 @@ describe('servers page', () => {
 });
 
 describe('friends page', () => {
-  it('without accounts: honest empty state, no own code and no «Добавить друга»', async () => {
+  it('without an account: says to sign in, no own code and no «Добавить»', async () => {
+    friendsLive.connection = { state: 'signed_out', reason: 'no_account' };
     comp = mount(FriendsPage, { target });
     await tick();
     expect([...target.querySelectorAll('[role="tab"]')].map((b) => b.textContent)).toEqual(['Друзья', 'Комнаты', 'Свой сервер', 'Облачные миры']);
-    expect(target.textContent).toContain('Друзья появятся, когда подключим аккаунты.');
-    expect(target.textContent).not.toMatch(/WEX-|Добавить друга|kotya/);
+    expect(target.textContent).toContain('Войдите в аккаунт, чтобы видеть друзей.');
+    expect(target.textContent).not.toMatch(/WEX-|Добавить|kotya|Друзья появятся/);
+    expect(target.querySelector('#friend-code')).toBeNull();
+  });
+
+  it('while signing in: says so, no fake friends', async () => {
+    comp = mount(FriendsPage, { target });
+    await tick();
+    expect(target.textContent).toContain('Подключаемся к друзьям…');
+    expect(target.querySelectorAll('.prow').length).toBe(0);
+  });
+
+  it('signed in with the account: own code to copy, add a friend by code, empty list says what to do', async () => {
+    friendsLive.connection = { state: 'signed_in', nick: 'Player', friend_code: 'K7Q2', server: 'lobby-api.vercel.app', account_kind: 'offline' };
+    comp = mount(FriendsPage, { target });
+    await tick();
+    expect(target.querySelector('.code')?.textContent).toBe('K7Q2');
+    expect(target.textContent).toContain('Друзей пока нет.');
+    const input = target.querySelector<HTMLInputElement>('#friend-code')!;
+    const add = [...target.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Добавить')!;
+    expect(add.disabled).toBe(true);
+    input.value = ' #ZX81 ';
+    input.dispatchEvent(new Event('input'));
+    flushSync();
+    expect(add.disabled).toBe(false);
+    add.click();
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('social_send_friend_request', { targetFriendCode: 'ZX81' }));
+    await vi.waitFor(() => expect(toasts.current?.title).toBe('Заявка отправлена'));
+  });
+
+  it('server unreachable: names the server and the reason, «Повторить» signs in again', async () => {
+    friendsLive.connection = { state: 'unreachable', reason: 'network', server: 'lobby-api.vercel.app', nick: 'Player' };
+    mocks.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'social_connect') return { state: 'signed_in', nick: 'Player', friend_code: 'K7Q2', server: 'lobby-api.vercel.app' };
+      if (cmd === 'social_sync') return { friends: [{ id: 'u2', nick: 'Snow', status: 'Playing', lobby_code: null }], incoming_requests: [], incoming_invites: [] };
+      if (cmd === 'social_connection_status') return { state: 'signed_in', nick: 'Player', friend_code: 'K7Q2', server: 'lobby-api.vercel.app' };
+      return null;
+    });
+    comp = mount(FriendsPage, { target });
+    await tick();
+    expect(target.textContent).toContain('Сервер друзей недоступен.');
+    expect(target.textContent).toContain('Нет связи с lobby-api.vercel.app.');
+    [...target.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Повторить')!.click();
+    await vi.waitFor(() => expect(target.querySelector('.code')?.textContent).toBe('K7Q2'));
+    expect(mocks.invoke).toHaveBeenCalledWith('social_connect');
+    // Core sends "Playing"; the list shows it as in game.
+    await vi.waitFor(() => expect(target.textContent).toContain('Snow'));
+    expect(target.textContent).toContain('В игре');
+  });
+
+  it('account the server refused: says why in its own words', async () => {
+    friendsLive.connection = { state: 'unusable', reason: 'nick_rejected', detail: 'Nick is already registered', nick: 'Player' };
+    comp = mount(FriendsPage, { target });
+    await tick();
+    expect(target.textContent).toContain('С этим аккаунтом друзья не работают.');
+    expect(target.textContent).toContain('Nick is already registered');
+    expect(target.querySelector('#friend-code')).toBeNull();
   });
 
   it('shows friends and requests from core with filters and answers requests', async () => {

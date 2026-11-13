@@ -42,6 +42,8 @@
   import { season } from './lib/design/season.svelte';
   import WinterScene from './lib/design/winter/WinterScene.svelte';
   import Santa from './lib/design/winter/Santa.svelte';
+  import Snowballs from './lib/design/winter/Snowballs.svelte';
+  import Fireworks from './lib/design/winter/Fireworks.svelte';
 
   // Winter look: one class on <html> for the scene and the frosted panels (winter.css).
   $effect(() => {
@@ -360,7 +362,8 @@
   <ToastHost />
 
   {#if season.winter}<WinterScene />{/if}
-  {#if season.winter && !theme.motionReduced}<Santa /><Snowfall />{/if}
+  {#if season.winter && !theme.motionReduced}<Santa /><Fireworks /><Snowfall />{/if}
+  {#if season.winter && !theme.motionReduced}<Snowballs />{/if}
   <CommandPalette />
 
   {#if isStartingUp && SplashScreen}

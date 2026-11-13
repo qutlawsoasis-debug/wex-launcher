@@ -26,9 +26,15 @@ export function createDefaultSkinCanvas(model: ModelType): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = 64;
   canvas.height = 64;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return canvas;
+  let ctx: CanvasRenderingContext2D | null = null;
+  try {
+    ctx = canvas.getContext('2d');
+  } catch {
+    // No canvas (tests without a 2D context): an empty texture.
+  }
+  if (!ctx || typeof ctx.createImageData !== 'function') return canvas;
   const img = ctx.createImageData(64, 64);
+  if (!img?.data) return canvas;
   const slim = model === 'slim';
   const aw = slim ? 3 : 4;
 

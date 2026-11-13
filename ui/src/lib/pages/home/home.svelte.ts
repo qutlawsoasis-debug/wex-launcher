@@ -4,11 +4,12 @@
  *   news               overview_get_news (the launcher changelog)
  *   play together      list_servers (the player's own servers) + ping_server_details,
  *                      list_lan_worlds (worlds opened to LAN nearby)
- *   friends online     friendsLive (social_sync); empty until accounts are connected
+ *   friends online     friendsLive (social_sync), signed in by core with the active
+ *                      account; friendsLive.connection says when it cannot be
  */
 
 import { call } from '../../shell/ipc';
-import { friendsLive, type FriendItem } from '../../services/friendsLive';
+import { friendsLive, type FriendItem, type FriendsConnection } from '../../services/friendsLive';
 
 export interface NewsItem {
   version: string;
@@ -56,6 +57,8 @@ class Home {
   friends = $state<FriendItem[]>([]);
   /** True once friendsLive has delivered at least one sync with friends data. */
   friendsKnown = $state(false);
+  /** Friends sign-in with the active account (signed in, connecting, unreachable…). */
+  connection = $state<FriendsConnection>({ state: 'connecting' });
 
   private stopFriends: (() => void) | null = null;
 
@@ -124,10 +127,16 @@ class Home {
     this.stopFriends?.();
     this.friends = [...friendsLive.friends];
     this.friendsKnown = friendsLive.friends.length > 0;
-    this.stopFriends = friendsLive.onData((data) => {
+    this.connection = { ...friendsLive.connection };
+    const stopData = friendsLive.onData((data) => {
       this.friends = [...(data.friends ?? [])];
       this.friendsKnown = this.friends.length > 0;
     });
+    const stopConn = friendsLive.onConnection((c) => (this.connection = { ...c }));
+    this.stopFriends = () => {
+      stopData();
+      stopConn();
+    };
     return () => {
       this.stopFriends?.();
       this.stopFriends = null;

@@ -7,6 +7,12 @@
 
 export interface MockIpcOptions {
   mode: 'full' | 'empty';
+  /**
+   * Friends sign-in answer (commands/friends.rs social_connect). Default: signed in
+   * when there is an active account, otherwise signed out (no_account), with no friends.
+   * 'friends' also returns a few friends and a request from social_sync.
+   */
+  friends?: 'auto' | 'friends' | 'unreachable' | 'no_friends_api' | 'unusable' | 'off';
 }
 
 export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
@@ -68,6 +74,18 @@ export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
   let cloud: Array<ReturnType<typeof cloudWorld> & Record<string, any>> = full
     ? [cloudWorld({}), cloudWorld({ id: 's1', name: 'Замок', owner: 'Alex', isOwner: false, state: 'sleeping', port: null, address: null, onlinePlayers: [], gameVersion: '1.20.1', lastPlayed: 1 })]
     : [];
+  const friendsMode = options.friends ?? 'auto';
+  const friendsAnswer = () => {
+    const active = accounts.accounts.find((a) => a.id === accounts.active_id);
+    const base = { reason: null, detail: null, account_id: active?.id ?? null, account_kind: active?.kind ?? null, nick: active?.name ?? null, friend_code: null, server: 'lobby-api.vercel.app' };
+    if (friendsMode === 'off') return { ...base, state: 'not_configured', reason: 'disabled', server: null };
+    if (!active) return { ...base, state: 'signed_out', reason: 'no_account' };
+    if (friendsMode === 'unreachable') return { ...base, state: 'unreachable', reason: 'network', detail: 'error sending request' };
+    if (friendsMode === 'no_friends_api') return { ...base, state: 'unreachable', reason: 'no_friends_api', detail: 'Not Found' };
+    if (friendsMode === 'unusable') return { ...base, state: 'unusable', reason: 'nick_rejected', detail: 'Nick is already registered' };
+    return { ...base, state: 'signed_in', friend_code: 'K7Q2' };
+  };
+  let friendsConn: Record<string, unknown> = { state: 'connecting' };
   const handlers: Record<string, (args: Record<string, any>) => unknown> = {
     'plugin:event|listen': (a) => {
       listeners.set(a.event, [...(listeners.get(a.event) ?? []), a.handler]);
@@ -130,7 +148,25 @@ export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
       servers = servers.filter((s) => s.address !== a.address);
       return null;
     },
-    social_sync: () => ({ friends: [], incoming_requests: [], incoming_invites: [] }),
+    // Friends (commands/friends.rs): core signs in with the active account.
+    social_connect: () => {
+      friendsConn = friendsAnswer();
+      return { ...friendsConn };
+    },
+    social_connection_status: () => ({ ...friendsConn }),
+    social_sync: () =>
+      friendsMode === 'friends' && friendsConn.state === 'signed_in'
+        ? {
+            friends: [
+              { id: 'u2', nick: 'Snow_Fox', status: 'Playing', last_seen: null, game_version: '1.21.1', world_name: 'Северная база', lobby_code: 'AB12' },
+              { id: 'u3', nick: 'Lisa', status: 'Online', last_seen: null, game_version: null, world_name: null, lobby_code: null },
+              { id: 'u4', nick: 'Max', status: 'Offline', last_seen: null, game_version: null, world_name: null, lobby_code: null },
+            ],
+            incoming_requests: [{ id: 'u5', from_id: 'u5', from_nick: 'Ann', created_at: null }],
+            incoming_invites: [],
+          }
+        : { friends: [], incoming_requests: [], incoming_invites: [] },
+    social_send_friend_request: () => null,
     social_list_achievements: () => ({
       achievements: [{ id: 'first', title: 'Первый запуск', description: 'Запустите игру', target: 1 }],
       progress: [{ id: 'first', current: 1, unlocked: true, unlocked_at: null }],

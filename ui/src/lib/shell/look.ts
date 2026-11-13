@@ -11,4 +11,5 @@ export function applyLook(s: LauncherSettings): void {
   if (typeof s.reduce_transparency === 'boolean') theme.setReduceTransparency(s.reduce_transparency);
   if (s.language === 'ru' || s.language === 'en') i18n.setLocale(s.language);
   season.setEnabled(s.winter_look !== false);
+  season.setSounds(s.winter_sounds === true);
 }

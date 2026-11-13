@@ -8,6 +8,9 @@ import { call } from './ipc';
 import { builds } from './builds.svelte';
 import { uiLog } from './uiLog';
 
+/** Window event fired when the active account changes (friendsLive listens). */
+export const ACTIVE_ACCOUNT_EVENT = 'wex-active-account';
+
 export type AccountKind = 'offline' | 'microsoft';
 
 export interface Account {
@@ -49,6 +52,7 @@ class Accounts {
   }
 
   apply(o: AccountsOverview): void {
+    const before = this.loaded ? this.activeId : undefined;
     this.list = o.accounts ?? [];
     this.activeId = o.active_id ?? null;
     this.microsoftAvailable = !!o.microsoft_available;
@@ -57,6 +61,10 @@ class Accounts {
     if (active) builds.playerName = active.name;
     this.loaded = true;
     this.error = null;
+    // Hook: the active account changed (added, switched, signed out). Friends sign in again.
+    if (before !== undefined && before !== this.activeId && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(ACTIVE_ACCOUNT_EVENT, { detail: { id: this.activeId } }));
+    }
   }
 
   async load(): Promise<void> {

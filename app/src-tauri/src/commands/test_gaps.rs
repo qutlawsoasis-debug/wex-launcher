@@ -531,7 +531,7 @@ fn sync_response() -> Value {
 #[tokio::test]
 async fn social_get_friends_success_updates_cache() {
     let f = Fixture::new().await;
-    f.respond("/api/user/sync", 200, sync_response()).await;
+    f.respond("/api/sync", 200, sync_response()).await;
     let response = friends::social_get_friends(None, Some(auth()), f.social())
         .await
         .unwrap();
@@ -541,12 +541,12 @@ async fn social_get_friends_success_updates_cache() {
 #[tokio::test]
 async fn social_get_friends_http_error_keeps_cached_list() {
     let f = Fixture::new().await;
-    f.respond("/api/user/sync", 200, sync_response()).await;
+    f.respond("/api/sync", 200, sync_response()).await;
     friends::social_get_friends(None, Some(auth()), f.social())
         .await
         .unwrap();
     f.server.reset().await;
-    f.respond("/api/user/sync", 503, json!({})).await;
+    f.respond("/api/sync", 503, json!({})).await;
     assert_eq!(
         friends::social_get_friends(None, Some(auth()), f.social())
             .await
@@ -560,14 +560,14 @@ async fn social_get_friends_http_error_keeps_cached_list() {
 async fn social_sync_success_uses_stored_auth() {
     let f = Fixture::new().await;
     *f.social().auth.lock().await = Some(auth());
-    f.respond("/api/user/sync", 200, sync_response()).await;
+    f.respond("/api/sync", 200, sync_response()).await;
     let response = friends::social_sync(None, None, f.social()).await.unwrap();
     assert_eq!(response.friends[0].nick, "Remote");
 }
 #[tokio::test]
 async fn social_sync_http_error_returns_local_snapshot() {
     let f = Fixture::new().await;
-    f.respond("/api/user/sync", 503, json!({})).await;
+    f.respond("/api/sync", 503, json!({})).await;
     let response = friends::social_sync(None, Some(auth()), f.social())
         .await
         .unwrap();
@@ -634,8 +634,10 @@ friend_response_cases!(
 #[tokio::test]
 async fn social_send_lobby_invite_success_uses_expected_target() {
     let f = Fixture::new().await;
-    Mock::given(path("/api/invites/send"))
-        .and(body_json(json!({"toId":"remote","lobbyCode":"ABC123"})))
+    Mock::given(path("/api/invite"))
+        .and(body_json(
+            json!({"friendId":"remote","lobbyCode":"ABC123","hostToken":""}),
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"inviteId":"invite"})))
         .expect(1)
         .mount(&f.server)
@@ -670,25 +672,29 @@ async fn social_send_lobby_invite_error_missing_code() {
     );
 }
 #[tokio::test]
-async fn social_send_lobby_invite_remote_failure_is_currently_suppressed() {
+async fn social_send_lobby_invite_remote_failure_is_reported() {
     let f = Fixture::new().await;
-    f.respond("/api/invites/send", 503, json!({})).await;
-    friends::social_send_lobby_invite(
-        None,
-        Some(auth()),
-        Some("remote".into()),
-        Some("ABC123".into()),
-        None,
-        f.social(),
-    )
-    .await
-    .unwrap();
+    f.respond("/api/invite", 503, json!({})).await;
+    assert_eq!(
+        friends::social_send_lobby_invite(
+            None,
+            Some(auth()),
+            Some("remote".into()),
+            Some("ABC123".into()),
+            None,
+            f.social(),
+        )
+        .await
+        .unwrap_err()
+        .code,
+        "SOCIAL_API_ERROR"
+    );
 }
 #[tokio::test]
 async fn social_respond_lobby_invite_success_returns_code_and_removes_cache_entry() {
     let f = Fixture::new().await;
     f.social().local_invites.lock().await.push(dto(json!({"id":"inv","lobby_code":"ABC123","from_id":"remote","from_nick":"Remote","host_name":null,"created_at":null})));
-    f.respond("/api/invites/respond", 200, json!({"lobbyCode":"ABC123"}))
+    f.respond("/api/invite/respond", 200, json!({"lobbyCode":"ABC123"}))
         .await;
     assert_eq!(
         friends::social_respond_lobby_invite("inv".into(), true, Some(auth()), f.social())
@@ -703,7 +709,7 @@ async fn social_respond_lobby_invite_success_returns_code_and_removes_cache_entr
 async fn social_respond_lobby_invite_error_does_not_discard_cached_invite() {
     let f = Fixture::new().await;
     f.social().local_invites.lock().await.push(dto(json!({"id":"inv","lobby_code":"ABC123","from_id":"remote","from_nick":"Remote","host_name":null,"created_at":null})));
-    f.respond("/api/invites/respond", 404, json!({})).await;
+    f.respond("/api/invite/respond", 404, json!({})).await;
     assert_eq!(
         friends::social_respond_lobby_invite("inv".into(), true, Some(auth()), f.social())
             .await
@@ -716,7 +722,14 @@ async fn social_respond_lobby_invite_error_does_not_discard_cached_invite() {
 #[tokio::test]
 async fn social_set_presence_success_serializes_remote_status() {
     let f = Fixture::new().await;
-    Mock::given(path("/api/user/sync")).and(body_json(json!({"nick":"Fixture","presence":{"status":"playing","game_version":"1.20.1","world_name":null,"lobby_code":null}}))).respond_with(ResponseTemplate::new(200).set_body_json(json!({}))).expect(1).mount(&f.server).await;
+    Mock::given(path("/api/sync"))
+        .and(body_json(
+            json!({"nick":"Fixture","status":"playing","lobbyCode":null}),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(1)
+        .mount(&f.server)
+        .await;
     friends::social_set_presence(
         None,
         Some(auth()),

@@ -144,7 +144,7 @@ describe('i18n Reactive Manager & Translation Helper', () => {
     // 7. Friends with the Rooms tab
     const compFriends = mount(FriendsPage, { target });
     await tick();
-    for (const label of ['Friends', 'Rooms', 'Friends will appear once accounts are connected.']) {
+    for (const label of ['Friends', 'Rooms', 'Connecting to friends…']) {
       expect(target.textContent).toContain(label);
     }
     unmount(compFriends);

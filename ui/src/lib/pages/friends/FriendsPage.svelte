@@ -2,10 +2,12 @@
   Friends (reference: V.friends) with Rooms as a second tab (owner decision:
   Lobby lives in Friends) and «Свой сервер» as the third (a dedicated server for
   the group on this PC) and «Облачные миры» as the fourth (worlds hosted 24/7
-  on the Aura server). Friends come from friendsLive (social_sync); until
-  accounts are connected the list is empty and says so, and nothing that needs an
-  account (own code, «Добавить друга») is shown.
-  HIG › Lists and tables; Segmented controls (All / In game / Online).
+  on the Aura server). Friends come from friendsLive (social_sync). Core signs in
+  to friends with the active launcher account; the page shows that state as it
+  is (signed in / connecting / server unavailable with «Повторить» / account not
+  usable, and why). Own code and «Добавить друга» appear only when signed in.
+  HIG › Lists and tables; Segmented controls (All / In game / Online);
+  Text fields (hint plus a separate label); Buttons (one blue primary per area).
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -13,7 +15,8 @@
   import { toasts } from '../../shell/toast.svelte';
   import { call } from '../../shell/ipc';
   import { formatError } from '../../design/errors';
-  import { friendsLive, type FriendItem, type FriendRequestItem } from '../../services/friendsLive';
+  import { friendsLive, type FriendItem, type FriendRequestItem, type FriendsConnection } from '../../services/friendsLive';
+  import { describeConnection } from './friendsState';
   import { t } from '../../i18n';
   import Monogram from '../../shell/Monogram.svelte';
   import RoomsTab from './RoomsTab.svelte';
@@ -26,13 +29,63 @@
   let filter = $state<'all' | 'game' | 'online'>('all');
   let friends = $state<FriendItem[]>([...friendsLive.friends]);
   let requests = $state<FriendRequestItem[]>([...friendsLive.requests]);
+  let conn = $state<FriendsConnection>({ ...friendsLive.connection });
+  let addCode = $state('');
+  let adding = $state(false);
+  let retrying = $state(false);
 
-  onMount(() =>
-    friendsLive.onData((d) => {
+  onMount(() => {
+    const stopData = friendsLive.onData((d) => {
       friends = [...(d.friends ?? [])];
       requests = [...(d.incoming_requests ?? [])];
-    })
-  );
+    });
+    const stopConn = friendsLive.onConnection((c) => (conn = { ...c }));
+    conn = { ...friendsLive.connection };
+    return () => {
+      stopData();
+      stopConn();
+    };
+  });
+
+  const notice = $derived(describeConnection(conn));
+  const signedIn = $derived(conn.state === 'signed_in');
+
+  async function retry() {
+    retrying = true;
+    try {
+      await friendsLive.retry();
+    } finally {
+      retrying = false;
+    }
+  }
+
+  async function copyCode() {
+    if (!conn.friend_code) return;
+    try {
+      await navigator.clipboard.writeText(conn.friend_code);
+      toasts.show(t('friends2.code_copied'));
+    } catch {
+      toasts.show(t('rooms.copy_failed'));
+    }
+  }
+
+  async function addFriend(e: SubmitEvent) {
+    e.preventDefault();
+    const code = addCode.trim().replace(/^#/, '');
+    if (!code || adding) return;
+    adding = true;
+    try {
+      await call('social_send_friend_request', { targetFriendCode: code });
+      addCode = '';
+      toasts.show(t('friends2.add_sent'), t('friends2.add_sent_d'));
+      void friendsLive.pollNow();
+    } catch (err) {
+      const f = formatError(err, 'friends');
+      toasts.show(f.title, f.description);
+    } finally {
+      adding = false;
+    }
+  }
 
   const shown = $derived(
     friends.filter((f) => filter === 'all' || (filter === 'game' && f.status === 'playing') || (filter === 'online' && f.status !== 'offline'))
@@ -87,6 +140,37 @@
     {:else if tab === 'cloud'}
       <CloudTab />
     {:else}
+      {#snippet retryButton()}
+        {#if notice?.retry}
+          <button type="button" class="mini" disabled={retrying} onclick={retry}>{retrying ? t('friends2.retrying') : t('friends2.retry')}</button>
+        {/if}
+      {/snippet}
+      {#if notice && (friends.length || requests.length)}
+        <div class="state-line" role="status" aria-busy={notice.busy}>
+          <span><b>{notice.title}</b> {notice.text}</span>
+          {@render retryButton()}
+        </div>
+      {/if}
+      {#if signedIn}
+        <div class="form me-form">
+          {#if conn.friend_code}
+            <div class="frow">
+              <div><div class="l">{t('friends2.your_code')}</div><div class="d">{t('friends2.your_code_d', { nick: conn.nick ?? '' })}</div></div>
+              <div class="code-row">
+                <span class="code" aria-label={t('friends2.your_code')}>{conn.friend_code}</span>
+                <button type="button" class="mini" onclick={copyCode}>{t('friends2.copy_code')}</button>
+              </div>
+            </div>
+          {/if}
+          <form class="frow" onsubmit={addFriend}>
+            <div><label class="l" for="friend-code">{t('friends2.add_label')}</label><div class="d">{t('friends2.add_d')}</div></div>
+            <div class="code-row">
+              <input id="friend-code" class="field" bind:value={addCode} maxlength="32" autocomplete="off" spellcheck="false" placeholder={t('friends2.add_placeholder')} />
+              <button type="submit" class="mini blue" disabled={!addCode.trim() || adding}>{adding ? t('friends2.adding') : t('friends2.add')}</button>
+            </div>
+          </form>
+        </div>
+      {/if}
       {#if requests.length}
         <section class="requests">
           <div class="h-row"><h2>{t('friends2.requests', { count: requests.length })}</h2></div>
@@ -130,8 +214,13 @@
             <p class="empty">{t('friends2.none_filtered')}</p>
           {/each}
         </div>
-      {:else}
-        <div class="panel"><p class="empty"><b>{t('home.friends_need_accounts')}</b> {t('friends2.rooms_hint')}</p></div>
+      {:else if notice}
+        <div class="panel" role="status" aria-busy={notice.busy}>
+          <p class="empty"><b>{notice.title}</b> {notice.text} {t('friends2.rooms_hint')}</p>
+          {#if notice.retry}<div class="panel-acts">{@render retryButton()}</div>{/if}
+        </div>
+      {:else if !requests.length}
+        <div class="panel"><p class="empty"><b>{t('friends2.none_yet')}</b> {t('friends2.none_yet_d')}</p></div>
       {/if}
     {/if}
   </div>
@@ -152,6 +241,37 @@
   }
   .requests {
     margin-bottom: 28px;
+  }
+  .state-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+    color: var(--label-2);
+  }
+  .state-line b {
+    color: var(--label);
+  }
+  .me-form {
+    margin-bottom: 28px;
+  }
+  .code-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .code-row .field {
+    width: min(220px, 100%);
+  }
+  .code {
+    font-family: var(--font-mono);
+    font-weight: var(--w-semibold);
+    letter-spacing: 0.04em;
+    user-select: all;
+  }
+  .panel-acts {
+    padding: 0 16px 16px;
   }
   .prow {
     display: grid;

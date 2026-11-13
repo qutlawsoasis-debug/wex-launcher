@@ -15,6 +15,8 @@
   import { theme } from './theme.svelte';
   import { toasts } from '../shell/toast.svelte';
   import { t } from '../i18n';
+  import { playWinter } from './winter/sounds';
+  import { reportWinter } from './winter/snowballs';
   import { cap, drop, grow, load, pickUp, restOnSnow, R_MIN, save, settle, snowmen, surfaceAt, type Ball } from './snowplay';
 
   interface Props {
@@ -110,6 +112,7 @@
     balls = cap([...balls, b]);
     mode = { kind: 'roll', id: b.id, x: p.x, y: p.y };
     active = b.id;
+    playWinter('crunch');
     follow();
   }
 
@@ -137,6 +140,7 @@
       const d = Math.hypot(p.x - m.x, p.y - m.y);
       m.x = p.x;
       m.y = p.y;
+      if (d > 0.5) playWinter('crunch');
       balls = balls.map((b) => {
         if (b.id !== m.id) return b;
         const r = grow(b.r, d);
@@ -213,6 +217,10 @@
         setTimeout(() => sparkle === head && (sparkle = null), 1200);
       }
       toasts.show(t('home.snowman_done'));
+      // Hooks: a chime and the winter achievements.
+      playWinter('chime');
+      reportWinter('first_snowman');
+      if (now.size >= 3) reportWinter('snowman_town', 3);
     }
     known = now;
   }

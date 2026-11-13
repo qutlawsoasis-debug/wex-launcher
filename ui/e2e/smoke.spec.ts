@@ -122,7 +122,7 @@ test('empty data: honest empty states, no sample content', async ({ page }) => {
   await signIn.getByRole('button', { name: 'Отмена' }).click();
   await expect(signIn).toBeHidden();
   await expect(page.locator('button.me')).toContainText('Войти');
-  await expect(page.locator('.panel:not(.together)')).toContainText('Друзья появятся, когда подключим аккаунты.');
+  await expect(page.locator('.panel:not(.together)')).toContainText('Войдите в аккаунт, чтобы видеть друзей.');
   await page.locator('.nav a', { hasText: 'Серверы' }).click();
   await expect(page.locator('.list .empty')).toContainText('Серверов пока нет.');
   await expect(page.locator('body')).not.toContainText(/kotya|Aura Creative|Aura Minigames/);

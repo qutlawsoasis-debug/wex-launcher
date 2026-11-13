@@ -52,6 +52,51 @@ export interface SyncResponse {
   incoming_invites: LobbyInviteItem[];
 }
 
+/**
+ * Friends sign-in, as core reports it (commands/friends.rs FriendsConnectionDto).
+ * Core signs in with the launcher's active account; the UI never sees a token.
+ *   signed_out      no account (reason no_account) or the session ended (session_expired)
+ *   connecting      sign-in in progress
+ *   signed_in       friends work
+ *   unreachable     the friends server cannot be used now (network, timeout, server_error,
+ *                   no_friends_api, bad_response); «Повторить» tries again
+ *   unusable        the server refused this account (nick_rejected); detail = its words
+ *   not_configured  friends are switched off (WEX_FRIENDS_API_URL=off)
+ */
+export type FriendsConnectionState = 'signed_out' | 'connecting' | 'signed_in' | 'unreachable' | 'unusable' | 'not_configured';
+
+export interface FriendsConnection {
+  state: FriendsConnectionState;
+  reason?: string | null;
+  detail?: string | null;
+  account_id?: string | null;
+  account_kind?: 'microsoft' | 'offline' | null;
+  nick?: string | null;
+  friend_code?: string | null;
+  server?: string | null;
+}
+
+/** Window event the accounts store fires when the active account changes. */
+export const ACTIVE_ACCOUNT_EVENT = 'wex-active-account';
+
+const STATES: readonly FriendsConnectionState[] = ['signed_out', 'connecting', 'signed_in', 'unreachable', 'unusable', 'not_configured'];
+
+function isConnection(v: unknown): v is FriendsConnection {
+  return !!v && typeof v === 'object' && STATES.includes((v as FriendsConnection).state);
+}
+
+/** Core sends OnlineStatusDto as "Online" | "Playing" | "InLobby" | "Offline"; the UI uses snake case. */
+export function normalizeStatus(s: unknown): FriendItem['status'] {
+  const v = String(s ?? '').toLowerCase().replace(/[^a-z]/g, '');
+  if (v === 'playing') return 'playing';
+  if (v === 'inlobby' || v === 'lobby') return 'in_lobby';
+  if (v === 'online') return 'online';
+  return 'offline';
+}
+
+export type ConnectFn = () => Promise<FriendsConnection>;
+export type StatusFn = () => Promise<FriendsConnection>;
+
 export interface FriendsLiveNotification {
   id: string;
   friendId: string;
@@ -59,6 +104,8 @@ export interface FriendsLiveNotification {
   title: string;
   description: string;
   lobbyCode?: string;
+  /** Invite whose room code the server hands out only on accept. */
+  inviteId?: string;
   action?: {
     label: string;
     onClick: () => void;
@@ -174,15 +221,29 @@ export class FriendsLiveService {
   private customSyncFn?: SyncFn;
   private customJoinFn?: JoinFn;
   private customWindowsNotifyFn?: WindowsNotifyFn;
+  private customConnectFn?: ConnectFn;
+  private customStatusFn?: StatusFn;
+
+  /** Friends sign-in state. Managed services start as «connecting». */
+  public connection: FriendsConnection;
+  private connectionListeners = new Set<(c: FriendsConnection) => void>();
+  private connecting: Promise<FriendsConnection> | null = null;
+  private connectAgain = false;
 
   constructor(options?: {
     syncFn?: SyncFn;
     joinFn?: JoinFn;
     windowsNotifyFn?: WindowsNotifyFn;
+    connectFn?: ConnectFn;
+    statusFn?: StatusFn;
   }) {
     this.customSyncFn = options?.syncFn;
     this.customJoinFn = options?.joinFn;
     this.customWindowsNotifyFn = options?.windowsNotifyFn;
+    this.customConnectFn = options?.connectFn;
+    this.customStatusFn = options?.statusFn;
+    // A custom sync without a custom connect is the old test seam: sign-in is not modelled.
+    this.connection = { state: this.managed ? 'connecting' : 'signed_in' };
 
     // Load saved notification preference if available
     if (typeof localStorage !== 'undefined') {
@@ -254,6 +315,7 @@ export class FriendsLiveService {
       window.addEventListener('focus', this.onFocus);
       window.addEventListener('blur', this.onBlur);
       window.addEventListener('beforeunload', this.onBeforeUnload);
+      window.addEventListener(ACTIVE_ACCOUNT_EVENT, this.onAccountChange);
     }
 
     // Setup action listener for tauri-plugin-notification
@@ -284,6 +346,7 @@ export class FriendsLiveService {
       window.removeEventListener('focus', this.onFocus);
       window.removeEventListener('blur', this.onBlur);
       window.removeEventListener('beforeunload', this.onBeforeUnload);
+      window.removeEventListener(ACTIVE_ACCOUNT_EVENT, this.onAccountChange);
     }
   }
 
@@ -357,13 +420,130 @@ export class FriendsLiveService {
     if (this.isPaused && this.isStarted) return null;
 
     try {
+      if (this.managed && this.connection.state !== 'signed_in') {
+        // Sign in first (start, after «connecting», or the server was unreachable).
+        if (!this.autoConnects()) return null;
+        const c = await this.connect({ quiet: this.connection.state === 'unreachable' });
+        if (c.state !== 'signed_in') return null;
+      }
       if (this.isStarted) void this.publishPresence();
       const data = await this.executeSync();
       this.processSyncResult(data);
+      if (this.managed) await this.refreshConnection();
       return data;
     } catch {
       return null;
     }
+  }
+
+  // --------------------------------------------------------------------------
+  // Friends sign-in (with the launcher's active account, by core)
+  // --------------------------------------------------------------------------
+
+  /** Real sign-in through core, unless a test replaced only the sync. */
+  private get managed(): boolean {
+    return !this.customSyncFn || !!this.customConnectFn;
+  }
+
+  /** States that heal on their own; the others wait for an account or for «Повторить». */
+  private autoConnects(): boolean {
+    const { state, reason } = this.connection;
+    if (state === 'connecting' || state === 'unreachable') return true;
+    return state === 'signed_out' && reason !== 'no_account';
+  }
+
+  public onConnection(listener: (c: FriendsConnection) => void): () => void {
+    this.connectionListeners.add(listener);
+    return () => this.connectionListeners.delete(listener);
+  }
+
+  private setConnection(c: FriendsConnection): void {
+    if (JSON.stringify(c) === JSON.stringify(this.connection)) return;
+    this.connection = c;
+    for (const listener of this.connectionListeners) listener(c);
+  }
+
+  /**
+   * Sign in to friends with the active account. Calls made while one runs wait
+   * for it and run once more after it (an account switch in the middle).
+   * `quiet` keeps the current message on screen (automatic retries).
+   */
+  public connect(options: { quiet?: boolean } = {}): Promise<FriendsConnection> {
+    if (this.connecting) {
+      this.connectAgain = true;
+      return this.connecting;
+    }
+    if (!options.quiet && this.connection.state !== 'connecting') this.setConnection({ ...this.connection, state: 'connecting', reason: null, detail: null });
+    this.connecting = (async () => {
+      let c: FriendsConnection;
+      do {
+        this.connectAgain = false;
+        c = await this.executeConnect();
+        this.setConnection(c);
+      } while (this.connectAgain);
+      this.connecting = null;
+      return c;
+    })();
+    return this.connecting;
+  }
+
+  /** «Повторить»: sign in again now, then fetch the lists. */
+  public async retry(): Promise<void> {
+    await this.connect();
+    if (this.connection.state === 'signed_in') await this.pollNow();
+  }
+
+  private async executeConnect(): Promise<FriendsConnection> {
+    try {
+      let c: unknown;
+      if (this.customConnectFn) c = await this.customConnectFn();
+      else if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        c = await invoke('social_connect');
+      } else {
+        return { state: 'not_configured', reason: 'no_backend' };
+      }
+      if (isConnection(c)) return c;
+      return { ...this.connection, state: 'unreachable', reason: 'bad_response', detail: null };
+    } catch (error) {
+      return { ...this.connection, state: 'unreachable', reason: 'app_error', detail: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  /** After a sync: core may have seen the server fail or the session end. */
+  private async refreshConnection(): Promise<void> {
+    try {
+      let c: unknown;
+      if (this.customStatusFn) c = await this.customStatusFn();
+      else if (this.customConnectFn) return;
+      else if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        c = await invoke('social_connection_status');
+      } else return;
+      if (isConnection(c)) this.setConnection(c);
+    } catch {}
+  }
+
+  private onAccountChange = () => {
+    // Another player: the old friends are not theirs.
+    this.friends = [];
+    this.requests = [];
+    this.invites = [];
+    this.previousFriendsMap.clear();
+    this.seenInviteIds.clear();
+    this.initialSyncDone = false;
+    for (const listener of this.dataListeners) listener({ friends: [], incoming_requests: [], incoming_invites: [] });
+    if (this.managed) void this.retry();
+  };
+
+  /** Accept an invite whose room code the server gives only on accept, then join. */
+  public async acceptInvite(inviteId: string): Promise<void> {
+    if (typeof window === 'undefined' || !(window as any).__TAURI_INTERNALS__) return;
+    const { invoke } = await import('@tauri-apps/api/core');
+    const code = await invoke<string | null>('social_respond_lobby_invite', { inviteId, accept: true });
+    this.invites = this.invites.filter((i) => i.id !== inviteId);
+    if (!code) throw new Error('Сервер друзей не прислал код комнаты для этого приглашения.');
+    await this.handleJoin(code);
   }
 
   /**
@@ -527,8 +707,10 @@ export class FriendsLiveService {
     };
   }
 
-  private processSyncResult(data: SyncResponse): void {
-    const newFriends = data.friends || [];
+  private processSyncResult(answer: SyncResponse | null | undefined): void {
+    const raw: SyncResponse = answer ?? { friends: [], incoming_requests: [], incoming_invites: [] };
+    const newFriends = (raw.friends || []).map((f) => ({ ...f, status: normalizeStatus(f.status) }));
+    const data: SyncResponse = { ...raw, friends: newFriends };
     const newInvites = data.incoming_invites || [];
     const newRequests = data.incoming_requests || [];
 
@@ -572,17 +754,20 @@ export class FriendsLiveService {
           if (checkFriendNotificationCooldown(lastSent, now)) {
             this.friendCooldowns.set(invite.from_id, now);
 
+            const code = invite.lobby_code || '';
             const notif: FriendsLiveNotification = {
               id: `notif-invite-${invite.id}`,
               friendId: invite.from_id,
               type: 'invite',
               title: `${invite.from_nick} приглашает в лобби`,
-              description: `${invite.from_nick} зовёт вас в игру в лобби ${invite.lobby_code}`,
-              lobbyCode: invite.lobby_code,
+              description: code ? `${invite.from_nick} зовёт вас в игру в лобби ${code}` : `${invite.from_nick} зовёт вас в игру`,
+              lobbyCode: code || undefined,
+              inviteId: code ? undefined : invite.id,
               action: {
                 label: 'Присоединиться',
                 onClick: () => {
-                  void this.handleJoin(invite.lobby_code).catch(error => this.reportError(error, 'lobby'));
+                  const run = code ? this.handleJoin(code) : this.acceptInvite(invite.id);
+                  void run.catch(error => this.reportError(error, 'lobby'));
                 },
               },
             };
@@ -662,7 +847,7 @@ export class FriendsLiveService {
           sendNotification({
             title: notif.title,
             body: notif.description,
-            extra: notif.lobbyCode ? { lobbyCode: notif.lobbyCode } : undefined,
+            extra: notif.lobbyCode ? { lobbyCode: notif.lobbyCode } : notif.inviteId ? { inviteId: notif.inviteId } : undefined,
           });
           return;
         }
@@ -714,6 +899,8 @@ export class FriendsLiveService {
 
     if (notif.lobbyCode) {
       await this.handleJoin(notif.lobbyCode);
+    } else if (notif.inviteId) {
+      await this.acceptInvite(notif.inviteId);
     } else if (notif.action) {
       notif.action.onClick();
     }
@@ -726,8 +913,11 @@ export class FriendsLiveService {
         const listener = await onAction((action) => {
             if (!this.isStarted || lifecycle !== this.lifecycle) return;
             const lobbyCode = action.notification?.extra?.lobbyCode;
+            const inviteId = action.notification?.extra?.inviteId;
             if (typeof lobbyCode === 'string') {
               void this.handleJoin(lobbyCode).catch(error => this.reportError(error, 'lobby'));
+            } else if (typeof inviteId === 'string') {
+              void this.acceptInvite(inviteId).catch(error => this.reportError(error, 'lobby'));
             }
         });
         if (!this.isStarted || lifecycle !== this.lifecycle) await listener.unregister();

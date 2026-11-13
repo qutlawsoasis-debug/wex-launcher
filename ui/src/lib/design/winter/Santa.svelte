@@ -18,6 +18,8 @@
   import { onMount } from 'svelte';
   import { theme } from '../theme.svelte';
   import { firstDelay, makePass, makeSparkles, nextDelay, PAUSED_RETRY, starPath, type Pass } from './santa';
+  import { playWinter } from './sounds';
+  import { reportWinter } from './snowballs';
 
   interface Deer {
     x: number;
@@ -68,6 +70,7 @@
 
   onMount(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let bells: ReturnType<typeof setTimeout> | undefined;
     const paused = () => document.hidden || document.documentElement.classList.contains('app-idle');
     const later = (ms: number, fn: () => void) => {
       clearTimeout(timer);
@@ -78,6 +81,10 @@
       const p = makePass();
       pass = p;
       run += 1;
+      // Hooks: «Видел Санту» when the window is visible; sleigh bells as he nears the middle.
+      if (!document.hidden) reportWinter('saw_santa');
+      clearTimeout(bells);
+      bells = setTimeout(() => playWinter('bells'), p.duration * 0.3);
       // animationend normally ends the pass; this is only a safety net.
       later(p.duration * 2 + 5_000, finish);
     };
@@ -91,6 +98,7 @@
     window.addEventListener('wex-santa', onHook);
     return () => {
       clearTimeout(timer);
+      clearTimeout(bells);
       finish = () => {};
       window.removeEventListener('wex-santa', onHook);
     };

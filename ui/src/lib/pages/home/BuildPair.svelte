@@ -18,6 +18,7 @@
   import Garland from '../../design/Garland.svelte';
   import SnowPlay from '../../design/SnowPlay.svelte';
   import EveningScene from '../../design/EveningScene.svelte';
+  import NewYearChip from '../../design/winter/NewYearChip.svelte';
   import { home } from './home.svelte';
   import { t, tn } from '../../i18n';
 
@@ -93,7 +94,10 @@
       {#if open}
         <div class="pane-body">
           <div class="pane-top">
-            <span class="pane-chip">{t('shell.selected_for_launch')}</span>
+            <span class="pane-chips">
+              <span class="pane-chip">{t('shell.selected_for_launch')}</span>
+              {#if season.winter}<NewYearChip />{/if}
+            </span>
             <a
               class="pane-link"
               href="#{buildRoute(b.id)}"
@@ -257,6 +261,12 @@
     justify-content: space-between;
     align-items: center;
     gap: 16px;
+  }
+  .pane-chips {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
   }
   .pane-chip {
     font-size: var(--t-foot);

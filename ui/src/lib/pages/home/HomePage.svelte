@@ -15,6 +15,7 @@
   import { createIdleInterval } from '../../design/idleManager';
   import { friendsIntent } from '../friends/friendsIntent.svelte';
   import { friendsLive, type FriendItem } from '../../services/friendsLive';
+  import { describeConnection } from '../friends/friendsState';
   import { toasts } from '../../shell/toast.svelte';
   import { formatError } from '../../design/errors';
   import { t, tn } from '../../i18n';
@@ -52,6 +53,17 @@
     if (f.status === 'playing') return f.world_name ? t('home.friend_playing_in', { world: f.world_name }) : t('home.friend_playing');
     if (f.status === 'in_lobby') return t('home.friend_in_lobby');
     return t('home.friend_online');
+  }
+
+  const friendsNotice = $derived(describeConnection(home.connection));
+  let retrying = $state(false);
+  async function retryFriends() {
+    retrying = true;
+    try {
+      await friendsLive.retry();
+    } finally {
+      retrying = false;
+    }
   }
 
   async function joinFriend(f: FriendItem) {
@@ -158,8 +170,17 @@
         {/each}
       {:else if home.friendsKnown}
         <p class="empty">{t('home.friends_none_online')}</p>
+      {:else if friendsNotice}
+        <div role="status" aria-busy={friendsNotice.busy}>
+          <p class="empty"><b>{friendsNotice.title}</b> {friendsNotice.text}</p>
+          {#if friendsNotice.retry}
+            <div class="friends-acts">
+              <button type="button" class="mini" disabled={retrying} onclick={retryFriends}>{retrying ? t('friends2.retrying') : t('friends2.retry')}</button>
+            </div>
+          {/if}
+        </div>
       {:else}
-        <p class="empty">{t('home.friends_need_accounts')}</p>
+        <p class="empty">{t('friends2.none_yet_home')}</p>
       {/if}
     </div>
   </section>
@@ -176,6 +197,11 @@
     flex-direction: column;
     gap: 28px;
     min-width: 0;
+  }
+  .friends-acts {
+    display: flex;
+    gap: 8px;
+    padding: 0 8px 8px;
   }
   .together-actions {
     display: flex;

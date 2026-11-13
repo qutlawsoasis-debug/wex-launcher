@@ -142,6 +142,8 @@ pub const IPC_COMMANDS: &[&str] = &[
     "music_get_smtc_state",
     "music_update_session",
     "music_check_command",
+    "social_connect",
+    "social_connection_status",
     "social_login",
     "social_get_friends",
     "social_send_friend_request",

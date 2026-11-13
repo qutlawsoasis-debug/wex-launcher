@@ -61,6 +61,8 @@ pub struct LauncherSettingsDto {
     pub reduce_transparency: bool,
     #[serde(default = "default_winter_look_dto")]
     pub winter_look: bool,
+    #[serde(default)]
+    pub winter_sounds: bool,
     pub fast_start_jvm: bool,
     #[serde(default = "default_fast_launch_dto")]
     pub fast_launch: bool,
@@ -106,6 +108,7 @@ impl Default for LauncherSettingsDto {
             reduce_motion: false,
             reduce_transparency: false,
             winter_look: default_winter_look_dto(),
+            winter_sounds: false,
             fast_start_jvm: false,
             fast_launch: default_fast_launch_dto(),
             minimize_to_tray: true,
@@ -202,6 +205,7 @@ pub fn get_launcher_settings_impl(paths: &WexPaths) -> LauncherSettingsDto {
         reduce_motion: cfg.reduce_motion,
         reduce_transparency: cfg.reduce_transparency,
         winter_look: cfg.winter_look,
+        winter_sounds: cfg.winter_sounds,
         fast_start_jvm: cfg.fast_start_jvm,
         fast_launch: cfg.fast_launch,
         minimize_to_tray: cfg.minimize_to_tray,
@@ -245,6 +249,7 @@ pub async fn save_launcher_settings_impl(
     cfg.reduce_motion = new_settings.reduce_motion;
     cfg.reduce_transparency = new_settings.reduce_transparency;
     cfg.winter_look = new_settings.winter_look;
+    cfg.winter_sounds = new_settings.winter_sounds;
     cfg.fast_start_jvm = new_settings.fast_start_jvm;
     cfg.fast_launch = new_settings.fast_launch;
     cfg.minimize_to_tray = new_settings.minimize_to_tray;

@@ -155,6 +155,10 @@ pub struct LauncherConfig {
     #[serde(default = "default_winter_look", alias = "winterLook")]
     pub winter_look: bool,
 
+    /// Quiet synthesized winter sounds (sleigh bells, snow crunch). Off by default.
+    #[serde(default, alias = "winterSounds")]
+    pub winter_sounds: bool,
+
     #[serde(
         default,
         alias = "quickPlayMultiplayer",
@@ -448,6 +452,7 @@ impl Default for LauncherConfig {
             reduce_motion: false,
             reduce_transparency: false,
             winter_look: default_winter_look(),
+            winter_sounds: false,
             quick_play_multiplayer: None,
             appearance: default_appearance(),
             accent: default_accent(),
@@ -484,6 +489,7 @@ impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
             reduce_motion: ipc.reduce_motion,
             reduce_transparency: ipc.reduce_transparency,
             winter_look: default_winter_look(),
+            winter_sounds: false,
             quick_play_multiplayer: None,
             appearance: ipc.appearance,
             accent: ipc.accent,
@@ -543,6 +549,18 @@ impl LauncherConfig {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn winter_sounds_are_off_by_default_and_saved() {
+        assert!(!LauncherConfig::default().winter_sounds);
+        let cfg: LauncherConfig = serde_json::from_str("{}").unwrap();
+        assert!(!cfg.winter_sounds);
+        let on: LauncherConfig = serde_json::from_str(r#"{"winter_sounds":true}"#).unwrap();
+        assert!(on.winter_sounds);
+        let back: LauncherConfig =
+            serde_json::from_str(&serde_json::to_string(&on).unwrap()).unwrap();
+        assert!(back.winter_sounds);
+    }
 
     #[test]
     fn fast_launch_is_off_by_default() {

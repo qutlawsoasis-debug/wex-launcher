@@ -11,6 +11,7 @@ import { router } from '../../shell/router.svelte';
 import { toasts } from '../../shell/toast.svelte';
 import { i18n } from '../../i18n';
 import { home } from './home.svelte';
+import { friendsLive } from '../../services/friendsLive';
 import HomePage from './HomePage.svelte';
 
 let settings: Record<string, unknown>;
@@ -193,11 +194,21 @@ describe('home page', () => {
     expect(cards[0].textContent).toContain('Обновление без окна установщика.');
   });
 
-  it('friends: honest empty state until accounts are connected, no sample friends', async () => {
+  it('friends: the real sign-in state, no sample friends', async () => {
+    friendsLive.connection = { state: 'signed_out', reason: 'no_account' };
     await render();
     const panel = target.querySelector('.panel:not(.together)')!;
     expect(panel.querySelectorAll('.prow').length).toBe(0);
-    expect(panel.textContent).toContain('Друзья появятся, когда подключим аккаунты.');
+    expect(panel.textContent).toContain('Войдите в аккаунт, чтобы видеть друзей.');
+    expect(panel.textContent).not.toContain('Друзья появятся');
+    home.connection = { state: 'unreachable', reason: 'server_error', server: 'lobby-api.vercel.app' };
+    flushSync();
+    expect(panel.textContent).toContain('Сервер друзей недоступен.');
+    expect(panel.textContent).toContain('lobby-api.vercel.app сейчас не работает.');
+    expect([...panel.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Повторить']);
+    home.connection = { state: 'signed_in', friend_code: 'K7Q2' };
+    flushSync();
+    expect(panel.textContent).toContain('Друзей пока нет.');
     home.friends = [
       { id: '1', nick: 'kotya', status: 'playing', game_version: '1.20.1', lobby_code: 'AB12' },
       { id: '2', nick: 'off', status: 'offline' },
