@@ -28,9 +28,14 @@ html.winter {
   /* systemBlue (dark) #0a84ff; systemBlue (light) #007aff. */
   --frost-ice: color-mix(in srgb, #0a84ff 45%, #ffffff);
   --frost-tint: rgba(10, 132, 255, 0.12);
-  --frost-glass: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(0, 0, 0, 0.62);
-  --frost-glass-hover: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(0, 0, 0, 0.54);
-  --frost-bar: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(0, 0, 0, 0.76);
+  /* One glass for the sidebar, the launch bar and the cards, so the scene behind
+     reads the same everywhere (no lighter or darker patches). */
+  --frost-glass: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(4, 8, 24, 0.42);
+  --frost-glass-hover: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(4, 8, 24, 0.34);
+  /* Sidebar and launch bar: a light veil with a soft blur, so the scene runs on
+     under them the same as under the content. */
+  --frost-bar: rgba(4, 8, 24, 0.12);
+  --frost-bar-blur: blur(6px);
   --frost-edge: color-mix(in srgb, var(--frost-ice) 50%, transparent);
   --frost-glow: rgba(10, 132, 255, 0.3);
   --frost-hi: rgba(255, 255, 255, 0.1);
@@ -49,9 +54,9 @@ html.winter {
 html.winter[data-theme='light'] {
   --frost-ice: color-mix(in srgb, #007aff 35%, #ffffff);
   --frost-tint: rgba(0, 122, 255, 0.05);
-  --frost-glass: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(255, 255, 255, 0.7);
-  --frost-glass-hover: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(255, 255, 255, 0.8);
-  --frost-bar: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(255, 255, 255, 0.72);
+  --frost-glass: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(255, 255, 255, 0.58);
+  --frost-glass-hover: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(255, 255, 255, 0.7);
+  --frost-bar: rgba(255, 255, 255, 0.16);
   --frost-edge: rgba(0, 122, 255, 0.28);
   --frost-glow: rgba(0, 122, 255, 0.16);
   --frost-hi: rgba(255, 255, 255, 0.7);
@@ -76,19 +81,21 @@ html.winter .app {
 }
 html.winter .app > .main {
   background: transparent;
-  border-left-color: var(--frost-edge);
+  border-left-color: transparent;
 }
 
 /* Sidebar and launch bar: glass over the scene (Liquid Glass: bars float). */
 html.winter .app > .side,
 html.winter .app > .bar {
   background: var(--frost-bar);
-  backdrop-filter: var(--frost-blur);
-  -webkit-backdrop-filter: var(--frost-blur);
+  backdrop-filter: var(--frost-bar-blur);
+  -webkit-backdrop-filter: var(--frost-bar-blur);
 }
+/* The bar joins the sidebar: no glow or edge spilling past its left side. The
+   snow cap on its top edge separates it from the content. */
 html.winter .app > .bar {
-  border-top-color: var(--frost-edge);
-  box-shadow: 0 -1px 12px var(--frost-glow);
+  border-top-color: transparent;
+  box-shadow: none;
 }
 
 /* Selected sidebar row: a frosted fill (selection is a fill). */
@@ -137,8 +144,9 @@ html.winter .wx .theme-card[aria-checked='true'] {
   background: linear-gradient(var(--frost-sel), var(--frost-sel)), var(--frost-glass);
 }
 
-/* Snow cap with icicles on the top edge of each card and of the launch bar.
-   Decorative: no clicks, no layout, drawn once (static under Reduce Motion). */
+/* Snow cap with icicles on the top edge of each card. Not on the launch bar: it
+   is a light veil over the scene with nothing for snow to lie on, and the scene's
+   own snow already lies along the bottom of the window. Decorative: no clicks, no layout, drawn once (static under Reduce Motion). */
 html.winter .wx .panel,
 html.winter .wx .list,
 html.winter .wx .form {
@@ -147,8 +155,7 @@ html.winter .wx .form {
 html.winter .wx .panel::before,
 html.winter .wx .tile::before,
 html.winter .wx .list::before,
-html.winter .wx .form::before,
-html.winter .app > .bar::after {
+html.winter .wx .form::before {
   content: '';
   position: absolute;
   left: 0;
@@ -168,11 +175,6 @@ html.winter .wx .form:nth-of-type(2n)::before {
 }
 html.winter .wx .tile:nth-child(3n)::before {
   background-position-x: -173px;
-}
-html.winter .app > .bar::after {
-  top: -8px;
-  border-radius: 0;
-  background-position-x: -61px;
 }
 
 /* Small buttons, secondary buttons, segmented controls and search: frosted glass
@@ -286,4 +288,12 @@ html.winter[data-reduce-transparency='true'] .topline .search-top {
 /* The sticky top line lets the scene through (it is opaque by default). */
 html.winter:not([data-reduce-transparency='true']) .topline {
   background: transparent;
+}
+
+/* Text over the snow at the bottom of the window (sidebar profile, launch bar):
+   a soft shadow keeps it readable on the light ground (HIG › Materials: keep
+   foreground legible on a translucent material). */
+html.winter:not([data-theme='light']) .app > .bar,
+html.winter:not([data-theme='light']) .app > .side .foot {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55), 0 0 6px rgba(0, 0, 0, 0.35);
 }

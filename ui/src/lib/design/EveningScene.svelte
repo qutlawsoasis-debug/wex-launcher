@@ -1,15 +1,21 @@
 <!--
   Winter evening on the open build tile: a dusk sky (deep blue to violet to a
   warm glow at the horizon) with the first stars and a moon, distant snowy hills
-  with lit windows, and a small decorated fir standing in the snow with three
+  with a little village (log and plank houses under thick snow with icicles,
+  carved window frames lit warm behind curtains, stone chimneys with smoke, a
+  fence and a few firs), and a small decorated fir standing in the snow with three
   gifts under it. On the tree: a star, glass baubles, candy canes, silver tinsel
   («дождик») and a string of lights that changes colour.
   Decorative art: Apple has no guidance for seasonal scenes. Ornament colours are
-  Apple system colours. HIG › Motion: the lights, the star and the tinsel shimmer
-  only when motion is not reduced; under Reduce Motion everything holds still.
+  Apple system colours, and the window light is systemYellow and systemOrange;
+  the dusk walls, roofs and snow are the scene's own colours. HIG › Motion
+  («Make motion optional»): the lights, the star, the tinsel, the chimney smoke
+  and a rare gentle window flicker move only when motion is not reduced; under
+  Reduce Motion (HIG › Accessibility) everything holds still.
 -->
 <script lang="ts">
   import { CX, TIERS, snowPath, swags, tierPath } from './xmasTree';
+  import { firTree } from './winter/scene';
 
   const tiers = TIERS.map((t) => ({ body: tierPath(t), snow: snowPath(t) }));
   const garland = swags(7);
@@ -48,8 +54,147 @@
     r: i % 5 === 0 ? 1.4 : 0.8,
     tw: i % 4 === 0,
   }));
-  /** Lit windows in the far village: [x %, y px from the hills' top]. */
-  const windows = [44, 46.5, 58, 64, 66.5, 73, 79, 81.5];
+  /*
+   * The far village, in a 600×96 box laid along the hills (ground at y 80).
+   * Fixed data, worked out once.
+   */
+  const G = 80;
+  type Win = { x: number; y: number; w: number; h: number };
+  type House = {
+    x: number;
+    w: number;
+    wall: number;
+    roof: 'gable' | 'side';
+    tex: 'log' | 'plank';
+    wins: Win[];
+    door?: { x: number; w: number; h: number };
+    chimney?: { x: number; h: number; smoke: boolean };
+  };
+  const HOUSES: House[] = [
+    { x: 14, w: 34, wall: 19, roof: 'gable', tex: 'log', wins: [{ x: 13, y: 6, w: 8, h: 8 }], chimney: { x: 24, h: 9, smoke: false } },
+    { x: 66, w: 58, wall: 23, roof: 'side', tex: 'plank', wins: [{ x: 8, y: 7, w: 8, h: 9 }, { x: 22, y: 7, w: 8, h: 9 }], door: { x: 40, w: 9, h: 15 }, chimney: { x: 44, h: 10, smoke: true } },
+    { x: 152, w: 28, wall: 15, roof: 'gable', tex: 'log', wins: [{ x: 10, y: 5, w: 7, h: 7 }] },
+    { x: 214, w: 46, wall: 24, roof: 'gable', tex: 'log', wins: [{ x: 7, y: 8, w: 8, h: 9 }, { x: 31, y: 8, w: 8, h: 9 }, { x: 19.5, y: -11, w: 7, h: 7 }], door: { x: 18, w: 10, h: 15 }, chimney: { x: 33, h: 11, smoke: true } },
+    { x: 300, w: 44, wall: 18, roof: 'side', tex: 'plank', wins: [{ x: 8, y: 5, w: 7, h: 8 }, { x: 28, y: 5, w: 7, h: 8 }], chimney: { x: 12, h: 8, smoke: false } },
+    { x: 384, w: 32, wall: 17, roof: 'gable', tex: 'log', wins: [{ x: 6, y: 5, w: 7, h: 7 }], door: { x: 19, w: 8, h: 12 } },
+    { x: 520, w: 40, wall: 20, roof: 'side', tex: 'log', wins: [{ x: 8, y: 6, w: 7, h: 8 }, { x: 24, y: 6, w: 7, h: 8 }] },
+  ];
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  /** Small fixed generator for the lumps (same every start). */
+  const lcg = (seed: number) => {
+    let s = seed;
+    return () => (s = (s * 9301 + 49297) % 233280) / 233280;
+  };
+  /** Thick snow along a roof line: lumpy on top, hanging over the eaves in rounded lumps. */
+  function roofSnow(pts: Array<[number, number]>, thick: number, seed: number): string {
+    const rnd = lcg(seed);
+    let d = `M${r1(pts[0][0] - 1.5)} ${r1(pts[0][1] + thick * 0.6)}`;
+    for (const [x, y] of pts) d += ` L${r1(x)} ${r1(y - thick * 0.35 - rnd() * 0.8)}`;
+    const last = pts[pts.length - 1];
+    d += ` Q${r1(last[0] + 2.5)} ${r1(last[1] + thick * 0.2)} ${r1(last[0] + 1.2)} ${r1(last[1] + thick)}`;
+    for (let i = pts.length - 1; i > 0; i--) {
+      const [ax, ay] = pts[i];
+      const [bx, by] = pts[i - 1];
+      const n = Math.max(2, Math.round(Math.hypot(bx - ax, by - ay) / 6));
+      for (let k = 1; k <= n; k++) {
+        const t = k / n;
+        const m = t - 0.5 / n;
+        const x = ax + (bx - ax) * t;
+        const y = ay + (by - ay) * t + thick * (0.75 + rnd() * 0.35);
+        d += ` Q${r1(ax + (bx - ax) * m)} ${r1(ay + (by - ay) * m + thick * (1.05 + rnd() * 0.4))} ${r1(x)} ${r1(y)}`;
+      }
+    }
+    return d + ' Z';
+  }
+  /** Icicles under an eave: thin tapering spikes of different lengths. */
+  function icicles(x0: number, x1: number, y: number, seed: number): string {
+    const rnd = lcg(seed);
+    let d = '';
+    for (let x = x0 + 1.5; x < x1 - 1; x += 1.8 + rnd() * 2.2) {
+      const len = 1.4 + rnd() * 3.4;
+      d += `M${r1(x - 0.6)} ${r1(y)} L${r1(x + 0.6)} ${r1(y)} L${r1(x + 0.1)} ${r1(y + len)} Z `;
+    }
+    return d.trim();
+  }
+  const houses = HOUSES.map((h, i) => {
+    const top = G - h.wall;
+    const o = h.w * 0.12;
+    const gable = h.roof === 'gable';
+    const rise = gable ? h.w * 0.46 : h.w * 0.3;
+    const apex: [number, number] = [h.x + h.w / 2, top - rise];
+    const roofLine: Array<[number, number]> = gable
+      ? [[h.x - o, top + 2], apex, [h.x + h.w + o, top + 2]]
+      : [
+          [h.x - o, top + 1.5],
+          [h.x + h.w * 0.14, top - rise],
+          [h.x + h.w * 0.86, top - rise],
+          [h.x + h.w + o, top + 1.5],
+        ];
+    const roof = gable
+      ? `M${r1(h.x - o)} ${r1(top + 2)} L${r1(apex[0])} ${r1(apex[1])} L${r1(h.x + h.w + o)} ${r1(top + 2)} L${r1(h.x + h.w + o - 1.6)} ${r1(top + 4)} L${r1(apex[0])} ${r1(apex[1] + 3)} L${r1(h.x - o + 1.6)} ${r1(top + 4)} Z`
+      : `M${r1(h.x - o)} ${r1(top + 1.5)} L${r1(h.x + h.w * 0.14)} ${r1(top - rise)} L${r1(h.x + h.w * 0.86)} ${r1(top - rise)} L${r1(h.x + h.w + o)} ${r1(top + 1.5)} L${r1(h.x + h.w + o)} ${r1(top + 3.5)} L${r1(h.x - o)} ${r1(top + 3.5)} Z`;
+    const gableWall = gable ? `M${r1(h.x)} ${r1(top + 0.5)} L${r1(apex[0])} ${r1(apex[1] + 2.5)} L${r1(h.x + h.w)} ${r1(top + 0.5)} Z` : '';
+    // Wall texture: logs (horizontal, with round ends at the corners) or vertical planks.
+    let tex = '';
+    const ends: Array<[number, number]> = [];
+    if (h.tex === 'log') {
+      for (let y = top + 2.6; y < G; y += 2.8) {
+        tex += `M${r1(h.x)} ${r1(y)} H${r1(h.x + h.w)} `;
+        ends.push([h.x - 0.6, r1(y - 1.4)], [h.x + h.w + 0.6, r1(y - 1.4)]);
+      }
+    } else {
+      for (let x = h.x + 3.2; x < h.x + h.w; x += 3.2) tex += `M${r1(x)} ${r1(top)} V${G} `;
+    }
+    // Chimney: from inside the roof up past the snow.
+    const roofY = (x: number) => (gable ? apex[1] + (Math.abs(x - apex[0]) / (h.w / 2 + o)) * (top + 2 - apex[1]) : top - rise);
+    const chim = h.chimney
+      ? { x: h.x + h.chimney.x, y: r1(roofY(h.x + h.chimney.x + 5) - h.chimney.h), h: h.chimney.h + 4, smoke: h.chimney.smoke }
+      : undefined;
+    const eaveY = gable ? top + 4 : top + 3.5;
+    return {
+      ...h,
+      top,
+      roof,
+      gableWall,
+      grain: tex.trim(),
+      ends,
+      // A side roof shows its whole slope, so snow covers the face down to the eave.
+      snow: gable
+        ? roofSnow(roofLine, 3.4, i * 31 + 7)
+        : `M${r1(h.x + h.w * 0.14)} ${r1(top - rise - 1.2)} L${r1(h.x + h.w * 0.86)} ${r1(top - rise - 1.2)} L${r1(h.x + h.w + o)} ${r1(top + 1.5)} L${r1(h.x - o)} ${r1(top + 1.5)} Z ` +
+          roofSnow([roofLine[0], roofLine[3]], 4, i * 31 + 7),
+      ice: gable
+        ? icicles(h.x - o, h.x - o + h.w * 0.22, top + 4.5, i + 2) + ' ' + icicles(h.x + h.w + o - h.w * 0.22, h.x + h.w + o, top + 4.5, i + 5)
+        : icicles(h.x - o, h.x + h.w + o, eaveY + 1.4, i + 3),
+      chim,
+      smokeX: h.chimney ? h.x + h.chimney.x + 2.5 : 0,
+      flicker: 9 + ((i * 5) % 8),
+    };
+  });
+  /** Little firs between the houses, from the same spruce generator as the window scene. */
+  const vFirs = [
+    [138, 30, 12],
+    [196, 22, 9],
+    [278, 34, 13],
+    [362, 26, 10],
+    [440, 30, 12],
+  ].map(([x, h, w], i) => firTree(x, G + 1, h, w, 900 + i, 0, -1));
+  /** Fence runs with pointed posts and a cap of snow on each. */
+  const fences = [
+    [126, 150],
+    [262, 296],
+    [418, 470],
+  ].map(([x0, x1]) => {
+    let posts = '';
+    let caps = '';
+    for (let x = x0; x <= x1; x += 4) {
+      posts += `M${x - 0.6} ${G + 1} V${G - 6.5} L${x} ${G - 7.4} L${x + 0.6} ${G - 6.5} V${G + 1} Z `;
+      caps += `M${x - 1.1} ${G - 6.8} q1.1 -1.8 2.2 0 Z `;
+    }
+    return { x0, x1, posts: posts.trim(), caps: caps.trim() };
+  });
+  // Snow the village stands in, tapering into the hills at the left end.
+  const groundSnow = 'M0 96 Q14 90 34 82 Q50 77 70 79.5 T130 78.5 T210 80 T300 78 T390 80.5 T470 78.5 T560 79.5 T600 78 V96 Z';
 </script>
 
 <span class="eve-sky" aria-hidden="true">
@@ -61,9 +206,104 @@
     <path class="far" d="M0 70 Q120 34 260 58 T520 50 T800 44 T1000 60 V120 H0Z" />
     <path class="near" d="M0 92 Q160 64 330 84 T660 78 T1000 86 V120 H0Z" />
   </svg>
-  <span class="village">
-    {#each windows as x, i (i)}<i style:left="{x}%" style:animation-delay="{i * 0.9}s"></i>{/each}
-  </span>
+  <svg class="village" viewBox="0 0 600 96" preserveAspectRatio="xMidYMax meet" aria-hidden="true" focusable="false">
+    <defs>
+      <radialGradient id="vil-pane" cx="0.5" cy="0.55" r="0.65">
+        <stop offset="0" stop-color="#ffd60a" />
+        <stop offset="1" stop-color="#ff9f0a" />
+      </radialGradient>
+      <radialGradient id="vil-glow" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0" stop-color="#ffd60a" stop-opacity="0.55" />
+        <stop offset="0.45" stop-color="#ff9f0a" stop-opacity="0.22" />
+        <stop offset="1" stop-color="#ff9f0a" stop-opacity="0" />
+      </radialGradient>
+      <linearGradient id="vil-wall" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#4b3c74" />
+        <stop offset="1" stop-color="#2c2556" />
+      </linearGradient>
+      <linearGradient id="vil-snow" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fbf1f6" />
+        <stop offset="0.6" stop-color="#d9d4f0" />
+        <stop offset="1" stop-color="#a9a3d6" />
+      </linearGradient>
+      <linearGradient id="vil-ground" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#cfcbee" />
+        <stop offset="1" stop-color="#a3a9da" stop-opacity="0.6" />
+      </linearGradient>
+    </defs>
+
+    {#each houses as h, i (i)}
+      <!-- Smoke behind the house, curling up and drifting away. -->
+      {#if h.chim && h.chim.smoke}
+        <path class="puff" d="M{h.smokeX} {h.chim.y} c-3 -5 4 -8 1 -13 s-4 -7 0 -12" style:animation-delay="{-i * 1.3}s" />
+        <path class="puff" d="M{h.smokeX} {h.chim.y} c3 -4 -3 -8 1 -12 s5 -8 1 -13" style:animation-delay="{-i * 1.3 - 3.5}s" />
+      {/if}
+      {#if h.chim}
+        {@const c = h.chim}
+        <rect x={c.x} y={c.y} width="5" height={c.h} fill="#5d4f7c" />
+        <path
+          class="mortar"
+          d="M{c.x} {c.y + 2.5} h5 M{c.x} {c.y + 5} h5 M{c.x} {c.y + 7.5} h5 M{c.x + 2} {c.y} v2.5 M{c.x + 3.5} {c.y + 2.5} v2.5 M{c.x + 1.5} {c.y + 5} v2.5 M{c.x + 3} {c.y + 7.5} v2.5"
+        />
+        <path d="M{c.x - 0.8} {c.y + 0.6} q0.4 -2.4 3.3 -2.4 q3 0 3.3 2.4 Z" class="snowcap" />
+      {/if}
+      <rect x={h.x} y={h.top} width={h.w} height={G - h.top} fill="url(#vil-wall)" />
+      {#if h.gableWall}<path d={h.gableWall} fill="url(#vil-wall)" />{/if}
+      <path class="grain" d={h.grain} />
+      {#each h.ends as [ex, ey], k (k)}<circle cx={ex} cy={ey + 1.4} r="1.25" class="log-end" />{/each}
+      <!-- Warm light from the windows on the wall around them. -->
+      {#each h.wins as w, k (k)}
+        <ellipse cx={h.x + w.x + w.w / 2} cy={h.top + w.y + w.h / 2} rx={w.w * 1.6} ry={w.h * 1.4} fill="url(#vil-glow)" />
+      {/each}
+      {#each h.wins as w, k (k)}
+        {@const wx = h.x + w.x}
+        {@const wy = h.top + w.y}
+        <g class="win" style:animation-duration="{h.flicker + k * 3}s" style:animation-delay="{-(i * 2.7 + k * 1.9)}s">
+          <rect x={wx} y={wy} width={w.w} height={w.h} fill="url(#vil-pane)" />
+          <!-- Curtains drawn back to the sides. -->
+          <path d="M{wx} {wy} h{w.w * 0.32} q{-w.w * 0.12} {w.h * 0.5} {-w.w * 0.05} {w.h} H{wx} Z" class="curtain" />
+          <path d="M{wx + w.w} {wy} h{-w.w * 0.32} q{w.w * 0.12} {w.h * 0.5} {w.w * 0.05} {w.h} H{wx + w.w} Z" class="curtain" />
+        </g>
+        <rect x={wx} y={wy} width={w.w} height={w.h} class="frame" />
+        <path d="M{wx + w.w / 2} {wy} V{wy + w.h} M{wx} {wy + w.h * 0.42} H{wx + w.w}" class="bar" />
+        <!-- Carved frame: a little pediment above, a sill with snow below. -->
+        <path d="M{wx - 1.2} {wy - 0.6} L{wx + w.w / 2} {wy - 2.8} L{wx + w.w + 1.2} {wy - 0.6} Z" class="trim" />
+        <rect x={wx - 1.2} y={wy + w.h} width={w.w + 2.4} height="1.2" class="trim" />
+        <path d="M{wx - 1.2} {wy + w.h} q{(w.w + 2.4) / 2} -1.6 {w.w + 2.4} 0 Z" class="snowcap" />
+      {/each}
+      {#if h.door}
+        {@const dx = h.x + h.door.x}
+        {@const dh = h.door.h}
+        {@const dw = h.door.w}
+        <rect x={dx} y={G - dh} width={dw} height={dh} fill="#241a3c" />
+        <path d="M{dx + dw / 2} {G - dh} V{G}" class="bar dark" />
+        <rect x={dx} y={G - dh} width={dw} height={dh} class="frame" />
+        <circle cx={dx + dw - 1.8} cy={G - dh * 0.45} r="0.6" fill="#ffd60a" />
+        <path d="M{dx - 1.5} {G - dh - 0.5} h{dw + 3} v-1.6 h{-(dw + 3)} Z" fill="#3a2f5e" />
+        <path d="M{dx - 2} {G - dh - 2.1} q{(dw + 4) / 2} -2.2 {dw + 4} 0 Z" class="snowcap" />
+      {/if}
+      <path d={h.roof} fill="#221c48" />
+      <path d={h.snow} fill="url(#vil-snow)" />
+      <path d={h.ice} class="ice" />
+    {/each}
+
+    {#each vFirs as f, i (i)}
+      {#each f.tiers as t, k (k)}
+        <path d={t.body} fill="#1d3150" />
+        <path d={t.snow} fill="#dcd8f0" />
+      {/each}
+      <path d={f.base} fill="#dcd8f0" />
+    {/each}
+
+    {#each fences as f, i (i)}
+      <path d="M{f.x0} {G - 4.6} H{f.x1} M{f.x0} {G - 1.8} H{f.x1}" class="rail" />
+      <path d={f.posts} fill="#2c2452" />
+      <path d={f.caps} class="snowcap" />
+      <path d="M{f.x0} {G - 5.2} H{f.x1}" class="rail-snow" />
+    {/each}
+
+    <path d={groundSnow} fill="url(#vil-ground)" />
+  </svg>
 </span>
 
 <span class="eve-tree" aria-hidden="true">
@@ -212,53 +452,115 @@
     fill: #9aa6d6;
     opacity: 0.75;
   }
+  /* The village sits on the far hills over the right part of the tile, behind the tree. */
   .village {
     position: absolute;
-    left: 0;
     right: 0;
-    bottom: 58px;
-    height: 10px;
+    bottom: 34px;
+    width: 62%;
+    height: auto;
+    aspect-ratio: 600 / 96;
+    display: block;
+    pointer-events: none;
+    overflow: visible;
   }
-  /* A small house: dark wall, snowy roof, one lit window that flickers now and then. */
-  .village i {
-    position: absolute;
-    bottom: 0;
-    width: 14px;
-    height: 9px;
-    margin-left: -7px;
-    background: #3a3c78;
+  .grain {
+    fill: none;
+    stroke: #1f1940;
+    stroke-width: 0.5;
+    opacity: 0.7;
   }
-  .village i::before {
-    content: '';
-    position: absolute;
-    left: -2px;
-    right: -2px;
-    bottom: 100%;
-    height: 7px;
-    background: linear-gradient(#f4f8fd 0 45%, #2e3068 45%);
-    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  .log-end {
+    fill: #6a5788;
+    stroke: #2a2350;
+    stroke-width: 0.35;
   }
-  .village i::after {
-    content: '';
-    position: absolute;
-    left: 5px;
-    top: 3px;
-    width: 4px;
-    height: 4px;
-    border-radius: 1px;
-    background: #ffd60a;
-    box-shadow: 0 0 6px 2px rgb(255 214 10 / 0.55);
-    animation: win 9s ease-in-out infinite;
-    animation-delay: inherit;
+  .mortar {
+    fill: none;
+    stroke: #3a2f5a;
+    stroke-width: 0.45;
+  }
+  .frame {
+    fill: none;
+    stroke: #efe6f2;
+    stroke-width: 0.9;
+  }
+  .bar {
+    fill: none;
+    stroke: #efe6f2;
+    stroke-width: 0.6;
+  }
+  .bar.dark {
+    stroke: #120c24;
+  }
+  .trim {
+    fill: #efe6f2;
+  }
+  .snowcap {
+    fill: #f6eff7;
+  }
+  .curtain {
+    fill: #ff9f0a;
+    opacity: 0.75;
+  }
+  .ice {
+    fill: #eef3ff;
+    opacity: 0.85;
+  }
+  .rail {
+    fill: none;
+    stroke: #2c2452;
+    stroke-width: 0.9;
+  }
+  .rail-snow {
+    fill: none;
+    stroke: #f2ecf7;
+    stroke-width: 0.9;
+    stroke-linecap: round;
+  }
+  /* Chimney smoke curls up, drifts with the air and fades. */
+  .puff {
+    fill: none;
+    stroke: #d8d2ee;
+    stroke-width: 4;
+    stroke-linecap: round;
+    opacity: 0.26;
+    filter: blur(1.4px);
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    animation: smoke 7s ease-out infinite;
+  }
+  @keyframes smoke {
+    0% {
+      opacity: 0;
+      transform: translate(0, 2px) scale(0.6);
+    }
+    25% {
+      opacity: 0.32;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(5px, -10px) scale(1.35);
+    }
+  }
+  /* Now and then a window dims a little, as if someone walked past the lamp. */
+  .win {
+    animation: win 11s ease-in-out infinite;
   }
   @keyframes win {
     0%,
-    86%,
+    84%,
     100% {
       opacity: 1;
     }
-    92% {
-      opacity: 0.35;
+    88% {
+      opacity: 0.7;
+    }
+    91% {
+      opacity: 0.95;
+    }
+    94% {
+      opacity: 0.78;
     }
   }
 
@@ -371,7 +673,8 @@
 
   @media (prefers-reduced-motion: reduce) {
     .stars .tw,
-    .village i::after,
+    .win,
+    .puff,
     .tinsel,
     .strand,
     .light,
@@ -381,7 +684,8 @@
     }
   }
   :global(html[data-reduce-motion='true']) .stars .tw,
-  :global(html[data-reduce-motion='true']) .village i::after,
+  :global(html[data-reduce-motion='true']) .win,
+  :global(html[data-reduce-motion='true']) .puff,
   :global(html[data-reduce-motion='true']) .tinsel,
   :global(html[data-reduce-motion='true']) .strand,
   :global(html[data-reduce-motion='true']) .light,

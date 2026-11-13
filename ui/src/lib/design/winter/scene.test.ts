@@ -27,17 +27,45 @@ describe('winter scene geometry', () => {
     expect(s.every((x) => x.dur >= 3 && x.dur <= 8)).toBe(true);
   });
 
-  it('a fir is a closed silhouette with snow inside its height', () => {
+  it('a fir is a spruce of 8 to 14 drooping tiers, widening downwards, snow inside its height', () => {
     const f = firTree(100, 500, 300, 140, 9);
-    expect(isPath(f.body)).toBe(true);
-    expect(isPath(f.snow)).toBe(true);
     expect(firTree(100, 500, 300, 140, 9)).toEqual(f);
-    const ys = numbers(f.snow).filter((_, i) => i % 2 === 1);
-    expect(Math.min(...ys)).toBeGreaterThanOrEqual(200 - 0.1);
+    expect(f.tiers.length).toBeGreaterThanOrEqual(12);
+    expect(f.tiers.length).toBeLessThanOrEqual(14);
+    for (const t of f.tiers) {
+      expect(isPath(t.body)).toBe(true);
+      expect(isPath(t.snow)).toBe(true);
+      expect(t.needles.length).toBeGreaterThan(0);
+    }
+    // Painted lowest first: tiers get narrower and higher towards the end.
+    const span = (d: string) => {
+      const xs = numbers(d).filter((_, i) => i % 2 === 0);
+      return Math.max(...xs) - Math.min(...xs);
+    };
+    expect(span(f.tiers[0].body)).toBeGreaterThan(span(f.tiers[f.tiers.length - 1].body) * 3);
+    expect(f.tiers[0].oy).toBeGreaterThan(f.tiers[f.tiers.length - 1].oy);
+    const ys = f.tiers.flatMap((t) => numbers(t.snow).filter((_, i) => i % 2 === 1));
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(200 - 6);
     expect(Math.max(...ys)).toBeLessThanOrEqual(500);
-    const xs = numbers(f.body).filter((_, i) => i % 2 === 0);
+    const xs = f.tiers.flatMap((t) => numbers(t.body).filter((_, i) => i % 2 === 0));
     expect(Math.min(...xs)).toBeGreaterThan(100 - 90);
     expect(Math.max(...xs)).toBeLessThan(100 + 90);
+    // The near tree has a bit of trunk; a far one is a plain hazy silhouette.
+    expect(isPath(f.trunk)).toBe(true);
+    const far = firTree(100, 500, 300, 140, 9, 0);
+    expect(far.trunk).toBe('');
+    expect(far.tiers.every((t) => t.needles === '' && t.rim === '')).toBe(true);
+    expect(far.tiers.length).toBeGreaterThanOrEqual(8);
+  });
+
+  it('the whole forest stays within a static budget of path points', () => {
+    let points = 0;
+    for (const c of [rightCorner(), leftCorner()])
+      for (const l of c.layers)
+        for (const t of l.trees)
+          for (const d of [t.trunk, t.base, ...t.tiers.flatMap((x) => [x.shade, x.body, x.needles, x.snow, x.rim])]) points += numbers(d).length / 2;
+    // Dense needles on the near trees, plain hazy silhouettes far away; computed once.
+    expect(points).toBeLessThan(30000);
   });
 
   it('a layer places its trees in range, sorted small to large', () => {
