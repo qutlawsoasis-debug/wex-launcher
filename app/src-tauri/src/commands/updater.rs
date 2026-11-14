@@ -343,15 +343,15 @@ pub fn apply_staged_update_and_restart(
 ) -> Result<InstallerExecutionPlan, String> {
     let _operation = UpdateOperation::begin()?;
 
-    // Reject update restart if user game is currently running or launching
+    // Reject update restart if user game is currently running or launching.
+    // The caller stops the background prewarm with `.await` first: blocking on
+    // it here would panic inside the async runtime and the button would do nothing.
     if let Some(h) = app {
         if let Some(play_state) = h.try_state::<PlayState>() {
             check_update_restart_allowed(
                 play_state.is_running.load(Ordering::SeqCst),
                 play_state.is_launching.load(Ordering::SeqCst),
             )?;
-            // Safely stop background prewarm before restarting into the installer
-            tauri::async_runtime::block_on(play_state.cleanup_prewarm());
         }
     }
 
