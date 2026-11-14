@@ -59,6 +59,8 @@ pub struct LauncherSettingsDto {
     pub accent: String,     // "blue" | "purple" | "pink" | "orange" | "green" | "mint" | "graphite"
     pub reduce_motion: bool,
     pub reduce_transparency: bool,
+    #[serde(default = "default_winter_look_dto")]
+    pub winter_look: bool,
     pub fast_start_jvm: bool,
     #[serde(default = "default_fast_launch_dto")]
     pub fast_launch: bool,
@@ -71,7 +73,8 @@ pub struct LauncherSettingsDto {
 }
 
 pub fn default_fast_launch_dto() -> bool {
-    get_total_ram_mb() >= 15360
+    // Off by default, same as wex_core::config::default_fast_launch.
+    false
 }
 
 fn default_true() -> bool {
@@ -102,6 +105,7 @@ impl Default for LauncherSettingsDto {
             accent: "blue".to_string(),
             reduce_motion: false,
             reduce_transparency: false,
+            winter_look: default_winter_look_dto(),
             fast_start_jvm: false,
             fast_launch: default_fast_launch_dto(),
             minimize_to_tray: true,
@@ -197,6 +201,7 @@ pub fn get_launcher_settings_impl(paths: &WexPaths) -> LauncherSettingsDto {
         accent: cfg.accent,
         reduce_motion: cfg.reduce_motion,
         reduce_transparency: cfg.reduce_transparency,
+        winter_look: cfg.winter_look,
         fast_start_jvm: cfg.fast_start_jvm,
         fast_launch: cfg.fast_launch,
         minimize_to_tray: cfg.minimize_to_tray,
@@ -239,6 +244,7 @@ pub async fn save_launcher_settings_impl(
     cfg.accent = new_settings.accent;
     cfg.reduce_motion = new_settings.reduce_motion;
     cfg.reduce_transparency = new_settings.reduce_transparency;
+    cfg.winter_look = new_settings.winter_look;
     cfg.fast_start_jvm = new_settings.fast_start_jvm;
     cfg.fast_launch = new_settings.fast_launch;
     cfg.minimize_to_tray = new_settings.minimize_to_tray;
@@ -861,4 +867,8 @@ mod tests {
             assert_eq!(actual.custom_java_path, desired.custom_java_path);
         }
     }
+}
+
+fn default_winter_look_dto() -> bool {
+    true
 }

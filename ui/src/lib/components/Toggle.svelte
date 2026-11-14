@@ -93,9 +93,9 @@
     gap: 12px;
     cursor: pointer;
     user-select: none;
-    font-family: var(--font-system);
-    font-size: var(--text-body);
-    color: var(--color-label);
+    font-family: var(--font);
+    font-size: var(--t-body);
+    color: var(--label);
   }
 
   .apple-toggle-wrapper.disabled {
@@ -109,16 +109,16 @@
     height: 26px;
     flex-shrink: 0;
     outline: none;
-    border-radius: var(--radius-pill);
-    transition: transform var(--motion-duration-short) ease;
+    border-radius: var(--r-pill);
+    transition: transform var(--dur-micro) ease;
   }
 
   .apple-toggle-wrapper:hover:not(.disabled) .track {
-    border-color: var(--color-opaque-separator);
+    border-color: var(--separator);
   }
 
   .apple-toggle:focus-visible {
-    outline: 2px solid var(--color-system-blue);
+    outline: 2px solid var(--blue);
     outline-offset: 2px;
     box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.35);
   }
@@ -134,17 +134,17 @@
   .track {
     position: absolute;
     inset: 0;
-    border-radius: var(--radius-pill);
-    background-color: var(--color-tertiary-system-fill);
-    border: 1px solid var(--color-separator);
+    border-radius: var(--r-pill);
+    background-color: var(--fill-3);
+    border: 1px solid var(--separator);
     transition:
-      background-color var(--motion-duration-normal) var(--motion-spring-ease),
-      border-color var(--motion-duration-normal) var(--motion-spring-ease);
+      background-color var(--dur-short) var(--ease),
+      border-color var(--dur-short) var(--ease);
   }
 
   .apple-toggle.checked .track {
-    background-color: var(--color-system-green);
-    border-color: var(--color-system-green);
+    background-color: var(--green);
+    border-color: var(--green);
   }
 
   .thumb {
@@ -159,9 +159,9 @@
       0 2px 4px rgba(0, 0, 0, 0.22),
       0 0 1px rgba(0, 0, 0, 0.15);
     transition:
-      transform var(--motion-duration-normal) var(--motion-spring-ease),
-      width var(--motion-duration-short) ease,
-      margin-left var(--motion-duration-short) ease;
+      transform var(--dur-short) var(--ease),
+      width var(--dur-micro) ease,
+      margin-left var(--dur-micro) ease;
   }
 
   .apple-toggle.checked .thumb {
@@ -169,7 +169,7 @@
   }
 
   .label-text {
-    font-size: var(--text-subheadline);
+    font-size: var(--t-sub);
     font-weight: 400;
   }
 
@@ -185,18 +185,6 @@
     border: 0;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .apple-toggle,
-    .track,
-    .thumb {
-      transition: none !important;
-    }
-    .apple-toggle:active:not([aria-disabled="true"]) .thumb,
-    .apple-toggle.checked:active:not([aria-disabled="true"]) .thumb {
-      width: 20px !important;
-      margin-left: 0 !important;
-    }
-  }
 
   :global([data-reduce-motion="true"]) .apple-toggle,
   :global([data-reduce-motion="true"]) .track,

@@ -1,4 +1,4 @@
-use crate::auth::offline_uuid;
+use crate::accounts::GameSession;
 use crate::config::{LauncherConfig, WexPaths};
 use crate::error::{Result, WexError};
 use crate::event::{Event, EventHandler, LogLevel};
@@ -304,10 +304,17 @@ pub fn build_launch_args(opts: &LaunchOptions) -> Vec<String> {
 
     // Game arguments
     let instance_dir = opts.paths.instance_dir(opts.version);
-    let player_uuid = offline_uuid(&opts.config.nickname);
+    let offline;
+    let session = match &opts.config.session {
+        Some(s) => s,
+        None => {
+            offline = GameSession::offline(&opts.config.nickname);
+            &offline
+        }
+    };
 
     args.push("--username".to_string());
-    args.push(opts.config.nickname.clone());
+    args.push(session.username.clone());
     args.push("--version".to_string());
     args.push(format!("fabric-loader-0.19.5-{}", opts.version));
     args.push("--gameDir".to_string());
@@ -317,11 +324,15 @@ pub fn build_launch_args(opts: &LaunchOptions) -> Vec<String> {
     args.push("--assetIndex".to_string());
     args.push(opts.asset_index_id.to_string());
     args.push("--uuid".to_string());
-    args.push(player_uuid.to_string());
-    args.push("--accessToken".to_string());
-    args.push("0".to_string());
+    args.push(session.uuid.clone());
+    args.push(ACCESS_TOKEN_ARG.to_string());
+    args.push(session.access_token.clone());
     args.push("--userType".to_string());
-    args.push("legacy".to_string()); // Minor 1: legacy for offline account
+    args.push(session.user_type.clone()); // msa for Microsoft, legacy for offline
+    if let Some(xuid) = &session.xuid {
+        args.push("--xuid".to_string());
+        args.push(xuid.clone());
+    }
     args.push("--versionType".to_string());
     args.push("release".to_string());
 
@@ -332,6 +343,28 @@ pub fn build_launch_args(opts: &LaunchOptions) -> Vec<String> {
     }
 
     args
+}
+
+const ACCESS_TOKEN_ARG: &str = "--accessToken";
+
+/// Split the access token out of the argument list. The args file is written to
+/// the instance folder and stays there, so the token goes on the command line
+/// after it instead (game arguments after the main class are not read from @files).
+pub fn split_secret_args(args: &[String]) -> (Vec<String>, Vec<String>) {
+    let mut plain = Vec::with_capacity(args.len());
+    let mut secret = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == ACCESS_TOKEN_ARG && i + 1 < args.len() {
+            secret.push(args[i].clone());
+            secret.push(args[i + 1].clone());
+            i += 2;
+        } else {
+            plain.push(args[i].clone());
+            i += 1;
+        }
+    }
+    (plain, secret)
 }
 
 pub fn create_args_file(instance_dir: &Path, args: &[String]) -> Result<PathBuf> {
@@ -348,11 +381,13 @@ pub fn create_args_file(instance_dir: &Path, args: &[String]) -> Result<PathBuf>
 pub fn build_launch_command(opts: &LaunchOptions) -> Result<Command> {
     let instance_dir = opts.paths.instance_dir(opts.version);
     let args = build_launch_args(opts);
-    let args_file = create_args_file(&instance_dir, &args)?;
+    let (file_args, secret_args) = split_secret_args(&args);
+    let args_file = create_args_file(&instance_dir, &file_args)?;
 
     let mut cmd = Command::new(opts.java_binary);
     // Use @argsFile to avoid the 32767 character command-line limit on Windows
     cmd.arg(format!("@{}", args_file.display()));
+    cmd.args(&secret_args);
 
     cmd.current_dir(&instance_dir);
     cmd.stdout(Stdio::piped());
@@ -376,7 +411,12 @@ pub async fn launch_game_process(
         level: LogLevel::Info,
         message: format!(
             "Launching Minecraft {} as '{}'...",
-            opts.version, opts.config.nickname
+            opts.version,
+            opts.config
+                .session
+                .as_ref()
+                .map(|s| s.username.as_str())
+                .unwrap_or(&opts.config.nickname)
         ),
     });
 
@@ -895,6 +935,17 @@ pub async fn prepare_and_launch_with_options(
     prewarm_signal: Option<&Path>,
     prewarm_parent_pid: Option<u32>,
 ) -> Result<GameProcess> {
+    // Who plays: resolved from the active account before anything is installed, so
+    // a sign-in problem is reported at once (and an expired token refreshed).
+    let with_session;
+    let config = if config.session.is_some() {
+        config
+    } else {
+        let mut c = config.clone();
+        c.session = Some(crate::accounts::resolve_session(&paths.root, client, config).await?);
+        with_session = c;
+        &with_session
+    };
     let (mojang_java, client_jar, vanilla_libs, fabric_libs, asset_index_id) = if is_fast_path_ready(
         paths, version,
     ) {
@@ -1207,6 +1258,105 @@ mod tests {
 
         assert!(args.iter().any(|a| a == "-Dwex.qa.background=true"));
         assert!(args.iter().any(|a| a == "-Daura.client.hiddenWindow=true"));
+    }
+
+    fn identity_args(
+        config: &LauncherConfig,
+        version: &str,
+    ) -> (Vec<String>, PathBuf, tempfile::TempDir) {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        paths.ensure_instance_dirs(version).unwrap();
+        let java_bin = PathBuf::from("java.exe");
+        let client_jar = PathBuf::from("client.jar");
+        let opts = LaunchOptions {
+            paths: &paths,
+            config,
+            version,
+            java_binary: &java_bin,
+            client_jar: &client_jar,
+            vanilla_libraries: &[],
+            fabric_libraries: &[],
+            asset_index_id: "6",
+            extra_jvm_args: &[],
+            quick_play_multiplayer: None,
+            prewarm_signal: None,
+            prewarm_parent_pid: None,
+        };
+        let args = build_launch_args(&opts);
+        build_launch_command(&opts).unwrap();
+        (args, paths.instance_dir(version).join("argsFile.txt"), tmp)
+    }
+
+    fn arg_after<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+        args.iter()
+            .position(|a| a == flag)
+            .map(|i| args[i + 1].as_str())
+    }
+
+    #[test]
+    fn offline_identity_in_launch_args_both_versions() {
+        for version in ["1.20.1", "1.21.1"] {
+            let config = LauncherConfig {
+                nickname: "Player".into(),
+                ..Default::default()
+            };
+            let (args, _, _tmp) = identity_args(&config, version);
+            assert_eq!(arg_after(&args, "--username"), Some("Player"));
+            assert_eq!(
+                arg_after(&args, "--uuid"),
+                Some("a01e3843-e521-3998-958a-f459800e4d11")
+            );
+            assert_eq!(arg_after(&args, "--accessToken"), Some("0"));
+            assert_eq!(arg_after(&args, "--userType"), Some("legacy"));
+            assert!(!args.iter().any(|a| a == "--xuid"));
+        }
+    }
+
+    #[test]
+    fn microsoft_identity_in_launch_args_and_token_kept_off_disk() {
+        for version in ["1.20.1", "1.21.1"] {
+            let config = LauncherConfig {
+                nickname: "Ignored".into(),
+                session: Some(GameSession {
+                    username: "Notch".into(),
+                    uuid: "069a79f444e94726a5befca90e38aaf5".into(),
+                    access_token: "eyJ-secret-minecraft-token".into(),
+                    user_type: "msa".into(),
+                    xuid: Some("2535412345".into()),
+                }),
+                ..Default::default()
+            };
+            let (args, args_file, _tmp) = identity_args(&config, version);
+            assert_eq!(arg_after(&args, "--username"), Some("Notch"));
+            assert_eq!(
+                arg_after(&args, "--uuid"),
+                Some("069a79f444e94726a5befca90e38aaf5")
+            );
+            assert_eq!(
+                arg_after(&args, "--accessToken"),
+                Some("eyJ-secret-minecraft-token")
+            );
+            assert_eq!(arg_after(&args, "--userType"), Some("msa"));
+            assert_eq!(arg_after(&args, "--xuid"), Some("2535412345"));
+
+            let on_disk = fs::read_to_string(&args_file).unwrap();
+            assert!(
+                !on_disk.contains("eyJ-secret"),
+                "token must not be written to argsFile.txt"
+            );
+            assert!(on_disk.contains("Notch"));
+
+            let (plain, secret) = split_secret_args(&args);
+            assert_eq!(
+                secret,
+                vec![
+                    "--accessToken".to_string(),
+                    "eyJ-secret-minecraft-token".to_string()
+                ]
+            );
+            assert_eq!(plain.len() + 2, args.len());
+        }
     }
 
     #[test]

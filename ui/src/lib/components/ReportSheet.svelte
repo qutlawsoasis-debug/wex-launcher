@@ -27,7 +27,7 @@
 
   let {
     open = $bindable(false),
-    version = '1.21.1',
+    version = '',
     errorText = '',
     diagnosisTitle = '',
     playerName = '',
@@ -36,6 +36,16 @@
   }: Props = $props();
 
   let userComment = $state('');
+  /** Launcher version and OS as core reports them (get_system_info); omitted until known. */
+  let sys = $state<{ launcher_version?: string; os_version?: string } | null>(null);
+  $effect(() => {
+    if (!open || sys) return;
+    if (typeof window === 'undefined' || !(window as any).__TAURI_INTERNALS__) return;
+    void import('@tauri-apps/api/core')
+      .then(({ invoke }) => invoke<{ launcher_version: string; os_version: string }>('get_system_info'))
+      .then((info) => (sys = info))
+      .catch(() => {});
+  });
   let isSavingZip = $state(false);
   let isCopying = $state(false);
   let copyFeedback = $state(false);
@@ -61,10 +71,9 @@
     JSON.stringify(
       {
         launcher: 'Wex Launcher',
-        launcher_version: '0.9.2',
-        game_version: version,
-        os: 'Windows 64-bit',
-        java: version.startsWith('1.20') ? 'Java 17 (Mojang Runtime)' : 'Java 21 (Mojang Runtime)',
+        launcher_version: sys?.launcher_version || undefined,
+        game_version: version || undefined,
+        os: sys?.os_version || undefined,
         diagnosis: diagnosisTitle || undefined,
         error_details: anonymizedError || undefined,
         user_comment: anonymizedComment || undefined,
@@ -95,12 +104,8 @@
           );
         }
       } else {
-        // Mock fallback for browser / vitest
-        ontoast?.(
-          'success',
-          t('report.saved_to_desktop'),
-          `Wex-report-${version}.zip`
-        );
+        // Outside the app nothing is saved; say so instead of claiming a file.
+        ontoast?.('error', t('report.save_failed'));
       }
     } catch (e: any) {
       ontoast?.('error', t('report.save_failed'), String(e?.message || e));
@@ -124,7 +129,8 @@
       }
 
       if (!textToCopy) {
-        textToCopy = `### ${t('report.report_title')}\n- **${t('report.game_ver_lbl')}:** \`${version}\`\n- **${t('report.launcher_ver_lbl')}:** \`0.9.2\`\n- **${t('report.diagnosis_lbl')}:** ${diagnosisTitle || t('report.game_crash_default')}\n\n**${t('report.comment_lbl')}:**\n${anonymizedComment || t('report.no_comment')}\n\n**${t('report.error_lbl')}:**\n\`\`\`\n${anonymizedError || t('report.no_tech_details')}\n\`\`\``;
+        const launcherLine = sys?.launcher_version ? `\n- **${t('report.launcher_ver_lbl')}:** \`${sys.launcher_version}\`` : '';
+        textToCopy = `### ${t('report.report_title')}\n- **${t('report.game_ver_lbl')}:** \`${version}\`${launcherLine}\n- **${t('report.diagnosis_lbl')}:** ${diagnosisTitle || t('report.game_crash_default')}\n\n**${t('report.comment_lbl')}:**\n${anonymizedComment || t('report.no_comment')}\n\n**${t('report.error_lbl')}:**\n\`\`\`\n${anonymizedError || t('report.no_tech_details')}\n\`\`\``;
       }
 
       if (navigator.clipboard) {
@@ -154,9 +160,9 @@
     <div class="report-header-card">
       <div class="info-pill-row">
         <span class="info-pill version-pill" data-testid="pill-version">{version}</span>
-        <span class="info-pill">Wex 0.9.2</span>
+        {#if sys?.launcher_version}<span class="info-pill">Wex {sys.launcher_version}</span>{/if}
         <span class="info-pill secure-pill">
-          <Icon name="check" size={12} color="var(--color-system-green)" />
+          <Icon name="check" size={12} color="var(--green)" />
           <span>{t('report.anonymized_badge')}</span>
         </span>
       </div>
@@ -192,19 +198,19 @@
       <span class="section-label">{t('report.archive_includes')}</span>
       <div class="manifest-grid">
         <div class="manifest-item">
-          <Icon name="info" size={14} color="var(--color-system-blue)" />
+          <Icon name="info" size={14} color="var(--blue)" />
           <span class="manifest-text"><strong>latest.log</strong> {t('report.inc_latest_log')}</span>
         </div>
         <div class="manifest-item">
-          <Icon name="warning" size={14} color="var(--color-system-orange)" />
+          <Icon name="warning" size={14} color="var(--orange)" />
           <span class="manifest-text"><strong>crash-report</strong> {t('report.inc_crash_report')}</span>
         </div>
         <div class="manifest-item">
-          <Icon name="folder" size={14} color="var(--color-secondary-label)" />
+          <Icon name="folder" size={14} color="var(--label-2)" />
           <span class="manifest-text"><strong>mods.txt</strong> {t('report.inc_mods_txt')}</span>
         </div>
         <div class="manifest-item">
-          <Icon name="cpu" size={14} color="var(--color-secondary-label)" />
+          <Icon name="cpu" size={14} color="var(--label-2)" />
           <span class="manifest-text"><strong>system-info.txt</strong> {t('report.inc_system_info')}</span>
         </div>
       </div>
@@ -277,9 +283,9 @@
     flex-direction: column;
     gap: 10px;
     padding: 14px 16px;
-    border-radius: var(--radius-md);
-    background-color: var(--color-secondary-system-fill);
-    border: 1px solid var(--glass-border);
+    border-radius: var(--r-m);
+    background-color: var(--fill-2);
+    border: 1px solid var(--edge);
   }
 
   .info-pill-row {
@@ -293,35 +299,35 @@
     font-size: 11px;
     font-weight: 600;
     padding: 2px 8px;
-    border-radius: var(--radius-sm);
-    background-color: var(--color-tertiary-system-fill);
-    color: var(--color-secondary-label);
+    border-radius: var(--r-s);
+    background-color: var(--fill-3);
+    color: var(--label-2);
   }
 
   .info-pill.version-pill {
     background-color: rgba(0, 122, 255, 0.15);
-    color: var(--color-system-blue);
+    color: var(--blue-text);
   }
 
   .info-pill.secure-pill {
     background-color: rgba(48, 209, 88, 0.15);
-    color: var(--color-system-green);
+    color: var(--green);
     display: flex;
     align-items: center;
     gap: 4px;
   }
 
   .diagnosis-lead {
-    font-size: var(--text-headline);
+    font-size: var(--t-body);
     font-weight: 600;
-    color: var(--color-label);
+    color: var(--label);
     line-height: 1.35;
   }
 
   .security-notice {
     font-size: 12px;
     line-height: 1.45;
-    color: var(--color-secondary-label);
+    color: var(--label-2);
   }
 
   .security-notice code {
@@ -341,26 +347,26 @@
   .section-label {
     font-size: 12px;
     font-weight: 600;
-    color: var(--color-secondary-label);
+    color: var(--label-2);
   }
 
   .comment-textarea {
     width: 100%;
     padding: 10px 12px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--color-separator);
-    background-color: var(--color-secondary-system-grouped-background);
-    color: var(--color-label);
-    font-family: var(--font-system);
-    font-size: var(--text-subheadline);
+    border-radius: var(--r-s);
+    border: 1px solid var(--separator);
+    background-color: var(--card);
+    color: var(--label);
+    font-family: var(--font);
+    font-size: var(--t-sub);
     outline: none;
     box-sizing: border-box;
     resize: vertical;
-    transition: border-color var(--motion-duration-short) ease;
+    transition: border-color var(--dur-micro) ease;
   }
 
   .comment-textarea:focus {
-    border-color: var(--color-system-blue);
+    border-color: var(--blue-text);
     box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
   }
 
@@ -387,14 +393,14 @@
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    border-radius: var(--radius-sm);
-    background-color: var(--color-secondary-system-fill);
-    border: 1px solid var(--glass-border);
+    border-radius: var(--r-s);
+    background-color: var(--fill-2);
+    border: 1px solid var(--edge);
   }
 
   .manifest-text {
     font-size: 11px;
-    color: var(--color-label);
+    color: var(--label);
     line-height: 1.3;
   }
 
@@ -410,7 +416,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--color-system-blue);
+    color: var(--blue-text);
     font-size: 12px;
     cursor: pointer;
     padding: 0;
@@ -426,12 +432,12 @@
     margin: 0;
     padding: 10px 12px;
     background-color: rgba(0, 0, 0, 0.35);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-sm);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-s);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 11px;
     line-height: 1.45;
-    color: var(--color-secondary-label);
+    color: var(--label-2);
     max-height: 180px;
     overflow-y: auto;
     white-space: pre-wrap;
@@ -442,7 +448,7 @@
   .service-notice {
     font-size: 11px;
     line-height: 1.4;
-    color: var(--color-tertiary-label);
+    color: var(--label-3);
     font-style: italic;
   }
 

@@ -53,7 +53,7 @@
 
 <div class="apple-search-field" class:disabled class:has-value={!!value} role="search">
   <span class="search-icon">
-    <Icon name="search" size={15} color="var(--color-tertiary-label)" />
+    <Icon name="search" size={15} color="var(--label-3)" />
   </span>
 
   <input
@@ -77,7 +77,7 @@
       onclick={clear}
       aria-label={t('search.clear_aria')}
     >
-      <Icon name="clear" size={11} color="var(--color-tertiary-label)" />
+      <Icon name="clear" size={11} color="var(--label-3)" />
     </button>
   {/if}
 </div>
@@ -91,23 +91,23 @@
     max-width: 320px;
     height: 32px;
     padding: 0 8px 0 10px;
-    background-color: var(--color-quaternary-system-fill);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-sm);
+    background-color: var(--fill-3);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-s);
     transition:
-      background-color var(--motion-duration-short) ease,
-      box-shadow var(--motion-duration-short) ease,
-      border-color var(--motion-duration-short) ease;
+      background-color var(--dur-micro) ease,
+      box-shadow var(--dur-micro) ease,
+      border-color var(--dur-micro) ease;
   }
 
   .apple-search-field:hover:not(:focus-within):not(.disabled) {
-    background-color: var(--color-tertiary-system-fill);
+    background-color: var(--fill-3);
   }
 
   .apple-search-field:focus-within {
-    background-color: var(--card-bg);
-    border-color: var(--color-system-blue);
-    outline: 2px solid var(--color-system-blue);
+    background-color: var(--card);
+    border-color: var(--blue-text);
+    outline: 2px solid var(--blue);
     outline-offset: 1px;
     box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
   }
@@ -131,14 +131,14 @@
     height: 100%;
     border: none;
     background: transparent;
-    font-family: var(--font-system);
-    font-size: var(--text-subheadline);
-    color: var(--color-label);
+    font-family: var(--font);
+    font-size: var(--t-sub);
+    color: var(--label);
     outline: none;
   }
 
   .search-input::placeholder {
-    color: var(--color-tertiary-label);
+    color: var(--label-3);
   }
 
   .clear-btn {
@@ -146,7 +146,7 @@
     height: 18px;
     border-radius: 50%;
     border: none;
-    background-color: var(--color-tertiary-system-fill);
+    background-color: var(--fill-3);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -155,29 +155,23 @@
     margin-left: 4px;
     outline: none;
     transition:
-      background-color var(--motion-duration-short) ease,
-      box-shadow var(--motion-duration-short) ease;
+      background-color var(--dur-micro) ease,
+      box-shadow var(--dur-micro) ease;
   }
 
   .clear-btn:hover {
-    background-color: var(--color-secondary-system-fill);
+    background-color: var(--fill-2);
   }
 
   .clear-btn:active {
-    background-color: var(--color-system-fill);
+    background-color: var(--fill);
   }
 
   .clear-btn:focus-visible {
-    outline: 2px solid var(--color-system-blue);
+    outline: 2px solid var(--blue);
     outline-offset: 1px;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .apple-search-field,
-    .clear-btn {
-      transition: none !important;
-    }
-  }
 
   :global([data-reduce-motion="true"]) .apple-search-field,
   :global([data-reduce-motion="true"]) .clear-btn {

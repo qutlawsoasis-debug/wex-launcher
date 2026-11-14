@@ -24,7 +24,7 @@
     label,
     detail,
     height = 6,
-    color = 'var(--color-system-blue)',
+    color = 'var(--blue)',
     hideInfo = false,
   }: Props = $props();
 
@@ -75,26 +75,26 @@
     gap: 6px;
     width: 100%;
     user-select: none;
-    font-family: var(--font-system);
+    font-family: var(--font);
   }
 
   .progress-info {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: var(--text-footnote);
+    font-size: var(--t-foot);
   }
 
   .progress-label {
     font-weight: 500;
-    color: var(--color-label);
+    color: var(--label);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .progress-detail {
-    color: var(--color-secondary-label);
+    color: var(--label-2);
     font-variant-numeric: tabular-nums;
     font-weight: 500;
     flex-shrink: 0;
@@ -103,15 +103,15 @@
   .progress-track {
     position: relative;
     width: 100%;
-    background-color: var(--color-quaternary-system-fill);
-    border-radius: var(--radius-pill);
+    background-color: var(--fill-3);
+    border-radius: var(--r-pill);
     overflow: hidden;
   }
 
   .progress-fill {
     height: 100%;
-    border-radius: var(--radius-pill);
-    transition: width var(--motion-duration-short) ease-out;
+    border-radius: var(--r-pill);
+    transition: width var(--dur-micro) ease-out;
   }
 
   .progress-indeterminate {
@@ -120,7 +120,7 @@
     bottom: 0;
     left: 0;
     width: 40%;
-    border-radius: var(--radius-pill);
+    border-radius: var(--r-pill);
     animation: indeterminateSlide 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
     will-change: transform;
   }
@@ -134,17 +134,6 @@
     }
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .progress-fill {
-      transition: none !important;
-    }
-    .progress-indeterminate {
-      animation: none !important;
-      left: 20% !important;
-      width: 60% !important;
-      opacity: 0.8;
-    }
-  }
 
   :global([data-effects="off"]) .progress-fill,
   :global([data-reduce-motion="true"]) .progress-fill {

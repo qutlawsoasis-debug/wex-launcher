@@ -3,10 +3,9 @@ import { setupMockIpc } from './mock-ipc';
 
 test('CSP blocks injected scripts, eval and remote fetch while the UI loads', async ({ page }) => {
   await page.addInitScript(setupMockIpc, { mode: 'empty' });
-  await page.addInitScript(() => localStorage.setItem('wex_onboarding_completed', 'true'));
-  const response = await page.goto('/?tab=settings&theme=dark');
+  const response = await page.goto('/#options');
   expect(response?.headers()['content-security-policy']).toContain("default-src 'none'");
-  await expect(page.locator('.wex-shell')).toBeVisible();
+  await expect(page.locator('.app')).toBeVisible();
   // Evaluate through a normal same-origin script, not DevTools Runtime.evaluate:
   // the latter intentionally bypasses the page's eval CSP restriction.
   await page.route('**/security-probe.js', route => route.fulfill({

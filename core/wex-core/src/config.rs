@@ -151,6 +151,10 @@ pub struct LauncherConfig {
     #[serde(default, alias = "reduceTransparency")]
     pub reduce_transparency: bool,
 
+    /// Winter look in the season (snowfall, snow on the build tiles). On by default.
+    #[serde(default = "default_winter_look", alias = "winterLook")]
+    pub winter_look: bool,
+
     #[serde(
         default,
         alias = "quickPlayMultiplayer",
@@ -203,6 +207,34 @@ pub struct LauncherConfig {
         alias = "gameWindowBehavior"
     )]
     pub game_window_behavior: String,
+
+    /// Azure application (client) ID for Microsoft sign-in, set by the user.
+    /// The `WEX_MS_CLIENT_ID` environment variable takes precedence (accounts::microsoft_client_id).
+    #[serde(
+        default,
+        alias = "microsoftClientId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub microsoft_client_id: Option<String>,
+
+    /// «Облачные миры»: the Aura world manager's address, set by the user.
+    /// `WEX_CLOUD_URL` takes precedence (wex_social::cloud::CloudConfig).
+    #[serde(default, alias = "cloudUrl", skip_serializing_if = "Option::is_none")]
+    pub cloud_url: Option<String>,
+
+    /// The manager's shared secret, set by the user; never in the repository.
+    /// `WEX_CLOUD_SECRET` takes precedence.
+    #[serde(
+        default,
+        alias = "cloudSecret",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub cloud_secret: Option<String>,
+
+    /// Launch identity resolved from the active account just before launch.
+    /// Runtime only: never written to config.json.
+    #[serde(skip)]
+    pub session: Option<crate::accounts::GameSession>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -257,6 +289,10 @@ where
 
 fn default_version() -> String {
     "1.20.1".to_string()
+}
+
+fn default_winter_look() -> bool {
+    true
 }
 
 fn default_nickname() -> String {
@@ -383,8 +419,10 @@ pub fn get_system_total_memory_mb() -> u32 {
 }
 
 pub fn default_fast_launch() -> bool {
-    // Enabled by default only when system RAM >= 16 GB (~15360 MB)
-    get_system_total_memory_mb() >= 15360
+    // Off by default: prewarm starts a real Minecraft window that can appear
+    // over other fullscreen apps while it loads. The user turns it on in
+    // Settings › Лаунчер › «Готовить игру заранее».
+    false
 }
 
 fn default_true() -> bool {
@@ -409,6 +447,7 @@ impl Default for LauncherConfig {
             java_mode: default_java_mode(),
             reduce_motion: false,
             reduce_transparency: false,
+            winter_look: default_winter_look(),
             quick_play_multiplayer: None,
             appearance: default_appearance(),
             accent: default_accent(),
@@ -418,6 +457,10 @@ impl Default for LauncherConfig {
             minimize_to_tray: default_minimize_to_tray(),
             friend_notifications: true,
             game_window_behavior: default_game_window_behavior(),
+            microsoft_client_id: None,
+            cloud_url: None,
+            cloud_secret: None,
+            session: None,
         }
     }
 }
@@ -440,6 +483,7 @@ impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
             java_mode: default_java_mode(),
             reduce_motion: ipc.reduce_motion,
             reduce_transparency: ipc.reduce_transparency,
+            winter_look: default_winter_look(),
             quick_play_multiplayer: None,
             appearance: ipc.appearance,
             accent: ipc.accent,
@@ -449,6 +493,10 @@ impl From<wex_ipc::models::LauncherConfig> for LauncherConfig {
             minimize_to_tray: default_minimize_to_tray(),
             friend_notifications: default_true(),
             game_window_behavior: default_game_window_behavior(),
+            microsoft_client_id: None,
+            cloud_url: None,
+            cloud_secret: None,
+            session: None,
         }
     }
 }
@@ -495,6 +543,35 @@ impl LauncherConfig {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn fast_launch_is_off_by_default() {
+        // Prewarm opens a real game window; it must never start unless the user turned it on.
+        assert!(!LauncherConfig::default().fast_launch);
+        let cfg: LauncherConfig = serde_json::from_str("{}").unwrap();
+        assert!(!cfg.fast_launch);
+    }
+
+    #[test]
+    fn cloud_settings_are_kept_and_not_written_when_unset() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("config.json");
+        LauncherConfig::default().save(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("cloud_"), "{text}");
+        std::fs::write(
+            &path,
+            r#"{"cloudUrl":"http://h.example:1/","cloudSecret":"s"}"#,
+        )
+        .unwrap();
+        let mut cfg = LauncherConfig::load_or_default(&path);
+        assert_eq!(cfg.cloud_url.as_deref(), Some("http://h.example:1/"));
+        assert_eq!(cfg.cloud_secret.as_deref(), Some("s"));
+        cfg.nickname = "Steve".into();
+        cfg.save(&path).unwrap();
+        let again = LauncherConfig::load_or_default(&path);
+        assert_eq!(again.cloud_secret.as_deref(), Some("s"));
+    }
 
     #[test]
     fn test_wex_paths() {

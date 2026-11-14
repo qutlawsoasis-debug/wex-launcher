@@ -188,26 +188,26 @@
   .sheet-scrim {
     position: fixed;
     inset: 0;
-    background-color: var(--color-dim-scrim);
+    background-color: var(--veil);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
     z-index: 1000;
-    animation: scrimFadeIn var(--motion-duration-screen-enter) ease forwards;
+    animation: scrimFadeIn var(--dur-short) ease forwards;
   }
 
   .sheet-card {
     position: relative;
     width: 100%;
-    background-color: var(--color-secondary-system-background);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-sheet);
+    background-color: var(--card);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-l);
     box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 4px 12px rgba(0, 0, 0, 0.2);
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    animation: sheetSlideUp var(--motion-duration-sheet-enter) var(--motion-curve-spring-system) forwards;
+    animation: sheetSlideUp var(--dur-short) var(--ease) forwards;
     outline: none;
   }
 
@@ -225,8 +225,8 @@
   .grabber {
     width: 36px;
     height: 5px;
-    border-radius: var(--radius-pill);
-    background-color: var(--color-tertiary-system-fill);
+    border-radius: var(--r-pill);
+    background-color: var(--fill-3);
   }
 
   .sheet-header {
@@ -234,7 +234,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 10px 16px;
-    border-bottom: 1px solid var(--color-separator);
+    border-bottom: 1px solid var(--separator);
   }
 
   .header-action {
@@ -248,9 +248,9 @@
   }
 
   .header-title {
-    font-size: var(--text-headline);
+    font-size: var(--t-body);
     font-weight: 600;
-    color: var(--color-label);
+    color: var(--label);
     text-align: center;
     flex: 1;
     white-space: nowrap;
@@ -284,24 +284,15 @@
     }
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .sheet-scrim {
-      animation: scrimFadeIn var(--motion-duration-short) ease forwards !important;
-    }
-    .sheet-card {
-      animation: scrimFadeIn var(--motion-duration-short) ease forwards !important;
-      transform: none !important;
-    }
-  }
 
   :global([data-effects="off"]) .sheet-card,
   :global([data-reduce-motion="true"]) .sheet-card {
-    animation: scrimFadeIn var(--motion-duration-short) ease forwards !important;
+    animation: scrimFadeIn var(--dur-micro) ease forwards !important;
     transform: none !important;
   }
 
   :global([data-effects="off"]) .sheet-scrim,
   :global([data-reduce-motion="true"]) .sheet-scrim {
-    animation: scrimFadeIn var(--motion-duration-short) ease forwards !important;
+    animation: scrimFadeIn var(--dur-micro) ease forwards !important;
   }
 </style>

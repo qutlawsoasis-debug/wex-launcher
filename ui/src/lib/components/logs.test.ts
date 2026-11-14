@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount, unmount } from 'svelte';
 import LogsSheet from './LogsSheet.svelte';
+import { builds } from '../shell/builds.svelte';
 import type { LogFileInfo, LogReadResponse } from './LogsSheet.svelte';
 
 // Mock Tauri invoke
@@ -13,6 +14,11 @@ describe('LogsSheet (SPEC 2.10: Apple HIG Game Logs Viewer)', () => {
   let target: HTMLElement;
 
   beforeEach(() => {
+    // The version switch lists the builds core reported.
+    builds.list = [
+      { id: '1.21.1', java: null, installed: true, mods: null },
+      { id: '1.20.1', java: null, installed: true, mods: null },
+    ];
     target = document.createElement('div');
     document.body.appendChild(target);
     vi.clearAllMocks();

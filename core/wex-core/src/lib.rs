@@ -1,3 +1,4 @@
+pub mod accounts;
 pub mod auth;
 pub mod config;
 pub mod download;
@@ -11,8 +12,10 @@ pub mod launcher;
 pub mod minecraft;
 pub mod pack;
 pub mod playtime;
+pub mod server;
 pub mod system_info;
 
+pub use accounts::{Account, AccountKind, AccountStore, GameSession};
 pub use auth::offline_uuid;
 pub use config::{LauncherConfig, WexPaths};
 pub use download::is_disk_full_error;

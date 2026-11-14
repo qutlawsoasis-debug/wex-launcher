@@ -278,6 +278,9 @@ pub struct BugReportPreviewDto {
     pub mods: Vec<ReportModDto>,
     pub mods_count: usize,
     pub latest_log_tail: Option<String>,
+    /// The end of the launcher's own log (`logs/launcher.log`), anonymized.
+    #[serde(default)]
+    pub launcher_log_tail: Option<String>,
     pub crash_report_name: Option<String>,
     pub crash_report_tail: Option<String>,
     pub full_json_preview: String,
@@ -448,6 +451,8 @@ pub fn prepare_report_preview_impl(
     let latest_log_path = inst_dir.join("logs").join("latest.log");
     let raw_log_tail = read_log_tail(&latest_log_path, 1500);
     let latest_log_tail = raw_log_tail.map(|l| anonymize_text(&l, player_name));
+    let launcher_log_tail = read_log_tail(&paths.logs_dir.join(crate::launcher_log::LOG_FILE), 400)
+        .map(|l| anonymize_text(&l, player_name));
 
     // 3. Crash report
     let crash_report_pair = find_latest_crash_report(&inst_dir);
@@ -555,6 +560,7 @@ pub fn prepare_report_preview_impl(
         mods,
         mods_count,
         latest_log_tail,
+        launcher_log_tail,
         crash_report_name,
         crash_report_tail,
         full_json_preview,
@@ -687,6 +693,15 @@ pub fn save_report_zip_with_opener<O: PathOpener>(
             .map_err(|e| format!("Ошибка записи latest.log: {}", e))?;
     }
 
+    // 3b. launcher.log: what the launcher itself did (install, sync, launch)
+    if let Some(log_content) = &preview.launcher_log_tail {
+        let anon_log = anonymize_text(log_content, player_name);
+        zip.start_file("launcher.log", options)
+            .map_err(|e| format!("Ошибка добавления launcher.log в архив: {}", e))?;
+        zip.write_all(anon_log.as_bytes())
+            .map_err(|e| format!("Ошибка записи launcher.log: {}", e))?;
+    }
+
     // 4. crash-report.txt
     if let Some(crash_content) = &preview.crash_report_tail {
         let anon_crash = anonymize_text(crash_content, player_name);
@@ -817,8 +832,50 @@ pub fn format_clipboard_report_impl(
         md.push_str(&last_lines[start..].join("\n"));
         md.push_str("\n```\n");
     }
+    if let Some(log_tail) = &preview.launcher_log_tail {
+        md.push_str("\n**Журнал лаунчера (обезличен):**\n```\n");
+        let last_lines: Vec<&str> = log_tail.lines().collect();
+        let start = last_lines.len().saturating_sub(20);
+        md.push_str(&last_lines[start..].join("\n"));
+        md.push_str("\n```\n");
+    }
 
     md
+}
+
+#[cfg(test)]
+mod launcher_log_report_tests {
+    use super::*;
+
+    #[test]
+    fn the_report_carries_the_launcher_log_anonymized() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().to_path_buf()));
+        std::fs::create_dir_all(&paths.logs_dir).unwrap();
+        std::fs::write(
+            paths.logs_dir.join(crate::launcher_log::LOG_FILE),
+            "INFO start_game 1.21.1\nINFO Launching Minecraft 1.21.1 as 'Steve777'...\nERROR launch_game failed\n",
+        )
+        .unwrap();
+        let preview =
+            prepare_report_preview_impl(&paths, Some("1.21.1"), None, None, Some("Steve777"));
+        let tail = preview
+            .launcher_log_tail
+            .expect("launcher log in the report");
+        assert!(tail.contains("launch_game failed"));
+        assert!(!tail.contains("Steve777"), "the nickname is anonymized");
+        let md = format_clipboard_report_impl(&paths, Some("1.21.1"), None, None, Some("Steve777"));
+        assert!(md.contains("Журнал лаунчера"));
+        assert!(md.contains("launch_game failed"));
+    }
+
+    #[test]
+    fn no_launcher_log_no_section() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().to_path_buf()));
+        let preview = prepare_report_preview_impl(&paths, Some("1.21.1"), None, None, None);
+        assert!(preview.launcher_log_tail.is_none());
+    }
 }
 
 // ---------------------------------------------------------------------------

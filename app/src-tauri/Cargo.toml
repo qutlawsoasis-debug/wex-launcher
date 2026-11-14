@@ -1,6 +1,6 @@
 [package]
 name = "wex-app"
-version = "0.9.2"
+version = "0.10.0"
 description = "Wex Launcher Application"
 edition = "2021"
 
@@ -24,12 +24,15 @@ serde_json = "1.0"
 tokio = { version = "1.0", features = ["time", "sync", "rt", "macros"] }
 async-trait = "0.1"
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
 chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
 regex = "1.10"
 semver = "1"
 sha2 = "0.10"
 tempfile = "3.8"
+tokio-util = "0.7"
+uuid = { version = "1", features = ["v4"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 wex-core = { path = "../../core/wex-core" }
@@ -38,6 +41,7 @@ wex-extras = { path = "../../core/wex-extras" }
 wex-net = { path = "../../core/wex-net" }
 wex-social = { path = "../../core/wex-social" }
 tauri-plugin-notification = "2.8.0"
+tauri-plugin-dialog = "2"
 
 [dev-dependencies]
 tauri = { version = "2.0.0", features = ["test"] }

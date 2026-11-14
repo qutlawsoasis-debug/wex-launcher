@@ -5,7 +5,9 @@ pub mod music;
 pub mod presets;
 pub mod skins;
 
-pub use crash::{analyze_crash, analyze_log_text, CrashDiagnosis, CrashKind};
+pub use crash::{
+    analyze_crash, analyze_crash_since, analyze_log_text, clean_exit, CrashDiagnosis, CrashKind,
+};
 pub use discord::{Activity, DiscordRpcClient, DEFAULT_DISCORD_APP_ID};
 pub use image;
 pub use import::{

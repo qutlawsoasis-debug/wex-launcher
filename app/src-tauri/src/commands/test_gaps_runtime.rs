@@ -246,9 +246,61 @@ fn poison_servers(f: &Fixture) {
 #[tokio::test]
 async fn list_servers_success_clones_managed_state() {
     let f = Fixture::new().await;
+    // A new list stays empty: Wex adds no public servers of its own.
     let result = crate::list_servers(None, f.play()).await.unwrap();
-    assert_eq!(result.len(), 2);
-    assert_eq!(result[0].address, "mc.auramc.net");
+    assert!(result.is_empty());
+    let path = f.paths.instance_dir("1.21.1").join("servers.dat");
+    assert!(
+        !path.exists()
+            || crate::list_servers(None, f.play())
+                .await
+                .unwrap()
+                .is_empty(),
+        "nothing is written into servers.dat"
+    );
+}
+#[tokio::test]
+async fn list_servers_removes_the_old_seeded_servers_once_and_keeps_the_players() {
+    let f = Fixture::new().await;
+    // What earlier builds wrote, plus the player's own servers (one reuses a name).
+    crate::add_server(
+        None,
+        "Aura Official — Survival & PvP".into(),
+        "mc.auramc.net".into(),
+        f.play(),
+    )
+    .await
+    .unwrap();
+    crate::add_server(
+        None,
+        "Aura Pack Community Server".into(),
+        "pack.auramc.net".into(),
+        f.play(),
+    )
+    .await
+    .unwrap();
+    crate::add_server(
+        None,
+        "Our server".into(),
+        "play.example.org".into(),
+        f.play(),
+    )
+    .await
+    .unwrap();
+    crate::add_server(
+        None,
+        "Aura Official — Survival & PvP".into(),
+        "10.0.0.5".into(),
+        f.play(),
+    )
+    .await
+    .unwrap();
+    let list = crate::list_servers(None, f.play()).await.unwrap();
+    let addrs: Vec<_> = list.iter().map(|s| s.address.as_str()).collect();
+    assert_eq!(addrs, ["play.example.org", "10.0.0.5"]);
+    // Saved: a second read finds the same list.
+    let again = crate::list_servers(None, f.play()).await.unwrap();
+    assert_eq!(again.len(), 2);
 }
 #[tokio::test]
 async fn list_servers_error_corrupt_file() {
@@ -284,6 +336,9 @@ async fn add_server_error_validation_empty_address() {
 #[tokio::test]
 async fn remove_server_success_persists_and_preserves_neighbors() {
     let f = Fixture::new().await;
+    crate::add_server(None, "Neighbor".into(), "10.0.0.2:25565".into(), f.play())
+        .await
+        .unwrap();
     crate::add_server(None, "Fixture".into(), "127.0.0.1:25565".into(), f.play())
         .await
         .unwrap();
@@ -291,7 +346,8 @@ async fn remove_server_success_persists_and_preserves_neighbors() {
         .await
         .unwrap();
     let entries = crate::list_servers(None, f.play()).await.unwrap();
-    assert_eq!(entries.len(), 2);
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].address, "10.0.0.2:25565");
     assert!(entries.iter().all(|e| e.address != "127.0.0.1:25565"));
 }
 #[tokio::test]

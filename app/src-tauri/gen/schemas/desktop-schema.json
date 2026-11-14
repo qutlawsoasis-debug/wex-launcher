@@ -555,6 +555,54 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the accounts_add_offline command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-add-offline",
+          "markdownDescription": "Enables the accounts_add_offline command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-list",
+          "markdownDescription": "Enables the accounts_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_ms_begin command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-ms-begin",
+          "markdownDescription": "Enables the accounts_ms_begin command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_ms_cancel command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-ms-cancel",
+          "markdownDescription": "Enables the accounts_ms_cancel command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_ms_finish command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-ms-finish",
+          "markdownDescription": "Enables the accounts_ms_finish command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_ms_open_page command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-ms-open-page",
+          "markdownDescription": "Enables the accounts_ms_open_page command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_sign_out command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-sign-out",
+          "markdownDescription": "Enables the accounts_sign_out command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_switch command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-switch",
+          "markdownDescription": "Enables the accounts_switch command without any pre-configured scope."
+        },
+        {
           "description": "Enables the add_custom_mod command without any pre-configured scope.",
           "type": "string",
           "const": "allow-add-custom-mod",
@@ -595,6 +643,48 @@
           "type": "string",
           "const": "allow-close-lobby-room",
           "markdownDescription": "Enables the close_lobby_room command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the cloud_create command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cloud-create",
+          "markdownDescription": "Enables the cloud_create command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the cloud_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cloud-delete",
+          "markdownDescription": "Enables the cloud_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the cloud_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cloud-list",
+          "markdownDescription": "Enables the cloud_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the cloud_share command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cloud-share",
+          "markdownDescription": "Enables the cloud_share command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the cloud_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cloud-start",
+          "markdownDescription": "Enables the cloud_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the cloud_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cloud-status",
+          "markdownDescription": "Enables the cloud_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the cloud_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cloud-stop",
+          "markdownDescription": "Enables the cloud_stop command without any pre-configured scope."
         },
         {
           "description": "Enables the connect_lan_world command without any pre-configured scope.",
@@ -1125,6 +1215,84 @@
           "markdownDescription": "Enables the overview_record_playtime command without any pre-configured scope."
         },
         {
+          "description": "Enables the own_server_accept_eula command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-accept-eula",
+          "markdownDescription": "Enables the own_server_accept_eula command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_add_to_servers command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-add-to-servers",
+          "markdownDescription": "Enables the own_server_add_to_servers command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_command command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-command",
+          "markdownDescription": "Enables the own_server_command command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_console command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-console",
+          "markdownDescription": "Enables the own_server_console command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_create command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-create",
+          "markdownDescription": "Enables the own_server_create command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-delete",
+          "markdownDescription": "Enables the own_server_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_install command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-install",
+          "markdownDescription": "Enables the own_server_install command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-list",
+          "markdownDescription": "Enables the own_server_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_open_eula command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-open-eula",
+          "markdownDescription": "Enables the own_server_open_eula command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-start",
+          "markdownDescription": "Enables the own_server_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-stop",
+          "markdownDescription": "Enables the own_server_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-update",
+          "markdownDescription": "Enables the own_server_update command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the own_server_whitelist command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-own-server-whitelist",
+          "markdownDescription": "Enables the own_server_whitelist command without any pre-configured scope."
+        },
+        {
           "description": "Enables the parse_deep_link_uri command without any pre-configured scope.",
           "type": "string",
           "const": "allow-parse-deep-link-uri",
@@ -1297,6 +1465,18 @@
           "type": "string",
           "const": "allow-social-check-launcher-update",
           "markdownDescription": "Enables the social_check_launcher_update command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the social_connect command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-social-connect",
+          "markdownDescription": "Enables the social_connect command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the social_connection_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-social-connection-status",
+          "markdownDescription": "Enables the social_connection_status command without any pre-configured scope."
         },
         {
           "description": "Enables the social_create_world_backup command without any pre-configured scope.",
@@ -1647,6 +1827,54 @@
           "markdownDescription": "Enables the workshop_toggle_resource_pack command without any pre-configured scope."
         },
         {
+          "description": "Denies the accounts_add_offline command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-add-offline",
+          "markdownDescription": "Denies the accounts_add_offline command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-list",
+          "markdownDescription": "Denies the accounts_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_ms_begin command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-ms-begin",
+          "markdownDescription": "Denies the accounts_ms_begin command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_ms_cancel command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-ms-cancel",
+          "markdownDescription": "Denies the accounts_ms_cancel command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_ms_finish command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-ms-finish",
+          "markdownDescription": "Denies the accounts_ms_finish command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_ms_open_page command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-ms-open-page",
+          "markdownDescription": "Denies the accounts_ms_open_page command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_sign_out command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-sign-out",
+          "markdownDescription": "Denies the accounts_sign_out command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_switch command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-switch",
+          "markdownDescription": "Denies the accounts_switch command without any pre-configured scope."
+        },
+        {
           "description": "Denies the add_custom_mod command without any pre-configured scope.",
           "type": "string",
           "const": "deny-add-custom-mod",
@@ -1687,6 +1915,48 @@
           "type": "string",
           "const": "deny-close-lobby-room",
           "markdownDescription": "Denies the close_lobby_room command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cloud_create command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cloud-create",
+          "markdownDescription": "Denies the cloud_create command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cloud_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cloud-delete",
+          "markdownDescription": "Denies the cloud_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cloud_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cloud-list",
+          "markdownDescription": "Denies the cloud_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cloud_share command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cloud-share",
+          "markdownDescription": "Denies the cloud_share command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cloud_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cloud-start",
+          "markdownDescription": "Denies the cloud_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cloud_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cloud-status",
+          "markdownDescription": "Denies the cloud_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cloud_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cloud-stop",
+          "markdownDescription": "Denies the cloud_stop command without any pre-configured scope."
         },
         {
           "description": "Denies the connect_lan_world command without any pre-configured scope.",
@@ -2217,6 +2487,84 @@
           "markdownDescription": "Denies the overview_record_playtime command without any pre-configured scope."
         },
         {
+          "description": "Denies the own_server_accept_eula command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-accept-eula",
+          "markdownDescription": "Denies the own_server_accept_eula command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_add_to_servers command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-add-to-servers",
+          "markdownDescription": "Denies the own_server_add_to_servers command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_command command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-command",
+          "markdownDescription": "Denies the own_server_command command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_console command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-console",
+          "markdownDescription": "Denies the own_server_console command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_create command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-create",
+          "markdownDescription": "Denies the own_server_create command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-delete",
+          "markdownDescription": "Denies the own_server_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_install command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-install",
+          "markdownDescription": "Denies the own_server_install command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-list",
+          "markdownDescription": "Denies the own_server_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_open_eula command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-open-eula",
+          "markdownDescription": "Denies the own_server_open_eula command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-start",
+          "markdownDescription": "Denies the own_server_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-stop",
+          "markdownDescription": "Denies the own_server_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-update",
+          "markdownDescription": "Denies the own_server_update command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the own_server_whitelist command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-own-server-whitelist",
+          "markdownDescription": "Denies the own_server_whitelist command without any pre-configured scope."
+        },
+        {
           "description": "Denies the parse_deep_link_uri command without any pre-configured scope.",
           "type": "string",
           "const": "deny-parse-deep-link-uri",
@@ -2389,6 +2737,18 @@
           "type": "string",
           "const": "deny-social-check-launcher-update",
           "markdownDescription": "Denies the social_check_launcher_update command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the social_connect command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-social-connect",
+          "markdownDescription": "Denies the social_connect command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the social_connection_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-social-connection-status",
+          "markdownDescription": "Denies the social_connection_status command without any pre-configured scope."
         },
         {
           "description": "Denies the social_create_world_backup command without any pre-configured scope.",
@@ -4837,6 +5197,72 @@
           "type": "string",
           "const": "deep-link:deny-unregister",
           "markdownDescription": "Denies the unregister command without any pre-configured scope."
+        },
+        {
+          "description": "This permission set configures the types of dialogs\navailable from the dialog plugin.\n\n#### Granted Permissions\n\nAll dialog types are enabled.\n\n\n\n#### This default permission set includes:\n\n- `allow-message`\n- `allow-save`\n- `allow-open`",
+          "type": "string",
+          "const": "dialog:default",
+          "markdownDescription": "This permission set configures the types of dialogs\navailable from the dialog plugin.\n\n#### Granted Permissions\n\nAll dialog types are enabled.\n\n\n\n#### This default permission set includes:\n\n- `allow-message`\n- `allow-save`\n- `allow-open`"
+        },
+        {
+          "description": "Enables the ask command without any pre-configured scope. (**DEPRECATED**: This is now an alias to `allow-message` and will be removed in v3)",
+          "type": "string",
+          "const": "dialog:allow-ask",
+          "markdownDescription": "Enables the ask command without any pre-configured scope. (**DEPRECATED**: This is now an alias to `allow-message` and will be removed in v3)"
+        },
+        {
+          "description": "Enables the confirm command without any pre-configured scope. (**DEPRECATED**: This is now an alias to `allow-message` and will be removed in v3)",
+          "type": "string",
+          "const": "dialog:allow-confirm",
+          "markdownDescription": "Enables the confirm command without any pre-configured scope. (**DEPRECATED**: This is now an alias to `allow-message` and will be removed in v3)"
+        },
+        {
+          "description": "Enables the message command without any pre-configured scope.",
+          "type": "string",
+          "const": "dialog:allow-message",
+          "markdownDescription": "Enables the message command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open command without any pre-configured scope.",
+          "type": "string",
+          "const": "dialog:allow-open",
+          "markdownDescription": "Enables the open command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the save command without any pre-configured scope.",
+          "type": "string",
+          "const": "dialog:allow-save",
+          "markdownDescription": "Enables the save command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the ask command without any pre-configured scope. (**DEPRECATED**: This is now an alias to `deny-message` and will be removed in v3)",
+          "type": "string",
+          "const": "dialog:deny-ask",
+          "markdownDescription": "Denies the ask command without any pre-configured scope. (**DEPRECATED**: This is now an alias to `deny-message` and will be removed in v3)"
+        },
+        {
+          "description": "Denies the confirm command without any pre-configured scope. (**DEPRECATED**: This is now an alias to `deny-message` and will be removed in v3)",
+          "type": "string",
+          "const": "dialog:deny-confirm",
+          "markdownDescription": "Denies the confirm command without any pre-configured scope. (**DEPRECATED**: This is now an alias to `deny-message` and will be removed in v3)"
+        },
+        {
+          "description": "Denies the message command without any pre-configured scope.",
+          "type": "string",
+          "const": "dialog:deny-message",
+          "markdownDescription": "Denies the message command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open command without any pre-configured scope.",
+          "type": "string",
+          "const": "dialog:deny-open",
+          "markdownDescription": "Denies the open command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save command without any pre-configured scope.",
+          "type": "string",
+          "const": "dialog:deny-save",
+          "markdownDescription": "Denies the save command without any pre-configured scope."
         },
         {
           "description": "This permission set configures which\nnotification features are by default exposed.\n\n#### Granted Permissions\n\nIt allows all notification related features.\n\n\n#### This default permission set includes:\n\n- `allow-is-permission-granted`\n- `allow-request-permission`\n- `allow-notify`\n- `allow-register-action-types`\n- `allow-register-listener`\n- `allow-remove-listener`\n- `allow-cancel`\n- `allow-get-pending`\n- `allow-remove-active`\n- `allow-get-active`\n- `allow-check-permissions`\n- `allow-show`\n- `allow-batch`\n- `allow-list-channels`\n- `allow-delete-channel`\n- `allow-create-channel`\n- `allow-permission-state`",

@@ -104,7 +104,7 @@
 
           {#if showChevron}
             <span class="chevron">
-              <Icon name="chevron-right" size={14} color="var(--color-tertiary-label)" />
+              <Icon name="chevron-right" size={14} color="var(--label-3)" />
             </span>
           {/if}
         </div>
@@ -143,7 +143,7 @@
 
           {#if showChevron}
             <span class="chevron">
-              <Icon name="chevron-right" size={14} color="var(--color-tertiary-label)" />
+              <Icon name="chevron-right" size={14} color="var(--label-3)" />
             </span>
           {/if}
         </div>
@@ -160,13 +160,13 @@
     padding: 12px 16px;
     min-height: 44px;
     background-color: transparent;
-    font-family: var(--font-system);
+    font-family: var(--font);
     user-select: none;
     transition:
-      background-color var(--motion-duration-hover) ease,
-      transform var(--motion-duration-press) var(--motion-curve-press);
+      background-color var(--dur-micro) ease,
+      transform var(--dur-micro) var(--ease);
     border: none;
-    border-bottom: 1px solid var(--color-separator);
+    border-bottom: 1px solid var(--separator);
     width: 100%;
     text-align: left;
     content-visibility: auto;
@@ -186,7 +186,7 @@
   }
 
   .apple-row.cascade-in {
-    animation: rowCascadeIn var(--motion-duration-normal, 240ms) var(--motion-curve-spring-gentle, cubic-bezier(0.16, 1, 0.3, 1)) both;
+    animation: rowCascadeIn var(--dur-short, 240ms) var(--ease, cubic-bezier(0.16, 1, 0.3, 1)) both;
     animation-delay: var(--cascade-delay, 0ms);
   }
 
@@ -199,16 +199,16 @@
   }
 
   .apple-row.clickable:hover:not(.disabled) {
-    background-color: var(--color-quaternary-system-fill);
+    background-color: var(--fill-3);
   }
 
   .apple-row.clickable:active:not(.disabled) {
-    background-color: var(--color-tertiary-system-fill);
-    transform: scale(var(--motion-press-scale, 0.97));
+    background-color: var(--fill-3);
+    transform: scale(var(--press-scale, 0.97));
   }
 
   .apple-row.clickable:focus-visible {
-    outline: 2px solid var(--color-system-blue);
+    outline: 2px solid var(--blue);
     outline-offset: -2px;
     z-index: 1;
   }
@@ -242,19 +242,19 @@
   }
 
   .row-title {
-    font-size: var(--text-subheadline);
+    font-size: var(--t-sub);
     font-weight: 500;
-    color: var(--color-label);
+    color: var(--label);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .row-subtitle {
-    font-size: var(--text-footnote);
-    color: var(--color-secondary-label);
+    font-size: var(--t-foot);
+    color: var(--label-2);
     font-weight: 500;
-    line-height: var(--line-footnote);
+    line-height: 1.35;
   }
 
   .row-trailing {
@@ -265,8 +265,8 @@
   }
 
   .trailing-text {
-    font-size: var(--text-footnote);
-    color: var(--color-secondary-label);
+    font-size: var(--t-foot);
+    color: var(--label-2);
   }
 
   .chevron {
@@ -274,14 +274,6 @@
     align-items: center;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .apple-row {
-      transition: none !important;
-    }
-    .apple-row.cascade-in {
-      animation: none !important;
-    }
-  }
 
   :global([data-reduce-motion="true"]) .apple-row {
     transition: none !important;

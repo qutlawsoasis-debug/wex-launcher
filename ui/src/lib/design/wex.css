@@ -1,0 +1,315 @@
+/* Wex design tokens, taken from docs/design/launcher-reference.html (v8).
+ *
+ * Colour: Apple system colours, light and dark (HIG › Color, Dark Mode).
+ * One accent, systemBlue, on the primary action; systemGreen for toggles and
+ * "in game"; systemRed for Stop and destructive actions (AGENTS.md).
+ * Materials: the sidebar and the launch bar are translucent; under Reduce
+ * Transparency they turn solid (HIG › Materials, Accessibility).
+ * Motion: only in response to an action; under Reduce Motion or with
+ * Animations off everything is instant (HIG › Motion).
+ *
+ * Theme: no data-theme attribute follows the system; data-theme="light" or
+ * "dark" forces one (theme.svelte.ts writes it from the appearance setting).
+ */
+
+@import '@fontsource-variable/onest/index.css';
+
+:root {
+  /* Light theme */
+  --blue: #0064d2;
+  --blue-hi: #0a6fe0;
+  --blue-text: #0066d6;
+  --blue-ink: #ffffff;
+  --blue-tint: rgba(0, 122, 255, 0.12);
+  --green: #34c759;
+  --red: #ff3b30;
+  --orange: #ff9500;
+
+  --label: #1d1d1f;
+  --label-2: rgba(60, 60, 67, 0.72);
+  --label-3: rgba(60, 60, 67, 0.5);
+  --fill: rgba(120, 120, 128, 0.2);
+  --fill-2: rgba(120, 120, 128, 0.14);
+  --fill-3: rgba(118, 118, 128, 0.08);
+  --separator: rgba(60, 60, 67, 0.14);
+
+  --base: #f5f5f7;
+  --side: rgba(236, 236, 240, 0.86);
+  --card: #ffffff;
+  --card-hover: #fbfbfd;
+  --edge: rgba(0, 0, 0, 0.08);
+  --shade: rgba(0, 0, 0, 0.08);
+  --veil: rgba(245, 245, 247, 0.72);
+  --veil-strong: rgba(255, 255, 255, 0.97);
+
+  /* Build covers: the build's colour with its version set in large type. Same in both
+     themes: the reference applies the palette colour (--pal-0, --pal-1) over its dark values. */
+  --cover-ink: #ffffff;
+  --cover-1211: #1e5fd8;
+  --cover-1201: #1f8a5b;
+  --cover-new: rgba(120, 120, 128, 0.14);
+  --hero-btn: rgba(255, 255, 255, 0.2);
+  --hero-btn-hi: rgba(255, 255, 255, 0.28);
+
+  /* Wardrobe stage */
+  --stage-a: rgba(0, 122, 255, 0.1);
+  --stage-b: rgba(120, 120, 128, 0.06);
+  --floor: rgba(0, 0, 0, 0.18);
+  --warn-fill: rgba(255, 149, 0, 0.9);
+
+  /* Miniature windows on the theme cards (Settings › Appearance) */
+  --mwl-bg: #e8e8ed;
+  --mwl-a: #ffffff;
+  --mwl-b: #dcdce1;
+  --mwl-c: #007aff;
+  --mwd-bg: #1c1c1f;
+  --mwd-a: #2a2a2e;
+  --mwd-b: #232327;
+  --mwd-c: #0a84ff;
+  --mws-a: rgba(140, 140, 150, 0.5);
+  --mws-b: rgba(140, 140, 150, 0.35);
+
+  /* Monogram backgrounds for servers, friends and mods without an icon */
+  --av-1: #ff9500;
+  --av-2: #5ac8fa;
+  --av-3: #34c759;
+  --av-4: #ff2d55;
+  --av-5: #8e8e93;
+
+  /* Type: Onest everywhere (aura-knowledge: Шрифт Onest вместо SF). */
+  --font: 'Onest Variable', 'Onest', -apple-system, 'SF Pro Text', system-ui, sans-serif;
+  --font-mono: 'Cascadia Code', Consolas, 'SF Mono', monospace;
+  --t-cap: 12px;
+  --t-foot: 13px;
+  --t-sub: 15px;
+  --t-body: 16px;
+  --t-t3: 20px;
+  --t-t2: 24px;
+  --t-t1: 32px;
+  --t-hero: 56px;
+  --w-regular: 400;
+  --w-medium: 500;
+  --w-semibold: 600;
+  --w-bold: 700;
+  --w-display: 800;
+
+  /* Radii: 8 buttons, 12 large buttons and rows, 16 cards and banners. */
+  --r-xs: 6px;
+  --r-s: 8px;
+  --r-m: 12px;
+  --r-l: 16px;
+  --r-pill: 999px;
+  --r-window: 12px;
+
+  /* Layout */
+  --side-w: 248px;
+  --window-max: 1480px;
+  --row-nav: 40px;
+  --row-lib: 52px;
+  --control-h: 40px;
+  --control-h-big: 52px;
+  --gutter: 24px;
+
+  /* Motion: quick but smooth (owner's rule, 2026-11-12). One ease-out curve
+     without overshoot for everything; --spring is kept as a name and is the same
+     curve, so nothing bounces. Transitions 180–280 ms; states change through
+     opacity and transform. HIG › Motion: brief, purposeful, never in the way. */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --spring: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-micro: 180ms;
+  --dur-short: 220ms;
+  --dur-ind: 260ms;
+  --dur-page: 280ms;
+  --dur-page-out: 180ms;
+  --dur-pair: 280ms;
+  --dur-swap: 220ms;
+  --dur-started: 600ms;
+  --stagger: 40ms;
+  --press-scale: 0.97;
+  --hover-lift: -2px;
+
+  --lift: 0 10px 30px rgba(0, 0, 0, 0.12);
+  --sweep: rgba(255, 255, 255, 0.45);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --blue: #0a6fe0;
+    --blue-hi: #1a7ef0;
+    --blue-text: #4ba3ff;
+    --blue-tint: rgba(10, 132, 255, 0.18);
+    --green: #30d158;
+    --red: #ff453a;
+    --orange: #ff9f0a;
+    --label: #f5f5f7;
+    --label-2: rgba(235, 235, 245, 0.64);
+    --label-3: rgba(235, 235, 245, 0.4);
+    --fill: rgba(120, 120, 128, 0.32);
+    --fill-2: rgba(120, 120, 128, 0.22);
+    --fill-3: rgba(118, 118, 128, 0.14);
+    --separator: rgba(84, 84, 88, 0.5);
+    --base: #161618;
+    --side: rgba(30, 30, 33, 0.9);
+    --card: #1f1f22;
+    --card-hover: #26262a;
+    --edge: rgba(255, 255, 255, 0.08);
+    --shade: rgba(0, 0, 0, 0.4);
+    --veil: rgba(10, 10, 12, 0.6);
+    --veil-strong: rgba(30, 30, 33, 0.98);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --blue: #0a6fe0;
+  --blue-hi: #1a7ef0;
+  --blue-text: #4ba3ff;
+  --blue-tint: rgba(10, 132, 255, 0.18);
+  --green: #30d158;
+  --red: #ff453a;
+  --orange: #ff9f0a;
+  --label: #f5f5f7;
+  --label-2: rgba(235, 235, 245, 0.64);
+  --label-3: rgba(235, 235, 245, 0.4);
+  --fill: rgba(120, 120, 128, 0.32);
+  --fill-2: rgba(120, 120, 128, 0.22);
+  --fill-3: rgba(118, 118, 128, 0.14);
+  --separator: rgba(84, 84, 88, 0.5);
+  --base: #161618;
+  --side: rgba(30, 30, 33, 0.9);
+  --card: #1f1f22;
+  --card-hover: #26262a;
+  --edge: rgba(255, 255, 255, 0.08);
+  --shade: rgba(0, 0, 0, 0.4);
+  --veil: rgba(10, 10, 12, 0.6);
+  --veil-strong: rgba(30, 30, 33, 0.98);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+/* Reduce Transparency: materials become solid (system setting or the app's). */
+:root[data-reduce-transparency='true'] {
+  --side: var(--veil-strong);
+  --veil: var(--veil-strong);
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --side: var(--veil-strong);
+    --veil: var(--veil-strong);
+  }
+}
+
+/* Reduce Motion (system) or Animations off (app): everything is instant.
+   Durations go to zero so code that reads them gets 0 too. */
+:root[data-reduce-motion='true'] {
+  --dur-micro: 0ms;
+  --dur-short: 0ms;
+  --dur-ind: 0ms;
+  --dur-page: 0ms;
+  --dur-page-out: 0ms;
+  --dur-pair: 0ms;
+  --dur-swap: 0ms;
+  --dur-started: 0ms;
+  --stagger: 0ms;
+  --press-scale: 1;
+  --hover-lift: 0px;
+}
+
+/* Base: reset, window, form controls. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--base);
+  color: var(--label);
+  font-family: var(--font);
+  font-size: var(--t-body);
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+/* Reduce Transparency: no blur anywhere (HIG › Accessibility). */
+:root[data-reduce-transparency='true'] * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Reduce Motion or Animations off: animations end at once, nothing loops (HIG › Motion). */
+:root[data-reduce-motion='true'] *,
+:root[data-reduce-motion='true'] *::before,
+:root[data-reduce-motion='true'] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+/* The window is minimised or the game is running: no animation at all (energy).
+   Animations are removed, not paused: a paused entrance ("rise", fill both) would
+   hold a new page at opacity 0 and the page would look empty. */
+:root.app-idle *,
+:root.app-idle *::before,
+:root.app-idle *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Scroll indicator (Aura «Полоса прокрутки», aura-client ScrollList: 4 px visible,
+   14 px to hit, at least 24 px long, 3 px from the edge, secondaryLabel at 70 %,
+   hidden after 1.2 s without scrolling). The thumb shows while the element scrolls
+   (`.is-scrolling`, set by scrollIndicators.ts) or under the pointer. */
+::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+  background: transparent;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+::-webkit-scrollbar-thumb {
+  min-height: 24px;
+  min-width: 24px;
+  border-radius: 7px;
+  border: solid transparent;
+  border-width: 0 3px 0 7px;
+  background-clip: padding-box;
+  background-color: transparent;
+}
+::-webkit-scrollbar-thumb:horizontal {
+  border-width: 7px 0 3px 0;
+}
+.is-scrolling::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--label-2) 70%, transparent);
+}

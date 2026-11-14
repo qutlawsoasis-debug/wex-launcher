@@ -1,457 +1,271 @@
 /**
- * Tauri 2.0 Mock IPC for Playwright UI Smoke Tests
- * Supports both 'full' (populated) and 'empty' states.
+ * Tauri 2 IPC stand-in for Playwright (runs in the page before the app).
+ * Answers the commands the new interface uses and emits the same events core
+ * would (launch-status, install-progress). 'full' has data, 'empty' has none.
+ * Test-only: never shipped.
  */
 
 export interface MockIpcOptions {
   mode: 'full' | 'empty';
-  background?: string;
-  theme?: 'light' | 'dark';
+  /**
+   * Friends sign-in answer (commands/friends.rs social_connect). Default: signed in
+   * when there is an active account, otherwise signed out (no_account), with no friends.
+   * 'friends' also returns a few friends and a request from social_sync.
+   */
+  friends?: 'auto' | 'friends' | 'unreachable' | 'no_friends_api' | 'unusable' | 'off';
 }
 
 export function setupMockIpc(options: MockIpcOptions = { mode: 'full' }) {
-  const mode = options.mode;
-
-  const callbacks = new Map<number, (data: any) => void>();
-  let nextId = 1;
+  const full = options.mode === 'full';
+  const callbacks = new Map<number, (data: unknown) => void>();
   const listeners = new Map<string, number[]>();
+  let nextId = 1;
+  const calls: Array<{ cmd: string; args: unknown }> = [];
 
-  const fullMods = [
-    {
-      id: 'fabric-api',
-      name: 'Fabric API',
-      version: '0.102.0',
-      description: 'Базовые библиотеки Fabric',
-      file_name: 'fabric-api-0.102.0.jar',
-      enabled: true,
-      is_pack_mod: true,
-    },
-    {
-      id: 'sodium',
-      name: 'Sodium',
-      version: '0.5.8',
-      description: 'Оптимизация рендеринга',
-      file_name: 'sodium-0.5.8.jar',
-      enabled: true,
-      is_pack_mod: true,
-    },
-    {
-      id: 'iris',
-      name: 'Iris Shaders',
-      version: '1.7.0',
-      description: 'Поддержка шейдеров',
-      file_name: 'iris-1.7.0.jar',
-      enabled: true,
-      is_pack_mod: true,
-    },
-    {
-      id: 'minimap',
-      name: 'Xaero Minimap',
-      version: '24.1.0',
-      description: 'Миникарта',
-      file_name: 'xaero-minimap-24.1.0.jar',
-      enabled: false,
-      is_pack_mod: false,
-    },
-  ];
+  const settings: Record<string, unknown> = {
+    selected_version: '1.21.1',
+    player_name: 'Player',
+    ram_mb: 6144,
+    total_memory_mb: 16384,
+    graphics_preset: 'Medium',
+    appearance: 'auto',
+    language: 'ru',
+    reduce_motion: false,
+    reduce_transparency: false,
+    discord_rpc: true,
+    fast_start_jvm: false,
+    friend_notifications: true,
+    minimize_to_tray: true,
+    game_window_behavior: 'minimize',
+  };
+  const accounts = {
+    accounts: full
+      ? [{ id: 'offline-player', kind: 'offline', name: 'Player', uuid: 'a01e3843e5213998958af459800e4d11', needs_sign_in: false, last_used_at: null }]
+      : ([] as Array<{ id: string; kind: string; name: string; uuid: string; needs_sign_in: boolean; last_used_at: string | null }>),
+    active_id: full ? 'offline-player' : (null as string | null),
+    microsoft_available: false,
+    token_storage: 'dpapi-user',
+  };
+  const mods = (version: string) =>
+    full
+      ? [
+          { id: 'fabric-api', name: 'Fabric API', version: '0.110.0', description: '', file_name: 'fabric-api.jar', enabled: true, is_pack_mod: true },
+          { id: 'sodium', name: 'Sodium', version: '0.6.5', description: 'Оптимизация', file_name: 'sodium.jar', enabled: true, is_pack_mod: true },
+          { id: 'menu', name: 'Mod Menu', version: '11.0.3', description: '', file_name: 'menu.jar', enabled: false, is_pack_mod: false },
+        ].concat(version === '1.20.1' ? [] : [{ id: 'iris', name: 'Iris Shaders', version: '1.8.1', description: '', file_name: 'iris.jar', enabled: true, is_pack_mod: true }])
+      : [];
+  let servers = full
+    ? [
+        { id: 's1', name: 'Сервер нашей компании', address: 'play.example.org' },
+        { id: 's2', name: 'Мир Миши', address: '192.168.1.20:25565' },
+      ]
+    : [];
 
-  const fullServers = [
-    {
-      id: 'srv-1',
-      name: 'Wex Official',
-      address: 'play.wex.lan:25565',
-      version: '1.21.1',
-      ping_ms: 18,
-      players_online: 42,
-      players_max: 100,
-      is_official: true,
-      motd: 'Официальный сервер Wex Launcher',
-    },
-    {
-      id: 'srv-2',
-      name: 'Survival SMP',
-      address: 'mc.example.com',
-      version: '1.21.1',
-      ping_ms: 55,
-      players_online: 12,
-      players_max: 50,
-      is_official: false,
-      motd: 'Классическое выживание',
-    },
-  ];
-
-  const fullSkins = [
-    {
-      id: 'skin-1',
-      name: 'Hero Steve',
-      model: 'classic',
-      created_utc: '2026-11-08T10:00:00Z',
-      preview_base64: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAD0lEQVQImWNg+M+ABzBEAABQkA/969vNiwAAAABJRU5ErkJggg==',
-    },
-    {
-      id: 'skin-2',
-      name: 'Wizard Alex',
-      model: 'slim',
-      created_utc: '2026-11-08T11:00:00Z',
-      preview_base64: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAD0lEQVQImWNg+M+ABzBEAABQkA/969vNiwAAAABJRU5ErkJggg==',
-    },
-  ];
-
-  const fullWorlds = [
-    {
-      folder_name: 'Survival-1',
-      display_name: 'Моё выживание',
-      version: '1.21.1',
-      last_played_utc: '2026-11-08T17:00:00Z',
-      size_bytes: 145000000,
-      game_mode: 'survival',
-      cheats_enabled: false,
-      icon_base64: null,
-    },
-  ];
-
-  const fullRooms = [
-    {
-      code: 'CLD1',
-      name: 'Комната Alex',
-      host_name: 'Alex',
-      player_count: 3,
-      max_players: 8,
-      ping_ms: 24,
-      motd: 'Присоединяйтесь!',
-      is_locked: false,
-      mods_count: 35,
-    },
-  ];
-
-  const fullFriends = [
-    {
-      id: 'f1',
-      nick: 'Steve',
-      status: 'Online',
-      last_seen: null,
-      game_version: '1.21.1',
-      world_name: 'Survival',
-      lobby_code: null,
-    },
-    {
-      id: 'f2',
-      nick: 'Notch',
-      status: 'Offline',
-      last_seen: 1731000000000,
-      game_version: null,
-      world_name: null,
-      lobby_code: null,
-    },
-  ];
-
-  const fullAchievements = [
-    { id: 'first_launch', title: 'Первый запуск', description: 'Запустите Wex впервые', target: 1 },
-    { id: 'five_worlds', title: 'Создатель миров', description: 'Создайте 5 миров', target: 5 },
-  ];
-
-  const fullProgress = [
-    { id: 'first_launch', current: 1, unlocked: true, unlocked_at: '2026-11-08T12:00:00Z' },
-    { id: 'five_worlds', current: 2, unlocked: false, unlocked_at: null },
-  ];
-
-  const mockData: Record<string, any> = {
-    // Network & Profile
-    shell_check_network: { is_online: true, latency_ms: 22, status_text: 'Онлайн' },
-    get_network_status: { is_online: true, latency_ms: 22, status_text: 'Онлайн' },
-    shell_get_profile: {
-      nickname: 'Alex',
-      initials: 'AL',
-      is_online: true,
-      skin_head_url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAD0lEQVQImWNg+M+ABzBEAABQkA/969vNiwAAAABJRU5ErkJggg==',
-      total_playtime_seconds: 7200,
-      total_playtime_formatted: '2 ч. 0 мин.',
-      total_launches: 4,
-    },
-    is_game_running: false,
-    get_system_info: {
-      os: 'Windows 11 Pro 64-bit',
-      cpu: 'AMD Ryzen 7 7800X3D',
-      ram_total: 16384,
-      ram_free: 8192,
-    },
-    get_launcher_settings: {
-      selected_version: '1.21.1',
-      player_name: 'Alex',
-      ram_mb: 4096,
-      total_memory_mb: 16384,
-      game_dir: 'C:\\Games\\Wex',
-      graphics_preset: 'High',
-      java_mode: 'auto',
-      custom_java_path: null,
-      discord_rpc: true,
-      language: 'ru',
-    },
-    save_launcher_settings: true,
-    get_playtime_summary: mode === 'full'
-      ? {
-          total_seconds: 7200,
-          total_formatted: '2 ч. 0 мин.',
-          version_seconds: 3600,
-          version_formatted: '1 ч. 0 мин.',
-          version_summary: 'В игре: 1 ч. 0 мин. • Запусков: 2',
-          total_launches: 4,
-          last_played_utc: '2026-11-08T18:00:00Z',
-        }
-      : {
-          total_seconds: 0,
-          total_formatted: '0 ч.',
-          version_seconds: 0,
-          version_formatted: '0 ч.',
-          version_summary: 'В игре: 0 ч. • Запусков: 0',
-          total_launches: 0,
-          last_played_utc: null,
-        },
-    get_discord_rpc_preview: {
-      is_enabled: true,
-      is_connected: true,
-      title: 'Wex Launcher',
-      details: 'В главном меню',
-      state: 'Выбирает режим',
-      small_text: null,
-      has_timestamp: false,
-    },
-
-    // Servers
-    list_servers: mode === 'full' ? fullServers : [],
-    ping_server: { latency_ms: 24, players_online: 15, players_max: 50, motd: 'Сервер доступен' },
-    add_server: (args: any) => ({
-      id: `srv-${Date.now()}`,
-      name: args?.name || 'New Server',
-      address: args?.address || 'play.example.com',
-      version: args?.version || '1.21.1',
-      is_official: false,
-      ping_ms: 25,
-      players_online: 5,
-      players_max: 50,
-      motd: 'Смоук-тестовый сервер',
-    }),
-    edit_server: true,
-    remove_server: true,
-
-    // Launch & Game Session
-    launch_game: async (args: any) => {
-      if (args && args.server) {
-        return `Игра запущена. Подключение к ${args.server}`;
-      }
-      // Brief delay to allow test assertions during progress state
-      await new Promise((r) => setTimeout(r, 600));
-      return 'Minecraft 1.21.1 запущен';
-    },
-    shell_stop_game: async () => true,
-    cancel_launch: async () => true,
-
-    // Mods
-    list_mods: mode === 'full' ? fullMods : [],
-    toggle_mod: (args: any) => ({ ...fullMods[0], enabled: args.enabled }),
-    delete_custom_mod: true,
-    open_mods_dir: true,
-
-    // Lobby
-    list_open_rooms: mode === 'full' ? fullRooms : [],
-    list_lan_worlds: mode === 'full' ? [{ motd: 'Мир LAN', address: '192.168.1.100:54321', port: 54321 }] : [],
-    connect_lan_world: 'Подключение к миру LAN...',
-    publish_lan_world: (args: any) => ({
-      code: 'LAN-1',
-      host_name: args?.playerName || 'Player',
-      world_name: args?.motd || 'Мир LAN',
-      is_host: true,
-      tunnel_active: true,
-      tunnel_address: 'lan.wex.lan:25565',
-      port: args?.port || 25565,
-      players: [
-        { id: 'p1', name: args?.playerName || 'Player', is_host: true, ping_ms: 5, mods_synced: true },
-      ],
-      mod_mismatch_count: 0,
-      total_mods: 42,
-    }),
-    prepare_lobby_join: (args: any) => ({
-      code: args?.code || 'A7X9',
-      host_name: 'HostAlex',
-      world_name: 'Земли приключений',
-      is_host: false,
-      tunnel_active: true,
-      tunnel_address: 'alex.playit.gg:25565',
-      players: [
-        { id: 'p0', name: 'HostAlex', is_host: true, ping_ms: 22, mods_synced: true },
-        { id: 'p1', name: args?.playerName || 'Player', is_host: false, ping_ms: 35, mods_synced: true },
-      ],
-      mod_mismatch_count: 0,
-      total_mods: 42,
-    }),
-    create_lobby_room: (args: any) => ({
-      code: 'NEW1',
-      host_name: args?.playerName || 'Player',
-      world_name: args?.worldName || 'Мой мир',
-      is_host: true,
-      tunnel_active: true,
-      tunnel_address: 'tunnel.wex.lan:25565',
-      players: [
-        { id: 'p1', name: args?.playerName || 'Player', is_host: true, ping_ms: 5, mods_synced: true },
-      ],
-      mod_mismatch_count: 0,
-      total_mods: 42,
-    }),
-    join_lobby_room: (args: any) => ({
-      code: args?.code || 'JOIN1',
-      host_name: 'HostAlex',
-      world_name: 'Земли приключений',
-      is_host: false,
-      tunnel_active: true,
-      tunnel_address: 'tunnel.wex.lan:25565',
-      players: [
-        { id: 'p0', name: 'HostAlex', is_host: true, ping_ms: 22, mods_synced: true },
-        { id: 'p1', name: args?.playerName || 'Player', is_host: false, ping_ms: 35, mods_synced: true },
-      ],
-      mod_mismatch_count: 0,
-      total_mods: 42,
-    }),
-    get_lobby_status: {
-      code: 'NEW1',
-      host_name: 'Player',
-      world_name: 'Мой мир',
-      is_host: true,
-      tunnel_active: true,
-      tunnel_address: 'tunnel.wex.lan:25565',
-      players: [
-        { id: 'p1', name: 'Player', is_host: true, ping_ms: 5, mods_synced: true },
-      ],
-      mod_mismatch_count: 0,
-      total_mods: 42,
-    },
-    close_lobby_room: true,
-    kick_lobby_player: true,
-
-    // Friends & Social
-    social_sync: {
-      friends: mode === 'full' ? fullFriends : [],
-      incoming_requests: mode === 'full' ? [{ id: 'req-1', from_id: 'u2', from_nick: 'FriendBob', created_at: 1731000000000 }] : [],
-      incoming_invites: [],
-    },
-    social_list_achievements: {
-      achievements: mode === 'full' ? fullAchievements : [],
-      progress: mode === 'full' ? fullProgress : [],
-    },
-    social_send_friend_request: true,
-    social_accept_friend_request: true,
-    social_decline_friend_request: true,
-    social_send_lobby_invite: true,
-    social_report_achievement_progress: { unlocked: false, current: 1, target: 5 },
-
-    // Wardrobe
-    extras_list_skin_history: mode === 'full' ? fullSkins : [],
-    wardrobe_get_state: mode === 'full' ? { active_skin: { name: 'Hero Steve', model: 'classic' }, active_cape: null } : null,
-    wardrobe_apply: true,
-    wardrobe_get_skin: { item_id: 'skin-1', name: 'Hero Steve', model: 'classic', skin_base64: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAD0lEQVQImWNg+M+ABzBEAABQkA/969vNiwAAAABJRU5ErkJggg==' },
-    wardrobe_delete_history: true,
-
-    // Workshop
-    workshop_list_worlds: mode === 'full' ? fullWorlds : [],
-    workshop_list_resource_packs: mode === 'full' ? [{ file_name: 'Faithful-64x.zip', title: 'Faithful 64x', description: 'High resolution', enabled: true, pack_format: 34, icon_base64: null }] : [],
-    workshop_list_shader_packs: mode === 'full' ? [{ file_name: 'Complementary.zip', title: 'Complementary Shaders', active: true }] : [],
-    workshop_list_screenshots: mode === 'full' ? [{ file_name: '2026-11-08_15.30.00.png', file_path: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAD0lEQVQImWNg+M+ABzBEAABQkA/969vNiwAAAABJRU5ErkJggg==', width: 1920, height: 1080, created_utc: '2026-11-08T15:30:00Z', size_bytes: 2400000 }] : [],
-    workshop_list_world_backups: mode === 'full' ? [{ file_name: 'Survival-1_2026-11-08.zip', world_name: 'Survival-1', created_utc: '2026-11-08T16:00:00Z', size_bytes: 120000000 }] : [],
-    workshop_create_world_backup: true,
-    workshop_restore_world_backup: true,
-    workshop_delete_world: true,
-    workshop_toggle_resource_pack: true,
-    workshop_set_active_shader_pack: true,
-    workshop_open_packs_folder: true,
-    workshop_open_path: true,
-    workshop_delete_pack_file: true,
-    workshop_add_pack_file: 'Faithful-64x.zip',
-    workshop_copy_screenshot_image: true,
-
-    // Onboarding
-    onboarding_get_specs: {
-      total_memory_mb: 16384,
-      available_memory_mb: 8192,
-      cpu_cores: 8,
-      os_name: 'Windows 11',
-      recommended_memory_mb: 4096,
-    },
-    onboarding_prewarm_game: true,
-    onboarding_complete: true,
-    onboarding_detect_old_launcher: null,
-
-    // Import & Crash
-    extras_detect_old_launcher: null, // do not auto-open import wizard on every page visit
-    extras_import_old_launcher: { profiles: ['Default'], accounts: ['Alex'], last_version: '1.21.1' },
-    extras_apply_imported_data: { success: true, imported_worlds: 1, imported_skins: 2, message: 'Импорт завершён' },
-    crash_open_log_file: 'C:/Games/Wex/instances/1.21.1/logs/latest.log',
-    crash_disable_mod: 'optifabric-1.14.0.jar.disabled',
-    report_copy_text: 'Report text copied',
-    report_save_zip: { success: true, path: 'C:/Games/Wex/report.zip' },
+  const emit = (event: string, payload: unknown) => {
+    for (const id of listeners.get(event) ?? []) callbacks.get(id)?.({ event, id, payload });
   };
 
-  (window as any).__TAURI_INTERNALS__ = {
-    metadata: {
-      currentWindow: { label: 'main' },
-      currentWebview: { label: 'main' },
+  let running = false;
+  const cloudWorld = (over: Record<string, unknown>) => ({
+    id: 'w1', name: 'Дача', owner: 'Steve', seed: null, allowedPlayers: ['Alex'], state: 'running', port: 25601,
+    address: '10.0.0.7:25601', onlinePlayers: ['Alex'], maxPlayers: 8, isOwner: true, stageText: null, progress: 100,
+    gameVersion: '1.21.1', lastPlayed: 2, ...over,
+  });
+  let cloud: Array<ReturnType<typeof cloudWorld> & Record<string, any>> = full
+    ? [cloudWorld({}), cloudWorld({ id: 's1', name: 'Замок', owner: 'Alex', isOwner: false, state: 'sleeping', port: null, address: null, onlinePlayers: [], gameVersion: '1.20.1', lastPlayed: 1 })]
+    : [];
+  const friendsMode = options.friends ?? 'auto';
+  const friendsAnswer = () => {
+    const active = accounts.accounts.find((a) => a.id === accounts.active_id);
+    const base = { reason: null, detail: null, account_id: active?.id ?? null, account_kind: active?.kind ?? null, nick: active?.name ?? null, friend_code: null, server: 'lobby-api.vercel.app' };
+    if (friendsMode === 'off') return { ...base, state: 'not_configured', reason: 'disabled', server: null };
+    if (!active) return { ...base, state: 'signed_out', reason: 'no_account' };
+    if (friendsMode === 'unreachable') return { ...base, state: 'unreachable', reason: 'network', detail: 'error sending request' };
+    if (friendsMode === 'no_friends_api') return { ...base, state: 'unreachable', reason: 'no_friends_api', detail: 'Not Found' };
+    if (friendsMode === 'unusable') return { ...base, state: 'unusable', reason: 'nick_rejected', detail: 'Nick is already registered' };
+    return { ...base, state: 'signed_in', friend_code: 'K7Q2' };
+  };
+  let friendsConn: Record<string, unknown> = { state: 'connecting' };
+  const handlers: Record<string, (args: Record<string, any>) => unknown> = {
+    'plugin:event|listen': (a) => {
+      listeners.set(a.event, [...(listeners.get(a.event) ?? []), a.handler]);
+      return a.handler;
     },
-    callbacks,
-    transformCallback: (cb: any, once = false) => {
-      const id = nextId++;
-      callbacks.set(id, (data: any) => {
-        if (once) callbacks.delete(id);
-        return cb && cb(data);
-      });
-      return id;
+    'plugin:event|unlisten': () => null,
+    // Accounts (commands/accounts.rs). No client ID in tests: Microsoft is shown unavailable.
+    accounts_list: () => JSON.parse(JSON.stringify(accounts)),
+    accounts_add_offline: (a) => {
+      const id = `offline-${a.name}`;
+      if (!accounts.accounts.some((x) => x.id === id)) accounts.accounts.push({ id, kind: 'offline', name: a.name, uuid: '0', needs_sign_in: false, last_used_at: null });
+      accounts.active_id = id;
+      settings.player_name = a.name;
+      return JSON.parse(JSON.stringify(accounts));
     },
-    unregisterCallback: (id: number) => callbacks.delete(id),
-    invoke: async (cmd: string, args: any) => {
-      if (cmd.startsWith('plugin:event|listen')) {
-        const ev = args.event;
-        if (!listeners.has(ev)) listeners.set(ev, []);
-        listeners.get(ev)!.push(args.handler);
-        return args.handler;
-      }
-      if (cmd.startsWith('plugin:event|emit')) {
-        const ev = args.event;
-        const handlers = listeners.get(ev) || [];
-        for (const h of handlers) {
-          const cb = callbacks.get(h);
-          if (cb) cb({ event: ev, id: h, payload: args.payload });
-        }
-        return null;
-      }
-      if (cmd.startsWith('plugin:event|unlisten')) return null;
-
-      if (cmd in mockData) {
-        const val = mockData[cmd];
-        return typeof val === 'function' ? val(args) : val;
-      }
+    accounts_switch: (a) => {
+      accounts.active_id = a.id;
+      return JSON.parse(JSON.stringify(accounts));
+    },
+    accounts_sign_out: (a) => {
+      accounts.accounts = accounts.accounts.filter((x) => x.id !== a.id);
+      if (accounts.active_id === a.id) accounts.active_id = accounts.accounts[0]?.id ?? null;
+      return JSON.parse(JSON.stringify(accounts));
+    },
+    get_launcher_settings: () => ({ ...settings }),
+    save_launcher_settings: (a) => {
+      Object.assign(settings, a.newSettings);
+      return null;
+    },
+    reset_settings: () => ({ ...settings }),
+    get_installed_versions: () => [
+      { id: '1.21.1', name: 'Minecraft 1.21.1', is_installed: true },
+      { id: '1.20.1', name: 'Minecraft 1.20.1', is_installed: full },
+    ],
+    list_mods: (a) => mods(a.version),
+    toggle_mod: (a) => ({ ...mods(a.version).find((m) => m.file_name === a.fileName), enabled: a.enabled }),
+    workshop_list_worlds: (a) =>
+      full && a.version === '1.20.1'
+        ? [{ folder_name: 'w', folder_path: 'C:/Wex/instances/1.20.1/saves/w', display_name: 'Северная база', game_mode: 'Creative', last_played: Date.now(), day_time: 24000 * 30, size_bytes: 1 }]
+        : [],
+    workshop_list_resource_packs: () => [],
+    workshop_list_shader_packs: () => [],
+    workshop_list_screenshots: () => [],
+    get_data_dir: () => 'C:\\Users\\Player\\AppData\\Roaming\\Wex',
+    get_storage_cache_info: () => ({ total_bytes: full ? 1288490188 : 0, formatted_size: full ? '1,2 ГБ' : '0 Б' }),
+    startup_get_info: () => ({ app_version: '0.9.2' }),
+    extras_detect_old_launcher: () => null,
+    shell_get_launch_state: () => ({ is_running: running, is_launching: false, running_version: null }),
+    get_prewarm_status: () => ({ is_prewarming: false, is_ready: full, progress: 0, stage: '' }),
+    get_network_status: () => ({ is_online: true }),
+    overview_get_news: () =>
+      full ? [{ version: '0.9.2', date_text: '10 ноября', short_title: 'Что нового в 0.9.2', items: [{ text: 'Обновление без окна установщика.' }] }] : [],
+    list_servers: () => servers,
+    ping_server_details: (a) => (a.address === 'play.example.org' ? { success: true, latency_ms: 23, online: 3, max_players: 10, motd: 'Свои' } : { success: false }),
+    add_server: (a) => {
+      servers = [...servers, { id: a.address, name: a.name, address: a.address }];
+      return servers[servers.length - 1];
+    },
+    remove_server: (a) => {
+      servers = servers.filter((s) => s.address !== a.address);
+      return null;
+    },
+    // Friends (commands/friends.rs): core signs in with the active account.
+    social_connect: () => {
+      friendsConn = friendsAnswer();
+      return { ...friendsConn };
+    },
+    social_connection_status: () => ({ ...friendsConn }),
+    social_sync: () =>
+      friendsMode === 'friends' && friendsConn.state === 'signed_in'
+        ? {
+            friends: [
+              { id: 'u2', nick: 'Snow_Fox', status: 'Playing', last_seen: null, game_version: '1.21.1', world_name: 'Северная база', lobby_code: 'AB12' },
+              { id: 'u3', nick: 'Lisa', status: 'Online', last_seen: null, game_version: null, world_name: null, lobby_code: null },
+              { id: 'u4', nick: 'Max', status: 'Offline', last_seen: null, game_version: null, world_name: null, lobby_code: null },
+            ],
+            incoming_requests: [{ id: 'u5', from_id: 'u5', from_nick: 'Ann', created_at: null }],
+            incoming_invites: [],
+          }
+        : { friends: [], incoming_requests: [], incoming_invites: [] },
+    social_send_friend_request: () => null,
+    social_list_achievements: () => ({
+      achievements: [{ id: 'first', title: 'Первый запуск', description: 'Запустите игру', target: 1 }],
+      progress: [{ id: 'first', current: 1, unlocked: true, unlocked_at: null }],
+    }),
+    wardrobe_get_state: () => ({ nickname: 'Player', skin_name: '', skin_base64: null, model: 'Classic', cape_id: 'none', cape_name: '', cape_base64: null }),
+    wardrobe_apply: () => ({ success: true, message: 'ok' }),
+    extras_list_skin_history: () => ({ items: [] }),
+    own_server_list: () =>
+      full
+        ? [
+            {
+              id: 'srv-0000aaaa',
+              version: '1.21.1',
+              createdAt: '2026-11-13T00:00:00Z',
+              settings: { name: 'Дача', maxPlayers: 8, gamemode: 'survival', difficulty: 'normal', whitelist: true, onlineMode: true, pvp: true, port: 25565, memoryMb: 3072, publicAddress: null },
+              eulaAccepted: false,
+              installed: { minecraft: '1.21.1', fabricLoader: '0.19.5', packVersion: '1', modSource: 'fabricModJson', mods: ['a.jar'] },
+              installing: false,
+              status: 'stopped',
+              players: [],
+              whitelist: ['Steve'],
+              lanAddress: '192.168.1.5',
+              localAddress: 'localhost',
+              publicAddress: null,
+              problem: null,
+            },
+          ]
+        : [],
+    own_server_console: () => null,
+    // «Облачные миры» (commands/cloud.rs). 'empty' has no secret: the tab says why.
+    cloud_status: () =>
+      full
+        ? { available: true, reason: null, owner: 'Steve', host: '10.0.0.7' }
+        : { available: false, reason: 'Не задан ключ облачного сервера (WEX_CLOUD_SECRET)', owner: null, host: null },
+    cloud_list: () => ({ owner: 'Steve', maxActive: 3, activeCount: cloud.filter((w) => w.state !== 'sleeping').length, worlds: cloud }),
+    cloud_start: (a) => {
+      cloud = cloud.map((w) => (w.id === a.id ? { ...w, state: 'starting', progress: 35, stageText: 'Загрузка мира' } : w));
+      return { worldId: a.id, state: 'starting', port: 25602, address: '10.0.0.7:25602' };
+    },
+    cloud_stop: (a) => {
+      cloud = cloud.map((w) => (w.id === a.id ? { ...w, state: 'sleeping', port: null, address: null, onlinePlayers: [] } : w));
+      return null;
+    },
+    cloud_share: (a) => {
+      cloud = cloud.map((w) => (w.id === a.id ? { ...w, allowedPlayers: a.add ? [...w.allowedPlayers, a.player] : w.allowedPlayers.filter((p: string) => p !== a.player) } : w));
+      return cloud.find((w) => w.id === a.id)?.allowedPlayers ?? [];
+    },
+    cloud_delete: (a) => {
+      cloud = cloud.filter((w) => w.id !== a.id);
+      return null;
+    },
+    list_lan_worlds: () => [],
+    list_open_rooms: () => [],
+    get_pending_deep_link: () => null,
+    start_game: (a) => {
+      // Same order of events core sends: preparing → installing with progress → running.
+      setTimeout(() => emit('launch-status', { state: 'preparing', message: 'Готовим запуск' }), 50);
+      setTimeout(() => {
+        emit('launch-status', { state: 'installing', message: 'Скачиваем ресурсы игры' });
+        emit('install-progress', { stage: 'Скачиваем ресурсы игры', percentage: 47, downloaded_bytes: 182 * 1048576, total_bytes: 388 * 1048576 });
+      }, 150);
+      setTimeout(() => {
+        running = true;
+        emit('launch-status', { state: 'running', message: 'Minecraft запущен' });
+      }, 400);
+      return { message: `started ${a.version}` };
+    },
+    shell_stop_game: () => {
+      running = false;
+      setTimeout(() => emit('launch-status', { state: 'idle', message: 'Игра остановлена' }), 50);
+      return null;
+    },
+    cancel_launch: () => {
+      setTimeout(() => emit('launch-status', { state: 'cancelled', message: 'Запуск отменён' }), 50);
       return null;
     },
   };
-  (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
-    unregisterListener: (_event?: string, _id?: number) => {},
-  };
 
-  (window as any).__TRIGGER_CRASH__ = () => {
-    const handlers = listeners.get('game-crash') || [];
-    for (const h of handlers) {
-      const cb = callbacks.get(h);
-      if (cb) {
-        cb({
-          event: 'game-crash',
-          id: h,
-          payload: {
-            error_type: 'ModConflict',
-            title: 'Конфликт модов Fabric',
-            summary: 'Обнаружен несовместимый мод',
-            recommendation: 'Удалите конфликтующий мод',
-            blamed_mod: 'optifabric-1.14.0.jar',
-            log_path: 'C:/Games/Wex/instances/1.21.1/logs/latest.log',
-            exit_code: 1,
-          },
-        });
-      }
-    }
+  const w = window as unknown as Record<string, unknown>;
+  w.__TAURI_INTERNALS__ = {
+    metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
+    transformCallback(cb: (data: unknown) => void) {
+      const id = nextId++;
+      callbacks.set(id, cb);
+      return id;
+    },
+    unregisterCallback(id: number) {
+      callbacks.delete(id);
+    },
+    async invoke(cmd: string, args: Record<string, any> = {}) {
+      calls.push({ cmd, args });
+      const h = handlers[cmd];
+      return h ? h(args) : null;
+    },
   };
+  w.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
+  w.__ipcCalls = calls;
+  w.__emit = emit;
+  try {
+    localStorage.setItem('wex_onboarding_completed', 'true');
+  } catch {}
 }

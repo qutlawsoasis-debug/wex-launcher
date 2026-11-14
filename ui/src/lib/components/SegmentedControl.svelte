@@ -82,8 +82,7 @@
 
   function isReducedMotion(): boolean {
     if (typeof window === 'undefined') return false;
-    if (document.documentElement.getAttribute('data-reduce-motion') === 'true') return true;
-    return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+    return document.documentElement.getAttribute('data-reduce-motion') === 'true';
   }
 
   function applyFrame(curX: number, velocity: number) {
@@ -596,7 +595,7 @@
   }
 
   .segment-button:focus-visible {
-    outline: 2px solid var(--color-system-blue, #007aff);
+    outline: 2px solid var(--blue);
     outline-offset: -2px;
     border-radius: 17px;
   }

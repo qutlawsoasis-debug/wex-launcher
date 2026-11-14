@@ -20,6 +20,7 @@
   import SegmentedControl from './SegmentedControl.svelte';
   import Icon from './icons/Icon.svelte';
   import { t } from '../i18n';
+  import { builds } from '../shell/builds.svelte';
 
   export interface LogFileInfo {
     file_name: string;
@@ -58,13 +59,14 @@
 
   let {
     open = $bindable(false),
-    version = '1.21.1',
+    version = builds.selectedId,
     initialFileName = 'latest.log',
     onclose,
     ontoast,
   }: Props = $props();
 
-  let currentVersion = $state('1.21.1');
+  // svelte-ignore state_referenced_locally
+  let currentVersion = $state(version);
   let selectedFileName = $state('latest.log');
   let searchQuery = $state('');
   let levelFilter = $state('ALL'); // 'ALL' | 'ERROR' | 'WARN' | 'INFO'
@@ -225,10 +227,7 @@
         <!-- Version Selector -->
         <div class="version-control">
           <SegmentedControl
-            options={[
-              { value: '1.21.1', label: '1.21.1' },
-              { value: '1.20.1', label: '1.20.1' },
-            ]}
+            options={builds.list.map((b) => ({ value: b.id, label: b.id }))}
             bind:value={currentVersion}
             onchange={handleVersionChange}
           />
@@ -316,7 +315,7 @@
       {:else if !logData || logData.entries.length === 0}
         <div class="empty-log-state" data-testid="log-empty-state">
           <div class="empty-icon-wrap">
-            <Icon name="info" size={32} color="var(--color-tertiary-label)" />
+            <Icon name="info" size={32} color="var(--label-3)" />
           </div>
           <h4 class="empty-title">
             {searchQuery || levelFilter !== 'ALL'
@@ -379,7 +378,7 @@
           onclick={loadLogContent}
           loading={isLoading}
         >
-          <Icon name="refresh" size={14} color="var(--color-secondary-label)" />
+          <Icon name="refresh" size={14} color="var(--label-2)" />
           <span data-testid="btn-reload-log">{t('logs.btn_reload')}</span>
         </Button>
 
@@ -388,7 +387,7 @@
           size="regular"
           onclick={() => handleOpenFolder('logs')}
         >
-          <Icon name="folder" size={14} color="var(--color-secondary-label)" />
+          <Icon name="folder" size={14} color="var(--label-2)" />
           <span data-testid="btn-open-logs-folder">{t('logs.btn_logs_folder')}</span>
         </Button>
 
@@ -397,7 +396,7 @@
           size="regular"
           onclick={() => handleOpenFolder('crash_reports')}
         >
-          <Icon name="warning" size={14} color="var(--color-secondary-label)" />
+          <Icon name="warning" size={14} color="var(--label-2)" />
           <span data-testid="btn-open-crashes-folder">{t('logs.btn_crashes_folder')}</span>
         </Button>
       </div>
@@ -429,10 +428,10 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    background-color: var(--color-secondary-system-fill);
+    background-color: var(--fill-2);
     padding: 12px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--glass-border);
+    border-radius: var(--r-m);
+    border: 1px solid var(--edge);
   }
 
   .toolbar-top-row {
@@ -451,18 +450,18 @@
   }
 
   .picker-label {
-    font-size: var(--text-subheadline);
+    font-size: var(--t-sub);
     font-weight: 500;
-    color: var(--color-secondary-label);
+    color: var(--label-2);
   }
 
   .file-select-dropdown {
     flex: 1;
     height: 32px;
-    background-color: var(--glass-surface-translucent);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-sm);
-    color: var(--color-label);
+    background-color: var(--veil-strong);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-s);
+    color: var(--label);
     font-family: inherit;
     font-size: 13px;
     padding: 0 8px;
@@ -471,7 +470,7 @@
   }
 
   .file-select-dropdown:focus {
-    border-color: var(--color-system-blue);
+    border-color: var(--blue-text);
   }
 
   .metrics-row {
@@ -484,12 +483,12 @@
     font-size: 11px;
     font-weight: 600;
     padding: 2px 8px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--r-s);
   }
 
   .metric-pill.error-pill {
     background-color: rgba(255, 59, 48, 0.15);
-    color: var(--color-system-red);
+    color: var(--red);
     border: 1px solid rgba(255, 59, 48, 0.25);
   }
 
@@ -500,8 +499,8 @@
   }
 
   .metric-pill.lines-pill {
-    background-color: var(--color-system-fill);
-    color: var(--color-secondary-label);
+    background-color: var(--fill);
+    color: var(--label-2);
   }
 
   .toolbar-bottom-row {
@@ -519,8 +518,8 @@
   .terminal-view-card {
     flex: 1;
     background-color: rgba(12, 14, 18, 0.88);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-md);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-m);
     overflow-y: auto;
     overflow-x: auto;
     padding: 8px 0;
@@ -549,15 +548,15 @@
   }
 
   .empty-title {
-    font-size: var(--text-headline);
+    font-size: var(--t-body);
     font-weight: 600;
     margin: 0 0 6px;
-    color: var(--color-label);
+    color: var(--label);
   }
 
   .empty-sub {
-    font-size: var(--text-subheadline);
-    color: var(--color-secondary-label);
+    font-size: var(--t-sub);
+    color: var(--label-2);
     margin: 0;
     max-width: 400px;
   }
@@ -583,7 +582,7 @@
 
   .log-row.error-row {
     background-color: rgba(255, 59, 48, 0.08);
-    border-left-color: var(--color-system-red);
+    border-left-color: var(--red);
   }
 
   .log-row.warn-row {
@@ -598,14 +597,14 @@
   .line-num {
     width: 38px;
     text-align: right;
-    color: var(--color-tertiary-label);
+    color: var(--label-3);
     user-select: none;
     flex-shrink: 0;
     font-size: 10.5px;
   }
 
   .line-time {
-    color: var(--color-secondary-label);
+    color: var(--label-2);
     flex-shrink: 0;
   }
 
@@ -613,13 +612,13 @@
     font-weight: 700;
     font-size: 10px;
     padding: 1px 4px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--r-s);
     flex-shrink: 0;
   }
 
   .level-tag.error {
     background-color: rgba(255, 59, 48, 0.22);
-    color: var(--color-system-red);
+    color: var(--red);
   }
 
   .level-tag.warn {
@@ -628,11 +627,11 @@
   }
 
   .level-tag.info {
-    color: var(--color-secondary-label);
+    color: var(--label-2);
   }
 
   .level-tag.debug {
-    color: var(--color-tertiary-label);
+    color: var(--label-3);
   }
 
   .line-thread {
@@ -641,7 +640,7 @@
   }
 
   .line-message {
-    color: var(--color-label);
+    color: var(--label);
     flex: 1;
   }
 

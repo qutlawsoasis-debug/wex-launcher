@@ -33,7 +33,7 @@
   let {
     open = $bindable(false),
     diagnosis = null,
-    version = '1.21.1',
+    version = '',
     onclose,
     onnavigate,
     ontoast,
@@ -392,8 +392,8 @@
   .crash-icon-badge {
     width: 48px;
     height: 48px;
-    border-radius: var(--radius-md);
-    background-color: var(--color-system-red);
+    border-radius: var(--r-m);
+    background-color: var(--red);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -424,12 +424,12 @@
     font-size: 11px;
     font-weight: 600;
     padding: 2px 8px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--r-s);
   }
 
   .category-badge.oom {
     background-color: rgba(255, 59, 48, 0.15);
-    color: var(--color-system-red);
+    color: var(--red);
   }
 
   .category-badge.mod {
@@ -439,7 +439,7 @@
 
   .category-badge.java {
     background-color: rgba(10, 132, 255, 0.15);
-    color: var(--color-system-blue);
+    color: var(--blue-text);
   }
 
   .category-badge.gpu {
@@ -453,28 +453,28 @@
   }
 
   .category-badge.unknown {
-    background-color: var(--color-secondary-system-fill);
-    color: var(--color-secondary-label);
+    background-color: var(--fill-2);
+    color: var(--label-2);
   }
 
   .version-tag {
     font-size: 11px;
-    color: var(--color-secondary-label);
+    color: var(--label-2);
   }
 
   .crash-title {
-    font-size: var(--text-headline);
+    font-size: var(--t-body);
     font-weight: 600;
     margin: 0;
-    color: var(--color-label);
+    color: var(--label);
     line-height: 1.3;
   }
 
   .advice-card {
     padding: 14px 16px;
-    border-radius: var(--radius-md);
-    background-color: var(--color-secondary-system-fill);
-    border: 1px solid var(--glass-border);
+    border-radius: var(--r-m);
+    background-color: var(--fill-2);
+    border: 1px solid var(--edge);
   }
 
   .advice-card.success-state {
@@ -483,10 +483,10 @@
   }
 
   .advice-text {
-    font-size: var(--text-subheadline);
+    font-size: var(--t-sub);
     line-height: 1.5;
     margin: 0;
-    color: var(--color-label);
+    color: var(--label);
   }
 
   .log-section {
@@ -504,14 +504,14 @@
   .log-label {
     font-size: 12px;
     font-weight: 600;
-    color: var(--color-secondary-label);
+    color: var(--label-2);
   }
 
   .copy-link {
     background: none;
     border: none;
     font-size: 12px;
-    color: var(--color-system-blue);
+    color: var(--blue-text);
     cursor: pointer;
     padding: 0;
     font-family: inherit;
@@ -525,12 +525,12 @@
     margin: 0;
     padding: 12px;
     background-color: rgba(0, 0, 0, 0.35);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-sm);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-s);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 11px;
     line-height: 1.45;
-    color: var(--color-secondary-label);
+    color: var(--label-2);
     max-height: 160px;
     overflow-y: auto;
     white-space: pre-wrap;

@@ -1,6 +1,8 @@
 pub mod commands;
 pub mod ipc;
+pub mod launcher_log;
 mod navigation;
+pub mod window_size;
 
 pub use commands::servers::*;
 
@@ -49,9 +51,15 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_notification::init())
+        // File picker only: the UI asks for paths of mods, packs and shader packs to add.
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let paths = WexPaths::new(None);
             let _ = paths.ensure_dirs();
+            launcher_log::init(&paths.logs_dir);
+            if let Some(w) = app.get_webview_window("main") {
+                window_size::attach(&w, &paths.root);
+            }
             let network_state = commands::network::NetworkState::new();
             network_state.start_supervisor(app.handle().clone());
             let play_state =
@@ -60,12 +68,22 @@ pub fn run() {
             app.manage(play_state);
             app.manage(network_state);
             app.manage(startup_state);
-            app.manage(commands::friends::FriendsState::new(paths.clone()));
+            app.manage(commands::own_server::OwnServerState::new(paths.clone()));
+            app.manage(commands::cloud::CloudState::new(&paths));
             app.manage(AppState::default());
+            app.manage(commands::accounts::AccountsState::default());
+            commands::accounts::spawn_startup_refresh(
+                paths.root.clone(),
+                paths.config_file.clone(),
+            );
             let lobby_state = commands::lobby::LobbyState::new(
                 paths.root.join("tools"),
                 commands::lobby::DEFAULT_LOBBY_API_URL,
                 commands::lobby::DEFAULT_OLD_BACKEND_URL,
+            );
+            app.manage(
+                commands::friends::FriendsState::new(paths.clone())
+                    .with_lobby_session(lobby_state.active_session.clone()),
             );
             app.manage(lobby_state);
             app.manage(commands::tray::TrayState::default());
@@ -109,6 +127,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            launcher_log::ui_log,
             // Startup commands (SPEC 1.1)
             commands::startup::startup_get_info,
             commands::startup::startup_verify_directories,
@@ -178,6 +197,27 @@ pub fn run() {
             commands::overview::overview_get_playtime,
             commands::overview::overview_record_playtime,
             // Servers commands (commands/servers.rs)
+            commands::own_server::own_server_list,
+            commands::own_server::own_server_create,
+            commands::own_server::own_server_update,
+            commands::own_server::own_server_accept_eula,
+            commands::own_server::own_server_install,
+            commands::own_server::own_server_start,
+            commands::own_server::own_server_stop,
+            commands::own_server::own_server_console,
+            commands::own_server::own_server_command,
+            commands::own_server::own_server_whitelist,
+            commands::own_server::own_server_delete,
+            commands::own_server::own_server_add_to_servers,
+            commands::own_server::own_server_open_eula,
+            // «Облачные миры» (commands/cloud.rs)
+            commands::cloud::cloud_status,
+            commands::cloud::cloud_list,
+            commands::cloud::cloud_create,
+            commands::cloud::cloud_start,
+            commands::cloud::cloud_stop,
+            commands::cloud::cloud_share,
+            commands::cloud::cloud_delete,
             commands::servers::list_servers,
             commands::servers::ping_server,
             commands::servers::ping_server_details,
@@ -245,6 +285,8 @@ pub fn run() {
             commands::music::music_update_session,
             commands::music::music_check_command,
             // Friends & Social commands
+            commands::friends::social_connect,
+            commands::friends::social_connection_status,
             commands::friends::social_login,
             commands::friends::social_get_friends,
             commands::friends::social_send_friend_request,
@@ -314,7 +356,24 @@ pub fn run() {
             commands::onboarding::onboarding_get_specs,
             commands::onboarding::onboarding_complete,
             commands::onboarding::onboarding_prewarm_game,
+            // Accounts: Microsoft and offline sign-in
+            commands::accounts::accounts_list,
+            commands::accounts::accounts_add_offline,
+            commands::accounts::accounts_switch,
+            commands::accounts::accounts_sign_out,
+            commands::accounts::accounts_ms_begin,
+            commands::accounts::accounts_ms_finish,
+            commands::accounts::accounts_ms_cancel,
+            commands::accounts::accounts_ms_open_page,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            // A friends' server gets `stop` (saves the world) before Wex exits.
+            if let tauri::RunEvent::Exit = event {
+                if let Some(servers) = app.try_state::<commands::own_server::OwnServerState>() {
+                    tauri::async_runtime::block_on(servers.stop_all());
+                }
+            }
+        });
 }

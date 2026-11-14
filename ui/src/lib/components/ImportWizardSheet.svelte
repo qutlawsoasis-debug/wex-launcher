@@ -179,13 +179,13 @@
   <div class="import-wizard-container">
     {#if isScanning}
       <div class="scanning-state">
-        <Icon name="refresh" size={24} color="var(--color-system-blue)" />
+        <Icon name="refresh" size={24} color="var(--blue)" />
         <p class="scanning-text">{t('import.scan_progress')}</p>
       </div>
     {:else if successMessage}
       <div class="success-state">
         <div class="success-icon-wrap">
-          <Icon name="check" size={28} color="var(--color-system-green)" />
+          <Icon name="check" size={28} color="var(--green)" />
         </div>
         <h3 class="success-title">{t('import.success')}</h3>
         <p class="success-description">{successMessage}</p>
@@ -193,7 +193,7 @@
     {:else if oldData}
       <!-- Explanation of safe isolation -->
       <div class="isolation-notice">
-        <Icon name="info" size={16} color="var(--color-system-blue)" />
+        <Icon name="info" size={16} color="var(--blue)" />
         <span class="notice-text">
           {t('import.found_desc')}
         </span>
@@ -239,7 +239,7 @@
         <div class="option-item">
           <div class="option-details">
             <span class="option-title">{t('import.version')}</span>
-            <span class="option-subtitle">{oldData.selected_version || '1.21.1'}</span>
+            {#if oldData.selected_version}<span class="option-subtitle">{oldData.selected_version}</span>{/if}
           </div>
           <Toggle bind:checked={importVersion} label={t('import.transfer_version')} />
         </div>
@@ -304,7 +304,7 @@
     {:else}
       <!-- Empty detect state / error -->
       <div class="empty-detect-state">
-        <Icon name="folder" size={32} color="var(--color-tertiary-label)" />
+        <Icon name="folder" size={32} color="var(--label-3)" />
         <h3 class="empty-title">{t('import.not_found')}</h3>
         <p class="empty-subtitle">
           {errorMessage || t('import.fallback_hint')}
@@ -319,7 +319,7 @@
 
     {#if errorMessage && oldData}
       <div class="inline-error-banner">
-        <Icon name="warning" size={15} color="var(--color-system-red)" />
+        <Icon name="warning" size={15} color="var(--red)" />
         <span>{errorMessage}</span>
       </div>
     {/if}
@@ -344,8 +344,8 @@
   }
 
   .scanning-text {
-    font-size: var(--text-body);
-    color: var(--color-secondary-label);
+    font-size: var(--t-body);
+    color: var(--label-2);
     margin: 0;
   }
 
@@ -362,7 +362,7 @@
     width: 48px;
     height: 48px;
     border-radius: 50%;
-    background: var(--color-secondary-system-fill);
+    background: var(--fill-2);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -370,15 +370,15 @@
   }
 
   .success-title {
-    font-size: var(--text-headline);
-    font-weight: var(--weight-headline);
-    color: var(--color-label);
+    font-size: var(--t-body);
+    font-weight: var(--w-semibold);
+    color: var(--label);
     margin: 0;
   }
 
   .success-description {
-    font-size: var(--text-footnote);
-    color: var(--color-secondary-label);
+    font-size: var(--t-foot);
+    color: var(--label-2);
     margin: 0;
   }
 
@@ -389,10 +389,10 @@
     gap: 10px;
     padding: 10px 14px;
     border-radius: 10px;
-    background: var(--color-secondary-system-fill);
-    color: var(--color-secondary-label);
-    font-size: var(--text-footnote);
-    line-height: var(--line-footnote);
+    background: var(--fill-2);
+    color: var(--label-2);
+    font-size: var(--t-foot);
+    line-height: 1.35;
   }
 
   .notice-text {
@@ -403,8 +403,8 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: var(--text-caption-1);
-    color: var(--color-tertiary-label);
+    font-size: var(--t-cap);
+    color: var(--label-3);
     padding: 0 4px;
     overflow: hidden;
   }
@@ -421,9 +421,9 @@
   }
 
   .section-heading {
-    font-size: var(--text-footnote);
+    font-size: var(--t-foot);
     font-weight: 600;
-    color: var(--color-secondary-label);
+    color: var(--label-2);
     text-transform: none;
     margin-top: 4px;
   }
@@ -432,7 +432,7 @@
   .transfer-options-list {
     display: flex;
     flex-direction: column;
-    background: var(--color-secondary-system-fill);
+    background: var(--fill-2);
     border-radius: 12px;
     overflow: hidden;
     padding: 4px 16px;
@@ -453,18 +453,18 @@
   }
 
   .option-title {
-    font-size: var(--text-body);
-    color: var(--color-label);
+    font-size: var(--t-body);
+    color: var(--label);
   }
 
   .option-subtitle {
-    font-size: var(--text-footnote);
-    color: var(--color-secondary-label);
+    font-size: var(--t-foot);
+    color: var(--label-2);
   }
 
   .option-divider {
     height: 1px;
-    background: var(--color-separator);
+    background: var(--separator);
     margin-left: 0;
   }
 
@@ -479,17 +479,17 @@
   }
 
   .empty-title {
-    font-size: var(--text-headline);
-    color: var(--color-label);
+    font-size: var(--t-body);
+    color: var(--label);
     margin: 8px 0 0;
   }
 
   .empty-subtitle {
-    font-size: var(--text-footnote);
-    color: var(--color-secondary-label);
+    font-size: var(--t-foot);
+    color: var(--label-2);
     margin: 0;
     max-width: 400px;
-    line-height: var(--line-footnote);
+    line-height: 1.35;
   }
 
   .empty-actions {
@@ -503,7 +503,7 @@
     padding: 8px 12px;
     border-radius: 8px;
     background: rgba(255, 69, 58, 0.12);
-    color: var(--color-system-red);
-    font-size: var(--text-footnote);
+    color: var(--red);
+    font-size: var(--t-foot);
   }
 </style>

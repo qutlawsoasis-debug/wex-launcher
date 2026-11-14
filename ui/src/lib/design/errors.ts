@@ -26,6 +26,7 @@ export type ErrorDomain =
   | 'lobby'
   | 'friends'
   | 'settings'
+  | 'auth'
   | 'general';
 
 export type ErrorActionType = 'retry' | 'folder' | 'settings' | 'close' | 'custom';
@@ -504,6 +505,11 @@ const DOMAIN_FALLBACKS: Record<ErrorDomain, ErrorMappingDefinition> = {
     description: 'Не удалось записать файл настроек на диск. Проверьте права доступа к папке лаунчера.',
     primaryAction: { label: 'Повторить', type: 'retry' },
   },
+  auth: {
+    title: 'Не удалось войти',
+    description: 'Вход не завершён. Повторите попытку.',
+    primaryAction: { label: 'Повторить', type: 'retry' },
+  },
   general: {
     title: 'Произошла ошибка',
     description: 'Операция не была завершена. Попробуйте повторить действие позже.',
@@ -825,6 +831,17 @@ export function formatError(error: unknown, domain: ErrorDomain = 'general'): Fo
         technical: extracted.technical || rawText,
       };
     }
+  }
+
+  // Account errors: core already writes the player-facing text (wex_core::accounts).
+  if (inferredCode?.startsWith('AUTH_') && extracted.message) {
+    return {
+      code: inferredCode,
+      title: DOMAIN_FALLBACKS.auth.title,
+      description: extracted.message,
+      primaryAction: DOMAIN_FALLBACKS.auth.primaryAction,
+      technical: extracted.technical || rawText,
+    };
   }
 
   // Domain fallback if no dictionary match or unknown code

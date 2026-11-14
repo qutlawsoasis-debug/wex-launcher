@@ -2,20 +2,20 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
 import axe from 'axe-core';
 
-import PlayScreen from './screens/PlayScreen.svelte';
-import ServersScreen from './screens/ServersScreen.svelte';
-import LobbyScreen from './screens/LobbyScreen.svelte';
-import FriendsScreen from './screens/FriendsScreen.svelte';
-import WardrobeScreen from './screens/WardrobeScreen.svelte';
-import WorkshopScreen from './screens/WorkshopScreen.svelte';
-import ModsScreen from './screens/ModsScreen.svelte';
-import SettingsScreen from './screens/SettingsScreen.svelte';
 import Sheet from './components/Sheet.svelte';
 import SegmentedControl from './components/SegmentedControl.svelte';
-import List from './components/List.svelte';
 import Row from './components/Row.svelte';
 import Toggle from './components/Toggle.svelte';
 import { theme } from './design/theme.svelte';
+import HomePage from './pages/home/HomePage.svelte';
+import BuildPage from './pages/build/BuildPage.svelte';
+import ServersPage from './pages/servers/ServersPage.svelte';
+import FriendsPage from './pages/friends/FriendsPage.svelte';
+import WardrobePage from './pages/wardrobe/WardrobePage.svelte';
+import SettingsPage from './pages/settings/SettingsPage.svelte';
+import Sidebar from './shell/Sidebar.svelte';
+import TopLine from './shell/TopLine.svelte';
+import LaunchBar from './shell/LaunchBar.svelte';
 
 // Mock canvas getContext in jsdom to suppress warnings
 if (typeof HTMLCanvasElement !== 'undefined') {
@@ -90,15 +90,16 @@ describe('A11y Automated Axe-Core Audit Across All 8 Sections', () => {
     delete (window as any).__TAURI_INTERNALS__;
   });
 
-  const screens = [
-    { name: 'PlayScreen', component: PlayScreen, props: { selectedVersion: '1.21.1', playerName: 'Player' } },
-    { name: 'ServersScreen', component: ServersScreen, props: { selectedVersion: '1.21.1', playerName: 'Player' } },
-    { name: 'LobbyScreen', component: LobbyScreen, props: {} },
-    { name: 'FriendsScreen', component: FriendsScreen, props: {} },
-    { name: 'WardrobeScreen', component: WardrobeScreen, props: { playerName: 'Player' } },
-    { name: 'WorkshopScreen', component: WorkshopScreen, props: { selectedVersion: '1.21.1' } },
-    { name: 'ModsScreen', component: ModsScreen, props: { initialVersion: '1.21.1' } },
-    { name: 'SettingsScreen', component: SettingsScreen, props: {} },
+  const screens: Array<{ name: string; component: unknown; props: Record<string, unknown> }> = [
+    { name: 'Sidebar', component: Sidebar, props: { online: true } },
+    { name: 'TopLine', component: TopLine, props: {} },
+    { name: 'LaunchBar', component: LaunchBar, props: {} },
+    { name: 'HomePage', component: HomePage, props: {} },
+    { name: 'BuildPage', component: BuildPage, props: { version: '1.21.1' } },
+    { name: 'ServersPage', component: ServersPage, props: {} },
+    { name: 'FriendsPage', component: FriendsPage, props: {} },
+    { name: 'WardrobePage', component: WardrobePage, props: {} },
+    { name: 'SettingsPage', component: SettingsPage, props: {} },
   ];
 
   for (const { name, component, props } of screens) {
@@ -225,37 +226,5 @@ describe('A11y Automated Axe-Core Audit Across All 8 Sections', () => {
       unmount(comp);
     });
 
-    it('navigates interactive rows in List with ArrowDown/ArrowUp keys', async () => {
-      let clicked = '';
-      const comp = mount(List as any, {
-        target,
-        props: {
-          header: 'Список действий',
-        },
-      });
-
-      await tick();
-      const listContainer = target.querySelector<HTMLDivElement>('.list-container');
-      expect(listContainer).not.toBeNull();
-
-      // Create two buttons inside list
-      const btn1 = document.createElement('button');
-      btn1.textContent = 'Кнопка 1';
-      const btn2 = document.createElement('button');
-      btn2.textContent = 'Кнопка 2';
-      listContainer?.appendChild(btn1);
-      listContainer?.appendChild(btn2);
-
-      btn1.focus();
-      expect(document.activeElement).toBe(btn1);
-
-      listContainer?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-      expect(document.activeElement).toBe(btn2);
-
-      listContainer?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
-      expect(document.activeElement).toBe(btn1);
-
-      unmount(comp);
-    });
   });
 });

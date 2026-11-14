@@ -128,22 +128,36 @@ pub fn get_servers_dat_path(paths: &wex_core::config::WexPaths, version: Option<
     inst_dir.join("servers.dat")
 }
 
-/// Official default Aura / Wex servers to seed when `servers.dat` is newly initialized.
-pub fn default_official_servers() -> Vec<PackServerEntry> {
-    vec![
-        PackServerEntry {
-            id: Some("aura-main".to_string()),
-            name: "Aura Official — Survival & PvP".to_string(),
-            ip: "mc.auramc.net".to_string(),
-            icon: None,
-        },
-        PackServerEntry {
-            id: Some("aura-modded".to_string()),
-            name: "Aura Pack Community Server".to_string(),
-            ip: "pack.auramc.net".to_string(),
-            icon: None,
-        },
-    ]
+/// Servers that earlier Wex builds wrote into an empty `servers.dat` on their own.
+/// They never existed; a list that still has them exactly (same name and address)
+/// gets them removed once. Entries the player added are never touched.
+const OLD_SEEDED_SERVERS: &[(&str, &str)] = &[
+    ("Aura Official — Survival & PvP", "mc.auramc.net"),
+    ("Aura Pack Community Server", "pack.auramc.net"),
+];
+
+/// Removes the old seeded entries; returns true if anything was removed.
+pub fn remove_old_seeded_servers(root: &mut NbtTag) -> bool {
+    let Some(NbtTag::List { elements, .. }) = root.get_mut("servers") else {
+        return false;
+    };
+    let before = elements.len();
+    elements.retain(|elem| {
+        let NbtTag::Compound(fields) = elem else {
+            return true;
+        };
+        let field = |key: &str| {
+            fields.iter().find_map(|(k, v)| match v {
+                NbtTag::String(s) if k == key => Some(s.as_str()),
+                _ => None,
+            })
+        };
+        let (name, ip) = (field("name").unwrap_or(""), field("ip").unwrap_or(""));
+        !OLD_SEEDED_SERVERS
+            .iter()
+            .any(|(n, a)| *n == name && *a == ip)
+    });
+    elements.len() != before
 }
 
 /// Helper to parse all servers out of a root NBT compound.
@@ -202,18 +216,16 @@ pub async fn list_servers(
 ) -> Result<Vec<ServerEntryModel>, String> {
     let servers_dat_path = get_servers_dat_path(&state.paths, version.as_deref());
 
+    // Only the player's own servers: Wex has no public server to put in the list.
     let mut root = load_servers_dat(&servers_dat_path).map_err(|e| e.to_string())?;
-    let mut servers = parse_servers_from_nbt(&root);
-
-    // If servers list is completely empty, merge the official Aura servers
-    if servers.is_empty() {
-        let defaults = default_official_servers();
-        wex_net::merge_pack_servers(&mut root, &defaults);
-        let _ = save_servers_dat(&servers_dat_path, &root);
-        servers = parse_servers_from_nbt(&root);
+    if remove_old_seeded_servers(&mut root) {
+        tracing::info!(
+            "removed the old seeded servers from {}",
+            servers_dat_path.display()
+        );
+        save_servers_dat(&servers_dat_path, &root).map_err(|e| e.to_string())?;
     }
-
-    Ok(servers)
+    Ok(parse_servers_from_nbt(&root))
 }
 
 /// Add a new server entry to `servers.dat` for the chosen instance.
@@ -224,6 +236,16 @@ pub async fn add_server(
     address: String,
     state: State<'_, PlayState>,
 ) -> Result<ServerEntryModel, String> {
+    add_server_impl(&state.paths, version.as_deref(), &name, &address)
+}
+
+/// Adds `name`/`address` to `servers.dat` of the chosen instance.
+pub fn add_server_impl(
+    paths: &wex_core::config::WexPaths,
+    version: Option<&str>,
+    name: &str,
+    address: &str,
+) -> Result<ServerEntryModel, String> {
     let name_trimmed = name.trim().to_string();
     let addr_trimmed = address.trim().to_string();
 
@@ -231,7 +253,7 @@ pub async fn add_server(
         return Err("Название и адрес сервера не могут быть пустыми".to_string());
     }
 
-    let servers_dat_path = get_servers_dat_path(&state.paths, version.as_deref());
+    let servers_dat_path = get_servers_dat_path(paths, version);
     let mut root = if servers_dat_path.exists() {
         load_servers_dat(&servers_dat_path)
             .map_err(|e| format!("Не удалось прочитать {}: {}", servers_dat_path.display(), e))?
@@ -514,16 +536,6 @@ pub fn import_servers_from_instances_internal(
             "Ошибка импорта серверов: {}. Файлы сохранены без перезаписи.",
             read_errors.join("; ")
         ));
-    }
-
-    // If completely empty across all files, seed with default official servers
-    if combined_servers.is_empty() {
-        for s in default_official_servers() {
-            let norm = normalize_address(&s.ip);
-            if seen_addresses.insert(norm) {
-                combined_servers.push(s);
-            }
-        }
     }
 
     // Build unified NbtTag compound

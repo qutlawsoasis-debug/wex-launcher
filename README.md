@@ -77,7 +77,7 @@ npm --prefix ui --workspaces=false run check
 ## Key subsystems and features
 
 - **Быстрый запуск (Fast Launch & JVM Prewarm):**
-  - **Порог активации:** Включается по умолчанию только при объеме оперативной памяти системы от 16 ГБ (`>= 15360 MB`, `default_fast_launch()`). Управляется настройкой `fast_launch`.
+  - **Порог активации:** Выключен по умолчанию (`default_fast_launch()`), включается в Настройки › Лаунчер › «Готовить игру заранее». Управляется настройкой `fast_launch`.
   - **Прогрев JVM:** Предварительный запуск легковесного зонда (`-Xms16m -Xmx32m -version`) для прогрева дискового кэша ОС (`jvm.dll`, системные библиотеки).
   - **Фоновый процесс и аргументы:** Фоновый экземпляр игры запускается со скрытым окном и параметрами:
     `-Dwex.prewarm.signal=<path>`, `-Dwex.prewarm.parentPid=<pid>`, `-Dwex.qa.background=true`, `-Daura.client.hiddenWindow=true`.

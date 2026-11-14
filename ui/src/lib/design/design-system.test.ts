@@ -6,8 +6,6 @@ import {
   computeContrastRatio,
   meetsWcagAA,
 } from './colors';
-import { TypographyScale } from './typography';
-import { Materials } from './materials';
 import { MotionCurves } from './motion';
 import { theme } from './theme.svelte';
 
@@ -54,27 +52,6 @@ describe('Apple Design System Tokens', () => {
       expect(preset.onAccentDark).toBeDefined();
       expect(preset.onAccentLight).toBeDefined();
     }
-  });
-
-  it('defines Apple HIG typography scale with correct font sizes and weights', () => {
-    expect(TypographyScale.largeTitle.size).toBe(34);
-    expect(TypographyScale.largeTitle.weight).toBe(700);
-    expect(TypographyScale.title1.size).toBe(28);
-    expect(TypographyScale.title2.size).toBe(22);
-    expect(TypographyScale.title3.size).toBe(20);
-    expect(TypographyScale.headline.size).toBe(17);
-    expect(TypographyScale.headline.weight).toBe(600);
-    expect(TypographyScale.body.size).toBe(17);
-    expect(TypographyScale.body.weight).toBe(400);
-    expect(TypographyScale.footnote.size).toBe(13);
-    expect(TypographyScale.caption1.size).toBe(12);
-  });
-
-  it('defines Liquid Glass materials with backdrop-filter specifications', () => {
-    expect(Materials.liquidGlassRegular.variant).toBe('regular');
-    expect(Materials.liquidGlassRegular.backdropFilter).toContain('blur');
-    expect(Materials.liquidGlassRegular.backdropFilter).toContain('saturate');
-    expect(Materials.liquidGlassClear.variant).toBe('clear');
   });
 
   it('defines Apple spring and interactive motion curves', () => {

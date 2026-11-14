@@ -1,0 +1,329 @@
+/* Winter look for surfaces: frosted glass panels with a snow cap and icicles,
+ * all under html.winter (set on <html> by App.svelte while season.winter is on).
+ *
+ * Apple has no guidance on seasonal decoration; the snow caps are our own
+ * decoration. What Apple does cover is followed:
+ * - HIG › Materials (https://developer.apple.com/design/human-interface-guidelines/materials):
+ *   translucent materials blur what is behind them so content stays legible;
+ *   foreground text keeps its contrast on the material (body text >= 4.5:1).
+ *   Reduce Transparency makes the materials solid and drops the blur.
+ * - Liquid Glass (https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass):
+ *   bars and controls are glass that floats over the content and the scene;
+ *   controls stay neutral, only the primary action is tinted (systemBlue).
+ * - HIG › Color: only system colours. The navy glass is black with a systemBlue
+ *   tint, the icy edge and glow are systemBlue mixed with white.
+ * - Selection is a fill, never a coloured outline (AGENTS.md): the selected
+ *   sidebar row is a frosted white fill.
+ * - HIG › Motion: nothing here moves, so it stays as it is under Reduce Motion.
+ *
+ * Not styled here: the build pair (.pair / .pane), which has its own garland.
+ * Selectors depend on these component classes: .app > .side (Sidebar.svelte),
+ * .app > .main (App.svelte), .app > .bar (LaunchBar.svelte), .topline .search-top
+ * (TopLine.svelte), .set-search / .preset / .theme-card (SettingsPage.svelte),
+ * .fact (BuildPage.svelte), and the shared .wx controls of wex-controls.css.
+ */
+
+/* Tokens. Dark is the default winter look; light below. */
+html.winter {
+  /* systemBlue (dark) #0a84ff; systemBlue (light) #007aff. */
+  --frost-ice: color-mix(in srgb, #0a84ff 45%, #ffffff);
+  --frost-tint: rgba(10, 132, 255, 0.12);
+  /* One glass for the sidebar, the launch bar and the cards, so the scene behind
+     reads the same everywhere (no lighter or darker patches). */
+  --frost-glass: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(4, 8, 24, 0.42);
+  --frost-glass-hover: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(4, 8, 24, 0.34);
+  --frost-edge: color-mix(in srgb, var(--frost-ice) 50%, transparent);
+  --frost-glow: rgba(10, 132, 255, 0.3);
+  --frost-hi: rgba(255, 255, 255, 0.1);
+  --frost-pill: rgba(255, 255, 255, 0.12);
+  --frost-pill-hover: rgba(255, 255, 255, 0.2);
+  --frost-pill-edge: rgba(255, 255, 255, 0.16);
+  --frost-sel: rgba(255, 255, 255, 0.14);
+  --frost-blur: blur(24px) saturate(150%);
+  --frost-night: linear-gradient(180deg, color-mix(in srgb, #0a84ff 16%, #000000), color-mix(in srgb, #0a84ff 5%, #000000));
+  --frost-solid: color-mix(in srgb, #0a84ff 8%, #1c1c1e);
+  --frost-solid-bar: color-mix(in srgb, #0a84ff 6%, #161618);
+  /* Snow: white with a soft systemBlue shade under it and a few icicles. Tile 240 x 24; icicle tips at most 14 px into the card. */
+  --frost-snow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='24' viewBox='0 0 240 24'%3E%3Cpath d='M45.8 11 Q47.8 16.5 48.3 19.5 Q49 16 51 11Z M147.4 12 Q150.2 17.6 150.9 21 Q151.8 17.4 154.6 12Z M210.6 10 Q212.2 13.6 212.5 16 Q213 13.4 214.6 10Z M97.6 11 Q99 14 99.3 16 Q99.8 13.8 101.2 11Z M18.6 9.5 Q19.8 12.4 20.1 14.2 Q20.5 12.2 21.6 9.5Z' fill='%23ffffff' fill-opacity='0.9'/%3E%3Cg transform='scale(1 1.25)'%3E%3Cpath d='M0 3.2 C20 0.6 40 1.2 60 2.6 C80 4 96 0.4 120 1.4 C145 2.4 160 0 185 1.8 C205 3.2 225 0.8 240 3.2 L240 7.4 C228 11 214 8.2 200 9.6 C188 10.8 176 12.4 160 9.4 C146 7 132 10.2 116 10.6 C100 11 92 8.2 76 8.6 C60 9 50 12.2 36 10.6 C24 9.2 12 8.2 0 7.4 Z' fill='%23ffffff'/%3E%3Cpath d='M0 5.6 C14 7 24 7.6 36 8.6 C50 10 60 7.4 76 7 C92 6.6 100 9 116 8.8 C132 8.6 146 5.6 160 7.6 C176 10 188 8.6 200 7.8 C214 6.8 228 8.6 240 5.6 L240 7.4 C228 11 214 8.2 200 9.6 C188 10.8 176 12.4 160 9.4 C146 7 132 10.2 116 10.6 C100 11 92 8.2 76 8.6 C60 9 50 12.2 36 10.6 C24 9.2 12 8.2 0 7.4 Z' fill='%230a84ff' fill-opacity='0.16'/%3E%3C/g%3E%3C/svg%3E");
+  --frost-snow-shade: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3)) drop-shadow(0 0 4px rgba(10, 132, 255, 0.35));
+}
+html.winter[data-theme='light'] {
+  --frost-ice: color-mix(in srgb, #007aff 35%, #ffffff);
+  --frost-tint: rgba(0, 122, 255, 0.05);
+  --frost-glass: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(255, 255, 255, 0.58);
+  --frost-glass-hover: linear-gradient(var(--frost-tint), var(--frost-tint)), rgba(255, 255, 255, 0.7);
+  --frost-edge: rgba(0, 122, 255, 0.28);
+  --frost-glow: rgba(0, 122, 255, 0.16);
+  --frost-hi: rgba(255, 255, 255, 0.7);
+  --frost-pill: rgba(255, 255, 255, 0.6);
+  --frost-pill-hover: rgba(255, 255, 255, 0.85);
+  --frost-pill-edge: rgba(0, 122, 255, 0.2);
+  --frost-sel: rgba(255, 255, 255, 0.75);
+  --frost-night: linear-gradient(180deg, color-mix(in srgb, #007aff 14%, #f2f2f7), #f2f2f7);
+  --frost-solid: #ffffff;
+  --frost-solid-bar: #f2f2f7;
+  --frost-snow-shade: drop-shadow(0 1px 1.5px rgba(0, 122, 255, 0.45));
+}
+
+/* The window: transparent layers over the night scene (WinterScene.svelte, fixed,
+   under the content). html carries a night fallback while no scene is drawn. */
+html.winter,
+html.winter body {
+  background: var(--frost-night);
+}
+html.winter .app {
+  background: transparent;
+}
+html.winter .app > .main {
+  background: transparent;
+  border-left-color: transparent;
+}
+
+/* Sidebar and launch bar: glass over the scene (Liquid Glass: bars float). */
+/* Sidebar and launch bar have no surface of their own in winter: the scene runs
+   on under them exactly as under the content, so the window is one picture and
+   the sidebar is just its buttons. */
+html.winter .app > .side,
+html.winter .app > .bar {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+/* The bar joins the sidebar: no glow or edge spilling past its left side. The
+   snow cap on its top edge separates it from the content. */
+html.winter .app > .bar {
+  border-top-color: transparent;
+  box-shadow: none;
+}
+
+/* Selected sidebar row: a frosted fill (selection is a fill). */
+html.winter .app > .side .nav > .ind,
+html.winter .app > .side .lib > .ind {
+  background: var(--frost-sel);
+}
+html.winter .app > .side .nav a:hover,
+html.winter .app > .side .lib a:hover {
+  background: var(--frost-pill);
+}
+
+/* Cards: navy glass with an icy edge and a soft glow (HIG › Materials). */
+html.winter .wx .panel,
+html.winter .wx .tile,
+html.winter .wx .list,
+html.winter .wx .form,
+html.winter .wx .fact,
+html.winter .wx .preset,
+html.winter .wx .theme-card,
+html.winter .wx .set-search {
+  background: var(--frost-glass);
+  backdrop-filter: var(--frost-blur);
+  -webkit-backdrop-filter: var(--frost-blur);
+  box-shadow:
+    inset 0 0 0 1px var(--frost-edge),
+    inset 0 1px 0 var(--frost-hi),
+    0 0 14px var(--frost-glow);
+}
+html.winter .wx .tile:hover,
+html.winter .wx .fact:hover,
+html.winter .wx .preset:hover,
+html.winter .wx .theme-card:hover {
+  background: var(--frost-glass-hover);
+}
+html.winter .wx .tile:hover {
+  box-shadow:
+    inset 0 0 0 1px var(--frost-edge),
+    inset 0 1px 0 var(--frost-hi),
+    0 0 18px var(--frost-glow),
+    var(--lift);
+}
+/* Selected presets and theme cards keep a fill, not a ring. */
+html.winter .wx .preset[aria-checked='true'],
+html.winter .wx .theme-card[aria-checked='true'] {
+  background: linear-gradient(var(--frost-sel), var(--frost-sel)), var(--frost-glass);
+}
+
+/* Snow cap with icicles on the top edge of each card. Not on the launch bar: it
+   is a light veil over the scene with nothing for snow to lie on, and the scene's
+   own snow already lies along the bottom of the window. Decorative: no clicks, no layout, drawn once (static under Reduce Motion). */
+html.winter .wx .panel,
+html.winter .wx .list,
+html.winter .wx .form {
+  position: relative;
+}
+/* Only on Home: elsewhere (Settings, Servers, Friends…) the many stacked cards
+   with caps and glows turned into a mess, so there they are plain glass. */
+html.winter .wx[data-route='home'] .panel::before,
+html.winter .wx[data-route='home'] .tile::before,
+html.winter .wx[data-route='home'] .list::before,
+html.winter .wx[data-route='home'] .form::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -7px;
+  height: 24px;
+  z-index: 2;
+  pointer-events: none;
+  background: var(--frost-snow) 0 0 / 240px 24px repeat-x;
+  border-radius: calc(var(--r-l) + 2px) calc(var(--r-l) + 2px) 0 0;
+  filter: var(--frost-snow-shade);
+}
+/* A different phase per card so neighbours do not repeat the same lumps. */
+html.winter .wx .tile:nth-child(2n)::before,
+html.winter .wx .form:nth-of-type(2n)::before {
+  background-position-x: -97px;
+}
+html.winter .wx .tile:nth-child(3n)::before {
+  background-position-x: -173px;
+}
+
+/* Small buttons, secondary buttons, segmented controls and search: frosted glass
+   pills (Liquid Glass: controls are glass, neutral; blue stays on the primary). */
+html.winter .wx .mini:not(.blue),
+html.winter .wx .btn:not(.blue):not(.pane-play),
+html.winter .wx .seg,
+html.winter .wx .search:not(.set-search),
+html.winter .wx .field,
+html.winter .topline .search-top {
+  background: var(--frost-pill);
+  box-shadow: inset 0 0 0 1px var(--frost-pill-edge);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+html.winter .wx .mini {
+  border-radius: var(--r-pill);
+}
+html.winter .wx .mini:not(.blue):hover,
+html.winter .wx .btn:not(.blue):not(.pane-play):hover,
+html.winter .topline .search-top:hover {
+  background: var(--frost-pill-hover);
+}
+html.winter .wx .seg > .ind {
+  background: var(--frost-sel);
+}
+html.winter .wx .search:not(.set-search):focus-within,
+html.winter .wx .field:focus {
+  box-shadow: inset 0 0 0 2px var(--blue);
+}
+html.winter .wx .field.bad {
+  box-shadow: inset 0 0 0 2px var(--red);
+}
+html.winter .wx .mini.blue,
+html.winter .wx .btn.blue {
+  box-shadow: 0 0 12px var(--frost-glow);
+}
+
+/* While the game runs the launcher idles: no blur (energy, as App.svelte does). */
+html.winter .app.game-active .wx *,
+html.winter .app.game-active .topline * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Reduce Transparency (HIG › Materials, Accessibility): solid surfaces, no blur,
+   no glow. wex.css already removes every backdrop-filter. */
+/* One solid colour for the whole window: the sidebar, launch bar and top line
+   keep no surface of their own (as in the normal winter look), so there is no
+   seam between them and the page. */
+html.winter[data-reduce-transparency='true'],
+html.winter[data-reduce-transparency='true'] body,
+html.winter[data-reduce-transparency='true'] .app {
+  background: var(--frost-solid-bar);
+}
+html.winter[data-reduce-transparency='true'] .app > .side,
+html.winter[data-reduce-transparency='true'] .app > .bar,
+html.winter[data-reduce-transparency='true'] .topline {
+  background: transparent;
+  box-shadow: none;
+  border-color: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+html.winter[data-reduce-transparency='true'] .wx .panel,
+html.winter[data-reduce-transparency='true'] .wx .tile,
+html.winter[data-reduce-transparency='true'] .wx .list,
+html.winter[data-reduce-transparency='true'] .wx .form,
+html.winter[data-reduce-transparency='true'] .wx .fact,
+html.winter[data-reduce-transparency='true'] .wx .preset,
+html.winter[data-reduce-transparency='true'] .wx .theme-card,
+html.winter[data-reduce-transparency='true'] .wx .set-search {
+  background: var(--frost-solid);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: inset 0 0 0 1px var(--frost-edge);
+}
+html.winter[data-reduce-transparency='true'] .wx .mini:not(.blue),
+html.winter[data-reduce-transparency='true'] .wx .btn:not(.blue):not(.pane-play),
+html.winter[data-reduce-transparency='true'] .wx .seg,
+html.winter[data-reduce-transparency='true'] .wx .search:not(.set-search),
+html.winter[data-reduce-transparency='true'] .wx .field,
+html.winter[data-reduce-transparency='true'] .topline .search-top {
+  background: var(--fill-2);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+@media (prefers-reduced-transparency: reduce) {
+  html.winter,
+  html.winter body,
+  html.winter .app {
+    background: var(--frost-solid-bar);
+  }
+  html.winter .app > .side,
+  html.winter .app > .bar,
+  html.winter .topline {
+    background: transparent;
+    box-shadow: none;
+    border-color: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  html.winter .wx .panel,
+  html.winter .wx .tile,
+  html.winter .wx .list,
+  html.winter .wx .form,
+  html.winter .wx .fact,
+  html.winter .wx .preset,
+  html.winter .wx .theme-card,
+  html.winter .wx .set-search {
+    background: var(--frost-solid);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: inset 0 0 0 1px var(--frost-edge);
+  }
+}
+
+/* The sticky top line lets the scene through (it is opaque by default). */
+html.winter:not([data-reduce-transparency='true']) .topline {
+  background: transparent;
+}
+
+/* Text over the snow at the bottom of the window (sidebar profile, launch bar):
+   a soft shadow keeps it readable on the light ground (HIG › Materials: keep
+   foreground legible on a translucent material). */
+html.winter:not([data-theme='light']) .app > .bar,
+html.winter:not([data-theme='light']) .app > .side .foot {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55), 0 0 6px rgba(0, 0, 0, 0.35);
+}
+
+/* Outside Home: calm glass. A hairline edge and no glow, so stacked groups in
+   Settings and lists read as one quiet page (HIG › Materials: let content lead). */
+html.winter .wx:not([data-route='home']) .panel,
+html.winter .wx:not([data-route='home']) .tile,
+html.winter .wx:not([data-route='home']) .list,
+html.winter .wx:not([data-route='home']) .form,
+html.winter .wx:not([data-route='home']) .fact,
+html.winter .wx:not([data-route='home']) .preset,
+html.winter .wx:not([data-route='home']) .theme-card,
+html.winter .wx:not([data-route='home']) .set-search {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+html.winter[data-theme='light'] .wx:not([data-route='home']) .panel,
+html.winter[data-theme='light'] .wx:not([data-route='home']) .tile,
+html.winter[data-theme='light'] .wx:not([data-route='home']) .list,
+html.winter[data-theme='light'] .wx:not([data-route='home']) .form,
+html.winter[data-theme='light'] .wx:not([data-route='home']) .fact,
+html.winter[data-theme='light'] .wx:not([data-route='home']) .preset,
+html.winter[data-theme='light'] .wx:not([data-route='home']) .theme-card,
+html.winter[data-theme='light'] .wx:not([data-route='home']) .set-search {
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}

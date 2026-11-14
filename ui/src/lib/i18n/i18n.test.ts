@@ -44,35 +44,30 @@ describe('i18n Reactive Manager & Translation Helper', () => {
   });
 
   it('returns Russian translation by default', () => {
-    expect(t('sidebar.play')).toBe('Играть');
-    expect(t('sidebar.settings')).toBe('Настройки');
-    expect(t('offline.title')).toBe('Нет подключения');
+    expect(t('shell.play')).toBe('Играть');
+    expect(t('shell.nav_options')).toBe('Настройки');
+    expect(t('shell.offline')).toBe('Не в сети');
   });
 
   it('switches to English immediately without restart', () => {
     i18n.setLocale('en');
 
-    expect(t('sidebar.play')).toBe('Play');
-    expect(t('sidebar.settings')).toBe('Settings');
-    expect(t('offline.title')).toBe('No Connection');
+    expect(t('shell.play')).toBe('Play');
+    expect(t('shell.nav_options')).toBe('Settings');
+    expect(t('shell.offline')).toBe('Offline');
 
     // Switch back to Russian
     i18n.setLocale('ru');
-    expect(t('sidebar.play')).toBe('Играть');
+    expect(t('shell.play')).toBe('Играть');
   });
 
   it('interpolates single and multiple parameters accurately', () => {
     i18n.setLocale('ru');
-    expect(t('servers.ping_ms', { ms: 42 })).toBe('42 мс');
-    expect(t('play.update_description', { version: '1.2.0' })).toBe(
-      'Доступна новая версия 1.2.0. Нажмите для обновления.'
-    );
+    expect(t('shell.memory_gb', { gb: 6 })).toBe('6 ГБ памяти');
+    expect(t('shell.of', { done: '1 МБ', total: '2 МБ' })).toBe('1 МБ из 2 МБ');
 
     i18n.setLocale('en');
-    expect(t('servers.ping_ms', { ms: 42 })).toBe('42 ms');
-    expect(t('play.update_description', { version: '1.2.0' })).toBe(
-      'Version 1.2.0 is available.'
-    );
+    expect(t('shell.memory_gb', { gb: 6 })).toBe('6 GB memory');
   });
 
   it('falls back to key string when translation key is not defined', () => {
@@ -88,135 +83,70 @@ describe('i18n Reactive Manager & Translation Helper', () => {
     }
   });
 
-  it('reactively updates rendered Svelte component when locale changes without restart', async () => {
-    const { mount, unmount, tick } = await import('svelte');
-    const { default: OfflineState } = await import('../components/OfflineState.svelte');
-
-    const target = document.createElement('div');
-    document.body.appendChild(target);
-
-    i18n.setLocale('ru');
-    const comp = mount(OfflineState, { target });
-    await tick();
-
-    expect(target.textContent).toContain('Нет подключения');
-    expect(target.textContent).toContain('Повторить');
-
-    // Switch to English dynamically
-    i18n.setLocale('en');
-    await tick();
-
-    expect(target.textContent).toContain('No Connection');
-    expect(target.textContent).toContain('Try Again');
-
-    // Switch back to Russian dynamically
-    i18n.setLocale('ru');
-    await tick();
-
-    expect(target.textContent).toContain('Нет подключения');
-    expect(target.textContent).toContain('Повторить');
-
-    unmount(comp);
-    target.remove();
-  });
-
   it('renders screens in authentic English when locale is set to en', async () => {
     const { mount, unmount, tick } = await import('svelte');
-    const { default: SettingsScreen } = await import('../screens/SettingsScreen.svelte');
-    const { default: PlayScreen } = await import('../screens/PlayScreen.svelte');
-    const { default: ServersScreen } = await import('../screens/ServersScreen.svelte');
-    const { default: ModsScreen } = await import('../screens/ModsScreen.svelte');
-    const { default: WorkshopScreen } = await import('../screens/WorkshopScreen.svelte');
-    const { default: WardrobeScreen } = await import('../screens/WardrobeScreen.svelte');
-    const { default: LobbyScreen } = await import('../screens/LobbyScreen.svelte');
-    const { default: FriendsScreen } = await import('../screens/FriendsScreen.svelte');
+    const { default: SettingsPage } = await import('../pages/settings/SettingsPage.svelte');
+    const { default: LaunchBar } = await import('../shell/LaunchBar.svelte');
+    const { default: ServersPage } = await import('../pages/servers/ServersPage.svelte');
+    const { default: BuildPage } = await import('../pages/build/BuildPage.svelte');
+    const { default: WardrobePage } = await import('../pages/wardrobe/WardrobePage.svelte');
+    const { default: FriendsPage } = await import('../pages/friends/FriendsPage.svelte');
 
     const target = document.createElement('div');
     document.body.appendChild(target);
 
     i18n.setLocale('en');
 
-    // 1. SettingsScreen
-    const compSettings = mount(SettingsScreen, { target });
+    // 1. Settings page
+    const compSettings = mount(SettingsPage, { target });
     await tick();
-    expect(target.textContent).toContain('Performance & Memory');
-    expect(target.textContent).toContain('Memory for Minecraft');
-    expect(target.textContent).toContain('Interface Language');
-    expect(target.textContent).toContain('Reset to Defaults');
+    for (const label of ['Game', 'Graphics', 'Appearance', 'Launcher', 'Data', 'Keys', 'Memory for the game', 'Reset settings']) {
+      expect(target.textContent).toContain(label);
+    }
     unmount(compSettings);
     target.innerHTML = '';
 
-    // 2. PlayScreen
-    const compPlay = mount(PlayScreen, {
-      target,
-      props: { selectedVersion: '1.21.1', playerName: 'Steve' },
-    });
+    // 2. Launch bar
+    const compPlay = mount(LaunchBar, { target });
     await tick();
-    expect(target.textContent).toContain('Wex Client');
     expect(target.textContent).toContain('Play');
-    expect(target.textContent).toContain('Version');
+    expect(target.querySelector('.play')?.getAttribute('aria-label')).toContain('Play Wex');
     unmount(compPlay);
     target.innerHTML = '';
 
-    // 3. ServersScreen
-    const compServers = mount(ServersScreen, { target });
+    // 3. Servers
+    const compServers = mount(ServersPage, { target });
     await tick();
-    expect(target.textContent).toContain('Add Server');
-    expect(target.textContent).toContain('No Servers Found');
+    expect(target.textContent).toContain('Servers');
+    expect(target.textContent).toContain('Add server');
     unmount(compServers);
     target.innerHTML = '';
 
-    // 4. ModsScreen
-    const compMods = mount(ModsScreen, { target });
+    // 4. Build page: tabs for mods, worlds and the workshop
+    const compBuild = mount(BuildPage, { target, props: { version: '1.21.1' } });
     await tick();
-    expect(target.textContent).toContain('All Mods');
-    expect(target.textContent).toContain('Enabled');
-    expect(target.textContent).toContain('Wex Pack');
-    expect(target.textContent).toContain('Custom');
-    unmount(compMods);
+    for (const label of ['Mods', 'Worlds', 'Resource packs', 'Shaders', 'Screenshots', 'Backups', 'Build settings']) {
+      expect(target.textContent).toContain(label);
+    }
+    expect(target.textContent).toContain('Play');
+    unmount(compBuild);
     target.innerHTML = '';
 
-    // 5. WorkshopScreen
-    const compWorkshop = mount(WorkshopScreen, { target });
+    // 6. Wardrobe
+    const compWardrobe = mount(WardrobePage, { target });
     await tick();
-    await vi.waitFor(() => expect(target.textContent).toContain('No Saved Worlds'), { timeout: 3000 });
-    expect(target.textContent).toContain('Worlds');
-    expect(target.textContent).toContain('Resource Packs');
-    expect(target.textContent).toContain('Shaders');
-    expect(target.textContent).toContain('Screenshots');
-    expect(target.textContent).toContain('No Saved Worlds');
-    unmount(compWorkshop);
-    target.innerHTML = '';
-
-    // 6. WardrobeScreen
-    const compWardrobe = mount(WardrobeScreen, { target });
-    await tick();
-    expect(target.textContent).toContain('Character Model');
-    expect(target.textContent).toContain('Classic (4 px)');
-    expect(target.textContent).toContain('Slim (3 px)');
-    expect(target.textContent).toContain('No Cape');
-    expect(target.textContent).toContain('Apply to Game');
+    for (const label of ['Wardrobe', 'Skins', 'Capes', 'Profile', 'Stands', 'Walks', 'Upload skin', 'Arm model']) {
+      expect(target.textContent).toContain(label);
+    }
     unmount(compWardrobe);
     target.innerHTML = '';
 
-    // 7. LobbyScreen
-    const compLobby = mount(LobbyScreen, { target });
+    // 7. Friends with the Rooms tab
+    const compFriends = mount(FriendsPage, { target });
     await tick();
-    expect(target.textContent).toContain('LAN & Tunnels');
-    expect(target.textContent).toContain('Cloud Worlds');
-    expect(target.textContent).toContain('Join by Code');
-    expect(target.textContent).toContain('Open LAN World');
-    unmount(compLobby);
-    target.innerHTML = '';
-
-    // 8. FriendsScreen
-    const compFriends = mount(FriendsScreen, { target });
-    await tick();
-    expect(target.textContent).toContain('Friends');
-    expect(target.textContent).toContain('Requests');
-    expect(target.textContent).toContain('Achievements');
-    expect(target.textContent).toContain('Add Friend');
-    expect(target.textContent).toContain('No Friends Yet');
+    for (const label of ['Friends', 'Rooms', 'Connecting to friends…']) {
+      expect(target.textContent).toContain(label);
+    }
     unmount(compFriends);
     target.remove();
 

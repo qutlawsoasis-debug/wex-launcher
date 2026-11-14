@@ -124,6 +124,31 @@ pub fn get_standard_achievements() -> Vec<AchievementDefinition> {
             description: "Установлен кастомный скин".to_string(),
             target: 1,
         },
+        // Winter look (reported by the UI: SnowPlay, Santa, Snowballs).
+        AchievementDefinition {
+            id: "first_snowman".to_string(),
+            title: "Первый снеговик".to_string(),
+            description: "Слепил снеговика на плитке сборки".to_string(),
+            target: 1,
+        },
+        AchievementDefinition {
+            id: "snowman_town".to_string(),
+            title: "Снеговичный город".to_string(),
+            description: "3 снеговика одновременно".to_string(),
+            target: 3,
+        },
+        AchievementDefinition {
+            id: "saw_santa".to_string(),
+            title: "Видел Санту".to_string(),
+            description: "Санта пролетел над лаунчером".to_string(),
+            target: 1,
+        },
+        AchievementDefinition {
+            id: "snowball_fight".to_string(),
+            title: "Снежный бой".to_string(),
+            description: "25 брошенных снежков".to_string(),
+            target: 25,
+        },
     ]
 }
 
@@ -394,5 +419,43 @@ mod tests {
         assert!(reloaded["night_shift"].unlocked);
         assert!(reloaded["marathon"].unlocked);
         assert!(reloaded["hundred_hours"].unlocked);
+    }
+
+    #[test]
+    fn winter_achievements_are_defined() {
+        let defs = get_standard_achievements();
+        let find = |id: &str| defs.iter().find(|d| d.id == id).cloned().unwrap();
+        assert_eq!(find("first_snowman").title, "Первый снеговик");
+        assert_eq!(find("first_snowman").target, 1);
+        assert_eq!(find("snowman_town").title, "Снеговичный город");
+        assert_eq!(find("snowman_town").target, 3);
+        assert_eq!(find("saw_santa").title, "Видел Санту");
+        assert_eq!(find("saw_santa").target, 1);
+        assert_eq!(find("snowball_fight").title, "Снежный бой");
+        assert_eq!(find("snowball_fight").target, 25);
+        let mut ids: Vec<_> = defs.iter().map(|d| d.id.as_str()).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), defs.len(), "achievement ids are unique");
+    }
+
+    #[test]
+    fn snowball_fight_unlocks_after_25_throws() {
+        let dir = tempdir().unwrap();
+        let mgr = AchievementManager::new(dir.path());
+        assert!(mgr
+            .increment_progress("snowball_fight", 24.0)
+            .unwrap()
+            .is_none());
+        let e = mgr
+            .increment_progress("snowball_fight", 1.0)
+            .unwrap()
+            .unwrap();
+        assert_eq!(e.id, "snowball_fight");
+        assert!(mgr
+            .increment_progress("snowball_fight", 1.0)
+            .unwrap()
+            .is_none());
+        assert!(mgr.load_progress().unwrap()["snowball_fight"].unlocked);
     }
 }

@@ -1,671 +1,225 @@
-import { test, expect, type Page } from '@playwright/test';
-import { setupMockIpc, type MockIpcOptions } from './mock-ipc';
+import { test, expect } from '@playwright/test';
+import { openApp, axeProblems, ipcCalls } from './helpers';
 
-const SECTIONS = [
-  { id: 'play', name: 'Играть' },
-  { id: 'servers', name: 'Серверы' },
-  { id: 'lobby', name: 'Лобби' },
-  { id: 'friends', name: 'Друзья' },
-  { id: 'wardrobe', name: 'Гардероб' },
-  { id: 'workshop', name: 'Мастерская' },
-  { id: 'mods', name: 'Моды' },
-  { id: 'settings', name: 'Настройки' },
-] as const;
+const PAGES: Array<{ hash: string; heading: string | RegExp }> = [
+  { hash: '', heading: 'Wex 1.21.1' },
+  { hash: '#build-1.20.1', heading: 'Wex 1.20.1' },
+  { hash: '#servers', heading: 'Серверы' },
+  { hash: '#friends', heading: 'Друзья' },
+  { hash: '#wardrobe', heading: 'Гардероб' },
+  { hash: '#options', heading: 'Настройки' },
+];
 
-const THEMES = ['dark', 'light'] as const;
-const BACKGROUNDS = ['day', 'morning', 'night', 'sunset'] as const;
-
-async function setupPageListeners(page: Page, markOnboardingCompleted = true) {
-  const consoleErrors: string[] = [];
-  const pageErrors: string[] = [];
-
-  // Emulate reduced motion across all tests to prevent animation/transition timing race conditions
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-
-  if (markOnboardingCompleted) {
-    await page.addInitScript(() => {
-      localStorage.setItem('wex_onboarding_completed', 'true');
-    });
-  }
-
-  await page.route('**', (route) => {
-    const url = route.request().url();
-    if (url.startsWith('http://127.0.0.1:4173') || url.startsWith('http://localhost:4173')) {
-      route.continue();
-    } else {
-      route.fulfill({
-        status: 200,
-        contentType: 'image/png',
-        body: Buffer.from(
-          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-          'base64'
-        ),
+for (const scheme of ['light', 'dark'] as const) {
+  test.describe(`every page renders without errors (${scheme})`, () => {
+    for (const p of PAGES) {
+      test(`${p.hash || '#home'}`, async ({ page }) => {
+        const errors = await openApp(page, p.hash, { mode: 'full', scheme });
+        await expect(page.locator('.page h1').first()).toHaveText(p.heading);
+        expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe(scheme);
+        expect(await axeProblems(page)).toEqual([]);
+        expect(errors).toEqual([]);
       });
     }
-  });
-
-  page.on('console', (msg) => {
-    if (msg.type() === 'error') {
-      consoleErrors.push(msg.text());
-    }
-  });
-
-  page.on('pageerror', (err) => {
-    pageErrors.push(err.message);
-  });
-
-  return { consoleErrors, pageErrors };
-}
-
-async function waitForAnimationsToSettle(page: Page) {
-  await page.evaluate(async () => {
-    if (typeof document.getAnimations === 'function') {
-      const animations = document.getAnimations();
-      const finiteAnimations = animations.filter((a) => {
-        try {
-          const timing = a.effect?.getComputedTiming();
-          return timing && timing.iterations !== Infinity && timing.duration !== Infinity;
-        } catch {
-          return false;
-        }
-      });
-      if (finiteAnimations.length > 0) {
-        await Promise.race([
-          Promise.allSettled(finiteAnimations.map((a) => a.finished)),
-          new Promise((resolve) => setTimeout(resolve, 300)),
-        ]);
-      }
-    }
-    await new Promise((resolve) => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(resolve);
-      });
-    });
   });
 }
 
-async function assertViewIntegrity(
-  page: Page,
-  viewName: string,
-  consoleErrors: string[],
-  pageErrors: string[]
-) {
-  // Wait for transitions and animations to settle
-  await waitForAnimationsToSettle(page);
-
-  // 1. Check Console & Page errors
-  expect(consoleErrors, `Console errors detected in ${viewName}`).toEqual([]);
-  expect(pageErrors, `Page errors detected in ${viewName}`).toEqual([]);
-
-  // 2. Check Horizontal Scroll (poll until settled)
-  await expect
-    .poll(
-      async () => {
-        return await page.evaluate(() => {
-          const doc = document.documentElement;
-          const body = document.body;
-          return (
-            doc.scrollWidth > doc.clientWidth ||
-            (body ? body.scrollWidth > body.clientWidth : false)
-          );
-        });
-      },
-      {
-        message: `Horizontal scroll detected in ${viewName}`,
-        timeout: 3000,
-        intervals: [50, 100, 200],
-      }
-    )
-    .toBe(false);
-
-  // 3. Check Text Truncation (poll until layout and webfonts finish settling)
-  await expect
-    .poll(
-      async () => {
-        return await page.evaluate(() => {
-          const truncated: Array<{
-            tag: string;
-            class: string;
-            text: string;
-            scrollWidth: number;
-            clientWidth: number;
-          }> = [];
-          const elements = document.querySelectorAll('*');
-          for (const el of elements) {
-            const rect = el.getBoundingClientRect();
-            if (rect.width <= 1 || rect.height <= 1) continue;
-            const style = window.getComputedStyle(el);
-            if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
-
-            const hasDirectText = Array.from(el.childNodes).some(
-              (n) => n.nodeType === Node.TEXT_NODE && n.textContent && n.textContent.trim().length > 0
-            );
-            if (!hasDirectText) continue;
-
-            if (style.overflowX === 'scroll' || style.overflowX === 'auto') continue;
-            if (el.closest('.stories-track') || el.closest('.carousel-track')) continue;
-            if (el.closest('.visually-hidden') || el.closest('.sr-only')) continue;
-
-            // 1px subpixel tolerance
-            if (el.scrollWidth > el.clientWidth + 1) {
-              truncated.push({
-                tag: el.tagName,
-                class: el.className,
-                text: (el.textContent || '').trim().slice(0, 50),
-                scrollWidth: el.scrollWidth,
-                clientWidth: el.clientWidth,
-              });
-            }
-          }
-          return truncated;
-        });
-      },
-      {
-        message: `Truncated text elements detected in ${viewName}`,
-        timeout: 3000,
-        intervals: [50, 100, 200],
-      }
-    )
-    .toEqual([]);
-}
-
-async function assertSceneryTextContrast(page: Page, contextInfo: string) {
-  const contrastResults = await page.evaluate(async () => {
-    function parseRgb(colorStr: string) {
-      const m = colorStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
-      if (!m) return { r: 255, g: 255, b: 255 };
-      return { r: parseInt(m[1], 10), g: parseInt(m[2], 10), b: parseInt(m[3], 10) };
-    }
-
-    function getRelativeLuminance(r: number, g: number, b: number) {
-      const rs = r / 255;
-      const gs = g / 255;
-      const bs = b / 255;
-      const R = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
-      const G = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
-      const B = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
-      return 0.2126 * R + 0.7152 * G + 0.0722 * B;
-    }
-
-    function getContrastRatio(l1: number, l2: number) {
-      const lighter = Math.max(l1, l2);
-      const darker = Math.min(l1, l2);
-      return (lighter + 0.05) / (darker + 0.05);
-    }
-
-    const sceneryArt = document.querySelector('.scenery-canvas') as HTMLElement | null;
-    const bgProp = sceneryArt
-      ? sceneryArt.style.backgroundImage || window.getComputedStyle(sceneryArt).backgroundImage
-      : '';
-    const bgUrlMatch = bgProp.match(/url\(["']?([^"']+)["']?\)/);
-    const bgUrl = bgUrlMatch ? bgUrlMatch[1] : null;
-    if (!bgUrl) return [];
-
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = bgUrl;
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-    });
-
-    const canvas = document.createElement('canvas');
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d')!;
-
-    const scale = Math.max(width / img.width, height / img.height);
-    const x = (width - img.width * scale) / 2;
-    const y = (height - img.height * scale) / 2;
-    ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
-
-    const vignetteGrad = ctx.createLinearGradient(0, 0, 0, height);
-    vignetteGrad.addColorStop(0, 'rgba(0, 0, 0, 0.65)');
-    vignetteGrad.addColorStop(0.25, 'rgba(0, 0, 0, 0.50)');
-    vignetteGrad.addColorStop(0.50, 'rgba(0, 0, 0, 0.30)');
-    vignetteGrad.addColorStop(0.75, 'rgba(0, 0, 0, 0.65)');
-    vignetteGrad.addColorStop(1.00, 'rgba(0, 0, 0, 0.88)');
-    ctx.fillStyle = vignetteGrad;
-    ctx.fillRect(0, 0, width, height);
-
-    const selectors = ['.game-heading', '.game-subheading', '.header-tools button span'];
-    const results: Array<{ selector: string; text: string; ratio: number; pass: boolean }> = [];
-
-    for (const sel of selectors) {
-      const el = document.querySelector(sel);
-      if (!el) continue;
-      const rect = el.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) continue;
-
-      const textStyle = window.getComputedStyle(el);
-      const textRgb = parseRgb(textStyle.color);
-      const textLum = getRelativeLuminance(textRgb.r, textRgb.g, textRgb.b);
-
-      const sampleX = Math.floor(Math.max(0, Math.min(width - 1, rect.left + rect.width / 2)));
-      const sampleY = Math.floor(Math.max(0, Math.min(height - 1, rect.top + rect.height / 2)));
-      const pixel = ctx.getImageData(sampleX, sampleY, 1, 1).data;
-      const bgLum = getRelativeLuminance(pixel[0], pixel[1], pixel[2]);
-
-      const ratio = getContrastRatio(textLum, bgLum);
-      results.push({
-        selector: sel,
-        text: (el.textContent || '').trim(),
-        ratio: parseFloat(ratio.toFixed(2)),
-        pass: ratio >= 4.5,
-      });
-    }
-    return results;
-  });
-
-  for (const r of contrastResults) {
-    expect(
-      r.pass,
-      `Contrast ratio below 4.5:1 (${r.ratio}:1) for "${r.text}" (${r.selector}) in ${contextInfo}`
-    ).toBe(true);
-  }
-}
-
-test.describe('Wex UI Smoke Tests', () => {
-  // Test 1: Full Populated State across all 8 screens and themes
-  for (const theme of THEMES) {
-    test.describe(`Full State - Theme: ${theme}`, () => {
-      for (const section of SECTIONS) {
-        test(`renders section «${section.name}» without errors, truncation, or horizontal scroll`, async ({
-          page,
-        }) => {
-          const { consoleErrors, pageErrors } = await setupPageListeners(page);
-          await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
-
-          await page.goto(`/?tab=${section.id}&theme=${theme}`);
-          await page.waitForLoadState('domcontentloaded');
-          await expect(page.locator('.apple-sidebar')).toBeVisible({ timeout: 5000 });
-
-          await assertViewIntegrity(
-            page,
-            `${section.name} (Full, ${theme})`,
-            consoleErrors,
-            pageErrors
-          );
-        });
-      }
-    });
-  }
-
-  // Test 2: Empty State across all 8 screens and themes
-  for (const theme of THEMES) {
-    test.describe(`Empty State - Theme: ${theme}`, () => {
-      for (const section of SECTIONS) {
-        test(`renders empty state for «${section.name}» without errors, truncation, or horizontal scroll`, async ({
-          page,
-        }) => {
-          const { consoleErrors, pageErrors } = await setupPageListeners(page);
-          await page.addInitScript(setupMockIpc, { mode: 'empty' } as MockIpcOptions);
-
-          await page.goto(`/?tab=${section.id}&theme=${theme}`);
-          await page.waitForLoadState('domcontentloaded');
-          await expect(page.locator('.apple-sidebar')).toBeVisible({ timeout: 5000 });
-
-          await assertViewIntegrity(
-            page,
-            `${section.name} (Empty, ${theme})`,
-            consoleErrors,
-            pageErrors
-          );
-        });
-      }
-    });
-  }
-
-  // Test 3: Modals and Sheets
-  for (const theme of THEMES) {
-    test(`renders and closes modals and sheets in theme: ${theme}`, async ({ page }) => {
-      const { consoleErrors, pageErrors } = await setupPageListeners(page);
-      await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
-
-      // Modal 1: Import Wizard Sheet
-      await page.goto(`/?tab=play&theme=${theme}`);
-      await expect(page.locator('.apple-sidebar')).toBeVisible({ timeout: 5000 });
-      const importBtn = page.locator('.header-tools button');
-      if (await importBtn.isVisible()) {
-        await importBtn.click();
-        const importSheet = page.locator('.import-wizard-card, .sheet-card');
-        await expect(importSheet).toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(
-          page,
-          `ImportWizardSheet (${theme})`,
-          consoleErrors,
-          pageErrors
-        );
-        await page.keyboard.press('Escape');
-        await expect(importSheet).not.toBeVisible({ timeout: 3000 });
-      }
-
-      // Modal 2: Crash Sheet & Report Sheet
-      await page.evaluate(() => (window as any).__TRIGGER_CRASH__());
-      const crashSheet = page.locator('.crash-card, .sheet-card');
-      await expect(crashSheet).toBeVisible({ timeout: 3000 });
-      await assertViewIntegrity(page, `CrashSheet (${theme})`, consoleErrors, pageErrors);
-
-      const reportBtn = page.locator('.crash-actions button:has-text("Отправить отчёт")');
-      if (await reportBtn.isVisible()) {
-        await reportBtn.click();
-        const reportSheet = page.locator('.report-card, .sheet-card');
-        await expect(reportSheet).toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(page, `ReportSheet (${theme})`, consoleErrors, pageErrors);
-        await page.keyboard.press('Escape');
-        await expect(reportSheet).not.toBeVisible({ timeout: 3000 });
-      }
-      if (await crashSheet.isVisible()) {
-        await page.keyboard.press('Escape');
-        await expect(crashSheet).not.toBeVisible({ timeout: 3000 });
-      }
-
-      // Modal 3: Add Server Sheet
-      await page.goto(`/?tab=servers&theme=${theme}`);
-      await expect(page.locator('.apple-sidebar')).toBeVisible({ timeout: 5000 });
-      const addServerBtn = page.locator('.toolbar-controls button:has-text("Добавить сервер")');
-      if (await addServerBtn.isVisible()) {
-        await addServerBtn.click();
-        const addServerSheet = page.locator('#new-srv-name');
-        await expect(addServerSheet).toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(
-          page,
-          `AddServerSheet (${theme})`,
-          consoleErrors,
-          pageErrors
-        );
-        await page.keyboard.press('Escape');
-        await expect(addServerSheet).not.toBeVisible({ timeout: 3000 });
-      }
-
-      // Modal 4: Workshop New World Sheet
-      await page.goto(`/?tab=workshop&theme=${theme}`);
-      await expect(page.locator('.apple-sidebar')).toBeVisible({ timeout: 5000 });
-      const newWorldBtn = page.locator('.workshop-toolbar button:has-text("Новый мир")');
-      if (await newWorldBtn.isVisible()) {
-        await newWorldBtn.click();
-        const newWorldSheet = page.locator('#new-world-name');
-        await expect(newWorldSheet).toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(
-          page,
-          `WorkshopNewWorldSheet (${theme})`,
-          consoleErrors,
-          pageErrors
-        );
-        await page.keyboard.press('Escape');
-        await expect(newWorldSheet).not.toBeVisible({ timeout: 3000 });
-      }
-
-      // Modal 5: First Launch Onboarding Modal
-      await page.goto(`/?onboarding=true&theme=${theme}`);
-      const onboardingCard = page.locator('.onboarding-card');
-      if (await onboardingCard.isVisible()) {
-        await assertViewIntegrity(
-          page,
-          `OnboardingModal (${theme})`,
-          consoleErrors,
-          pageErrors
-        );
-        const skipBtn = page.locator('.skip-action, button:has-text("Пропустить")').first();
-        if (await skipBtn.isVisible()) {
-          await skipBtn.click();
-        } else {
-          await page.keyboard.press('Escape');
-        }
-        await expect(onboardingCard).not.toBeVisible({ timeout: 3000 });
-      }
-    });
-  }
-
-  // Test 4: Interactive Action Scenarios
-  for (const theme of THEMES) {
-    test.describe(`Action Scenarios - Theme: ${theme}`, () => {
-      // Scenario 1: «Играть» → прогресс → «В игре» → выход из игры
-      test(`action scenario: «Играть» → progress → «В игре» → exit game (${theme})`, async ({
-        page,
-      }) => {
-        const { consoleErrors, pageErrors } = await setupPageListeners(page);
-        await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
-
-        await page.goto(`/?tab=play&theme=${theme}`);
-        await page.waitForLoadState('domcontentloaded');
-        await expect(page.locator('.dock-primary-action button')).toBeVisible({ timeout: 5000 });
-
-        // Step 1: Initial idle state
-        await assertViewIntegrity(page, `Play Idle (${theme})`, consoleErrors, pageErrors);
-        const playBtn = page.locator('.dock-primary-action button');
-        await expect(playBtn).toBeVisible();
-
-        // Step 2: Click Play to trigger launch progress
-        await playBtn.click();
-        const progressDock = page.locator('.dock-progress-mode, .dock-progress');
-        await expect(progressDock).toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(page, `Play Launch Progress (${theme})`, consoleErrors, pageErrors);
-
-        // Step 3: Transition to Running ("В игре")
-        const runningBadge = page.locator('.tech-status-badge.running');
-        await expect(runningBadge).toBeVisible({ timeout: 4000 });
-        await assertViewIntegrity(page, `Play Running In-Game (${theme})`, consoleErrors, pageErrors);
-
-        // Step 4: Stop game / Exit
-        const stopBtn = page.locator('.dock-primary-action button');
-        await stopBtn.click();
-        await expect(runningBadge).not.toBeVisible({ timeout: 3000 });
-        await expect(page.locator('.dock-primary-action button')).toBeVisible();
-        await assertViewIntegrity(page, `Play Exited Game (${theme})`, consoleErrors, pageErrors);
-      });
-
-      // Scenario 2: создание комнаты лобби и вход по коду (мок)
-      test(`action scenario: lobby room creation and join by code (${theme})`, async ({
-        page,
-      }) => {
-        const { consoleErrors, pageErrors } = await setupPageListeners(page);
-        await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
-
-        await page.goto(`/?tab=lobby&theme=${theme}`);
-        await page.waitForLoadState('domcontentloaded');
-        await expect(page.locator('.host-card, .join-card, .lobby-container').first()).toBeVisible({ timeout: 5000 });
-
-        // Step 1: Initial Lobby screen
-        await assertViewIntegrity(page, `Lobby Initial (${theme})`, consoleErrors, pageErrors);
-
-        // Step 2: Create room
-        const createBtn = page.locator(
-          '[data-testid="create-room-btn"] button, .host-card button:has-text("Создать комнату"), .host-card button:has-text("Create Room"), .host-card button:has-text("Открыть мир")'
-        );
-        await expect(createBtn).toBeVisible();
-        await createBtn.click();
-
-        const activeRoomMeta = page.locator('.room-meta, .room-header');
-        await expect(activeRoomMeta).toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(page, `Lobby Room Created (${theme})`, consoleErrors, pageErrors);
-
-        // Step 3: Leave created room
-        const leaveBtn = page.locator('.room-header-actions button');
-        await expect(leaveBtn).toBeVisible();
-        await leaveBtn.click();
-
-        const codeInput = page.locator('.code-input');
-        await expect(codeInput).toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(page, `Lobby Left Created Room (${theme})`, consoleErrors, pageErrors);
-
-        // Step 4: Join room by code
-        await codeInput.fill('A7X9');
-        const joinBtn = page.locator('.join-form button');
-        await expect(joinBtn).toBeEnabled();
-        await joinBtn.click();
-
-        await expect(activeRoomMeta).toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(page, `Lobby Room Joined By Code (${theme})`, consoleErrors, pageErrors);
-
-        // Step 5: Leave joined room
-        await page.locator('.room-header-actions button').click();
-        await expect(codeInput).toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(page, `Lobby Returned To Overview (${theme})`, consoleErrors, pageErrors);
-      });
-
-      // Scenario 3: добавление сервера и подключение
-      test(`action scenario: add server and connect (${theme})`, async ({
-        page,
-      }) => {
-        const { consoleErrors, pageErrors } = await setupPageListeners(page);
-        await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
-
-        await page.goto(`/?tab=servers&theme=${theme}`);
-        await page.waitForLoadState('domcontentloaded');
-        await expect(page.locator('.toolbar-controls button:has-text("Добавить сервер")')).toBeVisible({ timeout: 5000 });
-
-        // Step 1: Initial servers view
-        await assertViewIntegrity(page, `Servers Initial (${theme})`, consoleErrors, pageErrors);
-
-        // Step 2: Open Add Server Sheet
-        const addBtn = page.locator('.toolbar-controls button:has-text("Добавить сервер")');
-        await expect(addBtn).toBeVisible();
-        await addBtn.click();
-
-        const nameInput = page.locator('#new-srv-name');
-        await expect(nameInput).toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(page, `Servers Add Sheet Open (${theme})`, consoleErrors, pageErrors);
-
-        // Step 3: Enter server details and save
-        await nameInput.fill('Smoke Test Server');
-        const addrInput = page.locator('#new-srv-addr');
-        await addrInput.fill('smoke.wex.lan:25565');
-
-        const saveBtn = page.locator('.sheet-card .header-action.trailing button, .sheet-card button:has-text("Сохранить")');
-        await saveBtn.click();
-
-        await expect(nameInput).not.toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(page, `Servers Server Added (${theme})`, consoleErrors, pageErrors);
-
-        // Step 4: Direct connect to server
-        const connectBtn = page.locator('.server-metrics button:has-text("Играть")').first();
-        await expect(connectBtn).toBeVisible();
-        await connectBtn.click();
-
-        const launchToast = page.locator('.launch-toast');
-        await expect(launchToast).toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(page, `Servers Direct Connected (${theme})`, consoleErrors, pageErrors);
-      });
-
-      // Scenario 4: переключение языка ru/en
-      test(`action scenario: language switching ru <-> en (${theme})`, async ({
-        page,
-      }) => {
-        const { consoleErrors, pageErrors } = await setupPageListeners(page);
-        await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
-
-        await page.goto(`/?tab=settings&theme=${theme}`);
-        await page.waitForLoadState('domcontentloaded');
-        await expect(page.locator('button.segment-button:has-text("English")')).toBeVisible({ timeout: 5000 });
-
-        // Step 1: Initial settings in Russian
-        await expect(page.locator('.nav-item:has-text("Играть")')).toBeVisible();
-        await assertViewIntegrity(page, `Settings Russian (${theme})`, consoleErrors, pageErrors);
-
-        // Step 2: Switch language to English
-        const enBtn = page.locator('button.segment-button:has-text("English")');
-        await expect(enBtn).toBeVisible();
-        await enBtn.click();
-
-        // Step 3: Verify English across sections
-        await expect(page.locator('.nav-item:has-text("Play")')).toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(page, `Settings English (${theme})`, consoleErrors, pageErrors);
-
-        // Navigate to Play screen in English
-        await page.locator('.nav-item:has-text("Play")').click();
-        await expect(page.locator('.dock-primary-action button:has-text("Play")')).toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(page, `Play Screen English (${theme})`, consoleErrors, pageErrors);
-
-        // Navigate to Servers screen in English
-        await page.locator('.nav-item:has-text("Servers")').click();
-        await expect(page.locator('.toolbar-controls button:has-text("Add Server"), .servers-screen button:has-text("Add Server")').first()).toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(page, `Servers Screen English (${theme})`, consoleErrors, pageErrors);
-
-        // Step 4: Switch back to Russian
-        await page.locator('.nav-item:has-text("Settings")').click();
-        const ruBtn = page.locator('button.segment-button:has-text("Русский")');
-        await expect(ruBtn).toBeVisible({ timeout: 3000 });
-        await ruBtn.click();
-
-        await expect(page.locator('.nav-item:has-text("Играть")')).toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(page, `Settings Switched Russian (${theme})`, consoleErrors, pageErrors);
-
-        // Navigate to Play screen in Russian
-        await page.locator('.nav-item:has-text("Играть")').click();
-        await expect(page.locator('.dock-primary-action button:has-text("Играть")')).toBeVisible({ timeout: 3000 });
-        await assertViewIntegrity(page, `Play Screen Russian (${theme})`, consoleErrors, pageErrors);
-      });
-    });
-  }
-
-  // Test 5: Text Contrast >= 4.5:1 over All Scenery Backgrounds
-  for (const bg of BACKGROUNDS) {
-    for (const theme of THEMES) {
-      test(`verifies WCAG AA contrast >= 4.5:1 on background: ${bg} (${theme})`, async ({
-        page,
-      }) => {
-        const { consoleErrors, pageErrors } = await setupPageListeners(page);
-        await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
-
-        await page.goto(`/?tab=play&bg=${bg}&theme=${theme}`);
-        await page.waitForLoadState('domcontentloaded');
-        await expect(page.locator('.dock-primary-action button')).toBeVisible({ timeout: 5000 });
-
-        await assertSceneryTextContrast(page, `Background: ${bg}, Theme: ${theme}`);
-        await assertViewIntegrity(
-          page,
-          `PlayScreen Contrast (${bg}, ${theme})`,
-          consoleErrors,
-          pageErrors
-        );
-      });
-    }
-  }
-
-  // Test 6: Dedicated First Launch Onboarding Scenario
-  test('first launch shows onboarding modal, skip dismisses it and sets completed', async ({
-    page,
-  }) => {
-    const { consoleErrors, pageErrors } = await setupPageListeners(page, false);
-    await page.addInitScript(setupMockIpc, { mode: 'full' } as MockIpcOptions);
-
-    await page.goto('/?theme=dark');
-    await page.waitForLoadState('domcontentloaded');
-
-    // 1. Verify OnboardingModal is visible on clean launch
-    const onboardingCard = page.locator('.onboarding-card');
-    await expect(onboardingCard).toBeVisible({ timeout: 5000 });
-    await assertViewIntegrity(
-      page,
-      'First Launch Onboarding Modal',
-      consoleErrors,
-      pageErrors
-    );
-
-    // 2. Click "Пропустить"
-    const skipBtn = page.locator('.skip-action, button:has-text("Пропустить")').first();
-    await expect(skipBtn).toBeVisible();
-    await skipBtn.click();
-
-    // 3. Verify modal is closed
-    await expect(onboardingCard).not.toBeVisible({ timeout: 4000 });
-
-    // 4. Verify completed flag in localStorage
-    const isCompleted = await page.evaluate(() => localStorage.getItem('wex_onboarding_completed'));
-    expect(isCompleted).toBe('true');
-
-    // 5. Reload page and verify modal is NOT shown again
-    await page.reload();
-    await page.waitForLoadState('domcontentloaded');
-    await expect(onboardingCard).not.toBeVisible({ timeout: 4000 });
-    await assertViewIntegrity(
-      page,
-      'Post-Onboarding Play Screen',
-      consoleErrors,
-      pageErrors
-    );
-  });
+test('sidebar: sections, both builds with mod counts, the selected one marked', async ({ page }) => {
+  await openApp(page);
+  await expect(page.locator('.nav a')).toHaveText(['Главная', 'Серверы', 'Друзья', 'Гардероб', 'Настройки']);
+  await expect(page.locator('.lib a').nth(0)).toContainText('4 мода');
+  await expect(page.locator('.lib a').nth(1)).toContainText('3 мода');
+  await expect(page.locator('.lib a').nth(0).locator('.sel')).toHaveCount(1);
+  await page.locator('.nav a', { hasText: 'Серверы' }).click();
+  await expect(page.locator('.nav a[aria-current="page"]')).toHaveText('Серверы');
 });
+
+test('launch: Play shows the stages and progress from core, then the running game, then Stop', async ({ page }) => {
+  await openApp(page);
+  await page.locator('.bar .play').click();
+  await expect(page.locator('.bar .title')).toContainText('Скачиваем ресурсы игры');
+  await expect(page.locator('.bar .sub')).toContainText('47%');
+  await expect(page.locator('.bar .play')).toHaveText('Отменить');
+  await expect(page.locator('.bar .title')).toContainText('Игра идёт');
+  await expect(page.locator('.bar .play')).toHaveText('Остановить');
+  expect(await ipcCalls(page, 'start_game')).toEqual([{ version: '1.21.1', nickname: 'Player', jvmArgs: null, server: null }]);
+  await page.locator('.bar .play').click();
+  await expect(page.locator('.toast')).toContainText('Игра остановлена');
+  await expect(page.locator('.bar .play')).toContainText('Играть');
+});
+
+test('both builds launch: choosing 1.20.1 on Home saves it and Play starts 1.20.1', async ({ page }) => {
+  await openApp(page);
+  await page.locator('.pane:not(.open)').click();
+  await expect(page.locator('.pane.open h1')).toHaveText('Wex 1.20.1');
+  await expect(page.locator('.toast')).toContainText('Для запуска выбрана Wex 1.20.1');
+  await expect(page.locator('.lib a').nth(1).locator('.sel')).toHaveCount(1);
+  const saved = (await ipcCalls(page, 'save_launcher_settings')) as Array<{ newSettings: { selected_version: string } }>;
+  expect(saved.at(-1)?.newSettings.selected_version).toBe('1.20.1');
+  await page.locator('.pane.open .pane-play').click();
+  await expect(page.locator('.bar .title')).toContainText('Игра идёт');
+  expect(((await ipcCalls(page, 'start_game')) as Array<{ version: string }>)[0].version).toBe('1.20.1');
+});
+
+test('build page: mods toggle through core, workshop tabs are there', async ({ page }) => {
+  await openApp(page, '#build-1.21.1');
+  await expect(page.locator('[role="tab"]')).toHaveText(['Моды', 'Миры', 'Ресурспаки', 'Шейдеры', 'Скриншоты', 'Бэкапы', 'Настройки сборки']);
+  const menu = page.locator('.lrow', { hasText: 'Mod Menu' });
+  await expect(menu.locator('.switch')).toHaveAttribute('aria-checked', 'false');
+  await menu.locator('.switch').click();
+  await expect(menu.locator('.switch')).toHaveAttribute('aria-checked', 'true');
+  expect(await ipcCalls(page, 'toggle_mod')).toEqual([{ version: '1.21.1', fileName: 'menu.jar', enabled: true }]);
+  await page.locator('[role="tab"]', { hasText: 'Миры' }).click();
+  await expect(page.locator('.empty')).toContainText('В этой сборке ещё нет миров.');
+});
+
+test('settings: theme applies at once and is saved', async ({ page }) => {
+  await openApp(page, '#options', { mode: 'full', scheme: 'light' });
+  await page.locator('.theme-card', { hasText: 'Тёмная' }).click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe('dark');
+  const saved = (await ipcCalls(page, 'save_launcher_settings')) as Array<{ newSettings: { appearance: string } }>;
+  expect(saved.at(-1)?.newSettings.appearance).toBe('dark');
+});
+
+test('accounts: add an offline account, it becomes the player; Microsoft is honestly unavailable', async ({ page }) => {
+  await openApp(page, '#options');
+  const section = page.locator('#sec-accounts');
+  await expect(section.locator('.acc-row')).toHaveCount(1);
+  await expect(section.locator('.acc-row')).toContainText('Без лицензии');
+  await section.getByRole('button', { name: 'Добавить…' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Вход в аккаунт' });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.locator('.way').first()).toBeDisabled();
+  await expect(sheet.locator('.way').first()).toContainText('WEX_MS_CLIENT_ID');
+  expect(await axeProblems(page)).toEqual([]);
+  await sheet.locator('.way', { hasText: 'Играть без лицензии' }).click();
+  await sheet.locator('#acc-nick').fill('Friend_2');
+  await sheet.getByRole('button', { name: 'Добавить аккаунт' }).click();
+  await expect(sheet).toBeHidden();
+  await expect(section.locator('.acc-row')).toHaveCount(2);
+  expect(await ipcCalls(page, 'accounts_add_offline')).toEqual([{ name: 'Friend_2' }]);
+  await expect(page.locator('.side .me b')).toHaveText('Friend_2');
+  // Back to the first account.
+  await section.locator('.acc-row', { hasText: 'Player' }).getByRole('button', { name: 'Выбрать' }).click();
+  await expect(page.locator('.side .me b')).toHaveText('Player');
+});
+
+test('wardrobe: 3D model with all parts, poses, achievements in Profile', async ({ page }) => {
+  await openApp(page, '#wardrobe');
+  await expect(page.locator('.rig .joint')).toHaveCount(6);
+  await page.locator('.stage-bar .seg button', { hasText: 'Идёт' }).click();
+  await expect(page.locator('.rig')).toHaveClass(/pose-walk/);
+  await page.locator('.wd-panel [role="tab"]', { hasText: 'Профиль' }).click();
+  await expect(page.locator('.ach-row')).toContainText('1 из 1');
+});
+
+test('empty data: honest empty states, no sample content', async ({ page }) => {
+  await openApp(page, '', { mode: 'empty' });
+  // No account yet: the first start asks how to play.
+  const signIn = page.getByRole('dialog', { name: 'Вход в аккаунт' });
+  await expect(signIn).toBeVisible();
+  await expect(signIn).toContainText('Играть без лицензии');
+  await signIn.getByRole('button', { name: 'Отмена' }).click();
+  await expect(signIn).toBeHidden();
+  await expect(page.locator('button.me')).toContainText('Войти');
+  await expect(page.locator('.panel:not(.together)')).toContainText('Войдите в аккаунт, чтобы видеть друзей.');
+  await page.locator('.nav a', { hasText: 'Серверы' }).click();
+  await expect(page.locator('.list .empty')).toContainText('Серверов пока нет.');
+  await expect(page.locator('body')).not.toContainText(/kotya|Aura Creative|Aura Minigames/);
+});
+
+test('servers: add a server through core', async ({ page }) => {
+  await openApp(page, '#servers');
+  await expect(page.locator('.lrow-srv')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Добавить сервер' }).click();
+  await page.locator('.editor input').nth(0).fill('Мой сервер');
+  await page.locator('.editor input').nth(1).fill('my.example.net');
+  await page.locator('.editor .btn.blue').click();
+  await expect(page.locator('.lrow-srv')).toHaveCount(3);
+});
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`own server tab: status, EULA switch, address, console and settings (${scheme})`, async ({ page }) => {
+    const errors = await openApp(page, '#friends', { mode: 'full', scheme });
+    await page.getByRole('tab', { name: 'Свой сервер' }).click();
+    await expect(page.locator('.head-t b')).toHaveText('Дача');
+    await expect(page.getByRole('switch', { name: 'Я принимаю EULA Minecraft' })).toHaveAttribute('aria-checked', 'false');
+    await expect(page.getByRole('button', { name: 'Запустить' })).toBeDisabled();
+    await expect(page.getByText('192.168.1.5', { exact: true })).toBeVisible();
+    await expect(page.getByRole('log', { name: 'Консоль' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Добавить себе в Серверы' })).toBeVisible();
+    expect(await axeProblems(page)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+}
+
+test('own server tab with no servers offers to create one', async ({ page }) => {
+  await openApp(page, '#friends', { mode: 'empty' });
+  await page.getByRole('dialog', { name: 'Вход в аккаунт' }).getByRole('button', { name: 'Отмена' }).click();
+  await page.getByRole('tab', { name: 'Свой сервер' }).click();
+  await expect(page.getByRole('button', { name: 'Создать сервер' })).toBeEnabled();
+  expect(await axeProblems(page)).toEqual([]);
+});
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`cloud worlds tab: my running world to join, a friend's world to start, access list (${scheme})`, async ({ page }) => {
+    const errors = await openApp(page, '#friends', { mode: 'full', scheme });
+    await page.getByRole('tab', { name: 'Облачные миры' }).click();
+    await expect(page.getByText('Мои миры')).toBeVisible();
+    await expect(page.getByText('10.0.0.7:25601')).toBeVisible();
+    await expect(page.getByText('В сети · игроков 1 из 8')).toBeVisible();
+    await expect(page.getByText('Спит · владелец Alex')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Удалить мир' })).toBeDisabled();
+    await page.getByRole('button', { name: 'Доступ (1)' }).click();
+    await page.getByLabel('Ник друга').fill('Bob_1');
+    await page.getByRole('button', { name: 'Открыть доступ' }).click();
+    await expect(page.getByRole('button', { name: 'Доступ (2)' })).toBeVisible();
+    expect(await ipcCalls(page, 'cloud_share')).toEqual([{ id: 'w1', player: 'Bob_1', add: true }]);
+    await page.getByRole('button', { name: 'Запустить' }).click();
+    await expect(page.getByText('Загрузка мира')).toBeVisible();
+    expect(await ipcCalls(page, 'cloud_start')).toEqual([{ id: 's1' }]);
+    expect(await axeProblems(page)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+}
+
+test('cloud worlds tab without a secret says why and lists nothing', async ({ page }) => {
+  await openApp(page, '#friends', { mode: 'empty' });
+  await page.getByRole('dialog', { name: 'Вход в аккаунт' }).getByRole('button', { name: 'Отмена' }).click();
+  await page.getByRole('tab', { name: 'Облачные миры' }).click();
+  await expect(page.getByText('Облачные миры недоступны.')).toBeVisible();
+  await expect(page.getByText('WEX_CLOUD_SECRET', { exact: false }).first()).toBeVisible();
+  expect(await ipcCalls(page, 'cloud_list')).toEqual([]);
+  expect(await axeProblems(page)).toEqual([]);
+});
+
+for (const [w, h] of [[880, 600], [1080, 720]] as const) {
+  test(`window ${w}×${h} (minimum and default): no page spills sideways, wardrobe keeps two columns`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: h });
+    for (const p of PAGES) {
+      await openApp(page, p.hash);
+      await expect(page.locator('.page h1').first()).toHaveText(p.heading);
+      const spill = await page.evaluate(() => {
+        const main = document.querySelector('main')!;
+        return main.scrollWidth - main.clientWidth;
+      });
+      expect(spill, `${p.hash || '#home'} overflows by ${spill}px`).toBeLessThanOrEqual(1);
+    }
+    await openApp(page, '#wardrobe');
+    const cols = await page.locator('.wd2').evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
+    expect(cols).toBe(2);
+    // The whole model stands inside the scene: the WebGL canvas fills the band
+    // between the caption and the bottom bar, across the whole scene.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const s = document.querySelector('.stage3d')!.getBoundingClientRect();
+          const top = document.querySelector('.stage-top')!.getBoundingClientRect();
+          const gl = document.querySelector('canvas.gl.on')?.getBoundingClientRect();
+          const bar = document.querySelector('.stage-bar')!.getBoundingClientRect();
+          return !!gl && gl.top >= top.bottom - 1 && gl.bottom <= bar.top + 1 && gl.height > 200 && Math.abs(gl.width - s.width) < 2;
+        })
+      )
+      .toBe(true);
+  });
+}

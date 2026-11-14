@@ -5,14 +5,10 @@ import Toggle from './Toggle.svelte';
 import Slider from './Slider.svelte';
 import SegmentedControl from './SegmentedControl.svelte';
 import Row from './Row.svelte';
-import List from './List.svelte';
 import SearchField from './SearchField.svelte';
 import ProgressBar from './ProgressBar.svelte';
-import Toast from './Toast.svelte';
 import Logo from './Logo.svelte';
-import ProfileBadge from './ProfileBadge.svelte';
 import Sheet from './Sheet.svelte';
-import Popover from './Popover.svelte';
 import DeepLinkConfirmationModal from './DeepLinkConfirmationModal.svelte';
 import type { DeepLinkActionDto } from '../ipc/generated/models';
 
@@ -155,33 +151,6 @@ describe('Apple HIG Svelte 5 Components', () => {
     unmount(comp);
   });
 
-  it('renders List and Row with hierarchical layout and accessories', () => {
-    const comp = mount(List, {
-      target,
-      props: { header: 'Тестовая группа' },
-    });
-
-    expect(target.querySelector('.list-header')?.textContent).toBe('Тестовая группа');
-    unmount(comp);
-
-    const rowComp = mount(Row, {
-      target,
-      props: {
-        title: 'Заголовок строки',
-        subtitle: 'Подзаголовок',
-        trailingText: '128 ms',
-        showChevron: true,
-        clickable: true,
-      },
-    });
-
-    expect(target.querySelector('.row-title')?.textContent).toBe('Заголовок строки');
-    expect(target.querySelector('.row-subtitle')?.textContent).toBe('Подзаголовок');
-    expect(target.querySelector('.trailing-text')?.textContent).toBe('128 ms');
-    expect(target.querySelector('.chevron')).not.toBeNull();
-    unmount(rowComp);
-  });
-
   it('renders SearchField with search icon and clear button', async () => {
     let query = 'Sodium';
     const comp = mount(SearchField, {
@@ -228,34 +197,6 @@ describe('Apple HIG Svelte 5 Components', () => {
     unmount(compIndet);
   });
 
-  it('renders Toast with semantic status and dismiss handler', () => {
-    let dismissedId = '';
-    const comp = mount(Toast, {
-      target,
-      props: {
-        toast: {
-          id: 'test-toast',
-          type: 'success',
-          title: 'Успешно выполнено',
-          description: 'Тестовое описание',
-        },
-        ondismiss: (id) => {
-          dismissedId = id;
-        },
-      },
-    });
-
-    expect(target.querySelector('.apple-toast.success')).not.toBeNull();
-    expect(target.querySelector('.toast-title')?.textContent).toBe('Успешно выполнено');
-    expect(target.querySelector('.toast-description')?.textContent).toBe('Тестовое описание');
-
-    const dismissBtn = target.querySelector('.dismiss-btn') as HTMLButtonElement;
-    expect(dismissBtn).not.toBeNull();
-    dismissBtn.click();
-    expect(dismissedId).toBe('test-toast');
-    unmount(comp);
-  });
-
   it('renders Logo wordmark with sizes and subtitle', () => {
     const comp = mount(Logo, {
       target,
@@ -269,42 +210,6 @@ describe('Apple HIG Svelte 5 Components', () => {
     expect(target.textContent).toContain('Wex');
     expect(target.textContent).toContain('Minecraft Launcher');
     expect(target.querySelector('.wex-brand.large')).not.toBeNull();
-    unmount(comp);
-  });
-
-  it('renders ProfileBadge in offline mode with initial letter avatar and offline dot', () => {
-    const comp = mount(ProfileBadge, {
-      target,
-      props: {
-        playerName: 'Steve',
-        isOnline: false,
-      },
-    });
-
-    expect(target.querySelector('.profile-nickname')?.textContent).toBe('Steve');
-    const fallback = target.querySelector('.avatar-letter-fallback');
-    expect(fallback).not.toBeNull();
-    expect(fallback?.textContent?.trim()).toBe('S');
-    expect(target.querySelector('.network-status-dot.offline')).not.toBeNull();
-    expect(target.textContent).toContain('Офлайн');
-    unmount(comp);
-  });
-
-  it('renders ProfileBadge in online mode with online indicator dot and head image attempt', () => {
-    const comp = mount(ProfileBadge, {
-      target,
-      props: {
-        playerName: 'Alex',
-        isOnline: true,
-      },
-    });
-
-    expect(target.querySelector('.profile-nickname')?.textContent).toBe('Alex');
-    expect(target.querySelector('.network-status-dot.online')).not.toBeNull();
-    expect(target.textContent).toContain('В сети');
-    const img = target.querySelector('.avatar-head-image') as HTMLImageElement;
-    expect(img).not.toBeNull();
-    expect(img.src).toContain('Alex');
     unmount(comp);
   });
 
@@ -353,30 +258,6 @@ describe('Apple HIG Svelte 5 Components', () => {
         },
       },
     });
-
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    expect(closed).toBe(true);
-    unmount(comp);
-  });
-
-  it('renders Popover with trigger and dialog semantics and handles Escape', () => {
-    let closed = false;
-    const comp = mount(Popover, {
-      target,
-      props: {
-        open: true,
-        title: 'Информация',
-        placement: 'bottom-start',
-        onclose: () => {
-          closed = true;
-        },
-      },
-    });
-
-    const dialog = target.querySelector('[role="dialog"]') as HTMLElement;
-    expect(dialog).not.toBeNull();
-    expect(dialog.classList.contains('bottom-start')).toBe(true);
-    expect(dialog.getAttribute('aria-label')).toBe('Информация');
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(closed).toBe(true);

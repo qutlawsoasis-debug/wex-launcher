@@ -35,24 +35,6 @@ export interface GuardViolation {
  * Explicit allowlist of permissible exceptions with required architectural reasons.
  */
 export const ALLOWED_EXCEPTIONS: GuardException[] = [
-  // 1. Design Mockups & Component Showcase
-  {
-    file: 'lib/screens/mockups/Mockup1.svelte',
-    reason: 'Initial design prototype mockup for visual QA and HIG comparison, not part of production launcher navigation',
-  },
-  {
-    file: 'lib/screens/mockups/Mockup2.svelte',
-    reason: 'Initial design prototype mockup for visual QA and HIG comparison, not part of production launcher navigation',
-  },
-  {
-    file: 'lib/screens/mockups/Mockup3.svelte',
-    reason: 'Initial design prototype mockup for visual QA and HIG comparison, not part of production launcher navigation',
-  },
-  {
-    file: 'lib/screens/ShowcaseScreen.svelte',
-    reason: 'Component showcase gallery for manual visual QA of Apple HIG tokens and states, excluded from user navigation',
-  },
-
   // 2. Universal Proper Names and Brand Terms (invariant across all languages)
   {
     file: '*',
@@ -249,11 +231,6 @@ export const ALLOWED_EXCEPTIONS: GuardException[] = [
     reason: 'Standard latency millisecond unit',
   },
   {
-    file: 'WorkshopScreen.svelte',
-    text: 'C:\\Downloads\\Pack.zip',
-    reason: 'Local file system path pattern illustration used in input field placeholder',
-  },
-  {
     file: 'Logo.svelte',
     text: 'ex',
     reason: 'Stylized brand logo accent letters "ex" in "Wex"',
@@ -284,29 +261,9 @@ export const ALLOWED_EXCEPTIONS: GuardException[] = [
     reason: 'Path anonymization mask illustration shown in privacy badge explanation',
   },
   {
-    file: 'PlayScreen.svelte',
-    pattern: /Новое|Улучшено|Исправлено/,
-    reason: 'Changelog markdown tag parsing prefix regexes and strings',
-  },
-  {
     file: 'App.svelte',
     text: 'Игра догружается…',
     reason: 'Backend launch status message match emitted from Rust commands/launch.rs for prewarming state',
-  },
-  {
-    file: 'ServersScreen.svelte',
-    pattern: /нет интернета|неверный адрес/,
-    reason: 'Error message substring matching in network fault diagnosis',
-  },
-  {
-    file: 'LobbyScreen.svelte',
-    pattern: /закрыта|исключены/,
-    reason: 'Heuristic keyword substring matching for error messages returned from remote lobby server',
-  },
-  {
-    file: 'SettingsScreen.svelte',
-    pattern: /манифест|заблокирован/,
-    reason: 'Heuristic keyword substring matching for storage integrity check and cache cleanup error inspection',
   },
   {
     file: '*',

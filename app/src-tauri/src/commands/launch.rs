@@ -7,7 +7,7 @@ use wex_core::config::WexPaths;
 use wex_core::event::{Event, EventHandler, LogLevel};
 use wex_core::playtime::{PlaytimeStore, PlaytimeSummary};
 use wex_core::WexLauncherCore;
-use wex_extras::crash::{analyze_crash, CrashKind};
+use wex_extras::crash::{analyze_crash_since, clean_exit, CrashKind};
 use wex_extras::discord::{Activity, DiscordRpcClient, DEFAULT_DISCORD_APP_ID};
 use wex_ipc::commands::{LaunchGameRequest, LaunchGameResponse};
 use wex_ipc::core_trait::LauncherCore;
@@ -16,6 +16,66 @@ use wex_ipc::events::{
     EVT_INSTALL_PROGRESS, EVT_LAUNCH_STATUS,
 };
 use wex_ipc::models::{InstalledVersion, LauncherConfig};
+
+/// User-facing Russian name of a core install stage. Core names stages in English
+/// for logs and the CLI ("Assets", "Vanilla Libraries", "Aura-Pack sync (1.21.1)").
+pub fn stage_label(stage: &str) -> String {
+    let s = stage.trim();
+    let label = match s {
+        "Assets" => "Ресурсы игры",
+        "Vanilla Libraries" => "Библиотеки Minecraft",
+        "Fabric Libraries" => "Библиотеки Fabric",
+        _ if s.starts_with("Aura-Pack sync") => "Синхронизация сборки",
+        _ if s.starts_with("Aura-Pack") => "Сборка Aura-Pack",
+        // Download pool of the pack sync ("Pack 1.21.1").
+        _ if s.starts_with("Pack ") => "Моды и файлы сборки",
+        _ if s.starts_with("Fabric Loader") => "Загрузчик Fabric",
+        _ if s.starts_with("Mojang Java Runtime")
+            || s.starts_with("Java runtime")
+            || s.starts_with("Java ") =>
+        {
+            "Среда Java"
+        }
+        _ if s.starts_with("Minecraft ") && s.contains("Environment") => "Файлы Minecraft",
+        _ => return s.to_string(),
+    };
+    label.to_string()
+}
+
+/// launch-status for a launch that failed before the game process started:
+/// "cancelled" for a cancel, otherwise "error" with core's user-facing message.
+pub fn launch_failure_status(e: &wex_ipc::error::IpcError) -> (&'static str, String) {
+    if e.code == "OPERATION_CANCELLED" {
+        ("cancelled", "Запуск отменён".to_string())
+    } else {
+        ("error", e.message.clone())
+    }
+}
+
+/// install-progress for a core Progress event. `current`/`total` count files,
+/// not bytes, so sizes are left unknown (0) and the UI shows stage and percent only.
+pub fn progress_payload(
+    stage: &str,
+    current: u64,
+    total: u64,
+    message: Option<&str>,
+) -> InstallProgressPayload {
+    let pct = if total > 0 {
+        (current as f32 / total as f32) * 100.0
+    } else {
+        0.0
+    };
+    InstallProgressPayload {
+        stage: stage_label(stage),
+        percentage: pct,
+        detail: message
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("Файлов: {} из {}", current, total)),
+        speed_bytes_per_sec: 0,
+        total_bytes: 0,
+        downloaded_bytes: 0,
+    }
+}
 
 /// Bridges events from wex-core into Tauri 2 window events.
 #[derive(Clone)]
@@ -36,12 +96,14 @@ impl EventHandler for TauriEventHandler {
                 } else {
                     0.0
                 };
+                let label = stage_label(stage);
+                tracing::info!("stage {}/{}: {}", step, total_steps, stage);
                 let _ = self.app.emit(
                     EVT_INSTALL_PROGRESS,
                     InstallProgressPayload {
-                        stage: stage.clone(),
+                        stage: label.clone(),
                         percentage: pct,
-                        detail: format!("Этап {} из {}: {}", step, total_steps, stage),
+                        detail: format!("Этап {} из {}: {}", step, total_steps, label),
                         speed_bytes_per_sec: 0,
                         total_bytes: 0,
                         downloaded_bytes: 0,
@@ -51,7 +113,7 @@ impl EventHandler for TauriEventHandler {
                     EVT_LAUNCH_STATUS,
                     LaunchStatusPayload {
                         state: "installing".to_string(),
-                        message: format!("Установка: {}", stage),
+                        message: label,
                         exit_code: None,
                     },
                 );
@@ -62,27 +124,13 @@ impl EventHandler for TauriEventHandler {
                 total,
                 message,
             } => {
-                let pct = if *total > 0 {
-                    (*current as f32 / *total as f32) * 100.0
-                } else {
-                    0.0
-                };
-                let detail = message
-                    .clone()
-                    .unwrap_or_else(|| format!("{}/{}", current, total));
                 let _ = self.app.emit(
                     EVT_INSTALL_PROGRESS,
-                    InstallProgressPayload {
-                        stage: stage.clone(),
-                        percentage: pct,
-                        detail,
-                        speed_bytes_per_sec: 0,
-                        total_bytes: *total,
-                        downloaded_bytes: *current,
-                    },
+                    progress_payload(stage, *current, *total, message.as_deref()),
                 );
             }
             Event::GameLaunched { pid } => {
+                tracing::info!("game launched, pid {}", pid);
                 let _ = self.app.emit(
                     EVT_LAUNCH_STATUS,
                     LaunchStatusPayload {
@@ -108,6 +156,12 @@ impl EventHandler for TauriEventHandler {
                     LogLevel::Warn => "WARN",
                     LogLevel::Error => "ERROR",
                 };
+                match level {
+                    LogLevel::Error => tracing::error!("{}", message),
+                    LogLevel::Warn => tracing::warn!("{}", message),
+                    LogLevel::Info => tracing::info!("{}", message),
+                    LogLevel::Debug => {}
+                }
                 let _ = self.app.emit(
                     EVT_GAME_LOG,
                     GameLogPayload {
@@ -117,6 +171,7 @@ impl EventHandler for TauriEventHandler {
                 );
             }
             Event::GameExited { exit_code } => {
+                tracing::info!("game exited, code {:?}", exit_code);
                 let _ = self.app.emit(
                     EVT_LAUNCH_STATUS,
                     LaunchStatusPayload {
@@ -640,11 +695,22 @@ pub async fn save_config(
 pub async fn get_installed_versions(
     state: State<'_, PlayState>,
 ) -> Result<Vec<InstalledVersion>, String> {
-    state
+    let res = state
         .core
         .get_installed_versions()
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string());
+    match &res {
+        Ok(list) => tracing::info!(
+            "get_installed_versions: {}",
+            list.iter()
+                .map(|v| format!("{}={}", v.id, v.is_installed))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Err(e) => tracing::error!("get_installed_versions failed: {}", e),
+    }
+    res
 }
 
 /// Start game with specified version and nickname. Blocks duplicate start if already running.
@@ -667,6 +733,12 @@ pub async fn start_game<R: tauri::Runtime>(
         return Err("Игра уже запущена или выполняется запуск".to_string());
     }
     state.stop_requested.store(false, Ordering::SeqCst);
+    tracing::info!(
+        "start_game {} (server: {:?}, extra jvm args: {})",
+        version,
+        server,
+        jvm_args.as_ref().map_or(0, |a| a.len())
+    );
 
     // 2. Load launcher config to apply preset and check features
     let cfg = wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file);
@@ -858,16 +930,23 @@ pub async fn start_game<R: tauri::Runtime>(
             let playtime_file = state.paths.playtime_file.clone();
             let version_clone = version.clone();
             let session_start = std::time::Instant::now();
+            let session_wall = std::time::SystemTime::now();
             let state_clone = state.inner().clone();
 
             tauri::async_runtime::spawn(async move {
+                let mut exit_code: Option<i32> = None;
                 loop {
                     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     let mut lock = active_proc_clone.lock().await;
                     if let Some(proc) = lock.as_mut() {
                         match proc.child.try_wait() {
                             Ok(None) => continue,
-                            _ => {
+                            Ok(Some(status)) => {
+                                exit_code = status.code();
+                                *lock = None;
+                                break;
+                            }
+                            Err(_) => {
                                 *lock = None;
                                 break;
                             }
@@ -902,37 +981,29 @@ pub async fn start_game<R: tauri::Runtime>(
                     clear_discord_rpc(&discord_clone).await;
                 }
 
-                // Run crash diagnosis on instance logs
-                let diagnosis = analyze_crash(&instance_dir, None);
+                // A stop the user asked for, or exit code 0, is a normal end of the
+                // session. Only otherwise are the logs of this session diagnosed, with
+                // the real exit code.
+                let stopped = stop_requested_clone.swap(false, Ordering::SeqCst);
+                let diagnosis = if stopped || exit_code == Some(0) {
+                    clean_exit()
+                } else {
+                    analyze_crash_since(&instance_dir, exit_code, Some(session_wall))
+                };
                 let (status_state, status_msg) = match &diagnosis.kind {
+                    _ if stopped => ("idle".to_string(), "Игра остановлена".to_string()),
                     CrashKind::Unknown { exit_code: Some(0) } => {
-                        ("idle".to_string(), "Minecraft закрыт штатно".to_string())
+                        ("idle".to_string(), "Игра закрыта".to_string())
                     }
+                    // No exit code and nothing in the logs: don't claim a crash.
                     CrashKind::Unknown { exit_code: None } => {
-                        if diagnosis.title.contains("Неизвестный сбой")
-                            || diagnosis.technical_summary.is_empty()
-                        {
-                            ("idle".to_string(), "Сессия игры завершена".to_string())
-                        } else {
-                            (
-                                "error".to_string(),
-                                format!("{}: {}", diagnosis.title, diagnosis.user_advice),
-                            )
-                        }
+                        ("idle".to_string(), "Сессия игры завершена".to_string())
                     }
                     _ => (
                         "error".to_string(),
                         format!("{}: {}", diagnosis.title, diagnosis.user_advice),
                     ),
                 };
-
-                // A stop the user asked for is a normal end of the session, not a crash.
-                let (status_state, status_msg) =
-                    if stop_requested_clone.swap(false, Ordering::SeqCst) {
-                        ("idle".to_string(), "Игра остановлена".to_string())
-                    } else {
-                        (status_state, status_msg)
-                    };
 
                 let _ = app_clone.emit(
                     EVT_LAUNCH_STATUS,
@@ -1027,6 +1098,10 @@ pub async fn start_game<R: tauri::Runtime>(
         })
         .await;
     drop(install_guard);
+    match &launch_res {
+        Ok(r) => tracing::info!("launch_game {}: pid {:?}, {}", version, r.pid, r.message),
+        Err(e) => tracing::error!("launch_game {} failed: {:?}", version, e),
+    }
 
     match launch_res {
         Ok(resp) => {
@@ -1083,6 +1158,7 @@ pub async fn start_game<R: tauri::Runtime>(
             let version_clone = version.clone();
             let playtime_file = state.paths.playtime_file.clone();
             let session_start = std::time::Instant::now();
+            let session_wall = std::time::SystemTime::now();
 
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -1092,6 +1168,7 @@ pub async fn start_game<R: tauri::Runtime>(
                         _ => break,
                     }
                 }
+                let exit_code = core_clone.last_exit_code(&version_clone).await;
 
                 // Record session duration into persistent playtime store
                 let elapsed_sec = session_start.elapsed().as_secs();
@@ -1123,37 +1200,29 @@ pub async fn start_game<R: tauri::Runtime>(
                     clear_discord_rpc(&discord_clone).await;
                 }
 
-                // Run crash diagnosis on instance logs
-                let diagnosis = analyze_crash(&instance_dir, None);
+                // A stop the user asked for, or exit code 0, is a normal end of the
+                // session. Only otherwise are the logs of this session diagnosed, with
+                // the real exit code.
+                let stopped = stop_requested_clone.swap(false, Ordering::SeqCst);
+                let diagnosis = if stopped || exit_code == Some(0) {
+                    clean_exit()
+                } else {
+                    analyze_crash_since(&instance_dir, exit_code, Some(session_wall))
+                };
                 let (status_state, status_msg) = match &diagnosis.kind {
+                    _ if stopped => ("idle".to_string(), "Игра остановлена".to_string()),
                     CrashKind::Unknown { exit_code: Some(0) } => {
-                        ("idle".to_string(), "Minecraft закрыт штатно".to_string())
+                        ("idle".to_string(), "Игра закрыта".to_string())
                     }
+                    // No exit code and nothing in the logs: don't claim a crash.
                     CrashKind::Unknown { exit_code: None } => {
-                        if diagnosis.title.contains("Неизвестный сбой")
-                            || diagnosis.technical_summary.is_empty()
-                        {
-                            ("idle".to_string(), "Сессия игры завершена".to_string())
-                        } else {
-                            (
-                                "error".to_string(),
-                                format!("{}: {}", diagnosis.title, diagnosis.user_advice),
-                            )
-                        }
+                        ("idle".to_string(), "Сессия игры завершена".to_string())
                     }
                     _ => (
                         "error".to_string(),
                         format!("{}: {}", diagnosis.title, diagnosis.user_advice),
                     ),
                 };
-
-                // A stop the user asked for is a normal end of the session, not a crash.
-                let (status_state, status_msg) =
-                    if stop_requested_clone.swap(false, Ordering::SeqCst) {
-                        ("idle".to_string(), "Игра остановлена".to_string())
-                    } else {
-                        (status_state, status_msg)
-                    };
 
                 let _ = app_clone.emit(
                     EVT_LAUNCH_STATUS,
@@ -1183,26 +1252,18 @@ pub async fn start_game<R: tauri::Runtime>(
                 clear_discord_rpc(&state.discord).await;
             }
 
-            // Crash analysis on startup failure
-            let instance_dir = state.paths.instance_dir(&version);
-            let diagnosis = analyze_crash(&instance_dir, None);
-            let error_msg = if matches!(diagnosis.kind, CrashKind::Unknown { .. }) {
-                e.to_string()
-            } else {
-                format!("{}: {}", diagnosis.title, diagnosis.user_advice)
-            };
-
+            // The game process never started (download, install or spawn failed, or
+            // the user cancelled): this is a launch error with core's own message,
+            // not a game crash. Old game logs say nothing about it.
+            let (status, error_msg) = launch_failure_status(&e);
             let _ = app.emit(
                 EVT_LAUNCH_STATUS,
                 LaunchStatusPayload {
-                    state: "error".to_string(),
+                    state: status.to_string(),
                     message: error_msg.clone(),
                     exit_code: None,
                 },
             );
-
-            let dto: wex_ipc::models::CrashDiagnosisDto = diagnosis.into();
-            let _ = app.emit("game-crash", dto);
 
             Err(error_msg)
         }
@@ -1349,6 +1410,69 @@ pub async fn get_prewarm_status(
 // ============================================================================
 
 #[cfg(test)]
+mod progress_tests {
+    use super::*;
+
+    #[test]
+    fn a_failure_before_the_game_starts_is_not_a_crash() {
+        let net = wex_ipc::error::IpcError {
+            code: "NET_DOWNLOAD_FAILED".to_string(),
+            message: "Не удалось скачать файлы игры. Проверьте интернет.".to_string(),
+            technical: Some("timeout".to_string()),
+        };
+        assert_eq!(
+            launch_failure_status(&net),
+            (
+                "error",
+                "Не удалось скачать файлы игры. Проверьте интернет.".to_string()
+            )
+        );
+        let cancel = wex_ipc::error::IpcError {
+            code: "OPERATION_CANCELLED".to_string(),
+            message: "Операция отменена.".to_string(),
+            technical: None,
+        };
+        assert_eq!(launch_failure_status(&cancel).0, "cancelled");
+    }
+
+    #[test]
+    fn core_stages_are_shown_in_russian() {
+        assert_eq!(stage_label("Assets"), "Ресурсы игры");
+        assert_eq!(stage_label("Pack 1.21.1"), "Моды и файлы сборки");
+        assert_eq!(stage_label("Vanilla Libraries"), "Библиотеки Minecraft");
+        assert_eq!(stage_label("Fabric Libraries"), "Библиотеки Fabric");
+        assert_eq!(
+            stage_label("Minecraft 1.21.1 Environment"),
+            "Файлы Minecraft"
+        );
+        assert_eq!(
+            stage_label("Fabric Loader 0.19.5 (1.21.1)"),
+            "Загрузчик Fabric"
+        );
+        assert_eq!(stage_label("Mojang Java Runtime (1.21.1)"), "Среда Java");
+        assert_eq!(stage_label("Java java-runtime-delta"), "Среда Java");
+        assert_eq!(
+            stage_label("Aura-Pack sync (1.21.1)"),
+            "Синхронизация сборки"
+        );
+        assert_eq!(stage_label("Aura-Pack (1.20.1)"), "Сборка Aura-Pack");
+        assert_eq!(
+            stage_label("Фоновая подготовка клиента"),
+            "Фоновая подготовка клиента"
+        );
+    }
+
+    #[test]
+    fn file_counts_are_never_sent_as_bytes() {
+        let p = progress_payload("Assets", 1800, 3000, None);
+        assert_eq!(p.stage, "Ресурсы игры");
+        assert_eq!((p.downloaded_bytes, p.total_bytes), (0, 0));
+        assert!((p.percentage - 60.0).abs() < 0.01);
+        assert_eq!(p.detail, "Файлов: 1800 из 3000");
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::tempdir;
@@ -1432,7 +1556,7 @@ mod tests {
         let log_file = logs_dir.join("latest.log");
         std::fs::write(&log_file, "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space\n\tat net.minecraft.client.main.Main.main(Main.java:237)\n").unwrap();
 
-        let diagnosis = analyze_crash(&inst_dir, Some(1));
+        let diagnosis = wex_extras::crash::analyze_crash(&inst_dir, Some(1));
         assert!(matches!(diagnosis.kind, CrashKind::OutOfMemory));
         assert!(diagnosis.user_advice.contains("памяти") || diagnosis.user_advice.contains("RAM"));
     }

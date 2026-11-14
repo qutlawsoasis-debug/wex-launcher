@@ -49,8 +49,20 @@ pub enum WexError {
     #[error("Process exited with code {0}")]
     ProcessFailed(i32),
 
+    /// «Свой сервер»: the message is already a sentence for the player.
+    #[error("{0}")]
+    Server(String),
+
     #[error("Operation cancelled")]
     Cancelled,
+
+    /// Account sign-in or token refresh failed. `message` is shown to the player as is.
+    #[error("Auth error {code}: {message}")]
+    Auth {
+        code: &'static str,
+        message: String,
+        details: Option<String>,
+    },
 
     #[error("Not enough disk space for {path}: {source}")]
     DiskFull {
@@ -84,6 +96,11 @@ impl From<WexError> for wex_ipc::error::IpcError {
                 )
             }
             WexError::Io(e) => e.into(),
+            WexError::Auth {
+                code,
+                message,
+                details,
+            } => Self::new(code, message, details),
             WexError::Network(e) => {
                 let code = if e.is_timeout() {
                     "IO_TIMED_OUT"
@@ -212,6 +229,7 @@ impl From<WexError> for wex_ipc::error::IpcError {
                     )
                 }
             }
+            WexError::Server(msg) => Self::new("OWN_SERVER", msg, None),
             WexError::Cancelled => Self::new(
                 "OPERATION_CANCELLED",
                 "Операция отменена. Вы можете повторить её в любое время.",
