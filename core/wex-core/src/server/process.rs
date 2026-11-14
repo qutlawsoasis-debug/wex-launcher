@@ -71,12 +71,9 @@ fn valid_log_name(name: &str) -> bool {
 /// (`<Steve> … joined the game`) do not match.
 pub fn parse_player_event(line: &str) -> Option<PlayerEvent> {
     let line = line.trim_end();
-    let (rest, joined) = if let Some(r) = line.strip_suffix(" joined the game") {
-        (r, true)
-    } else if let Some(r) = line.strip_suffix(" left the game") {
-        (r, false)
-    } else {
-        return None;
+    let (rest, joined) = match line.strip_suffix(" joined the game") {
+        Some(r) => (r, true),
+        None => (line.strip_suffix(" left the game")?, false),
     };
     let (prefix, name) = rest.rsplit_once(' ').unwrap_or(("", rest));
     if !(prefix.ends_with("]:") || prefix.ends_with(')')) || !valid_log_name(name) {

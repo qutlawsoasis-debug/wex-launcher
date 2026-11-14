@@ -74,8 +74,7 @@ fn split_line(line: &str) -> Option<(&str, &str)> {
 pub fn read_property(text: &str, key: &str) -> Option<String> {
     text.lines()
         .filter_map(split_line)
-        .filter(|(k, _)| *k == key)
-        .last()
+        .rfind(|(k, _)| *k == key)
         .map(|(_, v)| unescape_value(v))
 }
 
