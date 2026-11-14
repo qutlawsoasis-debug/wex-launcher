@@ -53,7 +53,7 @@ async fn friend_link_arguments_are_deserialized_by_the_actual_tauri_handler() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/api/friends/request"))
-        .and(body_partial_json(serde_json::json!({"friendCode":"#AB12"})))
+        .and(body_partial_json(serde_json::json!({"friendCode":"AB12"})))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"message":"OK"})))
         .expect(1)
         .mount(&server)
@@ -84,7 +84,7 @@ async fn friend_link_arguments_are_deserialized_by_the_actual_tauri_handler() {
 async fn presence_api_failure_is_returned_to_the_frontend() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .and(path("/api/user/sync"))
+        .and(path("/api/sync"))
         .respond_with(ResponseTemplate::new(503).set_body_string("unavailable"))
         .expect(1)
         .mount(&server)
