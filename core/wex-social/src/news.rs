@@ -91,8 +91,18 @@ pub fn get_bundled_release_notes() -> Vec<ReleaseNoteVersion> {
             version: format!("v{}", env!("CARGO_PKG_VERSION")),
             internal_version: env!("CARGO_PKG_VERSION").to_string(),
             date_text: "14 ноября 2026".to_string(),
-            short_title: "Новый интерфейс и зима".to_string(),
+            short_title: "Кнопка «Перезапуск» снова работает".to_string(),
             is_current: true,
+            items: vec![ReleaseNoteItem::parse(
+                "[Исправлено] Кнопка «Перезапуск» в сообщении об обновлении снова ставит обновление",
+            )],
+        },
+        ReleaseNoteVersion {
+            version: "v0.10.0".to_string(),
+            internal_version: "0.10.0".to_string(),
+            date_text: "14 ноября 2026".to_string(),
+            short_title: "Новый интерфейс и зима".to_string(),
+            is_current: false,
             items: vec![
                 ReleaseNoteItem::parse("[Новое] Новый интерфейс: боковая панель, страницы сборки, настроек, друзей и гардероба"),
                 ReleaseNoteItem::parse("[Новое] Зимнее оформление: снегопад, вечерняя деревня с ёлкой, гирлянда и пролетающий Санта"),
