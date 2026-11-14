@@ -720,6 +720,10 @@ pub async fn settings_cleanup_cache(
     cleanup_cache(state).await
 }
 
+fn default_winter_look_dto() -> bool {
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -867,8 +871,4 @@ mod tests {
             assert_eq!(actual.custom_java_path, desired.custom_java_path);
         }
     }
-}
-
-fn default_winter_look_dto() -> bool {
-    true
 }

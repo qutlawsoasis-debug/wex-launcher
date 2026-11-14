@@ -252,8 +252,10 @@ mod tests {
         if std::env::var(CLIENT_ID_ENV).is_ok() {
             return;
         }
-        let mut cfg = LauncherConfig::default();
-        cfg.microsoft_client_id = Some("  ".into());
+        let mut cfg = LauncherConfig {
+            microsoft_client_id: Some("  ".into()),
+            ..Default::default()
+        };
         assert_eq!(
             microsoft_client_id(&cfg),
             option_env!("WEX_MS_CLIENT_ID").map(str::to_string)
