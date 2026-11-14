@@ -242,7 +242,7 @@ async fn test_friend_invitation_delivery_and_response() {
 
     // 1. Mock sending invite to Bob
     Mock::given(method("POST"))
-        .and(path("/api/invites/send"))
+        .and(path("/api/invite"))
         .and(header("X-User-Id", "usr_alice"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "inviteId": "inv_999"
@@ -252,7 +252,7 @@ async fn test_friend_invitation_delivery_and_response() {
 
     // 2. Mock Bob sync receiving incoming invite
     Mock::given(method("POST"))
-        .and(path("/api/user/sync"))
+        .and(path("/api/sync"))
         .and(header("X-User-Id", "usr_bob"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "friends": [
@@ -283,7 +283,7 @@ async fn test_friend_invitation_delivery_and_response() {
 
     // 3. Mock Bob responding to invite
     Mock::given(method("POST"))
-        .and(path("/api/invites/respond"))
+        .and(path("/api/invite/respond"))
         .and(header("X-User-Id", "usr_bob"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "lobbyCode": "ROOM123"
