@@ -90,9 +90,30 @@ pub fn get_bundled_release_notes() -> Vec<ReleaseNoteVersion> {
         ReleaseNoteVersion {
             version: format!("v{}", env!("CARGO_PKG_VERSION")),
             internal_version: env!("CARGO_PKG_VERSION").to_string(),
+            date_text: "14 ноября 2026".to_string(),
+            short_title: "Новый интерфейс и зима".to_string(),
+            is_current: true,
+            items: vec![
+                ReleaseNoteItem::parse("[Новое] Новый интерфейс: боковая панель, страницы сборки, настроек, друзей и гардероба"),
+                ReleaseNoteItem::parse("[Новое] Зимнее оформление: снегопад, вечерняя деревня с ёлкой, гирлянда и пролетающий Санта"),
+                ReleaseNoteItem::parse("[Новое] Снеговики на плитке сборки, снежки по клику и зимние достижения"),
+                ReleaseNoteItem::parse("[Новое] Отсчёт до Нового года и салют"),
+                ReleaseNoteItem::parse("[Новое] Друзья через аккаунт лаунчера: код друга, заявки, статусы и приглашения"),
+                ReleaseNoteItem::parse("[Новое] Свой сервер Fabric для игры с друзьями"),
+                ReleaseNoteItem::parse("[Новое] Несколько аккаунтов с переключением из меню профиля"),
+                ReleaseNoteItem::parse("[Улучшено] Объёмная модель скина в гардеробе"),
+                ReleaseNoteItem::parse("[Улучшено] Настоящие иконки модов в списке модов"),
+                ReleaseNoteItem::parse("[Улучшено] Окно открывается по размеру экрана и запоминает размер"),
+                ReleaseNoteItem::parse("[Исправлено] Обычный выход из игры больше не считается вылетом"),
+                ReleaseNoteItem::parse("[Исправлено] Нет выдуманных серверов и подставных данных"),
+            ],
+        },
+        ReleaseNoteVersion {
+            version: "v0.9.2".to_string(),
+            internal_version: "0.9.2".to_string(),
             date_text: "10 ноября 2026".to_string(),
             short_title: "Тихое обновление и правки интерфейса".to_string(),
-            is_current: true,
+            is_current: false,
             items: vec![
                 ReleaseNoteItem::parse(
                     "[Улучшено] Обновление ставится без окна установщика, лаунчер открывается сам",
