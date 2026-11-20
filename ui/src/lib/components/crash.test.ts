@@ -216,7 +216,7 @@ describe('CrashSheet (SPEC 2.10: Apple HIG Game Crash Diagnostics)', () => {
       technical_summary: 'OutOfMemoryError: Java heap space',
     };
 
-    invokeMock.mockResolvedValue('C:/Games/Wex/instances/1.21.1/logs/latest.log');
+    invokeMock.mockResolvedValue('C:/Games/Wex/instances/1.21.1/logs/wex-game-output.log');
 
     let toastTitle = '';
     const comp = mount(CrashSheet, {

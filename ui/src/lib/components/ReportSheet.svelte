@@ -199,7 +199,7 @@
       <div class="manifest-grid">
         <div class="manifest-item">
           <Icon name="info" size={14} color="var(--blue)" />
-          <span class="manifest-text"><strong>latest.log</strong> {t('report.inc_latest_log')}</span>
+          <span class="manifest-text"><strong>wex-game-output.log</strong> {t('report.inc_latest_log')}</span>
         </div>
         <div class="manifest-item">
           <Icon name="warning" size={14} color="var(--orange)" />

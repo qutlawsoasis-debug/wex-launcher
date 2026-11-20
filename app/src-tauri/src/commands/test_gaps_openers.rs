@@ -109,7 +109,10 @@ async fn folder_and_log_commands_success_invoke_only_process_double() {
         .await
         .unwrap();
         assert_opened(&f.paths.instance_dir(version).join("shaderpacks")).await;
-        let log = f.paths.instance_dir(version).join("logs/latest.log");
+        // Minecraft's log4j file is there too; the button opens Wex's capture.
+        let logs = f.paths.instance_dir(version).join("logs");
+        fs::write(logs.join("latest.log"), b"log4j").unwrap();
+        let log = logs.join(wex_core::GAME_OUTPUT_LOG);
         fs::write(&log, b"fixture log").unwrap();
         let opened = super::super::crash::crash_open_log_file(Some(version.into()), f.play())
             .await

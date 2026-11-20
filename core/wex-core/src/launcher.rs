@@ -23,6 +23,17 @@ use tokio::process::Command;
 #[path = "launcher_integrity_tests.rs"]
 mod integrity_tests;
 
+/// File in the instance's `logs/` folder where the launcher writes the game's
+/// captured stdout and stderr. Not `latest.log`: the game directory is the
+/// instance directory, and Minecraft's log4j writes (and rotates) its own
+/// `logs/latest.log` there.
+pub const GAME_OUTPUT_LOG: &str = "wex-game-output.log";
+
+/// Path of the launcher's capture of the game output for an instance directory.
+pub fn game_output_log_path(instance_dir: &Path) -> PathBuf {
+    instance_dir.join("logs").join(GAME_OUTPUT_LOG)
+}
+
 pub struct LaunchOptions<'a> {
     pub paths: &'a WexPaths,
     pub config: &'a LauncherConfig,
@@ -401,10 +412,11 @@ pub async fn launch_game_process(
     events: Arc<dyn EventHandler>,
 ) -> Result<GameProcess> {
     let instance_dir = opts.paths.instance_dir(opts.version);
-    let logs_dir = instance_dir.join("logs");
-    fs::create_dir_all(&logs_dir)?;
+    let log_path = game_output_log_path(&instance_dir);
+    if let Some(logs_dir) = log_path.parent() {
+        fs::create_dir_all(logs_dir)?;
+    }
 
-    let log_path = logs_dir.join("latest.log");
     let log_file = File::create(&log_path)?;
 
     events.on_event(&Event::Log {
@@ -1069,6 +1081,18 @@ pub fn apply_current_process_affinity(_mask: usize) -> bool {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn game_output_log_is_not_minecrafts_latest_log() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().to_path_buf()));
+        for version in ["1.20.1", "1.21.1"] {
+            let inst = paths.instance_dir(version);
+            let path = game_output_log_path(&inst);
+            assert_eq!(path, inst.join("logs").join("wex-game-output.log"));
+            assert_ne!(path, inst.join("logs").join("latest.log"));
+        }
+    }
 
     #[test]
     fn test_classpath_builder() {

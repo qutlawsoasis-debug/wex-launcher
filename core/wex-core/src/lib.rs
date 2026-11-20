@@ -32,11 +32,11 @@ pub use jvm_args::{
     detect_system_ram_mb, GcProfile, ProcessPriority,
 };
 pub use launcher::{
-    apply_current_process_affinity, build_classpath, build_launch_command,
+    apply_current_process_affinity, build_classpath, build_launch_command, game_output_log_path,
     install_full_environment, is_fast_path_ready, launch_game_process, mark_fast_path_verified,
     prepare_and_launch, prepare_and_launch_with_options, prepare_and_prewarm, prewarm_jvm,
     resolve_fast_path_environment, set_current_process_priority_low,
-    set_current_process_priority_normal, GameProcess, LaunchOptions,
+    set_current_process_priority_normal, GameProcess, LaunchOptions, GAME_OUTPUT_LOG,
 };
 pub use pack::{sync_aura_pack, sync_aura_pack_cancellable};
 pub use reqwest;

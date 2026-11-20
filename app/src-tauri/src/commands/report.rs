@@ -278,6 +278,10 @@ pub struct BugReportPreviewDto {
     pub mods: Vec<ReportModDto>,
     pub mods_count: usize,
     pub latest_log_tail: Option<String>,
+    /// File the game log tail came from: `wex-game-output.log` (the output Wex
+    /// captured) or Minecraft's `latest.log` when there is no capture.
+    #[serde(default)]
+    pub latest_log_name: Option<String>,
     /// The end of the launcher's own log (`logs/launcher.log`), anonymized.
     #[serde(default)]
     pub launcher_log_tail: Option<String>,
@@ -329,6 +333,14 @@ pub fn scan_installed_mods(inst_dir: &Path) -> Vec<ReportModDto> {
 }
 
 /// Reads the last N lines from a log file.
+/// Archive entry for the game log: only the two known names, never a path.
+fn report_log_entry_name(name: Option<&str>) -> &'static str {
+    match name {
+        Some("latest.log") => "latest.log",
+        _ => wex_core::GAME_OUTPUT_LOG,
+    }
+}
+
 pub fn read_log_tail(file_path: &Path, max_lines: usize) -> Option<String> {
     if !file_path.is_file() {
         return None;
@@ -448,8 +460,10 @@ pub fn prepare_report_preview_impl(
     let diagnosis_advice = Some(anonymize_text(&diagnosis.user_advice, player_name));
 
     // 2. Logs
-    let latest_log_path = inst_dir.join("logs").join("latest.log");
-    let raw_log_tail = read_log_tail(&latest_log_path, 1500);
+    let (latest_log_name, raw_log_tail) = [wex_core::GAME_OUTPUT_LOG, "latest.log"]
+        .into_iter()
+        .find_map(|name| read_log_tail(&inst_dir.join("logs").join(name), 1500).map(|t| (name, t)))
+        .map_or((None, None), |(name, t)| (Some(name.to_string()), Some(t)));
     let latest_log_tail = raw_log_tail.map(|l| anonymize_text(&l, player_name));
     let launcher_log_tail = read_log_tail(&paths.logs_dir.join(crate::launcher_log::LOG_FILE), 400)
         .map(|l| anonymize_text(&l, player_name));
@@ -560,6 +574,7 @@ pub fn prepare_report_preview_impl(
         mods,
         mods_count,
         latest_log_tail,
+        latest_log_name,
         launcher_log_tail,
         crash_report_name,
         crash_report_tail,
@@ -684,13 +699,14 @@ pub fn save_report_zip_with_opener<O: PathOpener>(
     zip.write_all(anon_sys_info.as_bytes())
         .map_err(|e| format!("Ошибка записи system-info.txt: {}", e))?;
 
-    // 3. latest.log
+    // 3. Game log: the output Wex captured, or Minecraft's latest.log
     if let Some(log_content) = &preview.latest_log_tail {
         let anon_log = anonymize_text(log_content, player_name);
-        zip.start_file("latest.log", options)
-            .map_err(|e| format!("Ошибка добавления latest.log в архив: {}", e))?;
+        let entry = report_log_entry_name(preview.latest_log_name.as_deref());
+        zip.start_file(entry, options)
+            .map_err(|e| format!("Ошибка добавления {} в архив: {}", entry, e))?;
         zip.write_all(anon_log.as_bytes())
-            .map_err(|e| format!("Ошибка записи latest.log: {}", e))?;
+            .map_err(|e| format!("Ошибка записи {}: {}", entry, e))?;
     }
 
     // 3b. launcher.log: what the launcher itself did (install, sync, launch)
@@ -979,6 +995,64 @@ mod tests {
         assert!(!anonymized.contains("secret_auth_hash_value"));
         assert!(anonymized.contains("X-User-Token: ***"));
         assert!(anonymized.contains("userToken = ***"));
+    }
+
+    #[test]
+    fn report_uses_the_game_output_capture_and_names_it_in_the_zip() {
+        let temp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(temp.path().join("launcher_data")));
+        for version in ["1.20.1", "1.21.1"] {
+            let logs = paths.instance_dir(version).join("logs");
+            fs::create_dir_all(&logs).unwrap();
+            fs::write(logs.join("latest.log"), b"[main/INFO]: log4j only\n").unwrap();
+            fs::write(
+                logs.join(wex_core::GAME_OUTPUT_LOG),
+                b"Error: Could not create the Java Virtual Machine.\n",
+            )
+            .unwrap();
+
+            let preview = prepare_report_preview_impl(&paths, Some(version), None, None, None);
+            assert_eq!(
+                preview.latest_log_name.as_deref(),
+                Some("wex-game-output.log")
+            );
+            assert!(preview
+                .latest_log_tail
+                .as_deref()
+                .unwrap()
+                .contains("Could not create the Java Virtual Machine"));
+
+            let dest = temp.path().join(format!("out-{version}"));
+            fs::create_dir_all(&dest).unwrap();
+            let res = save_report_zip_impl(
+                &paths,
+                Some(version),
+                None,
+                None,
+                None,
+                Some(dest.to_str().unwrap()),
+            )
+            .unwrap();
+            let mut archive = zip::ZipArchive::new(File::open(&res.zip_path).unwrap()).unwrap();
+            assert!(archive.by_name("wex-game-output.log").is_ok());
+            assert!(archive.by_name("latest.log").is_err());
+        }
+    }
+
+    #[test]
+    fn report_falls_back_to_minecrafts_latest_log() {
+        let temp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(temp.path().to_path_buf()));
+        let logs = paths.instance_dir("1.21.1").join("logs");
+        fs::create_dir_all(&logs).unwrap();
+        fs::write(logs.join("latest.log"), b"[main/INFO]: log4j\n").unwrap();
+        let preview = prepare_report_preview_impl(&paths, Some("1.21.1"), None, None, None);
+        assert_eq!(preview.latest_log_name.as_deref(), Some("latest.log"));
+        assert_eq!(report_log_entry_name(Some("latest.log")), "latest.log");
+        assert_eq!(
+            report_log_entry_name(Some("../evil.log")),
+            "wex-game-output.log"
+        );
     }
 
     #[test]
