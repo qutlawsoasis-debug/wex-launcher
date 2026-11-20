@@ -208,8 +208,17 @@ pub fn build_classpath(
 }
 
 pub fn format_arg_for_file(arg: &str) -> String {
-    if arg.contains(' ') || arg.contains('\t') || arg.contains('"') {
-        let escaped = arg.replace('\\', "\\\\").replace('"', "\\\"");
+    if arg
+        .chars()
+        .any(|c| c.is_whitespace() || c.is_control() || c == '"')
+    {
+        // Newlines/CR are written as escapes so one argument can never become several lines.
+        let escaped = arg
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r")
+            .replace('\t', "\\t");
         format!("\"{}\"", escaped)
     } else {
         arg.to_string()
@@ -1799,5 +1808,15 @@ mod tests {
         // Invalid PID 0 must safely return false without crashing or raising errors
         let res = crate::jvm_args::apply_process_priority(0, priority);
         assert!(!res, "PID 0 must safely return false");
+    }
+
+    #[test]
+    fn test_format_arg_for_file_quotes_control_chars() {
+        assert_eq!(format_arg_for_file("plain"), "plain");
+        assert_eq!(format_arg_for_file("a b"), "\"a b\"");
+        let injected = format_arg_for_file("srv\n--username\r\nadmin");
+        assert!(!injected.contains('\n') && !injected.contains('\r'));
+        assert_eq!(injected, "\"srv\\n--username\\r\\nadmin\"");
+        assert_eq!(format_arg_for_file("q\"x"), "\"q\\\"x\"");
     }
 }
