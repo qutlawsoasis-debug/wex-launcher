@@ -105,7 +105,7 @@ export interface FriendsLiveNotification {
   title: string;
   description: string;
   lobbyCode?: string;
-  /** Invite whose room code the server hands out only on accept. */
+  /** The invite behind an invite notification, so a click can answer it on the server. */
   inviteId?: string;
   action?: {
     label: string;
@@ -163,6 +163,12 @@ export function checkFriendNotificationCooldown(
 ): boolean {
   if (lastNotificationTime === undefined) return true;
   return currentTime - lastNotificationTime >= cooldownMs;
+}
+
+/** Title of the `social-lobby-invite` toast; no dangling code when the server sent none. */
+export function lobbyInviteTitle(code: string | null | undefined): string {
+  const c = (code ?? '').trim();
+  return c ? t('friends.lobby_invite_title', { code: c }) : t('friends.lobby_invite_title_nocode');
 }
 
 /**
@@ -572,11 +578,24 @@ export class FriendsLiveService {
     this.dropInvite(inviteId);
   }
 
-  /** Join by a room code from a notification: through its invite when the list has one. */
-  private joinByCode(code: string): Promise<void> {
-    const clean = code.trim().replace(/^#/, '').toUpperCase();
-    const invite = this.invites.find((i) => i.lobby_code && i.lobby_code.trim().replace(/^#/, '').toUpperCase() === clean);
-    return invite ? this.joinInvite(invite) : this.handleJoin(code);
+  /**
+   * Join from a notification click. The invite in the list is answered on the
+   * server, then joined. An invite no longer in the list (account switch, a
+   * sync in between) is still answered when its id is known; with only a room
+   * code it joins by code, and says so in the log.
+   */
+  private joinFromNotification(lobbyCode?: string, inviteId?: string): Promise<void> {
+    const clean = (c: string) => c.trim().replace(/^#/, '').toUpperCase();
+    const known = this.invites.find(
+      (i) => (inviteId && i.id === inviteId) || (lobbyCode && i.lobby_code && clean(i.lobby_code) === clean(lobbyCode))
+    );
+    if (known) return this.joinInvite(known);
+    if (inviteId) return this.joinInvite({ id: inviteId, lobby_code: lobbyCode ?? '', from_id: '', from_nick: '' });
+    if (lobbyCode) {
+      console.info(`[friends] notification invite is not in the list; joining room ${clean(lobbyCode)} by code`);
+      return this.handleJoin(lobbyCode);
+    }
+    return Promise.resolve();
   }
 
   private dropInvite(inviteId: string): void {
@@ -803,7 +822,7 @@ export class FriendsLiveService {
                 ? t('friends.notify_invite_code', { nick: invite.from_nick, code })
                 : t('friends.notify_invite', { nick: invite.from_nick }),
               lobbyCode: code || undefined,
-              inviteId: code ? undefined : invite.id,
+              inviteId: invite.id,
               action: {
                 label: t('friends.notify_join'),
                 onClick: () => {
@@ -888,7 +907,7 @@ export class FriendsLiveService {
           sendNotification({
             title: notif.title,
             body: notif.description,
-            extra: notif.lobbyCode ? { lobbyCode: notif.lobbyCode } : notif.inviteId ? { inviteId: notif.inviteId } : undefined,
+            extra: notif.lobbyCode || notif.inviteId ? { ...(notif.lobbyCode ? { lobbyCode: notif.lobbyCode } : {}), ...(notif.inviteId ? { inviteId: notif.inviteId } : {}) } : undefined,
           });
           return;
         }
@@ -938,10 +957,8 @@ export class FriendsLiveService {
       } catch {}
     }
 
-    if (notif.lobbyCode) {
-      await this.joinByCode(notif.lobbyCode);
-    } else if (notif.inviteId) {
-      await this.acceptInvite(notif.inviteId);
+    if (notif.lobbyCode || notif.inviteId) {
+      await this.joinFromNotification(notif.lobbyCode, notif.inviteId);
     } else if (notif.action) {
       notif.action.onClick();
     }
@@ -955,10 +972,10 @@ export class FriendsLiveService {
             if (!this.isStarted || lifecycle !== this.lifecycle) return;
             const lobbyCode = action.notification?.extra?.lobbyCode;
             const inviteId = action.notification?.extra?.inviteId;
-            if (typeof lobbyCode === 'string') {
-              void this.joinByCode(lobbyCode).catch(error => this.reportError(error, 'lobby'));
-            } else if (typeof inviteId === 'string') {
-              void this.acceptInvite(inviteId).catch(error => this.reportError(error, 'lobby'));
+            const code = typeof lobbyCode === 'string' ? lobbyCode : undefined;
+            const id = typeof inviteId === 'string' ? inviteId : undefined;
+            if (code || id) {
+              void this.joinFromNotification(code, id).catch(error => this.reportError(error, 'lobby'));
             }
         });
         if (!this.isStarted || lifecycle !== this.lifecycle) await listener.unregister();

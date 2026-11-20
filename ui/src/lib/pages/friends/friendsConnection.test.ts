@@ -10,7 +10,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 vi.mock('@tauri-apps/plugin-notification', () => ({ onAction: vi.fn(async () => ({ unregister: vi.fn() })) }));
 vi.mock('@tauri-apps/api/webviewWindow', () => ({ getCurrentWebviewWindow: () => ({ unminimize: vi.fn(), show: vi.fn(), setFocus: vi.fn() }) }));
 
-import { ACTIVE_ACCOUNT_EVENT, FriendsLiveService, normalizeStatus, type FriendsConnection, type SyncResponse } from '../../services/friendsLive';
+import { ACTIVE_ACCOUNT_EVENT, FriendsLiveService, lobbyInviteTitle, normalizeStatus, type FriendsConnection, type SyncResponse } from '../../services/friendsLive';
 import { ACTIVE_ACCOUNT_EVENT as ACCOUNTS_EVENT, accounts } from '../../shell/accounts.svelte';
 import { describeConnection } from './friendsState';
 import { i18n } from '../../i18n';
@@ -182,6 +182,69 @@ describe('friends sign-in (friendsLive)', () => {
     await vi.waitFor(() => expect(toasts.length).toBeGreaterThan(0));
     expect(toasts[0].inviteId).toBe('inv1');
     expect(toasts[0].lobbyCode).toBeUndefined();
+  });
+
+  it('an invite notification with a code also carries the invite id', async () => {
+    let round = 0;
+    const notes: Array<{ inviteId?: string; lobbyCode?: string }> = [];
+    service = new FriendsLiveService({
+      connectFn: async () => signedIn(),
+      statusFn: async () => signedIn(),
+      syncFn: async () =>
+        round++ === 0 ? empty : { ...empty, incoming_invites: [{ id: 'inv2', lobby_code: 'ROOM2', from_id: 'u2', from_nick: 'Snow' }] },
+    });
+    service.onNotification((n) => notes.push(n));
+    service.onWindowsNotification((n) => notes.push(n));
+    service.start();
+    await vi.waitFor(() => expect(round).toBe(1));
+    await service.pollNow();
+    await vi.waitFor(() => expect(notes.length).toBeGreaterThan(0));
+    expect(notes[0]).toMatchObject({ inviteId: 'inv2', lobbyCode: 'ROOM2' });
+  });
+
+  it('an OS notification for an invite no longer in the list answers the server first, then joins', async () => {
+    const order: string[] = [];
+    mocks.invoke.mockImplementation(async (cmd: string) => {
+      order.push(cmd);
+      if (cmd === 'social_respond_lobby_invite') return 'ROOM3';
+      if (cmd === 'join_lobby_room') return { code: 'ROOM3' };
+      return null;
+    });
+    service = new FriendsLiveService({ connectFn: async () => signedIn(), syncFn: async () => empty });
+    expect(service.invites).toEqual([]);
+    await service.handleNotificationClick({ id: 'n', friendId: 'u2', type: 'invite', title: 'Invite', description: 'Join', lobbyCode: 'ROOM3', inviteId: 'gone1' });
+    expect(mocks.invoke).toHaveBeenCalledWith('social_respond_lobby_invite', { inviteId: 'gone1', accept: true });
+    expect(order.filter((c) => c === 'social_respond_lobby_invite' || c === 'join_lobby_room')).toEqual(['social_respond_lobby_invite', 'join_lobby_room']);
+  });
+
+  it('a server failure on that answer still joins by the code the notification carried', async () => {
+    mocks.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'social_respond_lobby_invite') throw new Error('offline');
+      if (cmd === 'join_lobby_room') return { code: 'ROOM3' };
+      return null;
+    });
+    service = new FriendsLiveService({ connectFn: async () => signedIn(), syncFn: async () => empty });
+    await service.handleNotificationClick({ id: 'n', friendId: 'u2', type: 'invite', title: 'Invite', description: 'Join', lobbyCode: 'ROOM3', inviteId: 'gone1' });
+    expect(mocks.invoke).toHaveBeenCalledWith('join_lobby_room', { code: 'ROOM3', playerName: '' });
+  });
+
+  it('with only a room code and no known invite it joins by code and logs it', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    mocks.invoke.mockImplementation(async (cmd: string) => (cmd === 'join_lobby_room' ? { code: 'ROOM4' } : null));
+    service = new FriendsLiveService({ connectFn: async () => signedIn(), syncFn: async () => empty });
+    await service.handleNotificationClick({ id: 'n', friendId: 'u2', type: 'invite', title: 'Invite', description: 'Join', lobbyCode: '#room4' });
+    expect(mocks.invoke).not.toHaveBeenCalledWith('social_respond_lobby_invite', expect.anything());
+    expect(mocks.invoke).toHaveBeenCalledWith('join_lobby_room', { code: 'ROOM4', playerName: '' });
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('ROOM4'));
+    info.mockRestore();
+  });
+
+  it('the invite toast title has no dangling code when the server sent none', () => {
+    expect(lobbyInviteTitle('AB12')).toBe('Приглашение в лобби AB12');
+    expect(lobbyInviteTitle('')).toBe('Приглашение в лобби');
+    expect(lobbyInviteTitle(null)).toBe('Приглашение в лобби');
+    i18n.setLocale('en');
+    expect(lobbyInviteTitle('  ')).toBe('Lobby invite');
   });
 });
 

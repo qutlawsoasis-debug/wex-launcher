@@ -91,6 +91,7 @@ export const ru = {
   'friends.notify_invite_code': '{nick} зовёт вас в игру в лобби {code}',
   'friends.notify_join': 'Присоединиться',
   'friends.lobby_invite_title': 'Приглашение в лобби {code}',
+  'friends.lobby_invite_title_nocode': 'Приглашение в лобби',
   'import.action_import': 'Перенести',
   'import.action_skip': 'Пропустить',
   'import.default': 'По умолчанию',

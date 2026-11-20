@@ -239,6 +239,8 @@ describe('friends page', () => {
     comp = mount(FriendsPage, { target });
     await tick();
     expect(target.querySelectorAll('.panel .prow').length).toBe(4);
+    // Accept and a friend's Join are neutral row actions, not the accent.
+    expect(target.querySelectorAll('.panel .prow button.blue').length).toBe(0);
     [...target.querySelectorAll<HTMLButtonElement>('.seg button')].find((b) => b.textContent === 'В игре')!.click();
     flushSync();
     expect([...target.querySelectorAll('.panel')[1].querySelectorAll('.prow b')].map((b) => b.textContent?.replace('1.20.1', ''))).toEqual(['kotya']);
@@ -265,8 +267,8 @@ describe('friends page', () => {
     expect(section.textContent).toContain('Зовёт в свою комнату');
     const row = (id: string) => target.querySelector<HTMLElement>(`[data-invite="${id}"]`);
     const button = (id: string, text: string) => [...row(id)!.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === text)!;
-    // Join is the one accent (primary) button of the row; Decline is neutral.
-    expect(button('inv1', 'Зайти').classList.contains('blue')).toBe(true);
+    // Per-row actions are neutral: no accent on every row (one accent per view).
+    expect(button('inv1', 'Зайти').classList.contains('blue')).toBe(false);
     expect(button('inv1', 'Отклонить').classList.contains('blue')).toBe(false);
 
     button('inv2', 'Отклонить').click();

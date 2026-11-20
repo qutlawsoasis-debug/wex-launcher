@@ -91,6 +91,7 @@ export const en = {
   'friends.notify_invite_code': '{nick} is inviting you to play in lobby {code}',
   'friends.notify_join': 'Join',
   'friends.lobby_invite_title': 'Lobby invite {code}',
+  'friends.lobby_invite_title_nocode': 'Lobby invite',
   'import.action_import': 'Import',
   'import.action_skip': 'Skip',
   'import.default': 'Default',

@@ -7,10 +7,11 @@
   is (signed in / connecting / server unavailable with «Повторить» / account not
   usable, and why). Own code and «Добавить друга» appear only when signed in.
   HIG › Lists and tables; Segmented controls (All / In game / Online);
-  Text fields (hint plus a separate label); Buttons (one blue primary per area).
+  Text fields (hint plus a separate label); Buttons: one accent (systemBlue)
+  per view, on «Добавить»; per-row actions (Join, Accept, Decline) are neutral
+  (HIG › Buttons: «Keep the number of prominent buttons to one or two per view»).
   Lobby invites («Приглашения») are a list above friend requests, every invite
-  friendsLive holds (also the ones whose notification was skipped): Join is
-  the primary (accent) button, Decline the neutral one, as in requests.
+  friendsLive holds (also the ones whose notification was skipped).
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -201,7 +202,7 @@
                 <Monogram name={inv.from_nick} />
                 <div><b>{inv.from_nick}</b><span>{inv.lobby_code ? t('friends2.invite_d', { code: inv.lobby_code }) : t('friends2.invite_d_nocode')}</span></div>
                 <div class="acts">
-                  <button type="button" class="mini blue" disabled={answering !== null} onclick={() => answerInvite(inv, true)}>{t('friends2.invite_join')}</button>
+                  <button type="button" class="mini" disabled={answering !== null} onclick={() => answerInvite(inv, true)}>{t('friends2.invite_join')}</button>
                   <button type="button" class="mini" disabled={answering !== null} onclick={() => answerInvite(inv, false)}>{t('friends2.invite_decline')}</button>
                 </div>
               </div>
@@ -218,7 +219,7 @@
                 <Monogram name={r.from_nick} />
                 <div><b>{r.from_nick}</b><span>{t('friends2.request_d')}</span></div>
                 <div class="acts">
-                  <button type="button" class="mini blue" onclick={() => answer(r, true)}>{t('friends2.accept')}</button>
+                  <button type="button" class="mini" onclick={() => answer(r, true)}>{t('friends2.accept')}</button>
                   <button type="button" class="mini" onclick={() => answer(r, false)}>{t('friends2.decline')}</button>
                 </div>
               </div>
@@ -243,7 +244,7 @@
                 <span>{#if f.status === 'playing'}<span class="dot" aria-hidden="true"></span>{/if}{status(f)}</span>
               </div>
               {#if f.lobby_code}
-                <button type="button" class="mini blue" onclick={() => join(f)}>{t('home.join')}</button>
+                <button type="button" class="mini" onclick={() => join(f)}>{t('home.join')}</button>
               {:else}
                 <span></span>
               {/if}
