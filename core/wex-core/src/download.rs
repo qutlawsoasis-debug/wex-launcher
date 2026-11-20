@@ -447,6 +447,20 @@ pub async fn download_file_with_fallback(
     }
 }
 
+/// Connect timeout for every download/API client.
+pub const HTTP_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+/// Idle timeout per read (not a total deadline), so big files on slow links still finish
+/// while a stalled connection fails instead of hanging forever.
+pub const HTTP_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Shared client builder with connect and per-read (idle) timeouts.
+pub fn http_client_builder() -> reqwest::ClientBuilder {
+    reqwest::Client::builder()
+        .user_agent("WexLauncher/0.1.0")
+        .connect_timeout(HTTP_CONNECT_TIMEOUT)
+        .read_timeout(HTTP_READ_TIMEOUT)
+}
+
 pub async fn download_pool(
     client: &reqwest::Client,
     tasks: Vec<DownloadTask>,
@@ -470,7 +484,7 @@ pub async fn download_pool_cancellable(
         return Ok(0);
     }
 
-    let semaphore = Arc::new(Semaphore::new(concurrency));
+    let semaphore = Arc::new(Semaphore::new(concurrency.max(1)));
     let total_bytes_downloaded = Arc::new(std::sync::atomic::AtomicU64::new(0));
 
     let mut join_set = tokio::task::JoinSet::new();
@@ -872,5 +886,38 @@ mod tests {
         );
         let part_file = tmp.path().join("my_mod.jar.part");
         assert!(!part_file.exists());
+    }
+
+    #[tokio::test]
+    async fn test_download_pool_zero_concurrency_does_not_deadlock() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/a.bin"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"hello".to_vec()))
+            .mount(&server)
+            .await;
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("a.bin");
+        let task = DownloadTask {
+            url: format!("{}/a.bin", server.uri()),
+            fallback_url: None,
+            target_path: target.clone(),
+            size: Some(5),
+            hash: None,
+        };
+        let client = http_client_builder().build().unwrap();
+        let events = crate::event::NoopEventHandler;
+        let res = tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            download_pool(&client, vec![task], 0, &events, "test"),
+        )
+        .await;
+        assert!(res
+            .expect("download_pool deadlocked with concurrency 0")
+            .is_ok());
+        assert_eq!(fs::read(&target).unwrap(), b"hello");
     }
 }

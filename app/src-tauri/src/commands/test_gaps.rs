@@ -1369,6 +1369,23 @@ async fn social_list_screenshots_success_uses_explicit_directory() {
     );
 }
 #[tokio::test]
+async fn social_list_screenshots_rejects_unc_and_outside_root() {
+    let f = Fixture::new().await;
+    let outside = tempfile::tempdir().unwrap();
+    for dir in [
+        outside.path().to_string_lossy().to_string(),
+        r"\\evil\share\shots".to_string(),
+    ] {
+        assert!(workshop::social_list_screenshots(
+            Some(dto(json!({ "screenshots_dir": dir }))),
+            None,
+            f.play()
+        )
+        .await
+        .is_err());
+    }
+}
+#[tokio::test]
 async fn social_list_screenshots_non_directory_returns_empty() {
     let f = Fixture::new().await;
     let file = f.paths.root.join("blocker");
@@ -1386,12 +1403,13 @@ async fn social_list_screenshots_non_directory_returns_empty() {
 #[tokio::test]
 async fn workshop_open_path_error_missing_path_does_not_launch_explorer() {
     let f = Fixture::new().await;
-    assert!(
-        workshop::workshop_open_path(f.paths.root.join("missing").to_string_lossy().into())
-            .await
-            .unwrap_err()
-            .contains("не существует")
-    );
+    assert!(workshop::workshop_open_path(
+        f.paths.root.join("missing").to_string_lossy().into(),
+        f.play()
+    )
+    .await
+    .unwrap_err()
+    .contains("не существует"));
 }
 
 #[tokio::test]

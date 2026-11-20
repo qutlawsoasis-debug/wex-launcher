@@ -205,7 +205,21 @@ pub fn get_pack_mod_names(instance_dir: &Path, paths: &WexPaths, version: &str) 
     names
 }
 
+/// Only the supported Minecraft versions may reach `WexPaths::instance_dir` from IPC.
+fn validate_version(version: &str) -> Result<&str, String> {
+    if crate::commands::logs::SUPPORTED_LOG_VERSIONS.contains(&version) {
+        Ok(version)
+    } else {
+        Err(format!(
+            "Неподдерживаемая версия игры: '{}'. Разрешённые версии: {:?}",
+            version,
+            crate::commands::logs::SUPPORTED_LOG_VERSIONS
+        ))
+    }
+}
+
 pub fn list_mods_impl(paths: &WexPaths, version: &str) -> Result<Vec<ModEntry>, String> {
+    let version = validate_version(version)?;
     let inst_dir = paths.instance_dir(version);
     let mods_dir = inst_dir.join("mods");
     let _ = fs::create_dir_all(&mods_dir);
@@ -280,6 +294,8 @@ pub fn toggle_mod_impl(
     file_name: &str,
     enabled: bool,
 ) -> Result<ModEntry, String> {
+    let version = validate_version(version)?;
+    let file_name = crate::commands::workshop::validate_single_component(file_name)?;
     let inst_dir = paths.instance_dir(version);
     let mods_dir = inst_dir.join("mods");
     let current_path = mods_dir.join(file_name);
@@ -334,7 +350,11 @@ pub fn add_custom_mod_impl(
     version: &str,
     source_path: &str,
 ) -> Result<ModEntry, String> {
+    let version = validate_version(version)?;
     let src = PathBuf::from(source_path);
+    if wex_core::safe_path::is_unc_path(&src) {
+        return Err("Сетевые (UNC) пути не поддерживаются.".to_string());
+    }
     if !src.is_file() {
         return Err("Исходный файл мода не найден. Выберите файл заново.".to_string());
     }
@@ -373,10 +393,9 @@ pub fn delete_custom_mod_impl(
     version: &str,
     file_name: &str,
 ) -> Result<(), String> {
-    // Prevent directory traversal
-    if file_name.contains("..") || file_name.contains('/') || file_name.contains('\\') {
-        return Err("Недопустимое имя файла мода. Проверьте имя файла.".to_string());
-    }
+    let version = validate_version(version)?;
+    let file_name = crate::commands::workshop::validate_single_component(file_name)
+        .map_err(|_| "Недопустимое имя файла мода. Проверьте имя файла.".to_string())?;
 
     let inst_dir = paths.instance_dir(version);
     let mods_dir = inst_dir.join("mods");
@@ -408,6 +427,7 @@ pub fn delete_custom_mod_impl(
 }
 
 pub fn open_mods_dir_impl(paths: &WexPaths, version: &str) -> Result<(), String> {
+    let version = validate_version(version)?;
     let mods_dir = paths.instance_dir(version).join("mods");
     if !mods_dir.exists() {
         let _ = fs::create_dir_all(&mods_dir);
@@ -622,5 +642,26 @@ mod tests {
 
         assert!(res.is_err());
         assert!(res.unwrap_err().contains("защищены от удаления"));
+    }
+
+    #[test]
+    fn ipc_args_reject_traversal_and_unknown_versions() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        paths.ensure_instance_dirs("1.21.1").unwrap();
+        let victim = tmp.path().join("victim.txt");
+        fs::write(&victim, b"x").unwrap();
+
+        assert!(toggle_mod_impl(&paths, "1.21.1", "../../victim.txt", false).is_err());
+        assert!(toggle_mod_impl(&paths, "1.21.1", r"..\..\victim.txt", false).is_err());
+        assert!(victim.exists());
+        assert!(toggle_mod_impl(&paths, "../../etc", "a.jar", false).is_err());
+        assert!(list_mods_impl(&paths, "../x").is_err());
+        assert!(delete_custom_mod_impl(&paths, "9.9.9", "a.jar").is_err());
+        assert!(delete_custom_mod_impl(&paths, "1.21.1", "../../victim.txt").is_err());
+        assert!(victim.exists());
+        assert!(add_custom_mod_impl(&paths, "../x", "a.jar").is_err());
+        let unc = add_custom_mod_impl(&paths, "1.21.1", r"\\srv\share\a.jar");
+        assert!(unc.unwrap_err().contains("UNC"));
     }
 }
