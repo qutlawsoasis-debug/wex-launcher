@@ -219,6 +219,8 @@ describe('home page', () => {
     expect(rows.length).toBe(1);
     expect(rows[0].textContent).toContain('kotya');
     expect(rows[0].querySelector('.vtag')?.textContent).toBe('1.20.1');
-    expect(rows[0].querySelector('.mini.blue')?.textContent).toBe('Зайти');
+    const join = rows[0].querySelector('button.mini');
+    expect(join?.textContent).toBe('Зайти');
+    expect(join?.classList.contains('blue')).toBe(false);
   });
 });

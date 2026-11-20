@@ -62,6 +62,9 @@ impl WexPaths {
             && version
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '+'));
+        if !plain {
+            tracing::warn!(version, "unsafe instance version, using instances/_invalid");
+        }
         self.instances_dir
             .join(if plain { version } else { "_invalid" })
     }

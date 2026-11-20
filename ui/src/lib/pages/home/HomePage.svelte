@@ -162,7 +162,7 @@
               <span>{#if f.status === 'playing'}<span class="dot" aria-hidden="true"></span>{/if}{friendStatus(f)}</span>
             </div>
             {#if f.lobby_code}
-              <button type="button" class="mini blue" onclick={() => joinFriend(f)}>{t('home.join')}</button>
+              <button type="button" class="mini" onclick={() => joinFriend(f)}>{t('home.join')}</button>
             {:else}
               <span></span>
             {/if}

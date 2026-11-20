@@ -173,7 +173,7 @@
             <Monogram name={w.motd} shape="square" tone={3} />
             <div><b>{w.motd}</b><span>{t('lobby.lan_world_address', { address: w.address })}</span></div>
             <button type="button" class="mini" onclick={() => connectLan(w.address)}>{t('lobby.connect_btn')}</button>
-            <button type="button" class="mini blue" disabled={rooms.publishing !== null || !network.isOnline} onclick={() => rooms.publish(w)}>{t('lobby.btn_open_world_friends')}</button>
+            <button type="button" class="mini" disabled={rooms.publishing !== null || !network.isOnline} onclick={() => rooms.publish(w)}>{t('lobby.btn_open_world_friends')}</button>
           </div>
         {/each}
       {:else}
