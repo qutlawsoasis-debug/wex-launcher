@@ -864,6 +864,13 @@ mod tests {
         ] {
             assert!(resolve_pack_file(tmp.path(), bad).is_err(), "{}", bad);
         }
+        let err = resolve_pack_file(tmp.path(), "mods/../../evil.jar")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("mods/../../evil.jar"),
+            "error must name the path: {err}"
+        );
         let (clean, target) = resolve_pack_file(tmp.path(), r"mods\ok.jar").unwrap();
         assert_eq!(clean, "mods/ok.jar");
         assert!(target.starts_with(tmp.path()));

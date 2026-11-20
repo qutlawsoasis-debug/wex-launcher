@@ -1369,6 +1369,23 @@ async fn social_list_screenshots_success_uses_explicit_directory() {
     );
 }
 #[tokio::test]
+async fn social_list_screenshots_rejects_unc_and_outside_root() {
+    let f = Fixture::new().await;
+    let outside = tempfile::tempdir().unwrap();
+    for dir in [
+        outside.path().to_string_lossy().to_string(),
+        r"\\evil\share\shots".to_string(),
+    ] {
+        assert!(workshop::social_list_screenshots(
+            Some(dto(json!({ "screenshots_dir": dir }))),
+            None,
+            f.play()
+        )
+        .await
+        .is_err());
+    }
+}
+#[tokio::test]
 async fn social_list_screenshots_non_directory_returns_empty() {
     let f = Fixture::new().await;
     let file = f.paths.root.join("blocker");

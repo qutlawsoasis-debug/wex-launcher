@@ -648,6 +648,23 @@ async fn start_game_rejects_malicious_server_address_without_taking_launch_flag(
     }
 }
 #[tokio::test]
+async fn start_game_rejects_unsupported_version() {
+    let f = Fixture::new().await;
+    for bad in ["../../x", "9.9.9", " 1.21.1", ""] {
+        let res = launch::start_game(
+            f.app.handle().clone(),
+            bad.into(),
+            "Fixture".into(),
+            None,
+            None,
+            f.play(),
+        )
+        .await;
+        assert!(res.is_err(), "{bad:?} must be rejected");
+        assert!(!f.play().is_launching.load(Ordering::SeqCst));
+    }
+}
+#[tokio::test]
 async fn start_game_error_core_failure_clears_launching_flag() {
     let core = Arc::new(MockLauncherCore::new());
     *core.fail_next_launch.lock().unwrap() = true;

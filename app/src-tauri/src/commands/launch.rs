@@ -721,6 +721,9 @@ pub async fn start_game<R: tauri::Runtime>(
     server: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<LaunchGameResponse, String> {
+    if !crate::commands::logs::SUPPORTED_LOG_VERSIONS.contains(&version.as_str()) {
+        return Err(format!("Неподдерживаемая версия игры: '{}'", version));
+    }
     // 0. The server address ends up in the game's argument file: validate it first
     // (before the launch flag is taken, so a rejected address leaks no state).
     let server = match server {

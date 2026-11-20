@@ -11,9 +11,8 @@ use wex_ipc::models::{ScreenshotItemDto, WorldBackupItemDto, WorldItemDto};
 
 use super::launch::PlayState;
 
-fn resolve_game_dir(paths: &WexPaths, version: Option<&str>) -> PathBuf {
-    let ver = version.unwrap_or("1.21.1");
-    paths.instance_dir(ver)
+fn resolve_game_dir(paths: &WexPaths, version: Option<&str>) -> Result<PathBuf, String> {
+    crate::commands::logs::validate_and_resolve_instance_dir(paths, version)
 }
 
 /// Validates that an input string is a single path component without separators or traversal.
@@ -55,7 +54,7 @@ pub fn resolve_and_validate_world_dir(
         return Err("Относительные переходы пути запрещены".to_string());
     }
 
-    let game_dir = resolve_game_dir(paths, version);
+    let game_dir = resolve_game_dir(paths, version)?;
     let saves_dir = game_dir.join("saves");
 
     let candidate = if p.components().count() == 1 {
@@ -132,7 +131,7 @@ pub fn restore_world_backup_impl(
         return Err("Файл резервной копии должен находиться внутри папки Wex".to_string());
     }
 
-    let game_dir = resolve_game_dir(paths, version);
+    let game_dir = resolve_game_dir(paths, version)?;
     let saves_dir = game_dir.join("saves");
     fs::create_dir_all(&saves_dir).map_err(|e| e.to_string())?;
     let canon_saves = saves_dir.canonicalize().map_err(|e| e.to_string())?;
@@ -207,7 +206,7 @@ pub async fn workshop_list_worlds(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<Vec<WorldItemDto>, String> {
-    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
     let worlds = wex_social::list_worlds(&game_dir).map_err(|e| e.to_string())?;
     Ok(worlds.into_iter().map(Into::into).collect())
 }
@@ -221,7 +220,7 @@ pub async fn social_list_worlds(
 ) -> Result<SocialListWorldsResponse, String> {
     let game_dir = match request {
         Some(req) if !req.game_dir.is_empty() => PathBuf::from(req.game_dir),
-        _ => resolve_game_dir(&state.paths, version.as_deref()),
+        _ => resolve_game_dir(&state.paths, version.as_deref())?,
     };
     let worlds = wex_social::list_worlds(&game_dir).map_err(|e| e.to_string())?;
     Ok(SocialListWorldsResponse {
@@ -238,7 +237,7 @@ pub async fn workshop_create_world_backup(
 ) -> Result<WorldBackupItemDto, String> {
     let world_path =
         resolve_and_validate_world_dir(&world_folder, version.as_deref(), &state.paths)?;
-    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
     let backup_base_dir = game_dir.join("backups");
     let zip_path = wex_social::create_world_backup(&world_path, &backup_base_dir)
         .map_err(|e| e.to_string())?;
@@ -302,7 +301,7 @@ pub async fn workshop_list_world_backups(
     display_name: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<Vec<WorldBackupItemDto>, String> {
-    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
     let backup_base_dir = game_dir.join("backups");
     let folder_name = world_folder_name.as_deref().unwrap_or("");
     let d_name = display_name.as_deref().unwrap_or(folder_name);
@@ -373,7 +372,7 @@ pub async fn workshop_list_screenshots(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<Vec<ScreenshotItemDto>, String> {
-    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
     let screenshots_dir = game_dir.join("screenshots");
     let list = wex_social::list_screenshots(&screenshots_dir).map_err(|e| e.to_string())?;
     Ok(list.into_iter().map(Into::into).collect())
@@ -387,9 +386,11 @@ pub async fn social_list_screenshots(
     state: State<'_, PlayState>,
 ) -> Result<SocialListScreenshotsResponse, String> {
     let screenshots_dir = match request {
-        Some(req) if !req.screenshots_dir.is_empty() => PathBuf::from(req.screenshots_dir),
+        Some(req) if !req.screenshots_dir.is_empty() => {
+            validate_open_path(&state.paths, &req.screenshots_dir)?
+        }
         _ => {
-            let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+            let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
             game_dir.join("screenshots")
         }
     };
@@ -515,7 +516,7 @@ pub async fn workshop_open_screenshots_folder(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
-    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
     let screenshots_dir = game_dir.join("screenshots");
     if !screenshots_dir.exists() {
         let _ = std::fs::create_dir_all(&screenshots_dir);

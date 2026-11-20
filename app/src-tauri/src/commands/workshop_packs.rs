@@ -36,9 +36,8 @@ pub struct ShaderPackItemDto {
     pub is_from_pack: bool,
 }
 
-fn resolve_game_dir(paths: &WexPaths, version: Option<&str>) -> PathBuf {
-    let ver = version.unwrap_or("1.21.1");
-    paths.instance_dir(ver)
+fn resolve_game_dir(paths: &WexPaths, version: Option<&str>) -> Result<PathBuf, String> {
+    crate::commands::logs::validate_and_resolve_instance_dir(paths, version)
 }
 
 // Pure Rust standard RFC 4648 Base64 encoder (zero extra dependencies)
@@ -341,7 +340,7 @@ pub async fn workshop_list_resource_packs(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<Vec<ResourcePackItemDto>, String> {
-    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
     let packs_dir = game_dir.join("resourcepacks");
     if !packs_dir.is_dir() {
         return Ok(Vec::new());
@@ -427,7 +426,7 @@ pub async fn workshop_toggle_resource_pack(
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
     super::workshop::validate_single_component(&file_name)?;
-    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
     let options_txt = game_dir.join("options.txt");
     set_enabled_resource_pack(&options_txt, &file_name, enabled).map_err(|e| e.to_string())
 }
@@ -439,7 +438,7 @@ pub async fn workshop_set_resource_packs_order(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
-    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
     let options_txt = game_dir.join("options.txt");
 
     let mut lines: Vec<String> = if options_txt.is_file() {
@@ -499,7 +498,7 @@ pub async fn workshop_list_shader_packs(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<Vec<ShaderPackItemDto>, String> {
-    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
     let shaders_dir = game_dir.join("shaderpacks");
     if !shaders_dir.is_dir() {
         return Ok(Vec::new());
@@ -582,7 +581,7 @@ pub async fn workshop_set_active_shader_pack(
             super::workshop::validate_single_component(s)?;
         }
     }
-    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
     set_active_shader(&game_dir, shader_file_name.as_deref()).map_err(|e| e.to_string())
 }
 
@@ -608,7 +607,7 @@ pub fn add_pack_file_impl(
 
     super::workshop::validate_single_component(&file_name)?;
 
-    let game_dir = resolve_game_dir(paths, version);
+    let game_dir = resolve_game_dir(paths, version)?;
     let dest_dir = if pack_type == "shaderpack" {
         game_dir.join("shaderpacks")
     } else {
@@ -651,7 +650,7 @@ pub fn delete_pack_file_impl(
 ) -> Result<(), String> {
     super::workshop::validate_single_component(file_name)?;
 
-    let game_dir = resolve_game_dir(paths, version);
+    let game_dir = resolve_game_dir(paths, version)?;
     let folder_name = if pack_type == "shaderpack" {
         "shaderpacks"
     } else {
@@ -720,7 +719,7 @@ pub async fn workshop_open_packs_folder(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
-    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
     let folder = if pack_type == "shaderpack" {
         game_dir.join("shaderpacks")
     } else {
