@@ -426,6 +426,10 @@ fn fresh(entry: &fs::DirEntry, since: Option<SystemTime>) -> bool {
     }
 }
 
+/// The launcher's capture of the game output in `logs/` (same name as
+/// `wex_core::GAME_OUTPUT_LOG`; this crate does not depend on wex-core).
+pub const GAME_OUTPUT_LOG: &str = "wex-game-output.log";
+
 fn collect_recent_logs(
     game_dir: &Path,
     exit_code: Option<i32>,
@@ -485,12 +489,15 @@ fn collect_recent_logs(
         }
     }
 
-    // 3. logs/latest.log
-    let latest_log = game_dir.join("logs").join("latest.log");
-    if latest_log.is_file() {
-        if let Ok(text) = fs::read_to_string(&latest_log) {
-            combined.push_str("\n--- latest.log ---\n");
+    // 3. The game output Wex captured (stdout and stderr, also what the JVM
+    //    printed before log4j started); Minecraft's own logs/latest.log when
+    //    there is no capture (a game started before Wex wrote its own file).
+    for name in [GAME_OUTPUT_LOG, "latest.log"] {
+        let log = game_dir.join("logs").join(name);
+        if let Ok(text) = fs::read_to_string(&log) {
+            combined.push_str(&format!("\n--- {} ---\n", name));
             combined.push_str(&text);
+            break;
         }
     }
 
@@ -552,6 +559,35 @@ mod tests {
             .technical_summary
             .contains("Caused by: java.io.IOException: disk"));
         assert!(!diag.technical_summary.contains("hello"));
+    }
+
+    #[test]
+    fn game_output_capture_is_read_before_minecrafts_latest_log() {
+        let dir = tempfile::tempdir().unwrap();
+        let logs = dir.path().join("logs");
+        fs::create_dir_all(&logs).unwrap();
+        fs::write(logs.join("latest.log"), "[main/INFO]: all fine\n").unwrap();
+        fs::write(
+            logs.join(GAME_OUTPUT_LOG),
+            "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space\n",
+        )
+        .unwrap();
+        let diag = analyze_crash(dir.path(), Some(1));
+        assert!(matches!(diag.kind, CrashKind::OutOfMemory));
+    }
+
+    #[test]
+    fn minecrafts_latest_log_is_used_when_there_is_no_capture() {
+        let dir = tempfile::tempdir().unwrap();
+        let logs = dir.path().join("logs");
+        fs::create_dir_all(&logs).unwrap();
+        fs::write(
+            logs.join("latest.log"),
+            "java.lang.OutOfMemoryError: Java heap space\n",
+        )
+        .unwrap();
+        let diag = analyze_crash(dir.path(), Some(1));
+        assert!(matches!(diag.kind, CrashKind::OutOfMemory));
     }
 
     #[test]

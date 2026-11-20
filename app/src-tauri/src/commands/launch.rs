@@ -1818,7 +1818,7 @@ mod tests {
         let game_proc = wex_core::GameProcess {
             pid: child.id().unwrap_or(0),
             child,
-            log_path: tmp.path().join("latest.log"),
+            log_path: tmp.path().join(wex_core::GAME_OUTPUT_LOG),
             #[cfg(windows)]
             _job_object: None,
         };
@@ -1881,7 +1881,7 @@ mod tests {
         let game_proc = wex_core::GameProcess {
             pid: child.id().unwrap_or(0),
             child,
-            log_path: tmp.path().join("latest.log"),
+            log_path: tmp.path().join(wex_core::GAME_OUTPUT_LOG),
             #[cfg(windows)]
             _job_object: None,
         };
@@ -1938,7 +1938,7 @@ mod tests {
         let game_proc = wex_core::GameProcess {
             pid,
             child,
-            log_path: tmp.path().join("latest.log"),
+            log_path: tmp.path().join(wex_core::GAME_OUTPUT_LOG),
             #[cfg(windows)]
             _job_object: None,
         };

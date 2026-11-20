@@ -242,6 +242,11 @@ export const ALLOWED_EXCEPTIONS: GuardException[] = [
   },
   {
     file: 'ReportSheet.svelte',
+    text: 'wex-game-output.log',
+    reason: 'File name of the game output Wex captures, listed in diagnostic export contents',
+  },
+  {
+    file: 'ReportSheet.svelte',
     text: 'crash-report',
     reason: 'Standard Minecraft crash log folder and identifier',
   },
