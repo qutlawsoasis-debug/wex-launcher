@@ -430,6 +430,19 @@ fn fresh(entry: &fs::DirEntry, since: Option<SystemTime>) -> bool {
 /// `wex_core::GAME_OUTPUT_LOG`; this crate does not depend on wex-core).
 pub const GAME_OUTPUT_LOG: &str = "wex-game-output.log";
 
+/// Reads a log as text whatever its encoding (JVM stderr on Windows can be
+/// cp1251 or cp866): invalid UTF-8 becomes U+FFFD instead of the whole file
+/// being skipped. None for a missing file or one with only whitespace.
+pub fn read_log_lossy(path: &Path) -> Option<String> {
+    let bytes = fs::read(path).ok()?;
+    let text = String::from_utf8_lossy(&bytes).into_owned();
+    if text.trim().is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
 fn collect_recent_logs(
     game_dir: &Path,
     exit_code: Option<i32>,
@@ -491,10 +504,10 @@ fn collect_recent_logs(
 
     // 3. The game output Wex captured (stdout and stderr, also what the JVM
     //    printed before log4j started); Minecraft's own logs/latest.log when
-    //    there is no capture (a game started before Wex wrote its own file).
+    //    there is no capture or it is empty (a game started before Wex wrote
+    //    its own file, or one that printed nothing).
     for name in [GAME_OUTPUT_LOG, "latest.log"] {
-        let log = game_dir.join("logs").join(name);
-        if let Ok(text) = fs::read_to_string(&log) {
+        if let Some(text) = read_log_lossy(&game_dir.join("logs").join(name)) {
             combined.push_str(&format!("\n--- {} ---\n", name));
             combined.push_str(&text);
             break;
@@ -574,6 +587,39 @@ mod tests {
         .unwrap();
         let diag = analyze_crash(dir.path(), Some(1));
         assert!(matches!(diag.kind, CrashKind::OutOfMemory));
+    }
+
+    #[test]
+    fn an_empty_or_blank_capture_falls_back_to_latest_log() {
+        for blank in ["", "  \r\n\t\n"] {
+            let dir = tempfile::tempdir().unwrap();
+            let logs = dir.path().join("logs");
+            fs::create_dir_all(&logs).unwrap();
+            fs::write(logs.join(GAME_OUTPUT_LOG), blank).unwrap();
+            fs::write(
+                logs.join("latest.log"),
+                "java.lang.OutOfMemoryError: Java heap space\n",
+            )
+            .unwrap();
+            let diag = analyze_crash(dir.path(), Some(1));
+            assert!(matches!(diag.kind, CrashKind::OutOfMemory), "{blank:?}");
+        }
+    }
+
+    #[test]
+    fn a_capture_that_is_not_utf8_is_still_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let logs = dir.path().join("logs");
+        fs::create_dir_all(&logs).unwrap();
+        // cp1251 bytes (not valid UTF-8), then the real error.
+        let mut bytes = vec![0xCE, 0xF8, 0xE8, 0xE1, 0xEA, 0xE0, b'\n'];
+        bytes.extend_from_slice(b"java.lang.OutOfMemoryError: Java heap space\n");
+        fs::write(logs.join(GAME_OUTPUT_LOG), &bytes).unwrap();
+        fs::write(logs.join("latest.log"), "[main/INFO]: fine\n").unwrap();
+        let diag = analyze_crash(dir.path(), Some(1));
+        assert!(matches!(diag.kind, CrashKind::OutOfMemory));
+        let text = read_log_lossy(&logs.join(GAME_OUTPUT_LOG)).unwrap();
+        assert!(text.contains('\u{FFFD}'));
     }
 
     #[test]

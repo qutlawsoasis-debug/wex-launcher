@@ -37,6 +37,26 @@ pub fn analyze_crash_impl(
     diagnosis.into()
 }
 
+/// True when the file has at least one non-whitespace byte. Reads in chunks
+/// and stops at the first one, so a big log costs one read.
+fn has_text(path: &Path) -> bool {
+    use std::io::Read;
+    let Ok(mut file) = fs::File::open(path) else {
+        return false;
+    };
+    let mut buf = [0u8; 8192];
+    loop {
+        match file.read(&mut buf) {
+            Ok(0) | Err(_) => return false,
+            Ok(n) => {
+                if buf[..n].iter().any(|b| !b.is_ascii_whitespace()) {
+                    return true;
+                }
+            }
+        }
+    }
+}
+
 /// Locates the most recent log or crash report file in the instance directory.
 pub fn find_latest_log_path(inst_dir: &Path) -> Option<PathBuf> {
     // 1. Check crash-reports/*.txt first
@@ -66,9 +86,9 @@ pub fn find_latest_log_path(inst_dir: &Path) -> Option<PathBuf> {
         }
     }
 
-    // 2. The game output Wex captured, then Minecraft's own logs/latest.log
+    // 2. The game output Wex captured (unless blank), then Minecraft's own logs/latest.log
     let capture = wex_core::game_output_log_path(inst_dir);
-    if capture.is_file() {
+    if has_text(&capture) {
         return Some(capture);
     }
     let latest_log = inst_dir.join("logs").join("latest.log");
@@ -283,6 +303,12 @@ mod tests {
         fs::create_dir_all(&logs).unwrap();
         fs::write(logs.join("latest.log"), "log4j").unwrap();
         assert_eq!(find_latest_log_path(&inst), Some(logs.join("latest.log")));
+        fs::write(logs.join(wex_core::GAME_OUTPUT_LOG), " \r\n\t").unwrap();
+        assert_eq!(
+            find_latest_log_path(&inst),
+            Some(logs.join("latest.log")),
+            "a blank capture falls back to latest.log"
+        );
         fs::write(logs.join(wex_core::GAME_OUTPUT_LOG), "stdout").unwrap();
         assert_eq!(
             find_latest_log_path(&inst),
