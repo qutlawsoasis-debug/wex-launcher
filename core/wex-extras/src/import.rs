@@ -74,6 +74,11 @@ pub struct OldLauncherData {
     pub active_skin_model: Option<String>,
 }
 
+/// Lowercase hex SHA-256 of `bytes`, the hash format used for imported skins and capes.
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    hex::encode(Sha256::digest(bytes))
+}
+
 pub fn default_aura_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     {

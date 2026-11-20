@@ -335,15 +335,44 @@ fn import_active_wardrobe(
     let Some(active) = old.active_skin_path.as_deref() else {
         return Ok(());
     };
-    let name = active.rsplit(['/', '\\']).next().unwrap_or(active);
-    let Some(skin) = req.skins.iter().find(|skin| skin.file_name == name) else {
+    let old_dir = Path::new(&req.old_launcher_dir);
+    let resolve = |raw: &str| {
+        let p = PathBuf::from(raw);
+        if p.is_absolute() {
+            p
+        } else {
+            old_dir.join(p)
+        }
+    };
+    // Match by content hash (or exact resolved path), never by bare file name.
+    let Ok(active_bytes) = fs::read(resolve(active)) else {
         return Ok(());
     };
-    let bytes = fs::read(&skin.path).map_err(|e| e.to_string())?;
+    let active_hash = wex_extras::import::sha256_hex(&active_bytes);
+    let Some(skin) = req.skins.iter().find(|skin| skin.hash == active_hash) else {
+        return Ok(());
+    };
+    let bytes = active_bytes;
     if !wex_extras::skins::validate_skin_bytes(&bytes).is_valid {
         return Ok(());
     }
     let nickname = validate_safe_component(nickname, "Ник для скина")?;
+    // The user's existing CustomSkinLoader setup is never replaced.
+    for version in ["1.20.1", "1.21.1"] {
+        let csl = paths.instance_dir(version).join("CustomSkinLoader");
+        if csl.join("CustomSkinLoader.json").exists()
+            || csl
+                .join("LocalSkin/skins")
+                .join(format!("{nickname}.png"))
+                .exists()
+            || csl
+                .join("LocalSkin/capes")
+                .join(format!("{nickname}.png"))
+                .exists()
+        {
+            return Ok(());
+        }
+    }
     // CapePath is legacy metadata; resolve it against the selected capes, never an external path.
     let config = fs::read_to_string(Path::new(&req.old_launcher_dir).join("config.json"))
         .ok()
@@ -354,12 +383,16 @@ fn import_active_wardrobe(
         .as_ref()
         .and_then(|c| c.get("CapePath"))
         .and_then(|v| v.as_str())
-        .and_then(|p| p.rsplit(['/', '\\']).next())
-        .and_then(|name| req.capes.iter().find(|cape| cape.file_name == name));
-    let cape_bytes = cape
-        .map(|cape| fs::read(&cape.path))
-        .transpose()
-        .map_err(|e| e.to_string())?;
+        .and_then(|p| fs::read(resolve(p)).ok())
+        .and_then(|bytes| {
+            let hash = wex_extras::import::sha256_hex(&bytes);
+            req.capes
+                .iter()
+                .find(|cape| cape.hash == hash)
+                .map(|cape| (cape, bytes))
+        });
+    let cape_bytes = cape.as_ref().map(|(_, bytes)| bytes.clone());
+    let cape = cape.map(|(cape, _)| cape);
     for version in ["1.20.1", "1.21.1"] {
         wex_extras::skins::generate_csl_config(
             &paths.instance_dir(version),
@@ -395,31 +428,87 @@ fn import_active_wardrobe(
 fn split_legacy_jvm_args(input: &str) -> Result<Vec<String>, String> {
     let mut args = Vec::new();
     let mut current = String::new();
-    let mut quote = None;
-    let mut has_token = false;
+    let mut in_quotes = false;
     for ch in input.chars() {
-        if quote == Some(ch) {
-            quote = None;
-        } else if quote.is_none() && (ch == '"' || ch == '\'') {
-            quote = Some(ch);
-            has_token = true;
-        } else if quote.is_none() && ch.is_whitespace() {
-            if has_token {
+        if ch == '"' {
+            in_quotes = !in_quotes;
+        } else if !in_quotes && ch.is_whitespace() {
+            if !current.is_empty() {
                 args.push(std::mem::take(&mut current));
-                has_token = false;
             }
         } else {
             current.push(ch);
-            has_token = true;
         }
     }
-    if quote.is_some() {
+    if in_quotes {
         return Err("Незакрытая кавычка в JVM-аргументах старого лаунчера".into());
     }
-    if has_token {
+    if !current.is_empty() {
         args.push(current);
     }
     Ok(args)
+}
+
+/// Keeps only harmless legacy JVM flags. Returns `(kept, dropped_reports)`.
+/// -Xmx/-Xms are dropped silently because memory comes from the RAM setting.
+fn sanitize_legacy_jvm_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
+    fn is_flag_name(name: &str) -> bool {
+        let mut chars = name.chars();
+        chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    }
+    fn size_flag(rest: &str) -> bool {
+        let digits = rest.trim_end_matches(['k', 'K', 'm', 'M', 'g', 'G']);
+        !digits.is_empty()
+            && rest.len() - digits.len() <= 1
+            && digits.chars().all(|c| c.is_ascii_digit())
+    }
+    const BAD_XX: [&str; 6] = [
+        "onerror",
+        "onoutofmemoryerror",
+        "startattachlistener",
+        "flags",
+        "vmoptionsfile",
+        "argfiles",
+    ];
+    const BAD_D_PREFIX: [&str; 5] = [
+        "wex.",
+        "aura.",
+        "java.library.path",
+        "java.class.path",
+        "jna.",
+    ];
+    let mut kept = Vec::new();
+    let mut dropped = Vec::new();
+    for arg in args {
+        let lower = arg.to_ascii_lowercase();
+        if lower.starts_with("-xmx") || lower.starts_with("-xms") {
+            continue; // RAM comes from the ram setting
+        }
+        let ok = if let Some(rest) = arg.strip_prefix("-XX:") {
+            let body = rest.strip_prefix(['+', '-']).unwrap_or(rest);
+            let name = body.split('=').next().unwrap_or("");
+            is_flag_name(name) && !BAD_XX.contains(&name.to_ascii_lowercase().as_str())
+        } else if let Some(rest) = arg.strip_prefix("-D") {
+            let key = rest.split('=').next().unwrap_or("");
+            let key_l = key.to_ascii_lowercase();
+            !key.is_empty()
+                && !key.chars().any(char::is_whitespace)
+                && !BAD_D_PREFIX.iter().any(|p| key_l.starts_with(p))
+        } else if let Some(rest) = arg.strip_prefix("-Xss") {
+            size_flag(rest)
+        } else if let Some(rest) = arg.strip_prefix("-Xmn") {
+            size_flag(rest)
+        } else {
+            false
+        };
+        if ok {
+            kept.push(arg);
+        } else {
+            dropped.push(arg);
+        }
+    }
+    (kept, dropped)
 }
 
 fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -537,7 +626,13 @@ pub async fn apply_import_internal(
             if let Some(args) = &old.jvm_args {
                 match split_legacy_jvm_args(args) {
                     Ok(args) => {
-                        core_cfg.jvm_args = args;
+                        let (kept, dropped) = sanitize_legacy_jvm_args(args);
+                        for flag in dropped {
+                            errors.push(format!(
+                                "Небезопасный или неподдерживаемый JVM-аргумент не импортирован: {flag}"
+                            ));
+                        }
+                        core_cfg.jvm_args = kept;
                         core_modified = true;
                     }
                     Err(err) => errors.push(err),
@@ -958,7 +1053,7 @@ mod tests {
     #[test]
     fn legacy_jvm_quotes_preserve_windows_paths() {
         assert_eq!(
-            split_legacy_jvm_args(r#"-XX:+UseG1GC "-Dpath=C:\Program Files\Java" -Dname='a b'"#)
+            split_legacy_jvm_args(r#"-XX:+UseG1GC "-Dpath=C:\Program Files\Java" -Dname="a b""#)
                 .unwrap(),
             vec![
                 "-XX:+UseG1GC",
@@ -966,7 +1061,192 @@ mod tests {
                 "-Dname=a b"
             ]
         );
-        assert!(split_legacy_jvm_args("-Dname='unfinished").is_err());
+        assert!(split_legacy_jvm_args(r#"-Dname="unfinished"#).is_err());
+    }
+
+    #[test]
+    fn legacy_jvm_apostrophes_are_literal_and_empty_tokens_skipped() {
+        assert_eq!(
+            split_legacy_jvm_args(r#"-Dhome=C:\Users\O'Neil "" -Xss1m"#).unwrap(),
+            vec![r"-Dhome=C:\Users\O'Neil", "-Xss1m"]
+        );
+    }
+
+    #[test]
+    fn dangerous_legacy_jvm_flags_are_dropped_and_safe_ones_kept() {
+        let input = [
+            "-XX:+UseG1GC",
+            "-XX:MaxGCPauseMillis=50",
+            "-XX:-UseAdaptiveSizePolicy",
+            "-Dfml.ignoreInvalidMinecraftCertificates=true",
+            r"-Dpath=C:\Program Files\Java",
+            "-Xss2m",
+            "-Xmn256m",
+            "-javaagent:evil.jar",
+            "-agentlib:jdwp=transport=dt_socket",
+            "-agentpath:evil.dll",
+            "-Xbootclasspath/a:evil.jar",
+            "-cp",
+            "-classpath",
+            "--class-path",
+            "-XX:OnError=calc.exe",
+            "-XX:OnOutOfMemoryError=calc.exe",
+            "-XX:+StartAttachListener",
+            "-Xmx16G",
+            "-Xms1G",
+            "-Dwex.token=1",
+            "-Daura.x=1",
+            "-Djava.library.path=C:\\evil",
+            "-Djna.boot.library.path=C:\\evil",
+            "-Dsomething",
+            "--add-opens=java.base/java.lang=ALL-UNNAMED",
+            "evil.jar",
+        ]
+        .map(String::from)
+        .to_vec();
+        let (kept, dropped) = sanitize_legacy_jvm_args(input);
+        assert_eq!(
+            kept,
+            vec![
+                "-XX:+UseG1GC",
+                "-XX:MaxGCPauseMillis=50",
+                "-XX:-UseAdaptiveSizePolicy",
+                "-Dfml.ignoreInvalidMinecraftCertificates=true",
+                r"-Dpath=C:\Program Files\Java",
+                "-Xss2m",
+                "-Xmn256m",
+                "-Dsomething",
+            ]
+        );
+        for bad in [
+            "-javaagent:evil.jar",
+            "-agentlib:jdwp=transport=dt_socket",
+            "-agentpath:evil.dll",
+            "-Xbootclasspath/a:evil.jar",
+            "-XX:OnError=calc.exe",
+            "-XX:OnOutOfMemoryError=calc.exe",
+            "-XX:+StartAttachListener",
+            "-Dwex.token=1",
+            "-Djava.library.path=C:\\evil",
+        ] {
+            assert!(
+                dropped.iter().any(|d| d.contains(bad)),
+                "{bad} not reported"
+            );
+        }
+        assert!(!kept
+            .iter()
+            .any(|k| k.starts_with("-Xmx") || k.starts_with("-Xms")));
+    }
+
+    #[tokio::test]
+    async fn dangerous_legacy_jvm_flags_never_reach_the_config() {
+        let tmp = tempdir().unwrap();
+        let source = tmp.path().join("old");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("config.json"),
+            serde_json::json!({
+                "RamMb": 4096, "JvmArgs": "-XX:+UseG1GC -javaagent:evil.jar -Xmx9G",
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let core = wex_core::ipc_adapter::WexLauncherCore::new(paths.clone());
+        let request: ApplyImportRequest = serde_json::from_value(serde_json::json!({
+            "old_launcher_dir": source, "import_ram": true, "ram_mb": 4096,
+        }))
+        .unwrap();
+        let result = apply_import_internal(&paths, &core, request).await.unwrap();
+        let cfg = wex_core::config::LauncherConfig::load_or_default(&paths.config_file);
+        assert_eq!(cfg.jvm_args, vec!["-XX:+UseG1GC"]);
+        assert!(result.errors.iter().any(|e| e.contains("-javaagent")));
+        assert!(!result.errors.iter().any(|e| e.contains("-Xmx")));
+    }
+
+    fn skin_png(color: u8) -> Vec<u8> {
+        let img = wex_extras::image::RgbaImage::from_pixel(
+            64,
+            64,
+            wex_extras::image::Rgba([color, 20, 30, 255]),
+        );
+        wex_extras::skins::encode_png_bytes(&img).unwrap()
+    }
+
+    #[tokio::test]
+    async fn active_skin_is_matched_by_content_not_file_name() {
+        let tmp = tempdir().unwrap();
+        let source = tmp.path().join("old");
+        fs::create_dir_all(source.join("skins")).unwrap();
+        fs::create_dir_all(source.join("decoy")).unwrap();
+        let real = skin_png(10);
+        let decoy = skin_png(99);
+        fs::write(source.join("skins/hero.png"), &real).unwrap();
+        fs::write(source.join("decoy/hero.png"), &decoy).unwrap();
+        fs::write(
+            source.join("config.json"),
+            serde_json::json!({"Nickname": "Hero", "SkinPath": "skins/hero.png"}).to_string(),
+        )
+        .unwrap();
+        let mut skins = vec![wex_ipc::models::ImportedSkinDto {
+            file_name: "hero.png".into(),
+            path: source.join("decoy/hero.png").to_string_lossy().into_owned(),
+            hash: wex_extras::import::sha256_hex(&decoy),
+            is_slim: false,
+        }];
+        skins.extend(
+            import_old_launcher_internal(source.to_str().unwrap())
+                .unwrap()
+                .skins,
+        );
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let core = wex_core::ipc_adapter::WexLauncherCore::new(paths.clone());
+        let request: ApplyImportRequest = serde_json::from_value(serde_json::json!({
+            "old_launcher_dir": source, "import_nickname": true, "nickname": "Hero",
+            "import_skins": true, "skins": skins,
+        }))
+        .unwrap();
+        let result = apply_import_internal(&paths, &core, request).await.unwrap();
+        assert!(result.success, "{:?}", result.errors);
+        let csl = paths
+            .instance_dir("1.21.1")
+            .join("CustomSkinLoader/LocalSkin/skins/Hero.png");
+        assert_eq!(fs::read(csl).unwrap(), real);
+    }
+
+    #[tokio::test]
+    async fn existing_custom_skin_loader_files_are_not_overwritten() {
+        let tmp = tempdir().unwrap();
+        let source = tmp.path().join("old");
+        fs::create_dir_all(source.join("skins")).unwrap();
+        fs::write(source.join("skins/hero.png"), skin_png(10)).unwrap();
+        fs::write(
+            source.join("config.json"),
+            serde_json::json!({"Nickname": "Hero", "SkinPath": "skins/hero.png"}).to_string(),
+        )
+        .unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let existing = paths
+            .instance_dir("1.21.1")
+            .join("CustomSkinLoader/LocalSkin/skins/Hero.png");
+        fs::create_dir_all(existing.parent().unwrap()).unwrap();
+        fs::write(&existing, b"users own skin").unwrap();
+        let scan = import_old_launcher_internal(source.to_str().unwrap()).unwrap();
+        let core = wex_core::ipc_adapter::WexLauncherCore::new(paths.clone());
+        let request: ApplyImportRequest = serde_json::from_value(serde_json::json!({
+            "old_launcher_dir": source, "import_nickname": true, "nickname": "Hero",
+            "import_skins": true, "skins": scan.skins,
+        }))
+        .unwrap();
+        let result = apply_import_internal(&paths, &core, request).await.unwrap();
+        assert!(result.success, "{:?}", result.errors);
+        assert_eq!(fs::read(&existing).unwrap(), b"users own skin");
+        assert!(!paths.root.join("wardrobe.json").exists());
+        assert!(!paths
+            .instance_dir("1.20.1")
+            .join("CustomSkinLoader/LocalSkin/skins/Hero.png")
+            .exists());
     }
 
     #[tokio::test]
