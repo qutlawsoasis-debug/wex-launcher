@@ -331,7 +331,7 @@ pub fn restore_world_backup(
 
         let outpath = target_world_folder.join(enclosed_name);
 
-        if file.name().ends_with('/') {
+        if file.name()?.ends_with('/') {
             fs::create_dir_all(&outpath)?;
         } else {
             if let Some(p) = outpath.parent() {

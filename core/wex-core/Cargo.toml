@@ -22,7 +22,7 @@ hex = "0.4"
 uuid = { version = "1", features = ["v3", "v4", "serde"] }
 futures-util = "0.3"
 directories = "5"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 thiserror = "2"
 tracing = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
