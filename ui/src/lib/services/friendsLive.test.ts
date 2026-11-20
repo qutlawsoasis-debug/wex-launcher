@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { i18n } from '../i18n';
 import {
   calculatePollingInterval,
   shouldSendWindowsNotification,
@@ -798,5 +799,88 @@ describe('friendsLive: Notification Action & Windows Notification Click Handling
     expect(mockJoin).toHaveBeenCalledWith('ROOM_CLI');
     expect(joinedCodes).toEqual(['ROOM_CLI']);
     expect(listenerReceived).toBe('ROOM_CLI');
+  });
+});
+
+describe('friendsLive: invites list (never hidden by baseline or cooldown)', () => {
+  const invite = (id: string, from_id: string, from_nick: string, lobby_code = 'ROOM1'): LobbyInviteItem => ({ id, lobby_code, from_id, from_nick });
+
+  beforeEach(() => {
+    i18n.setLocale('ru');
+    localStorage.removeItem('wex_friend_notifications');
+  });
+
+  it('invites already waiting at the first sync are listed, without a notification', async () => {
+    const service = new FriendsLiveService({
+      syncFn: async () => ({ friends: [], incoming_requests: [], incoming_invites: [invite('inv1', 'u2', 'Snow')] }),
+    });
+    const notes: FriendsLiveNotification[] = [];
+    const data: SyncResponse[] = [];
+    service.onNotification((n) => notes.push(n));
+    service.onData((d) => data.push(d));
+    await service.pollNow();
+    expect(notes).toHaveLength(0);
+    expect(service.invites.map((i) => i.id)).toEqual(['inv1']);
+    expect(data[0].incoming_invites.map((i) => i.id)).toEqual(['inv1']);
+  });
+
+  it('a second invite from a sender in cooldown skips the notification but stays in the list', async () => {
+    let invites: LobbyInviteItem[] = [];
+    const service = new FriendsLiveService({ syncFn: async () => ({ friends: [], incoming_requests: [], incoming_invites: invites }) });
+    const notes: FriendsLiveNotification[] = [];
+    service.onNotification((n) => notes.push(n));
+    await service.pollNow();
+    invites = [invite('inv1', 'u2', 'Snow')];
+    await service.pollNow();
+    invites = [invite('inv1', 'u2', 'Snow'), invite('inv2', 'u2', 'Snow', 'ROOM2')];
+    await service.pollNow();
+    expect(notes.map((n) => n.id)).toEqual(['notif-invite-inv1']);
+    expect(service.invites.map((i) => i.id)).toEqual(['inv1', 'inv2']);
+  });
+
+  it('notification texts come from i18n (ru and en)', async () => {
+    let invites: LobbyInviteItem[] = [];
+    let friends: FriendItem[] = [{ id: 'u1', nick: 'Alice', status: 'online' }];
+    const service = new FriendsLiveService({ syncFn: async () => ({ friends, incoming_requests: [], incoming_invites: invites }) });
+    const notes: FriendsLiveNotification[] = [];
+    service.onNotification((n) => notes.push(n));
+    await service.pollNow();
+    i18n.setLocale('en');
+    invites = [invite('inv1', 'u2', 'Bob', 'ROOM9')];
+    friends = [{ id: 'u1', nick: 'Alice', status: 'playing', game_version: '1.21.1' }];
+    await service.pollNow();
+    const playing = notes.find((n) => n.type === 'friend_playing')!;
+    const inv = notes.find((n) => n.type === 'invite')!;
+    expect(playing.title).toBe('Alice started playing');
+    expect(playing.description).toBe('Alice is playing (1.21.1)');
+    expect(inv.title).toBe('Bob invited you to a lobby');
+    expect(inv.description).toBe('Bob is inviting you to play in lobby ROOM9');
+    expect(inv.action?.label).toBe('Join');
+    for (const n of notes) expect(`${n.title} ${n.description} ${n.action?.label ?? ''}`).not.toMatch(/[А-яЁё]|friends\./);
+    i18n.setLocale('ru');
+  });
+
+  it('joining from the notification removes the invite from the list', async () => {
+    let invites: LobbyInviteItem[] = [];
+    const join = vi.fn(async () => {});
+    const service = new FriendsLiveService({ joinFn: join, syncFn: async () => ({ friends: [], incoming_requests: [], incoming_invites: invites }) });
+    const notes: FriendsLiveNotification[] = [];
+    const data: SyncResponse[] = [];
+    service.onNotification((n) => notes.push(n));
+    service.onData((d) => data.push(d));
+    await service.pollNow();
+    invites = [invite('inv1', 'u2', 'Snow', 'ROOM5')];
+    await service.pollNow();
+    notes[0].action!.onClick();
+    await vi.waitFor(() => expect(join).toHaveBeenCalledWith('ROOM5'));
+    expect(service.invites).toEqual([]);
+    expect(data.at(-1)!.incoming_invites).toEqual([]);
+  });
+
+  it('an invite without a code and no backend cannot be joined and stays listed', async () => {
+    const service = new FriendsLiveService({ syncFn: async () => ({ friends: [], incoming_requests: [], incoming_invites: [invite('inv1', 'u2', 'Snow', '')] }) });
+    await service.pollNow();
+    await expect(service.joinInvite(service.invites[0])).rejects.toThrow('Сервер друзей не прислал код комнаты');
+    expect(service.invites.map((i) => i.id)).toEqual(['inv1']);
   });
 });

@@ -8,6 +8,9 @@
   usable, and why). Own code and «Добавить друга» appear only when signed in.
   HIG › Lists and tables; Segmented controls (All / In game / Online);
   Text fields (hint plus a separate label); Buttons (one blue primary per area).
+  Lobby invites («Приглашения») are a list above friend requests, every invite
+  friendsLive holds (also the ones whose notification was skipped): Join is
+  the primary (accent) button, Decline the neutral one, as in requests.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -15,7 +18,7 @@
   import { toasts } from '../../shell/toast.svelte';
   import { call } from '../../shell/ipc';
   import { formatError } from '../../design/errors';
-  import { friendsLive, type FriendItem, type FriendRequestItem, type FriendsConnection } from '../../services/friendsLive';
+  import { friendsLive, type FriendItem, type FriendRequestItem, type FriendsConnection, type LobbyInviteItem } from '../../services/friendsLive';
   import { describeConnection } from './friendsState';
   import { t } from '../../i18n';
   import Monogram from '../../shell/Monogram.svelte';
@@ -29,6 +32,8 @@
   let filter = $state<'all' | 'game' | 'online'>('all');
   let friends = $state<FriendItem[]>([...friendsLive.friends]);
   let requests = $state<FriendRequestItem[]>([...friendsLive.requests]);
+  let invites = $state<LobbyInviteItem[]>([...friendsLive.invites]);
+  let answering = $state<string | null>(null);
   let conn = $state<FriendsConnection>({ ...friendsLive.connection });
   let addCode = $state('');
   let adding = $state(false);
@@ -38,6 +43,7 @@
     const stopData = friendsLive.onData((d) => {
       friends = [...(d.friends ?? [])];
       requests = [...(d.incoming_requests ?? [])];
+      invites = [...(d.incoming_invites ?? [])];
     });
     const stopConn = friendsLive.onConnection((c) => (conn = { ...c }));
     conn = { ...friendsLive.connection };
@@ -109,6 +115,21 @@
     }
   }
 
+  async function answerInvite(inv: LobbyInviteItem, accept: boolean) {
+    if (answering) return;
+    answering = inv.id;
+    try {
+      if (accept) await friendsLive.joinInvite(inv);
+      else await friendsLive.declineInvite(inv.id);
+      invites = invites.filter((x) => x.id !== inv.id);
+    } catch (e) {
+      const f = formatError(e, 'lobby');
+      toasts.show(f.title, f.description);
+    } finally {
+      answering = null;
+    }
+  }
+
   async function join(f: FriendItem) {
     if (!f.lobby_code) return;
     try {
@@ -145,7 +166,7 @@
           <button type="button" class="mini" disabled={retrying} onclick={retry}>{retrying ? t('friends2.retrying') : t('friends2.retry')}</button>
         {/if}
       {/snippet}
-      {#if notice && (friends.length || requests.length)}
+      {#if notice && (friends.length || requests.length || invites.length)}
         <div class="state-line" role="status" aria-busy={notice.busy}>
           <span><b>{notice.title}</b> {notice.text}</span>
           {@render retryButton()}
@@ -170,6 +191,23 @@
             </div>
           </form>
         </div>
+      {/if}
+      {#if invites.length}
+        <section class="requests invites">
+          <div class="h-row"><h2>{t('friends2.invites', { count: invites.length })}</h2></div>
+          <div class="panel">
+            {#each invites as inv (inv.id)}
+              <div class="prow" data-invite={inv.id}>
+                <Monogram name={inv.from_nick} />
+                <div><b>{inv.from_nick}</b><span>{inv.lobby_code ? t('friends2.invite_d', { code: inv.lobby_code }) : t('friends2.invite_d_nocode')}</span></div>
+                <div class="acts">
+                  <button type="button" class="mini blue" disabled={answering !== null} onclick={() => answerInvite(inv, true)}>{t('friends2.invite_join')}</button>
+                  <button type="button" class="mini" disabled={answering !== null} onclick={() => answerInvite(inv, false)}>{t('friends2.invite_decline')}</button>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </section>
       {/if}
       {#if requests.length}
         <section class="requests">
@@ -219,7 +257,7 @@
           <p class="empty"><b>{notice.title}</b> {notice.text} {t('friends2.rooms_hint')}</p>
           {#if notice.retry}<div class="panel-acts">{@render retryButton()}</div>{/if}
         </div>
-      {:else if !requests.length}
+      {:else if !requests.length && !invites.length}
         <div class="panel"><p class="empty"><b>{t('friends2.none_yet')}</b> {t('friends2.none_yet_d')}</p></div>
       {/if}
     {/if}

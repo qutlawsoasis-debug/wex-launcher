@@ -87,6 +87,7 @@ beforeEach(async () => {
   rooms.error = '';
   friendsLive.friends = [];
   friendsLive.requests = [];
+  friendsLive.invites = [];
   friendsLive.connection = { state: 'connecting' };
   await builds.load();
 });
@@ -243,6 +244,63 @@ describe('friends page', () => {
     expect([...target.querySelectorAll('.panel')[1].querySelectorAll('.prow b')].map((b) => b.textContent?.replace('1.20.1', ''))).toEqual(['kotya']);
     [...target.querySelectorAll<HTMLButtonElement>('.mini')].find((b) => b.textContent === 'Принять')!.click();
     await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('social_accept_friend_request', { requestId: 'r1' }));
+  });
+
+  it('lists lobby invites; Join accepts with core and joins the room, Decline answers no', async () => {
+    friendsLive.invites = [
+      { id: 'inv1', lobby_code: 'ROOM7', from_id: 'u2', from_nick: 'Snow' },
+      { id: 'inv2', lobby_code: '', from_id: 'u3', from_nick: 'Max' },
+    ];
+    mocks.invoke.mockImplementation(async (cmd: string, args?: Record<string, any>) => {
+      if (cmd === 'social_respond_lobby_invite') return args!.accept ? 'ROOM7' : null;
+      if (cmd === 'join_lobby_room') return { ...room, code: 'ROOM7', is_host: false };
+      return null;
+    });
+    comp = mount(FriendsPage, { target });
+    await tick();
+    const section = target.querySelector('.invites')!;
+    expect(section.querySelector('h2')?.textContent).toBe('Приглашения: 2');
+    expect(section.textContent).toContain('Snow');
+    expect(section.textContent).toContain('Зовёт в комнату ROOM7');
+    expect(section.textContent).toContain('Зовёт в свою комнату');
+    const row = (id: string) => target.querySelector<HTMLElement>(`[data-invite="${id}"]`);
+    const button = (id: string, text: string) => [...row(id)!.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === text)!;
+    // Join is the one accent (primary) button of the row; Decline is neutral.
+    expect(button('inv1', 'Зайти').classList.contains('blue')).toBe(true);
+    expect(button('inv1', 'Отклонить').classList.contains('blue')).toBe(false);
+
+    button('inv2', 'Отклонить').click();
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('social_respond_lobby_invite', { inviteId: 'inv2', accept: false }));
+    await vi.waitFor(() => expect(row('inv2')).toBeNull());
+    expect(mocks.invoke).not.toHaveBeenCalledWith('join_lobby_room', expect.anything());
+
+    button('inv1', 'Зайти').click();
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('social_respond_lobby_invite', { inviteId: 'inv1', accept: true }));
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('join_lobby_room', { code: 'ROOM7', playerName: expect.any(String) }));
+    await vi.waitFor(() => expect(target.querySelector('.invites')).toBeNull());
+    expect(friendsLive.invites).toEqual([]);
+  });
+
+  it('a failed decline keeps the invite and says why', async () => {
+    friendsLive.invites = [{ id: 'inv1', lobby_code: 'ROOM7', from_id: 'u2', from_nick: 'Snow' }];
+    mocks.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'social_respond_lobby_invite') throw new Error('offline');
+      return null;
+    });
+    comp = mount(FriendsPage, { target });
+    await tick();
+    [...target.querySelectorAll<HTMLButtonElement>('[data-invite="inv1"] button')].find((b) => b.textContent === 'Отклонить')!.click();
+    await vi.waitFor(() => expect(toasts.current).not.toBeNull());
+    expect(target.querySelector('[data-invite="inv1"]')).not.toBeNull();
+  });
+
+  it('invites alone (no friends, no requests) still show; the empty state does not', async () => {
+    friendsLive.connection = { state: 'signed_in', nick: 'Player', friend_code: 'K7Q2' };
+    friendsLive.invites = [{ id: 'inv1', lobby_code: 'ROOM7', from_id: 'u2', from_nick: 'Snow' }];
+    comp = mount(FriendsPage, { target });
+    await tick();
+    expect(target.querySelector('[data-invite="inv1"]')).not.toBeNull();
+    expect(target.textContent).not.toContain('Друзей пока нет.');
   });
 
   it('opens on the Rooms tab when asked (invites and join links)', async () => {
