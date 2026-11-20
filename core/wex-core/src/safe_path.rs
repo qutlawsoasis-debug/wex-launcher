@@ -42,6 +42,12 @@ pub fn safe_join(base: &Path, rel: &str) -> Result<PathBuf> {
 /// trigger an outbound SMB/NTLM authentication when opened.
 pub fn is_unc_path(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('/', "\\");
+    if let Some(rest) = s.strip_prefix("\\\\?\\") {
+        // `\\?\C:\dir` is a local verbatim path; `\\?\UNC\server\share` is remote.
+        let b = rest.as_bytes();
+        let local = b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':';
+        return !local;
+    }
     s.starts_with("\\\\")
 }
 
@@ -90,6 +96,8 @@ mod tests {
         assert!(is_unc_path(Path::new("\\\\server\\share\\a.png")));
         assert!(is_unc_path(Path::new("//server/share/a.png")));
         assert!(is_unc_path(Path::new("\\\\?\\UNC\\server\\share")));
+        assert!(is_unc_path(Path::new("\\\\.\\pipe\\x")));
         assert!(!is_unc_path(Path::new("C:\\a\\b.png")));
+        assert!(!is_unc_path(Path::new("\\\\?\\C:\\a\\b.png")));
     }
 }

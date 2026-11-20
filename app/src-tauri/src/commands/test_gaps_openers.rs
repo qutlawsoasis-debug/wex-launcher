@@ -117,7 +117,7 @@ async fn folder_and_log_commands_success_invoke_only_process_double() {
         assert_eq!(std::path::Path::new(&opened), log);
         assert_opened(&log).await;
     }
-    workshop::workshop_open_path(f.paths.root.to_string_lossy().into())
+    workshop::workshop_open_path(f.paths.root.to_string_lossy().into(), f.play())
         .await
         .unwrap();
     assert_opened(&f.paths.root).await;
@@ -145,7 +145,7 @@ async fn folder_and_log_commands_error_propagate_process_spawn_failure() {
     .await
     .is_err());
     assert!(
-        workshop::workshop_open_path(f.paths.root.to_string_lossy().into())
+        workshop::workshop_open_path(f.paths.root.to_string_lossy().into(), f.play())
             .await
             .is_err()
     );

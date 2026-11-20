@@ -593,6 +593,9 @@ pub fn add_pack_file_impl(
     version: Option<&str>,
 ) -> Result<String, String> {
     let src = PathBuf::from(source_path);
+    if wex_core::safe_path::is_unc_path(&src) {
+        return Err("Сетевые (UNC) пути не поддерживаются.".to_string());
+    }
     if !src.is_file() {
         return Err("Выбранный файл не найден на диске. Выберите файл заново.".to_string());
     }
@@ -728,7 +731,7 @@ pub async fn workshop_open_packs_folder(
         let _ = fs::create_dir_all(&folder);
     }
 
-    super::workshop::workshop_open_path(folder.to_string_lossy().to_string()).await
+    super::workshop::open_path_impl(&state.paths, &folder.to_string_lossy())
 }
 
 // ============================================================================
