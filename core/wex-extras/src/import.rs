@@ -195,6 +195,13 @@ pub fn import_from_dir(aura_dir: &Path) -> Result<OldLauncherData, ImportError> 
 
     for s_path in &server_dat_candidates {
         if s_path.is_file() {
+            let too_big = s_path
+                .metadata()
+                .map(|m| m.len() > MAX_SERVERS_DAT_BYTES)
+                .unwrap_or(true);
+            if too_big {
+                continue;
+            }
             if let Ok(bytes) = fs::read(s_path) {
                 let parsed = parse_servers_dat_bytes(&bytes);
                 for s in parsed {
@@ -426,6 +433,9 @@ fn dir_size_recursive(path: &Path) -> u64 {
     total
 }
 
+/// Real servers.dat files are a few KB; refuse anything absurdly large.
+const MAX_SERVERS_DAT_BYTES: u64 = 4 * 1024 * 1024;
+
 fn parse_servers_dat_bytes(bytes: &[u8]) -> Vec<ImportedServer> {
     use wex_net::servers::NbtReader;
     use wex_net::NbtTag;
@@ -472,6 +482,22 @@ mod tests {
         let data = import_from_dir(dir.path()).unwrap();
         assert_eq!(data.worlds.len(), 2);
         assert_ne!(data.worlds[0].version, data.worlds[1].version);
+    }
+
+    #[test]
+    fn oversized_or_malformed_servers_dat_is_ignored() {
+        let dir = tempdir().unwrap();
+        // valid header followed by padding beyond the 4 MB limit
+        let mut big = vec![0x0A, 0x00, 0x00];
+        big.resize(5 * 1024 * 1024, 0x01);
+        fs::write(dir.path().join("servers.dat"), &big).unwrap();
+        let data = import_from_dir(dir.path()).unwrap();
+        assert!(data.servers.is_empty());
+        // huge-length header must not abort the process
+        let evil = [
+            0x0A, 0x00, 0x00, 0x09, 0x00, 0x00, 0x0A, 0x7F, 0xFF, 0xFF, 0xFF,
+        ];
+        assert!(parse_servers_dat_bytes(&evil).is_empty());
     }
 
     #[test]

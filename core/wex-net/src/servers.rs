@@ -104,13 +104,19 @@ impl NbtTag {
     }
 }
 
+/// Maximum nesting of lists/compounds accepted while reading (Minecraft itself allows 512).
+const MAX_NBT_DEPTH: usize = 512;
+/// Upper bound for up-front allocation; real data grows the vector as it is read.
+const MAX_PREALLOC: usize = 4096;
+
 pub struct NbtReader<R> {
     reader: R,
+    depth: usize,
 }
 
 impl<R: Read> NbtReader<R> {
     pub fn new(reader: R) -> Self {
-        Self { reader }
+        Self { reader, depth: 0 }
     }
 
     pub fn read_root(&mut self) -> Result<(String, NbtTag), ServerListError> {
@@ -173,8 +179,14 @@ impl<R: Read> NbtReader<R> {
                         "Negative ByteArray len: {len}"
                     )));
                 }
-                let mut bytes = vec![0u8; len as usize];
-                self.reader.read_exact(&mut bytes)?;
+                // Do not trust the header: read at most `len` bytes and verify they exist.
+                let mut bytes = Vec::new();
+                (&mut self.reader)
+                    .take(len as u64)
+                    .read_to_end(&mut bytes)?;
+                if bytes.len() != len as usize {
+                    return Err(ServerListError::Nbt("Truncated ByteArray".to_string()));
+                }
                 Ok(NbtTag::ByteArray(bytes))
             }
             8 => Ok(NbtTag::String(self.read_string()?)),
@@ -194,10 +206,21 @@ impl<R: Read> NbtReader<R> {
                     });
                 }
 
-                let mut elements = Vec::with_capacity(len as usize);
-                for _ in 0..len {
-                    elements.push(self.read_tag_payload(item_type)?);
+                if self.depth >= MAX_NBT_DEPTH {
+                    return Err(ServerListError::Nbt("NBT nesting too deep".to_string()));
                 }
+                self.depth += 1;
+                let mut elements = Vec::with_capacity((len as usize).min(MAX_PREALLOC));
+                for _ in 0..len {
+                    match self.read_tag_payload(item_type) {
+                        Ok(tag) => elements.push(tag),
+                        Err(err) => {
+                            self.depth -= 1;
+                            return Err(err);
+                        }
+                    }
+                }
+                self.depth -= 1;
                 Ok(NbtTag::List {
                     tag_id: item_type,
                     elements,
@@ -213,7 +236,7 @@ impl<R: Read> NbtReader<R> {
                         "Negative IntArray len: {len}"
                     )));
                 }
-                let mut elements = Vec::with_capacity(len as usize);
+                let mut elements = Vec::with_capacity((len as usize).min(MAX_PREALLOC));
                 for _ in 0..len {
                     let mut b = [0u8; 4];
                     self.reader.read_exact(&mut b)?;
@@ -230,7 +253,7 @@ impl<R: Read> NbtReader<R> {
                         "Negative LongArray len: {len}"
                     )));
                 }
-                let mut elements = Vec::with_capacity(len as usize);
+                let mut elements = Vec::with_capacity((len as usize).min(MAX_PREALLOC));
                 for _ in 0..len {
                     let mut b = [0u8; 8];
                     self.reader.read_exact(&mut b)?;
@@ -245,6 +268,16 @@ impl<R: Read> NbtReader<R> {
     }
 
     fn read_compound_payload(&mut self) -> Result<NbtTag, ServerListError> {
+        if self.depth >= MAX_NBT_DEPTH {
+            return Err(ServerListError::Nbt("NBT nesting too deep".to_string()));
+        }
+        self.depth += 1;
+        let result = self.read_compound_entries();
+        self.depth -= 1;
+        result
+    }
+
+    fn read_compound_entries(&mut self) -> Result<NbtTag, ServerListError> {
         let mut entries = Vec::new();
         loop {
             let mut tag_byte = [0u8; 1];
@@ -266,8 +299,71 @@ impl<R: Read> NbtReader<R> {
         let len = u16::from_be_bytes(len_b) as usize;
         let mut bytes = vec![0u8; len];
         self.reader.read_exact(&mut bytes)?;
-        String::from_utf8(bytes).map_err(|e| ServerListError::Nbt(format!("Invalid UTF-8: {e}")))
+        Ok(decode_modified_utf8(&bytes))
     }
+}
+
+/// Decodes Java "modified UTF-8" (NUL as C0 80, supplementary characters as
+/// surrogate pairs of two 3-byte sequences). Falls back to lossy standard UTF-8.
+fn decode_modified_utf8(bytes: &[u8]) -> String {
+    fn decode(bytes: &[u8]) -> Option<String> {
+        let mut units: Vec<u16> = Vec::with_capacity(bytes.len());
+        let mut i = 0;
+        while i < bytes.len() {
+            let b = bytes[i];
+            if b < 0x80 {
+                units.push(b as u16);
+                i += 1;
+            } else if b & 0xE0 == 0xC0 {
+                let c = *bytes.get(i + 1)?;
+                if c & 0xC0 != 0x80 {
+                    return None;
+                }
+                units.push((((b & 0x1F) as u16) << 6) | (c & 0x3F) as u16);
+                i += 2;
+            } else if b & 0xF0 == 0xE0 {
+                let c = *bytes.get(i + 1)?;
+                let d = *bytes.get(i + 2)?;
+                if c & 0xC0 != 0x80 || d & 0xC0 != 0x80 {
+                    return None;
+                }
+                units.push(
+                    (((b & 0x0F) as u16) << 12) | (((c & 0x3F) as u16) << 6) | (d & 0x3F) as u16,
+                );
+                i += 3;
+            } else {
+                return None;
+            }
+        }
+        String::from_utf16(&units).ok()
+    }
+    decode(bytes).unwrap_or_else(|| String::from_utf8_lossy(bytes).into_owned())
+}
+
+/// Encodes a string as Java "modified UTF-8".
+fn encode_modified_utf8(s: &str) -> Vec<u8> {
+    let mut out = Vec::with_capacity(s.len());
+    let mut buf = [0u16; 2];
+    for ch in s.chars() {
+        if ch == '\0' {
+            out.extend_from_slice(&[0xC0, 0x80]);
+            continue;
+        }
+        for unit in ch.encode_utf16(&mut buf) {
+            let u = *unit;
+            if u < 0x80 {
+                out.push(u as u8);
+            } else if u < 0x800 {
+                out.push(0xC0 | (u >> 6) as u8);
+                out.push(0x80 | (u & 0x3F) as u8);
+            } else {
+                out.push(0xE0 | (u >> 12) as u8);
+                out.push(0x80 | ((u >> 6) & 0x3F) as u8);
+                out.push(0x80 | (u & 0x3F) as u8);
+            }
+        }
+    }
+    out
 }
 
 pub struct NbtWriter<W> {
@@ -346,9 +442,11 @@ impl<W: Write> NbtWriter<W> {
     }
 
     fn write_string(&mut self, s: &str) -> Result<(), ServerListError> {
-        let bytes = s.as_bytes();
-        self.writer.write_all(&(bytes.len() as u16).to_be_bytes())?;
-        self.writer.write_all(bytes)?;
+        let bytes = encode_modified_utf8(s);
+        let len = u16::try_from(bytes.len())
+            .map_err(|_| ServerListError::Nbt("String too long for NBT".to_string()))?;
+        self.writer.write_all(&len.to_be_bytes())?;
+        self.writer.write_all(&bytes)?;
         Ok(())
     }
 }
@@ -615,5 +713,83 @@ mod tests {
 
         let loaded = load_servers_dat(&file_path).unwrap();
         assert_eq!(root, loaded);
+    }
+}
+
+#[cfg(test)]
+mod robustness_tests {
+    use super::*;
+
+    fn read(bytes: &[u8]) -> Result<(String, NbtTag), ServerListError> {
+        NbtReader::new(Cursor::new(bytes.to_vec())).read_root()
+    }
+
+    #[test]
+    fn truncated_file_is_an_error() {
+        let root = NbtTag::Compound(vec![(
+            "servers".into(),
+            NbtTag::List {
+                tag_id: 10,
+                elements: vec![NbtTag::Compound(vec![(
+                    "ip".into(),
+                    NbtTag::String("example.org".into()),
+                )])],
+            },
+        )]);
+        let mut buf = Vec::new();
+        NbtWriter::new(&mut buf).write_root("", &root).unwrap();
+        for cut in [1, 5, buf.len() / 2, buf.len() - 1] {
+            assert!(read(&buf[..cut]).is_err(), "cut at {cut}");
+        }
+    }
+
+    #[test]
+    fn huge_length_headers_do_not_allocate_or_panic() {
+        // compound root, list "" of compound with i32::MAX elements, then EOF
+        let list = [
+            0x0A, 0x00, 0x00, 0x09, 0x00, 0x00, 0x0A, 0x7F, 0xFF, 0xFF, 0xFF,
+        ];
+        assert!(read(&list).is_err());
+        // byte array / int array / long array with i32::MAX length
+        for tag in [7u8, 11, 12] {
+            let bytes = [
+                0x0A, 0x00, 0x00, tag, 0x00, 0x01, b'a', 0x7F, 0xFF, 0xFF, 0xFF,
+            ];
+            assert!(read(&bytes).is_err(), "tag {tag}");
+        }
+    }
+
+    #[test]
+    fn deep_nesting_is_rejected_without_stack_overflow() {
+        let mut bytes = vec![0x0A, 0x00, 0x00];
+        for _ in 0..100_000 {
+            bytes.extend_from_slice(&[0x09, 0x00, 0x01, b'a', 0x09, 0x00, 0x00, 0x00, 0x01]);
+        }
+        let handle = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(move || read(&bytes).is_err())
+            .unwrap();
+        assert!(handle.join().unwrap());
+    }
+
+    #[test]
+    fn modified_utf8_emoji_names_are_decoded() {
+        // U+1F600 as a CESU-8 surrogate pair plus an encoded NUL (C0 80)
+        let mut bytes = vec![0x0A, 0x00, 0x00, 0x08, 0x00, 0x04, b'n', b'a', b'm', b'e'];
+        let s: &[u8] = &[b'A', 0xED, 0xA0, 0xBD, 0xED, 0xB8, 0x80, 0xC0, 0x80, b'z'];
+        bytes.extend_from_slice(&(s.len() as u16).to_be_bytes());
+        bytes.extend_from_slice(s);
+        bytes.push(0);
+        let (_, root) = read(&bytes).unwrap();
+        assert_eq!(root.get_string("name"), Some("A\u{1F600}\0z"));
+    }
+
+    #[test]
+    fn emoji_roundtrips_through_writer_as_modified_utf8() {
+        let root = NbtTag::Compound(vec![("n".into(), NbtTag::String("hi \u{1F600}".into()))]);
+        let mut buf = Vec::new();
+        NbtWriter::new(&mut buf).write_root("", &root).unwrap();
+        assert!(!buf.iter().any(|b| *b >= 0xF0));
+        assert_eq!(read(&buf).unwrap().1, root);
     }
 }
