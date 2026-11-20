@@ -332,7 +332,6 @@ pub fn scan_installed_mods(inst_dir: &Path) -> Vec<ReportModDto> {
     mods
 }
 
-/// Reads the last N lines from a log file.
 /// Archive entry for the game log: only the two known names, never a path.
 fn report_log_entry_name(name: Option<&str>) -> &'static str {
     match name {
@@ -341,26 +340,39 @@ fn report_log_entry_name(name: Option<&str>) -> &'static str {
     }
 }
 
+/// Reads the last N lines from a log file. Lines that are not UTF-8 (JVM
+/// stderr in cp1251/cp866) are kept with U+FFFD instead of ending the read.
+/// None for a missing file or one with only whitespace.
 pub fn read_log_tail(file_path: &Path, max_lines: usize) -> Option<String> {
-    if !file_path.is_file() {
+    if !file_path.is_file() || max_lines == 0 {
         return None;
     }
 
     let file = File::open(file_path).ok()?;
-    let reader = BufReader::new(file);
+    let mut reader = BufReader::new(file);
 
-    let mut ring: Vec<String> = Vec::with_capacity(max_lines);
-    for line in reader.lines().map_while(Result::ok) {
-        if ring.len() == max_lines {
-            ring.remove(0);
+    let mut ring: std::collections::VecDeque<String> =
+        std::collections::VecDeque::with_capacity(max_lines);
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
         }
-        ring.push(line);
+        let line = String::from_utf8_lossy(&buf);
+        let line = line.trim_end_matches(['\n', '\r']).to_string();
+        if ring.len() == max_lines {
+            ring.pop_front();
+        }
+        ring.push_back(line);
     }
 
-    if ring.is_empty() {
+    let text = Vec::from(ring).join("\n");
+    if text.trim().is_empty() {
         None
     } else {
-        Some(ring.join("\n"))
+        Some(text)
     }
 }
 
@@ -1037,6 +1049,32 @@ mod tests {
             assert!(archive.by_name("wex-game-output.log").is_ok());
             assert!(archive.by_name("latest.log").is_err());
         }
+    }
+
+    #[test]
+    fn report_skips_a_blank_capture_and_reads_non_utf8_lines() {
+        let temp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(temp.path().to_path_buf()));
+        let logs = paths.instance_dir("1.20.1").join("logs");
+        fs::create_dir_all(&logs).unwrap();
+        fs::write(logs.join(wex_core::GAME_OUTPUT_LOG), b" \r\n\n").unwrap();
+        fs::write(logs.join("latest.log"), b"[main/INFO]: log4j\n").unwrap();
+        let preview = prepare_report_preview_impl(&paths, Some("1.20.1"), None, None, None);
+        assert_eq!(preview.latest_log_name.as_deref(), Some("latest.log"));
+
+        // cp866/cp1251 bytes in the middle must not cut the tail short.
+        let mut bytes = b"first\r\n".to_vec();
+        bytes.extend_from_slice(&[0x8E, 0xE8, 0xA8, 0xA1, b'\n']);
+        bytes.extend_from_slice(b"Error: Could not create the Java Virtual Machine.\n");
+        fs::write(logs.join(wex_core::GAME_OUTPUT_LOG), &bytes).unwrap();
+        let tail = read_log_tail(&logs.join(wex_core::GAME_OUTPUT_LOG), 10).unwrap();
+        assert!(tail.starts_with("first\n"));
+        assert!(tail.contains('\u{FFFD}'));
+        assert!(tail.ends_with("Could not create the Java Virtual Machine."));
+        assert_eq!(
+            read_log_tail(&logs.join(wex_core::GAME_OUTPUT_LOG), 1).as_deref(),
+            Some("Error: Could not create the Java Virtual Machine.")
+        );
     }
 
     #[test]
