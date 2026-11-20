@@ -328,8 +328,7 @@ impl PlayState {
             }
             let version = cfg.selected_version.clone();
             let paths_clone = state_clone.paths.clone();
-            let client = reqwest::Client::builder()
-                .user_agent("WexLauncher/0.1.0")
+            let client = wex_core::download::http_client_builder()
                 .build()
                 .unwrap_or_default();
             let events = Arc::new(wex_core::NoopEventHandler);
@@ -579,8 +578,7 @@ impl PlayState {
             let _ = std::fs::remove_file(&signal_file);
             let parent_pid = std::process::id();
 
-            let client = reqwest::Client::builder()
-                .user_agent("WexLauncher/0.1.0")
+            let client = wex_core::download::http_client_builder()
                 .build()
                 .unwrap_or_default();
             let events = Arc::new(wex_core::NoopEventHandler);

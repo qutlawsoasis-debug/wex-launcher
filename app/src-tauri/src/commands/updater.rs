@@ -659,8 +659,10 @@ pub async fn updater_install(
     let _operation = UpdateOperation::begin()?;
     clear_staged_update();
     let is_running = state.is_running.load(Ordering::SeqCst);
+    // No total timeout: installers are large. Fail only on connect/idle stalls.
     let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .read_timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| e.to_string())?;
 

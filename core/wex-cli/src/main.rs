@@ -71,9 +71,7 @@ async fn main() -> Result<()> {
     let config_path = paths.config_file.clone();
     let mut config = LauncherConfig::load_or_default(&config_path);
 
-    let client = reqwest::Client::builder()
-        .user_agent("WexLauncher/0.1.0")
-        .build()?;
+    let client = wex_core::download::http_client_builder().build()?;
     let events = Arc::new(ConsoleEventHandler);
 
     match cli.command {
