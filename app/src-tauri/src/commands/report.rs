@@ -1144,32 +1144,32 @@ mod tests {
             assert!(
                 !content.contains("aq08"),
                 "Leaked Windows username in {}",
-                file.name()
+                file.name().unwrap()
             );
             assert!(
                 !content.contains("192.168.1.100"),
                 "Leaked friend IP in {}",
-                file.name()
+                file.name().unwrap()
             );
             assert!(
                 !content.contains("147.185.221.16"),
                 "Leaked external IP in {}",
-                file.name()
+                file.name().unwrap()
             );
             assert!(
                 !content.contains("SuperSecretUserToken"),
                 "Leaked user token in {}",
-                file.name()
+                file.name().unwrap()
             );
             assert!(
                 !content.contains("secret_api_key_42"),
                 "Leaked secret key in {}",
-                file.name()
+                file.name().unwrap()
             );
             assert!(
                 !content.contains("SecretGamerNick"),
                 "Leaked player nickname in {}",
-                file.name()
+                file.name().unwrap()
             );
         }
     }
