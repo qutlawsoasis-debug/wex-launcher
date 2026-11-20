@@ -206,6 +206,12 @@ export class FriendsLiveService {
   private timer: any = null;
   private previousFriendsMap: Map<string, FriendItem> = new Map();
   private seenInviteIds: Set<string> = new Set();
+  /** Invites this player already answered (joined or declined): later syncs drop them. */
+  private answeredInviteIds: Set<string> = new Set();
+  /** One respond + join per invite, whoever asks (page, toast, OS notification). */
+  private inviteJoins = new Map<string, Promise<void>>();
+  /** Bumped on account change: a poll that started before it is dropped. */
+  private generation = 0;
   private friendCooldowns: Map<string, number> = new Map();
   private initialSyncDone: boolean = false;
 
@@ -425,6 +431,7 @@ export class FriendsLiveService {
    */
   public async pollNow(): Promise<SyncResponse | null> {
     if (this.isPaused && this.isStarted) return null;
+    const generation = this.generation;
 
     try {
       if (this.managed && this.connection.state !== 'signed_in') {
@@ -435,6 +442,8 @@ export class FriendsLiveService {
       }
       if (this.isStarted) void this.publishPresence();
       const data = await this.executeSync();
+      // The account changed while this poll ran: its lists belong to the old player.
+      if (generation !== this.generation) return null;
       this.processSyncResult(data);
       if (this.managed) await this.refreshConnection();
       return data;
@@ -538,6 +547,9 @@ export class FriendsLiveService {
     this.invites = [];
     this.previousFriendsMap.clear();
     this.seenInviteIds.clear();
+    this.answeredInviteIds.clear();
+    this.inviteJoins.clear();
+    this.generation++;
     this.initialSyncDone = false;
     for (const listener of this.dataListeners) listener({ friends: [], incoming_requests: [], incoming_invites: [] });
     if (this.managed) void this.retry();
@@ -554,17 +566,40 @@ export class FriendsLiveService {
    * the server forgets it, then join its room. When the server cannot be told
    * but the invite already carries a room code, the join still goes ahead.
    */
-  public async joinInvite(invite: LobbyInviteItem): Promise<void> {
+  public joinInvite(invite: LobbyInviteItem): Promise<void> {
+    const running = this.inviteJoins.get(invite.id);
+    if (running) return running;
+    const joins = this.inviteJoins;
+    const run = this.runJoinInvite(invite).finally(() => {
+      if (joins.get(invite.id) === run) joins.delete(invite.id);
+    });
+    joins.set(invite.id, run);
+    return run;
+  }
+
+  private async runJoinInvite(invite: LobbyInviteItem): Promise<void> {
     let code: string | null = invite.lobby_code || null;
+    // Answered from now on: a sync that lands meanwhile must not bring it back.
+    this.answeredInviteIds.add(invite.id);
     if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         code = (await invoke<string | null>('social_respond_lobby_invite', { inviteId: invite.id, accept: true })) || code;
       } catch (error) {
-        if (!code) throw error;
+        if (!code) {
+          this.answeredInviteIds.delete(invite.id);
+          throw error;
+        }
+        // The room code is known, so the join goes ahead; the server still
+        // holds the invite, which stays hidden here (answeredInviteIds).
+        console.warn('[friends] could not answer the invite on the server; joining by its code', error);
+        this.reportError(error, 'friends');
       }
     }
-    if (!code) throw new Error(t('friends2.invite_no_code'));
+    if (!code) {
+      this.answeredInviteIds.delete(invite.id);
+      throw new Error(t('friends2.invite_no_code'));
+    }
     this.dropInvite(invite.id);
     await this.handleJoin(code);
   }
@@ -575,6 +610,7 @@ export class FriendsLiveService {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('social_respond_lobby_invite', { inviteId, accept: false });
     }
+    this.answeredInviteIds.add(inviteId);
     this.dropInvite(inviteId);
   }
 
@@ -769,8 +805,10 @@ export class FriendsLiveService {
   private processSyncResult(answer: SyncResponse | null | undefined): void {
     const raw: SyncResponse = answer ?? { friends: [], incoming_requests: [], incoming_invites: [] };
     const newFriends = (raw.friends || []).map((f) => ({ ...f, status: normalizeStatus(f.status) }));
-    const data: SyncResponse = { ...raw, friends: newFriends };
-    const newInvites = data.incoming_invites || [];
+    // Invites already answered here stay out, even if the server (or a poll
+    // that started before the answer) still lists them.
+    const newInvites = (raw.incoming_invites || []).filter((i) => !this.answeredInviteIds.has(i.id));
+    const data: SyncResponse = { ...raw, friends: newFriends, incoming_invites: newInvites };
     const newRequests = data.incoming_requests || [];
 
     if (this.initialSyncDone && this.notificationsEnabled) {
