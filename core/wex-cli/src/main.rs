@@ -7,7 +7,6 @@ use wex_core::{
     event::ConsoleEventHandler,
     launcher::{install_full_environment, prepare_and_launch},
     pack::sync_aura_pack,
-    reqwest,
 };
 
 #[derive(Parser)]

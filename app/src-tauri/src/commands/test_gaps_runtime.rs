@@ -624,6 +624,30 @@ async fn start_game_error_duplicate_does_not_launch_core() {
     assert!(!f.play().is_running.load(Ordering::SeqCst));
 }
 #[tokio::test]
+async fn start_game_rejects_malicious_server_address_without_taking_launch_flag() {
+    let f = Fixture::new().await;
+    for bad in [
+        "evil\n--username\nadmin",
+        "a b",
+        "x;y",
+        "host:99999",
+        "a\r\nb",
+    ] {
+        let res = launch::start_game(
+            f.app.handle().clone(),
+            "1.21.1".into(),
+            "Fixture".into(),
+            None,
+            Some(bad.into()),
+            f.play(),
+        )
+        .await;
+        assert!(res.is_err(), "{bad:?} must be rejected");
+        assert!(!f.play().is_launching.load(Ordering::SeqCst));
+        assert!(!f.play().is_running.load(Ordering::SeqCst));
+    }
+}
+#[tokio::test]
 async fn start_game_error_core_failure_clears_launching_flag() {
     let core = Arc::new(MockLauncherCore::new());
     *core.fail_next_launch.lock().unwrap() = true;

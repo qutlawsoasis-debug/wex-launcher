@@ -721,6 +721,20 @@ pub async fn start_game<R: tauri::Runtime>(
     server: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<LaunchGameResponse, String> {
+    // 0. The server address ends up in the game's argument file: validate it first
+    // (before the launch flag is taken, so a rejected address leaks no state).
+    let server = match server {
+        Some(s) if s.trim().is_empty() => None,
+        Some(s) => {
+            let s = s.trim().to_string();
+            if !crate::commands::deeplink::validate_server_address(&s) {
+                return Err(format!("Недопустимый адрес сервера: '{}'", s));
+            }
+            Some(s)
+        }
+        None => None,
+    };
+
     // 1. Guard against duplicate starts
     if state.is_running.load(Ordering::SeqCst)
         || state
