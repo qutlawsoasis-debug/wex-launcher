@@ -50,7 +50,7 @@ jobs:
         with:
           workspaces: |
             . -> target
-            core -> core/target
+            core -> target
 
       - name: Check signing key configuration
         id: signing-check
