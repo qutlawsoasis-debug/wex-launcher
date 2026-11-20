@@ -90,9 +90,25 @@ pub fn get_bundled_release_notes() -> Vec<ReleaseNoteVersion> {
         ReleaseNoteVersion {
             version: format!("v{}", env!("CARGO_PKG_VERSION")),
             internal_version: env!("CARGO_PKG_VERSION").to_string(),
+            date_text: "21 ноября 2026".to_string(),
+            short_title: "Приглашения, импорт и защита".to_string(),
+            is_current: true,
+            items: vec![
+                ReleaseNoteItem::parse("[Новое] Входящие приглашения в комнату видны на странице друзей: принять или отклонить"),
+                ReleaseNoteItem::parse("[Новое] Кнопка «Присоединиться» в сообщении о приглашении"),
+                ReleaseNoteItem::parse("[Исправлено] Импорт из старого лаунчера не теряет одноимённые миры, названия и иконки серверов, переносит скин и плащ"),
+                ReleaseNoteItem::parse("[Исправлено] Вывод игры пишется в отдельный файл wex-game-output.log"),
+                ReleaseNoteItem::parse("[Исправлено] Повреждённая резервная копия больше не удаляет текущий мир"),
+                ReleaseNoteItem::parse("[Исправлено] Зависшая загрузка больше не останавливает установку"),
+                ReleaseNoteItem::parse("[Улучшено] Защита путей, загрузок и обновлённые библиотеки"),
+            ],
+        },
+        ReleaseNoteVersion {
+            version: "v0.10.1".to_string(),
+            internal_version: "0.10.1".to_string(),
             date_text: "14 ноября 2026".to_string(),
             short_title: "Кнопка «Перезапуск» снова работает".to_string(),
-            is_current: true,
+            is_current: false,
             items: vec![ReleaseNoteItem::parse(
                 "[Исправлено] Кнопка «Перезапуск» в сообщении об обновлении снова ставит обновление",
             )],

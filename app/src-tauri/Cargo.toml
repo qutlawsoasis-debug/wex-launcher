@@ -1,6 +1,6 @@
 [package]
 name = "wex-app"
-version = "0.10.1"
+version = "0.10.2"
 description = "Wex Launcher Application"
 edition = "2021"
 

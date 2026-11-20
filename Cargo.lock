@@ -5697,7 +5697,7 @@ dependencies = [
 
 [[package]]
 name = "wex-app"
-version = "0.10.1"
+version = "0.10.2"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -5735,7 +5735,7 @@ dependencies = [
 
 [[package]]
 name = "wex-core"
-version = "0.10.1"
+version = "0.10.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5762,7 +5762,7 @@ dependencies = [
 
 [[package]]
 name = "wex-extras"
-version = "0.10.1"
+version = "0.10.2"
 dependencies = [
  "chrono",
  "flate2",
@@ -5781,7 +5781,7 @@ dependencies = [
 
 [[package]]
 name = "wex-ipc"
-version = "0.10.1"
+version = "0.10.2"
 dependencies = [
  "async-trait",
  "serde",
@@ -5797,7 +5797,7 @@ dependencies = [
 
 [[package]]
 name = "wex-net"
-version = "0.10.1"
+version = "0.10.2"
 dependencies = [
  "futures-util",
  "hex",
@@ -5819,7 +5819,7 @@ dependencies = [
 
 [[package]]
 name = "wex-social"
-version = "0.10.1"
+version = "0.10.2"
 dependencies = [
  "chrono",
  "flate2",
