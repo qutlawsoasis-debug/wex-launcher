@@ -12,6 +12,7 @@ pub mod launcher;
 pub mod minecraft;
 pub mod pack;
 pub mod playtime;
+pub mod safe_path;
 pub mod server;
 pub mod system_info;
 
