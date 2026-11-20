@@ -84,6 +84,20 @@ describe('social review regressions 19–22', () => {
     expect(mocks.invoke).toHaveBeenCalledWith('join_lobby_room',{code:'AB12',playerName:'Alice'});
     await vi.waitFor(()=>expect(target.textContent).toContain('Actual world from IPC'));
   });
+  it('social-lobby-invite toast offers Join: accepts the invite with core, then joins its room', async () => {
+    const { toasts } = await import('./lib/shell/toast.svelte');
+    const original = mocks.invoke.getMockImplementation()!;
+    mocks.invoke.mockImplementation(async (cmd: string, args?: any) => (cmd === 'social_respond_lobby_invite' ? 'AB12' : original(cmd, args)));
+    await start();
+    mocks.handlers.get('social-lobby-invite')!({ payload: { id: 'inv9', lobby_code: 'AB12', from_id: 'host', from_nick: 'Host', host_name: null, created_at: null } });
+    await vi.waitFor(() => expect(toasts.current?.action).toBeDefined());
+    expect(toasts.current!.detail).toContain('Host');
+    expect(toasts.current!.detail).not.toContain('{');
+    expect(toasts.current!.action!.label).toBe('Присоединиться');
+    toasts.current!.action!.run();
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('social_respond_lobby_invite', { inviteId: 'inv9', accept: true }));
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('join_lobby_room', { code: 'AB12', playerName: 'Alice' }));
+  });
   it('22: confirmed join link renders the same room returned by IPC', async () => {
     pending={kind:'join',title:'Join',subtitle:'Join room',target:'#AB12',confirm_text:'Confirm test'};
     await start(); mocks.handlers.get('wex://deep-link')!({payload:pending}); await confirm();
