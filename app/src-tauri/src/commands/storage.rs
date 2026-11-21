@@ -508,8 +508,9 @@ pub async fn verify_game_files(
 ) -> Result<IntegrityCheckResultDto, String> {
     let is_running = state.is_running.load(Ordering::SeqCst);
     let target_version = version.unwrap_or_else(|| "1.21.1".to_string());
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
+    // Idle-read timeout instead of a 30 s total deadline, which cut off every
+    // large mod download on a slow connection.
+    let client = wex_core::download::http_client_builder()
         .build()
         .map_err(|e| format!("Ошибка создания HTTP клиента: {}", e))?;
 
