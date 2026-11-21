@@ -1151,10 +1151,10 @@
     overflow: hidden;
   }
 
-  /* Progress fill: systemGray (status, not an action). */
+  /* Progress fill: --meter (status, not an action; ≥3:1 on its track). */
   .prewarm-fill {
     height: 100%;
-    background: var(--gray);
+    background: var(--meter);
     transition: width var(--dur-page) var(--ease);
   }
 

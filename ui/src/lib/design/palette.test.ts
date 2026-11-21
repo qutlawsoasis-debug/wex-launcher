@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { ApplePalette, CssPaletteMap, parseColor } from './colors';
+import { ApplePalette, CssPaletteMap, parseColor, meetsWcagAA } from './colors';
 
 const root = resolve(process.cwd(), 'src');
 const css = readFileSync(join(root, 'lib/design/wex.css'), 'utf8');
@@ -107,5 +107,61 @@ describe('components use palette tokens, not their own colours', () => {
   it('no coloured glow under a button', () => {
     const src = readFileSync(join(root, 'lib/components/Button.svelte'), 'utf8');
     expect(src).not.toMatch(/box-shadow:[^;]*var\(--(blue|red|green)\)/);
+  });
+});
+
+/** A palette colour laid over an opaque one (alpha compositing), as RGB. */
+function over(top: string, bottom: string) {
+  const t = parseColor(top)!;
+  const b = parseColor(bottom)!;
+  const mix = (x: number, y: number) => Math.round(x * t.a + y * (1 - t.a));
+  return { r: mix(t.r, b.r), g: mix(t.g, b.g), b: mix(t.b, b.b) };
+}
+const hex = (c: { r: number; g: number; b: number }) => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+
+describe('legibility of states (review follow-ups)', () => {
+  const controls = readFileSync(join(root, 'lib/design/wex-controls.css'), 'utf8');
+
+  it('disabled button text is secondaryLabel, readable on quaternarySystemFill (≥ 3:1, was ≈1.25:1)', () => {
+    expect(controls).toMatch(/\.wx \.mini\[disabled\] \{[^}]*color: var\(--label-2\);/);
+    for (const file of ['lib/components/Button.svelte', 'lib/shell/LaunchBar.svelte']) {
+      expect(readFileSync(join(root, file), 'utf8'), file).not.toContain('var(--label-4)');
+    }
+    for (const mode of ['light', 'dark'] as const) {
+      const p = ApplePalette[mode];
+      const bg = over(p.quaternarySystemFill, p.secondarySystemBackground);
+      const fg2 = over(p.secondaryLabel, hex(bg));
+      const fg3 = over(p.tertiaryLabel, hex(bg));
+      // tertiaryLabel (the first suggestion) is too faint in light mode; secondary passes 3:1.
+      expect(meetsWcagAA(fg3, bg).ratio, `${mode} tertiary`).toBeLessThan(meetsWcagAA(fg2, bg).ratio);
+      expect(meetsWcagAA(fg2, bg).ratio, `${mode} secondary`).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('progress and meter fills reach 3:1 on their track (label in light, systemGray in dark)', () => {
+    const light = ApplePalette.light;
+    const dark = ApplePalette.dark;
+    const lightTrack = over(light.secondarySystemFill, light.secondarySystemBackground);
+    const darkTrack = over(dark.secondarySystemFill, dark.secondarySystemBackground);
+    expect(meetsWcagAA(parseColor(light.label)!, lightTrack).ratio).toBeGreaterThanOrEqual(3);
+    expect(meetsWcagAA(parseColor(dark.systemGray)!, darkTrack).ratio).toBeGreaterThanOrEqual(3);
+    // systemGray in light would not (the reason for --meter).
+    expect(meetsWcagAA(parseColor(light.systemGray)!, lightTrack).ratio).toBeLessThan(3);
+    expect(LIGHT.meter).toBe('var(--label)');
+    expect(DARK_FORCED.meter).toBe('var(--gray)');
+    for (const file of ['lib/shell/LaunchBar.svelte', 'lib/components/ProgressBar.svelte', 'lib/pages/servers/ServersPage.svelte']) {
+      expect(readFileSync(join(root, file), 'utf8'), file).toContain('var(--meter)');
+    }
+  });
+
+  it('an on-but-disabled switch still shows green (40 %)', () => {
+    expect(controls).toMatch(/\.wx \.switch\[disabled\]\[aria-checked='true'\] \{\s*background: color-mix\(in srgb, var\(--green\) 40%, transparent\);/);
+  });
+
+  it('selected choice cards carry a checkmark, not only a denser gray', () => {
+    const app = readFileSync(join(root, 'app.css'), 'utf8');
+    for (const sel of [".preset[aria-checked='true']::after", ".theme-card[aria-checked='true']::after", ".cape-card[aria-pressed='true']::after"]) {
+      expect(app, sel).toContain(sel);
+    }
   });
 });

@@ -65,6 +65,11 @@ class ThemeManager {
     return this.systemReduceMotion || this.reduceMotion || this.effectsMode === 'off';
   }
 
+  /** Motion is off for a reason the Animations switch cannot change (Windows or effects off). */
+  get motionForcedOff(): boolean {
+    return this.systemReduceMotion || this.effectsMode === 'off';
+  }
+
   /** The app's Animations switch. Turning it on cannot bring motion back while the system reduces it. */
   setMotionEnabled(enabled: boolean) {
     this.reduceMotion = !enabled;

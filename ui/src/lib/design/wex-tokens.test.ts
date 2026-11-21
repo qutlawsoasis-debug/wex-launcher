@@ -156,6 +156,18 @@ describe('Theme state', () => {
     expect(duration('indicator')).toBe(WexMotion.ms.indicator);
   });
 
+  it('the Animations switch is locked while Windows or effects-off force motion off', () => {
+    expect(theme.motionForcedOff).toBe(false);
+    theme.setEffectsMode('off');
+    expect(theme.motionForcedOff).toBe(true);
+    expect(theme.motionReduced).toBe(true);
+    theme.setEffectsMode('full');
+    theme.systemReduceMotion = true;
+    expect(theme.motionForcedOff).toBe(true);
+    theme.systemReduceMotion = false;
+    expect(theme.motionForcedOff).toBe(false);
+  });
+
   it('without an explicit choice the system setting applies', () => {
     theme.systemReduceMotion = true;
     theme.setReduceMotion(false);

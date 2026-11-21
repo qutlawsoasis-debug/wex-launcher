@@ -1029,7 +1029,7 @@
     content: '';
     display: block;
     height: 100%;
-    background: var(--gray);
+    background: var(--meter);
     transform: scaleX(var(--w));
     transform-origin: left;
   }
@@ -1050,11 +1050,16 @@
     background: var(--fill-3);
     transition: background-color var(--dur-micro);
   }
+  /* Hover stays lighter than selected: base tertiary, hover a quaternary overlay,
+     selected systemFill + semibold + checkmark (app.css). */
   .cape-card:hover {
-    background: var(--fill-2);
+    background: linear-gradient(var(--fill-4), var(--fill-4)) var(--fill-3);
   }
   .cape-card[aria-pressed='true'] {
     background: var(--fill);
+  }
+  .cape-card[aria-pressed='true'] b {
+    font-weight: var(--w-bold);
   }
   .cape-sw {
     grid-row: 1 / 3;

@@ -9,7 +9,7 @@
   view within «one or two» prominent buttons (HIG › Buttons; aura-knowledge
   «Кнопка — акцентный стиль»). States: «Состояния кнопки Aura».
   HIG › Progress indicators: determinate bar when the amount is known; the fill is
-  systemGray, green stays for toggles. HIG › Materials for the bar background.
+  --meter (label in light, systemGray in dark, ≥3:1 on its track), green stays for toggles. HIG › Materials for the bar background.
 -->
 <script lang="ts">
   import { launch, readiness } from './launch.svelte';
@@ -266,7 +266,7 @@
   .track i {
     display: block;
     height: 100%;
-    background: var(--gray);
+    background: var(--meter);
     transform-origin: left;
     transition: transform 200ms linear;
   }
@@ -315,7 +315,7 @@
   }
   .play[disabled] {
     background: var(--fill-4);
-    color: var(--label-4);
+    color: var(--label-2);
     cursor: default;
   }
   .play svg {

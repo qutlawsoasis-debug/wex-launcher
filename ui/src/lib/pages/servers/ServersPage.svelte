@@ -228,8 +228,8 @@
     content: '';
     display: block;
     height: 100%;
-    /* Meter fill: systemGray; green is for toggles only (AGENTS.md). */
-    background: var(--gray);
+    /* Meter fill: --meter (≥3:1 on the track); green is for toggles only (AGENTS.md). */
+    background: var(--meter);
     transform: scaleX(var(--w));
     transform-origin: left;
   }

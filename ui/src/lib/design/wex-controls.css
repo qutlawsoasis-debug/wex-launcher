@@ -72,11 +72,15 @@
   height: 14px;
   fill: currentColor;
 }
-/* Disabled: quaternarySystemFill with quaternaryLabel, also for Primary. */
+/* Disabled: quaternarySystemFill, also for Primary. Text is secondaryLabel, not the
+   card's quaternaryLabel: disabled buttons carry progress words ("Starting…",
+   "Adding…"); on quaternarySystemFill quaternaryLabel is ≈1.25:1 and tertiaryLabel
+   ≈1.7:1, secondaryLabel ≥3:1 (HIG › Accessibility, legible text). The dimmer
+   fill still tells it apart from an enabled button. */
 .wx .btn[disabled],
 .wx .mini[disabled] {
   background: var(--fill-4);
-  color: var(--label-4);
+  color: var(--label-2);
   cursor: default;
   transform: none;
 }
@@ -263,6 +267,10 @@
 .wx .switch[disabled] {
   background: var(--fill-4);
   cursor: default;
+}
+/* On but disabled: still reads as on, systemGreen at 40 %. */
+.wx .switch[disabled][aria-checked='true'] {
+  background: color-mix(in srgb, var(--green) 40%, transparent);
 }
 .wx .switch[disabled]::after {
   background: rgba(255, 255, 255, 0.75);

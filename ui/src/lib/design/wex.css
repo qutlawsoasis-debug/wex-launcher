@@ -27,6 +27,9 @@
   --red: #ff383c;
   --orange: #ff8d28;
   --gray: #8e8e93;
+  /* Progress and meter fills: label in light (systemGray on its track is ≈2.5:1),
+     systemGray in dark; ≥3:1 for a graphical object (HIG › Accessibility, contrast). */
+  --meter: var(--label);
 
   --label: #000000;
   --label-2: rgba(60, 60, 67, 0.6);
@@ -150,6 +153,7 @@
     --red: #ff4245;
     --orange: #ff9230;
     --gray: #8e8e93;
+    --meter: var(--gray);
     --label: #ffffff;
     --label-2: rgba(235, 235, 245, 0.6);
     --label-3: rgba(235, 235, 245, 0.3);
@@ -177,6 +181,7 @@
   --red: #ff4245;
   --orange: #ff9230;
   --gray: #8e8e93;
+  --meter: var(--gray);
   --label: #ffffff;
   --label-2: rgba(235, 235, 245, 0.6);
   --label-3: rgba(235, 235, 245, 0.3);

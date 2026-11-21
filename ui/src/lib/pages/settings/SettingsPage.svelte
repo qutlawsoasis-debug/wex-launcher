@@ -456,9 +456,9 @@
         <div class="srow" data-k={t('settings2.k_motion')}>
           <div>
             <div class="l">{t('settings2.motion')}</div>
-            <div class="d">{theme.systemReduceMotion ? t('settings2.motion_system_off') : t('settings2.motion_d')}</div>
+            <div class="d">{theme.systemReduceMotion ? t('settings2.motion_system_off') : theme.effectsMode === 'off' ? t('settings2.motion_effects_off') : t('settings2.motion_d')}</div>
           </div>
-          <button type="button" class="switch" role="switch" aria-checked={!!s && !theme.motionReduced} aria-label={t('settings2.motion')} disabled={!s || theme.systemReduceMotion} onclick={toggleMotion}></button>
+          <button type="button" class="switch" role="switch" aria-checked={!!s && !theme.motionReduced} aria-label={t('settings2.motion')} disabled={!s || theme.motionForcedOff} onclick={toggleMotion}></button>
         </div>
         <div class="srow" data-k={t('settings2.k_transparency')}>
           <div><div class="l">{t('settings2.transparency')}</div><div class="d">{t('settings2.transparency_d')}</div></div>
@@ -824,6 +824,9 @@
   }
   .theme-card[aria-checked='true'] {
     background: var(--fill);
+  }
+  .theme-card[aria-checked='true'] b {
+    font-weight: var(--w-bold);
   }
   .mini-win {
     display: grid;

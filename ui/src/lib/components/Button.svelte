@@ -215,7 +215,8 @@
   /* Disabled state */
   .apple-button:disabled {
     background-color: var(--fill-4);
-    color: var(--label-4);
+    /* secondaryLabel, not quaternaryLabel (≈1.25:1) or tertiaryLabel (≈1.7:1). */
+    color: var(--label-2);
     cursor: not-allowed;
     transform: none !important;
   }
