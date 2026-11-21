@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
-import { formatError, sanitizeUserMessage, type FormattedError } from './errors';
+import { formatError, sanitizeUserMessage, errorCodeOf, type FormattedError } from './errors';
+import { i18n } from '../i18n';
 import { ERROR_CODES, type IpcError } from '../ipc/generated/error';
 
 const BANNED_TECHNICAL_WORDS = [
@@ -323,5 +324,26 @@ describe('Strict Player-Facing Error Texts (wex-error-texts requirements)', () =
     expect(sanitizedUnix.includes('username')).toBe(false);
     expect(sanitizedUnix.includes('/home/')).toBe(false);
     expect(sanitizedUnix).toBe('wex/repo/error.log');
+  });
+});
+
+describe('Error text follows the app language', () => {
+  afterEach(() => i18n.setLocale('ru'));
+
+  it('the same error reads in English after switching the language', () => {
+    const err = { code: ERROR_CODES.JAVA_NOT_FOUND, message: 'x' };
+    expect(formatError(err).title).toBe('Не найдена среда Java');
+    i18n.setLocale('en');
+    const en = formatError(err);
+    expect(en.title).toBe('Java not found');
+    expect(en.primaryAction?.label).toBe('Settings');
+    expect(/[а-яё]/i.test(en.title + en.description)).toBe(false);
+    expect(formatError(new Error('weird'), 'lobby').title).toBe('Room error');
+  });
+
+  it('errorCodeOf reads the code of "[CODE] message" strings and IpcError objects', () => {
+    expect(errorCodeOf('[NET_LOBBY_KICKED] Вы были исключены из комнаты хостом')).toBe(ERROR_CODES.NET_LOBBY_KICKED);
+    expect(errorCodeOf({ code: 'IO_ERROR', message: 'm' })).toBe('IO_ERROR');
+    expect(errorCodeOf('Комната закрыта организатором')).toBeUndefined();
   });
 });

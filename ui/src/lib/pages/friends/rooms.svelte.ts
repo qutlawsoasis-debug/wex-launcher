@@ -13,6 +13,8 @@ import { call, on } from '../../shell/ipc';
 import { builds } from '../../shell/builds.svelte';
 import { launch } from '../../shell/launch.svelte';
 import { t } from '../../i18n';
+import { errorCodeOf } from '../../design/errors';
+import { ERROR_CODES } from '../../ipc/generated/error';
 import type { LobbyRoom, OpenRoom } from './lobbyTypes';
 
 export type { LobbyRoom, OpenRoom };
@@ -165,9 +167,10 @@ class Rooms {
       }
       this.active = updated;
     } catch (e) {
-      const msg = message(e, '');
       this.active = null;
-      this.closedNotice = msg.includes('исключены') ? t('lobby.kicked_by_host') : t('lobby.room_closed_by_host');
+      // The backend tags a kick with its error code ("[NET_LOBBY_KICKED] ..."); the
+      // UI branches on the code, never on the wording of a message.
+      this.closedNotice = errorCodeOf(e) === ERROR_CODES.NET_LOBBY_KICKED ? t('lobby.kicked_by_host') : t('lobby.room_closed_by_host');
     }
   }
 

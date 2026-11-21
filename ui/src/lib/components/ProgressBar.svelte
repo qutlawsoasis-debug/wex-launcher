@@ -8,6 +8,8 @@
   - Descriptive context on status and transfer speed
 -->
 <script lang="ts">
+  import { t } from '../i18n';
+
   interface Props {
     percentage?: number; // 0 to 100
     indeterminate?: boolean;
@@ -32,7 +34,7 @@
   let clampedPct = $derived(Math.max(0, Math.min(100, percentage)));
 </script>
 
-<div class="apple-progress-container" aria-label={label || 'Прогресс'}>
+<div class="apple-progress-container" aria-label={label || t('common.progress')}>
   {#if !hideInfo && (label || detail || !indeterminate)}
     <div class="progress-info">
       <span class="progress-label">{label || (indeterminate ? 'Выполнение...' : 'Прогресс')}</span>

@@ -35,6 +35,16 @@ export interface GuardViolation {
  * Explicit allowlist of permissible exceptions with required architectural reasons.
  */
 export const ALLOWED_EXCEPTIONS: GuardException[] = [
+  // 1. Whole modules (.ts scan)
+  {
+    file: 'lib/i18n/guard.ts',
+    reason: 'The guard itself: its allowlist has to name the excepted strings (autonyms, backend status text)',
+  },
+  {
+    file: 'lib/design/errorPatterns.ts',
+    reason: 'Matches Russian text emitted by the Rust core, the OS or older backends to infer an error code; never shown to players',
+  },
+
   // 2. Universal Proper Names and Brand Terms (invariant across all languages)
   {
     file: '*',
@@ -499,6 +509,120 @@ function parseSvelteTemplate(template: string): {
 }
 
 /**
+ * Scans script code (a Svelte <script> body or a whole .ts module) for Cyrillic
+ * string literals outside the dictionaries. Comments are ignored.
+ */
+function scanScriptBody(
+  relFilePath: string,
+  scriptBody: string,
+  startLine: number,
+  exceptions: GuardException[]
+): GuardViolation[] {
+  const violations: GuardViolation[] = [];
+  const scriptLines = stripJsComments(scriptBody).split('\n');
+
+  for (let l = 0; l < scriptLines.length; l++) {
+    let lineText = scriptLines[l];
+    // Strip single-line comments; a "//" right after ":" is a URL (https://), not a comment.
+    const comment = /(^|[^:])\/\//.exec(lineText);
+    if (comment) {
+      lineText = lineText.slice(0, comment.index + comment[1].length);
+    }
+
+    if (!CYRILLIC_REGEX.test(lineText)) continue;
+
+    // Extract string literals and regex literals
+    const strRegex = /(["'`])((?:\\.|(?!\1)[^\\])*)\1|\/((?:\\.|[^\/\\])+)\/[gimsuy]*/g;
+    let match: RegExpExecArray | null;
+    let foundCyrillicToken = false;
+
+    while ((match = strRegex.exec(lineText)) !== null) {
+      const literalVal = match[2] !== undefined ? match[2] : match[3];
+      if (literalVal && CYRILLIC_REGEX.test(literalVal)) {
+        foundCyrillicToken = true;
+        if (!isException(relFilePath, literalVal, exceptions)) {
+          violations.push({
+            file: relFilePath,
+            line: startLine + l,
+            column: match.index + 1,
+            text: literalVal,
+            type: 'cyrillic_hardcoded',
+            context: lineText.trim(),
+          });
+        }
+      }
+    }
+
+    // If not caught by quotes or regexes but line contains Cyrillic (e.g. object property or template)
+    if (!foundCyrillicToken && !isException(relFilePath, lineText, exceptions)) {
+      violations.push({
+        file: relFilePath,
+        line: startLine + l,
+        column: 1,
+        text: lineText.trim(),
+        type: 'cyrillic_hardcoded',
+        context: lineText.trim(),
+      });
+    }
+  }
+  return violations;
+}
+
+/** True when the whole file is excepted (an entry with a file and no text or pattern). */
+function isFileExcepted(relFilePath: string, exceptions: GuardException[]): boolean {
+  const normRel = relFilePath.replace(/\\/g, '/');
+  return exceptions.some((ex) => {
+    if (ex.file === '*' || ex.text || ex.pattern) return false;
+    const exFile = ex.file.replace(/\\/g, '/');
+    return normRel.endsWith(exFile) || exFile.endsWith(normRel);
+  });
+}
+
+/**
+ * Scans a .ts module for hardcoded Cyrillic strings: every string a player can
+ * read must come from the dictionaries (t('key')).
+ */
+export function scanTsContent(
+  relFilePath: string,
+  content: string,
+  exceptions: GuardException[] = ALLOWED_EXCEPTIONS
+): GuardViolation[] {
+  if (isFileExcepted(relFilePath, exceptions)) return [];
+  return scanScriptBody(relFilePath, content, 1, exceptions);
+}
+
+/** .ts files the scan reads: not tests, not the dictionaries, not generated IPC. */
+export function isScannableTs(relPath: string): boolean {
+  const p = relPath.replace(/\\/g, '/');
+  if (!p.endsWith('.ts') || p.endsWith('.d.ts') || p.endsWith('.test.ts')) return false;
+  if (p.includes('locales/') || p.includes('/generated/')) return false;
+  return true;
+}
+
+/** Recursively scans all scannable `.ts` modules under a given directory. */
+export function scanAllTsFiles(
+  rootDir: string,
+  exceptions: GuardException[] = ALLOWED_EXCEPTIONS
+): GuardViolation[] {
+  const violations: GuardViolation[] = [];
+  function walk(dir: string) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else if (entry.isFile()) {
+        const relPath = path.relative(rootDir, fullPath);
+        if (isScannableTs(relPath)) {
+          violations.push(...scanTsContent(relPath, fs.readFileSync(fullPath, 'utf8'), exceptions));
+        }
+      }
+    }
+  }
+  walk(rootDir);
+  return violations;
+}
+
+/**
  * Scans a single Svelte file's content for i18n violations.
  */
 export function scanSvelteContent(
@@ -506,20 +630,10 @@ export function scanSvelteContent(
   content: string,
   exceptions: GuardException[] = ALLOWED_EXCEPTIONS
 ): GuardViolation[] {
-  const normRel = relFilePath.replace(/\\/g, '/');
-
   // Check if entire file is excepted
-  for (const ex of exceptions) {
-    if (ex.file !== '*') {
-      const exFile = ex.file.replace(/\\/g, '/');
-      if ((normRel.endsWith(exFile) || exFile.endsWith(normRel)) && !ex.text && !ex.pattern) {
-        return [];
-      }
-    }
-  }
+  if (isFileExcepted(relFilePath, exceptions)) return [];
 
   const violations: GuardViolation[] = [];
-  const lines = content.split('\n');
 
   // 1. Strip styles and HTML comments
   let cleaned = stripStyleBlocks(content);
@@ -534,56 +648,7 @@ export function scanSvelteContent(
     const scriptStartPos = scriptMatch.index + scriptMatch[0].indexOf(scriptBody);
     const beforeScript = cleaned.slice(0, scriptStartPos);
     const startLine = beforeScript.split('\n').length;
-
-    // Remove JS block comments
-    const noComments = stripJsComments(scriptBody);
-    const scriptLines = noComments.split('\n');
-
-    for (let l = 0; l < scriptLines.length; l++) {
-      let lineText = scriptLines[l];
-      // Strip single-line comments
-      const commentIdx = lineText.indexOf('//');
-      if (commentIdx !== -1) {
-        lineText = lineText.slice(0, commentIdx);
-      }
-
-      // Check for hardcoded Cyrillic string literals in script
-      if (CYRILLIC_REGEX.test(lineText)) {
-        // Extract string literals and regex literals
-        const strRegex = /(["'`])((?:\\.|(?!\1)[^\\])*)\1|\/((?:\\.|[^\/\\])+)\/[gimsuy]*/g;
-        let match: RegExpExecArray | null;
-        let foundCyrillicToken = false;
-
-        while ((match = strRegex.exec(lineText)) !== null) {
-          const literalVal = match[2] !== undefined ? match[2] : match[3];
-          if (literalVal && CYRILLIC_REGEX.test(literalVal)) {
-            foundCyrillicToken = true;
-            if (!isException(relFilePath, literalVal, exceptions)) {
-              violations.push({
-                file: relFilePath,
-                line: startLine + l,
-                column: match.index + 1,
-                text: literalVal,
-                type: 'cyrillic_hardcoded',
-                context: lineText.trim(),
-              });
-            }
-          }
-        }
-
-        // If not caught by quotes or regexes but line contains Cyrillic (e.g. object property or template)
-        if (!foundCyrillicToken && !isException(relFilePath, lineText, exceptions)) {
-          violations.push({
-            file: relFilePath,
-            line: startLine + l,
-            column: 1,
-            text: lineText.trim(),
-            type: 'cyrillic_hardcoded',
-            context: lineText.trim(),
-          });
-        }
-      }
-    }
+    violations.push(...scanScriptBody(relFilePath, scriptBody, startLine, exceptions));
   }
 
   // 3. Scan template using the syntax-aware template parser

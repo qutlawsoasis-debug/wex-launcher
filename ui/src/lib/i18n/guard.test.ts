@@ -3,6 +3,9 @@ import * as path from 'node:path';
 import {
   scanSvelteContent,
   scanAllSvelteFiles,
+  scanAllTsFiles,
+  scanTsContent,
+  isScannableTs,
   ALLOWED_EXCEPTIONS,
   type GuardException,
 } from './guard';
@@ -160,6 +163,43 @@ describe('i18n Guard & Enforcement Engine (Apple HIG)', () => {
       }
 
       expect(violations).toEqual([]);
+    });
+
+    it('verifies all ui/src/**/*.ts modules (not tests, locales or generated IPC) have no hardcoded Russian', () => {
+      const srcDir = path.resolve(__dirname, '../../');
+      const violations = scanAllTsFiles(srcDir, ALLOWED_EXCEPTIONS);
+      const report = violations
+        .slice(0, 40)
+        .map((v) => `  ${v.file}:${v.line}:${v.column} -> "${v.text}"`)
+        .join('\n');
+      expect(violations, `Hardcoded Russian in .ts modules:\n${report}`).toEqual([]);
+    });
+  });
+
+  describe('.ts module scanning', () => {
+    it('flags a Cyrillic string literal and ignores comments', () => {
+      const ts = `
+        // Комментарий можно писать по-русски
+        /* и здесь тоже */
+        export const title = 'Произошла ошибка';
+        const url = 'https://example.com'; // хвост
+      `;
+      const violations = scanTsContent('lib/x.ts', ts);
+      expect(violations.map((v) => v.text)).toEqual(['Произошла ошибка']);
+    });
+
+    it('a whole-file exception silences a module, a text exception one token', () => {
+      const ts = `const a = 'Видел Санту';\nconst b = 'Ёлка';`;
+      expect(scanTsContent('lib/y.ts', ts, [{ file: 'lib/y.ts', reason: 'test fixture with a documented reason' }])).toEqual([]);
+      expect(scanTsContent('lib/y.ts', ts, [{ file: 'lib/y.ts', text: 'Ёлка', reason: 'test fixture with a documented reason' }]).map((v) => v.text)).toEqual(['Видел Санту']);
+    });
+
+    it('skips tests, dictionaries and generated IPC', () => {
+      expect(isScannableTs('lib/design/errors.ts')).toBe(true);
+      expect(isScannableTs('lib/design/errors.test.ts')).toBe(false);
+      expect(isScannableTs('lib/i18n/locales/ru.ts')).toBe(false);
+      expect(isScannableTs('lib/ipc/generated/error.ts')).toBe(false);
+      expect(isScannableTs('lib/shell/Logo.svelte')).toBe(false);
     });
   });
 });

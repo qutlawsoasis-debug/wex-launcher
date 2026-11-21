@@ -704,7 +704,9 @@ pub async fn get_lobby_status(
     if status.kicked {
         let mut lock = state.active_session.lock().await;
         *lock = None;
-        return Err("Вы были исключены из комнаты хостом".to_string());
+        // The "[CODE] message" prefix lets the UI tell a kick from a closed room by
+        // its error code instead of matching the wording (ui errors.ts › errorCodeOf).
+        return Err("[NET_LOBBY_KICKED] Вы были исключены из комнаты хостом".to_string());
     }
 
     let host_name = status
