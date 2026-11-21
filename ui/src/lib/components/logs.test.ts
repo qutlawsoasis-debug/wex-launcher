@@ -198,6 +198,36 @@ describe('LogsSheet (SPEC 2.10: Apple HIG Game Logs Viewer)', () => {
     unmount(comp);
   });
 
+  it('a stale log reply never overwrites a newer one', async () => {
+    const pending: Array<{ level: unknown; resolve: (r: unknown) => void }> = [];
+    const reply = (msg: string) => ({
+      file_name: 'latest.log', total_lines: 1, returned_lines: 1, has_more: false, error_count: 0, warn_count: 0,
+      entries: [{ line_number: 1, timestamp: '', level: 'INFO', thread: '', message: msg }],
+    });
+    invokeMock.mockImplementation((cmd: string, args?: { filterLevel?: unknown }) => {
+      if (cmd === 'logs_list_files') return Promise.resolve([{ file_name: 'latest.log', relative_path: 'logs/latest.log', file_type: 'latest', size_bytes: 1, modified_timestamp: 1, is_crash: false }]);
+      if (cmd === 'logs_read_file') return new Promise((resolve) => pending.push({ level: args?.filterLevel, resolve }));
+      return Promise.resolve();
+    });
+    const comp = mount(LogsSheet, { target, props: { open: true, version: '1.21.1' } });
+    await vi.waitFor(() => expect(pending.length).toBe(1));
+    pending.splice(0).forEach((p) => p.resolve(reply('initial')));
+    await new Promise((r) => setTimeout(r, 30));
+    // Two reads in a row (the file select changes twice); the first answers last.
+    const select = target.querySelector<HTMLSelectElement>('[data-testid="log-file-select"]')!;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.waitFor(() => expect(pending.length).toBe(1));
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.waitFor(() => expect(pending.length).toBe(2));
+    pending[1].resolve(reply('newer-warn'));
+    await new Promise((r) => setTimeout(r, 30));
+    pending[0].resolve(reply('stale-error'));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(target.textContent).toContain('newer-warn');
+    expect(target.textContent).not.toContain('stale-error');
+    unmount(comp);
+  });
+
   it('copies log content to clipboard and triggers folder opening', async () => {
     const mockResponse: LogReadResponse = {
       file_name: 'latest.log',

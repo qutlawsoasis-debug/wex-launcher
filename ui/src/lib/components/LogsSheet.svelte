@@ -117,24 +117,32 @@
     }
   }
 
+  // Each read gets a number; only the newest one may write its result.
+  let logSeq = 0;
+
   async function loadLogContent() {
     if (!selectedFileName) return;
+    const seq = ++logSeq;
+    // Take the request parameters now: they may change while the import is awaited.
+    const request = {
+      fileName: selectedFileName,
+      version: currentVersion,
+      maxLines: 2500,
+      filterLevel: levelFilter === 'ALL' ? null : levelFilter,
+      searchQuery: searchQuery.trim() || null,
+    };
     isLoading = true;
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const res = await invoke<LogReadResponse>('logs_read_file', {
-        fileName: selectedFileName,
-        version: currentVersion,
-        maxLines: 2500,
-        filterLevel: levelFilter === 'ALL' ? null : levelFilter,
-        searchQuery: searchQuery.trim() || null,
-      });
+      const res = await invoke<LogReadResponse>('logs_read_file', request);
+      if (seq !== logSeq) return;
       logData = res;
     } catch (e: any) {
+      if (seq !== logSeq) return;
       logData = null;
       notify('error', t('logs.toast_read_error'), e?.message || String(e));
     } finally {
-      isLoading = false;
+      if (seq === logSeq) isLoading = false;
     }
   }
 
