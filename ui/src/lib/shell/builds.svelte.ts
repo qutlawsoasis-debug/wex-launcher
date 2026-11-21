@@ -46,6 +46,19 @@ class Builds {
   loaded = $state(false);
   error = $state<unknown>(null);
 
+  private listeners: Array<() => void> = [];
+
+  /** Called after the selection or the list changed (used to re-query per-build state). */
+  onChange(fn: () => void): void {
+    this.listeners.push(fn);
+  }
+
+  private notify(): void {
+    queueMicrotask(() => {
+      for (const fn of this.listeners) fn();
+    });
+  }
+
   get selected(): Build | undefined {
     return this.list.find((b) => b.id === this.selectedId) ?? this.list[0];
   }
@@ -63,6 +76,7 @@ class Builds {
       }
       this.error = null;
       uiLog('info', `builds.load: ${versions.map((v) => `${v.id} installed=${v.is_installed}`).join(', ')}; selected ${this.selectedId}`);
+      this.notify();
       await Promise.all(this.list.map((b) => this.loadMods(b.id)));
     } catch (e) {
       this.error = e;
@@ -113,12 +127,14 @@ class Builds {
     if (id === this.selectedId || !this.list.some((b) => b.id === id)) return false;
     const previous = this.selectedId;
     this.selectedId = id;
+    this.notify();
     try {
       const settings = await call<LauncherSettings>('get_launcher_settings');
       await call('save_launcher_settings', { newSettings: { ...settings, selected_version: id } });
       return true;
     } catch (e) {
       this.selectedId = previous;
+      this.notify();
       throw e;
     }
   }

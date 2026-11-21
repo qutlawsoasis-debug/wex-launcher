@@ -540,6 +540,7 @@ impl PlayState {
                     "prewarm-status",
                     serde_json::json!({
                         "state": "ready",
+                        "version": version,
                         "progress": 100.0,
                         "message": "Готово к запуску"
                     }),
@@ -557,6 +558,7 @@ impl PlayState {
                 "prewarm-status",
                 serde_json::json!({
                     "state": "prewarming",
+                    "version": version,
                     "progress": 48.0,
                     "message": "Игра догружается…"
                 }),
@@ -569,6 +571,7 @@ impl PlayState {
         let prewarm_gen_clone = self.prewarm_generation.clone();
         let app_clone = self.app_handle.clone();
         let install_lock = self.install_lock.clone();
+        let event_version = version.clone();
 
         tauri::async_runtime::spawn(async move {
             // prepare_and_prewarm installs the environment first; hold the shared
@@ -621,6 +624,7 @@ impl PlayState {
                             "prewarm-status",
                             serde_json::json!({
                                 "state": "ready",
+                                "version": event_version,
                                 "progress": 100.0,
                                 "message": "Готово к запуску"
                             }),
@@ -634,6 +638,7 @@ impl PlayState {
                             "prewarm-status",
                             serde_json::json!({
                                 "state": "idle",
+                                "version": event_version,
                                 "progress": 0.0,
                                 "message": ""
                             }),

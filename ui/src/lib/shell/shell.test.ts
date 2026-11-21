@@ -15,7 +15,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 import { router } from './router.svelte';
 import { builds } from './builds.svelte';
-import { launch } from './launch.svelte';
+import { launch, readiness } from './launch.svelte';
 import { toasts } from './toast.svelte';
 import { theme } from '../design/theme.svelte';
 import { i18n } from '../i18n';
@@ -266,6 +266,29 @@ describe('launch bar', () => {
     expect(target.querySelector('.track')).toBeNull();
     emit('prewarm-status', { state: 'ready', progress: 100 });
     expect(target.querySelector('.sub')?.textContent).toBe('Готово к быстрому запуску, 6 ГБ памяти');
+  });
+});
+
+describe('prewarm per build', () => {
+  it('a ready event for another version does not mark the selected build ready', async () => {
+    await attachLaunch();
+    emit('prewarm-status', { state: 'ready', version: '1.20.1', progress: 100 });
+    expect(launch.prewarm).toBe('idle');
+    expect(readiness(builds.list[0]).text).not.toBe('Готово к быстрому запуску');
+    expect(launch.prewarmFor('1.20.1')).toBe('ready');
+    // A legacy payload without a version still applies to the selected build.
+    emit('prewarm-status', { state: 'ready', progress: 100 });
+    expect(launch.prewarm).toBe('ready');
+  });
+
+  it('selecting a build asks the backend about that build and shows its own state', async () => {
+    await attachLaunch();
+    emit('prewarm-status', { state: 'ready', version: '1.21.1', progress: 100 });
+    const base = mocks.invoke.mock.calls.length;
+    await builds.select('1.20.1');
+    await vi.waitFor(() => expect(mocks.invoke.mock.calls.slice(base)).toContainEqual(['get_prewarm_status', { version: '1.20.1' }]));
+    expect(launch.prewarm).toBe('idle');
+    expect(launch.prewarmFor('1.21.1')).toBe('ready');
   });
 });
 

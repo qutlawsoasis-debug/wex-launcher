@@ -15,6 +15,7 @@ import { toasts } from './toast.svelte';
 import { formatError } from '../design/errors';
 import { t } from '../i18n';
 
+export type PrewarmState = 'idle' | 'prewarming' | 'ready';
 export type LaunchPhase = 'idle' | 'launching' | 'running';
 
 interface LaunchStatusPayload {
@@ -34,6 +35,8 @@ interface InstallProgressPayload {
 
 interface PrewarmPayload {
   state: string;
+  /** Build the state is about; older backends omit it. */
+  version?: string;
   progress?: number;
 }
 
@@ -57,7 +60,21 @@ class Launch {
   startedAt = $state<number | null>(null);
   /** Increments each time the game starts; the bar plays its green line on change. */
   startCount = $state(0);
-  prewarm = $state<'idle' | 'prewarming' | 'ready'>('idle');
+  /** Fast-launch state per build: readiness must never be shown for the wrong one. */
+  private prewarmMap = $state<Record<string, PrewarmState>>({});
+  private prewarmEvents = 0;
+
+  /** Fast-launch state of the selected build. */
+  get prewarm(): PrewarmState {
+    return this.prewarmMap[builds.selectedId] ?? 'idle';
+  }
+  set prewarm(v: PrewarmState) {
+    this.prewarmMap[builds.selectedId] = v;
+  }
+
+  prewarmFor(version: string): PrewarmState {
+    return this.prewarmMap[version] ?? 'idle';
+  }
 
   private stops: Array<() => void> = [];
 
@@ -88,9 +105,17 @@ class Launch {
       if (s.is_running) this.enterRunning(s.running_version ?? builds.selectedId, false);
       else if (s.is_launching) this.enterLaunching(s.running_version ?? builds.selectedId, null);
     } catch {}
+    await this.refreshPrewarm();
+  }
+
+  /** Ask the backend about the selected build; an event that arrives meanwhile wins. */
+  async refreshPrewarm(): Promise<void> {
+    const version = builds.selectedId;
+    const seen = this.prewarmEvents;
     try {
-      const p = await call<{ is_prewarming: boolean; is_ready: boolean }>('get_prewarm_status', { version: builds.selectedId });
-      this.prewarm = p.is_ready ? 'ready' : p.is_prewarming ? 'prewarming' : 'idle';
+      const p = await call<{ is_prewarming: boolean; is_ready: boolean }>('get_prewarm_status', { version });
+      if (seen !== this.prewarmEvents) return;
+      this.prewarmMap[version] = p.is_ready ? 'ready' : p.is_prewarming ? 'prewarming' : 'idle';
     } catch {}
   }
 
@@ -171,7 +196,13 @@ class Launch {
   }
 
   onPrewarm(p: PrewarmPayload): void {
-    this.prewarm = p.state === 'ready' ? 'ready' : p.state === 'prewarming' ? 'prewarming' : 'idle';
+    this.prewarmEvents++;
+    const state: PrewarmState = p.state === 'ready' ? 'ready' : p.state === 'prewarming' ? 'prewarming' : 'idle';
+    if (p.version) this.prewarmMap[p.version] = state;
+    else if (state === 'idle') {
+      // The backend holds one prepared game: stopping it clears every build.
+      for (const k of Object.keys(this.prewarmMap)) this.prewarmMap[k] = 'idle';
+    } else this.prewarm = state;
   }
 
   private setStage(text: string): void {
@@ -229,9 +260,11 @@ class Launch {
  * Shown wherever Play is, so the button never stands without a reason.
  */
 export function readiness(b: Build): { ok: boolean; text: string } {
-  if (b.id === builds.selectedId && launch.prewarm === 'ready') return { ok: true, text: t('home.ready_fast') };
+  if (launch.prewarmFor(b.id) === 'ready') return { ok: true, text: t('home.ready_fast') };
   if (b.installed) return { ok: true, text: t('home.ready_installed') };
   return { ok: false, text: t('home.ready_first_download') };
 }
 
 export const launch = new Launch();
+// Selecting a build or re-reading the list: ask about the build that is selected now.
+builds.onChange(() => void launch.refreshPrewarm());
