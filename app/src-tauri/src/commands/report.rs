@@ -918,9 +918,10 @@ pub async fn report_get_preview(
     user_comment: Option<String>,
     player_name: Option<String>,
 ) -> Result<BugReportPreviewDto, String> {
+    let version = crate::commands::logs::validate_game_version(version.as_deref())?;
     Ok(prepare_report_preview_impl(
         &paths,
-        version.as_deref(),
+        Some(version),
         error_text.as_deref(),
         user_comment.as_deref(),
         player_name.as_deref(),
@@ -936,9 +937,10 @@ pub async fn report_save_zip(
     player_name: Option<String>,
     custom_dest_dir: Option<String>,
 ) -> Result<SaveReportResultDto, String> {
+    let version = crate::commands::logs::validate_game_version(version.as_deref())?;
     save_report_zip_with_opener(
         &paths,
-        version.as_deref(),
+        Some(version),
         error_text.as_deref(),
         user_comment.as_deref(),
         player_name.as_deref(),
@@ -955,9 +957,10 @@ pub async fn report_copy_text(
     user_comment: Option<String>,
     player_name: Option<String>,
 ) -> Result<String, String> {
+    let version = crate::commands::logs::validate_game_version(version.as_deref())?;
     Ok(format_clipboard_report_impl(
         &paths,
-        version.as_deref(),
+        Some(version),
         error_text.as_deref(),
         user_comment.as_deref(),
         player_name.as_deref(),

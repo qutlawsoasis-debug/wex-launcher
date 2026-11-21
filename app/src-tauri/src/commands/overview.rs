@@ -275,14 +275,7 @@ fn validate_safe_component(name: &str, field_label: &str) -> Result<String, Stri
 }
 
 fn validate_supported_version(version: &str) -> Result<String, String> {
-    let safe = validate_safe_component(version, "Версия игры")?;
-    if !safe
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
-    {
-        return Err(format!("Неподдерживаемая версия игры: '{}'", version));
-    }
-    Ok(safe)
+    crate::commands::logs::validate_game_version(Some(version)).map(str::to_string)
 }
 
 fn generate_unique_world_dest(base_dir: &Path, folder_name: &str) -> PathBuf {
@@ -1048,6 +1041,13 @@ pub async fn overview_record_playtime(
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn import_version_must_be_a_supported_game_version() {
+        assert_eq!(validate_supported_version("1.20.1").unwrap(), "1.20.1");
+        assert!(validate_supported_version("1.19.4").is_err());
+        assert!(validate_supported_version("evil-1.0").is_err());
+    }
     use wex_ipc::core_trait::MockLauncherCore;
 
     #[test]

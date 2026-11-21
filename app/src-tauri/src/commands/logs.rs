@@ -43,25 +43,33 @@ pub struct LogReadResponse {
 
 pub const SUPPORTED_LOG_VERSIONS: &[&str] = &["1.20.1", "1.21.1"];
 
+/// The one gate for every IPC `version` argument: only 1.20.1 / 1.21.1 pass
+/// (`None` means 1.21.1). Returns the canonical static string.
+pub fn validate_game_version(version: Option<&str>) -> Result<&'static str, String> {
+    match version {
+        None => Ok("1.21.1"),
+        Some(v) => {
+            let trimmed = v.trim();
+            SUPPORTED_LOG_VERSIONS
+                .iter()
+                .copied()
+                .find(|s| *s == trimmed)
+                .ok_or_else(|| {
+                    format!(
+                        "Неподдерживаемая версия игры: '{}'. Разрешённые версии: {:?}",
+                        trimmed, SUPPORTED_LOG_VERSIONS
+                    )
+                })
+        }
+    }
+}
+
 /// Resolves the instance directory for a specific supported Minecraft version.
 pub fn validate_and_resolve_instance_dir(
     paths: &WexPaths,
     version: Option<&str>,
 ) -> Result<PathBuf, String> {
-    let ver = match version {
-        Some(v) => {
-            let trimmed = v.trim();
-            if !SUPPORTED_LOG_VERSIONS.contains(&trimmed) {
-                return Err(format!(
-                    "Неподдерживаемая версия игры: '{}'. Разрешённые версии: {:?}",
-                    trimmed, SUPPORTED_LOG_VERSIONS
-                ));
-            }
-            trimmed
-        }
-        None => "1.21.1",
-    };
-    Ok(paths.instance_dir(ver))
+    Ok(paths.instance_dir(validate_game_version(version)?))
 }
 
 /// Validates and resolves the path to a requested log file inside the instance directory.
@@ -596,6 +604,16 @@ pub async fn logs_open_folder(
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn validate_game_version_accepts_only_supported_versions() {
+        assert_eq!(validate_game_version(None).unwrap(), "1.21.1");
+        assert_eq!(validate_game_version(Some("1.20.1")).unwrap(), "1.20.1");
+        assert_eq!(validate_game_version(Some(" 1.21.1 ")).unwrap(), "1.21.1");
+        for bad in ["", "1.19.4", "1.21.1.", "..", "1.21.1/../x", "_invalid", "1.21"] {
+            assert!(validate_game_version(Some(bad)).is_err(), "{bad}");
+        }
+    }
 
     #[test]
     fn test_parse_minecraft_log_lines() {

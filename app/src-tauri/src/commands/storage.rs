@@ -507,7 +507,8 @@ pub async fn verify_game_files(
     app: AppHandle,
 ) -> Result<IntegrityCheckResultDto, String> {
     let is_running = state.is_running.load(Ordering::SeqCst);
-    let target_version = version.unwrap_or_else(|| "1.21.1".to_string());
+    let target_version =
+        crate::commands::logs::validate_game_version(version.as_deref())?.to_string();
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .build()
