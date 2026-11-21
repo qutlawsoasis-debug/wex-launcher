@@ -685,10 +685,14 @@ pub async fn verify_instance_files(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<IntegrityCheckResult, String> {
-    let ver = version.unwrap_or_else(|| {
-        let cfg = wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file);
-        cfg.selected_version
-    });
+    let ver = match version {
+        Some(v) => v,
+        None => {
+            wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file)
+                .selected_version
+        }
+    };
+    let ver = crate::commands::logs::validate_game_version(Some(&ver))?.to_string();
     let client = wex_core::reqwest::Client::builder()
         .user_agent("WexLauncher/0.1.0")
         .build()

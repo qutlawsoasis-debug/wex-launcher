@@ -275,14 +275,49 @@ fn validate_safe_component(name: &str, field_label: &str) -> Result<String, Stri
 }
 
 fn validate_supported_version(version: &str) -> Result<String, String> {
-    let safe = validate_safe_component(version, "Версия игры")?;
-    if !safe
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
-    {
-        return Err(format!("Неподдерживаемая версия игры: '{}'", version));
+    if let Ok(v) = crate::commands::logs::validate_game_version(Some(version)) {
+        return Ok(v.to_string());
     }
-    Ok(safe)
+    // Legacy launcher spellings: "1.21.1-fabric", "fabric-loader-0.15.7-1.20.1".
+    // Mapped only when exactly one supported base version appears and no other
+    // loader is named.
+    let lower = version.to_ascii_lowercase();
+    let other_loader = ["forge", "quilt", "optifine"]
+        .iter()
+        .any(|l| lower.contains(l));
+    let mut found: Vec<&'static str> = Vec::new();
+    if !other_loader {
+        let bytes = lower.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i].is_ascii_digit() {
+                let start = i;
+                while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
+                    i += 1;
+                }
+                let token = lower[start..i].trim_end_matches('.');
+                if let Some(s) = crate::commands::logs::SUPPORTED_LOG_VERSIONS
+                    .iter()
+                    .copied()
+                    .find(|s| *s == token)
+                {
+                    if !found.contains(&s) {
+                        found.push(s);
+                    }
+                }
+            } else {
+                i += 1;
+            }
+        }
+    }
+    match found.as_slice() {
+        [only] => Ok((*only).to_string()),
+        _ => Err(format!(
+            "Неподдерживаемая версия игры '{}' пропущена. Поддерживаются: {}",
+            version.trim(),
+            crate::commands::logs::SUPPORTED_LOG_VERSIONS.join(", ")
+        )),
+    }
 }
 
 fn generate_unique_world_dest(base_dir: &Path, folder_name: &str) -> PathBuf {
@@ -1048,6 +1083,33 @@ pub async fn overview_record_playtime(
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn import_version_must_be_a_supported_game_version() {
+        assert_eq!(validate_supported_version("1.20.1").unwrap(), "1.20.1");
+        assert!(validate_supported_version("1.19.4").is_err());
+        assert!(validate_supported_version("evil-1.0").is_err());
+        // Legacy spellings map to the base version when unambiguous.
+        assert_eq!(
+            validate_supported_version("1.21.1-fabric").unwrap(),
+            "1.21.1"
+        );
+        assert_eq!(
+            validate_supported_version("fabric-loader-0.15.7-1.20.1").unwrap(),
+            "1.20.1"
+        );
+        assert_eq!(
+            validate_supported_version(" 1.20.1-Fabric ").unwrap(),
+            "1.20.1"
+        );
+        // Ambiguous, other loader, other base version, path tricks: skipped with a message.
+        assert!(validate_supported_version("1.20.1-1.21.1").is_err());
+        assert!(validate_supported_version("1.21.1-forge").is_err());
+        assert!(validate_supported_version("1.21.11-fabric").is_err());
+        assert!(validate_supported_version("1.19.4-fabric").is_err());
+        let msg = validate_supported_version("1.19.4").unwrap_err();
+        assert!(msg.contains("1.19.4") && msg.contains("1.21.1"));
+    }
     use wex_ipc::core_trait::MockLauncherCore;
 
     #[test]

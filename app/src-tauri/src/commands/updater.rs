@@ -58,6 +58,78 @@ pub struct InstallerExecutionPlan {
 }
 
 static STAGED_UPDATE: Mutex<Option<StagedUpdate>> = Mutex::new(None);
+/// The update that `updater_check` actually verified. `updater_install` installs
+/// only this one: the webview-supplied version/URL are identifiers that must match.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckedUpdate {
+    pub version: String,
+    pub download_url: String,
+    pub signature: String,
+}
+
+static CHECKED_UPDATE: Mutex<Option<CheckedUpdate>> = Mutex::new(None);
+
+fn remember_checked_update(info: &LauncherUpdateInfoDto) {
+    let checked = match (
+        info.update_available && info.can_auto_update,
+        &info.latest_version,
+        &info.download_url,
+        &info.signature,
+    ) {
+        (true, Some(version), Some(url), Some(sig)) => Some(CheckedUpdate {
+            version: version.clone(),
+            download_url: url.clone(),
+            signature: sig.clone(),
+        }),
+        _ => None,
+    };
+    if let Ok(mut lock) = CHECKED_UPDATE.lock() {
+        *lock = checked;
+    }
+}
+
+/// Pure matcher: the UI request must name exactly the checked update.
+fn match_checked_update(
+    checked: Option<&CheckedUpdate>,
+    version: &str,
+    download_url: &str,
+) -> Result<CheckedUpdate, String> {
+    let checked =
+        checked.ok_or_else(|| "Update was not checked: run the update check first".to_string())?;
+    if checked.version != version || checked.download_url != download_url {
+        return Err("Requested update does not match the checked update".to_string());
+    }
+    Ok(checked.clone())
+}
+
+/// Matches the install request against the stored check. With no stored check, or a
+/// different one (stale card, or the UI got its info from another source), the check
+/// is re-run once before failing.
+async fn resolve_with_recheck<F, Fut>(
+    store: &Mutex<Option<CheckedUpdate>>,
+    version: &str,
+    download_url: &str,
+    recheck: F,
+) -> Result<CheckedUpdate, String>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    let lookup = || {
+        let lock = store.lock().map_err(|e| e.to_string())?;
+        match_checked_update(lock.as_ref(), version, download_url)
+    };
+    if let Ok(found) = lookup() {
+        return Ok(found);
+    }
+    recheck().await;
+    lookup().map_err(|_| {
+        "Не удалось подтвердить обновление: повторная проверка не нашла подписанную версию, \
+         совпадающую с выбранной. Обновите карточку и повторите."
+            .to_string()
+    })
+}
+
 static UPDATE_BUSY: AtomicBool = AtomicBool::new(false);
 
 struct UpdateOperation;
@@ -641,14 +713,16 @@ pub async fn updater_check(
     let cur_version = env!("CARGO_PKG_VERSION");
     let trusted_key = resolve_trusted_public_key(None, Some(&app));
 
-    check_for_updates_internal(
+    let info = check_for_updates_internal(
         &client,
         cur_version,
         manifest_url.as_deref(),
         Some(DEFAULT_TARGET_PLATFORM),
         trusted_key.as_deref(),
     )
-    .await
+    .await?;
+    remember_checked_update(&info);
+    Ok(info)
 }
 
 #[tauri::command]
@@ -659,6 +733,12 @@ pub async fn updater_install(
     signature: Option<String>,
     version: String,
 ) -> Result<UpdateInstallStatusDto, String> {
+    // The webview only names the update; what is installed is what Rust checked.
+    let _ = signature;
+    let checked = resolve_with_recheck(&CHECKED_UPDATE, &version, &download_url, || async {
+        let _ = updater_check(app.clone(), None).await;
+    })
+    .await?;
     let _operation = UpdateOperation::begin()?;
     clear_staged_update();
     let is_running = state.is_running.load(Ordering::SeqCst);
@@ -674,9 +754,9 @@ pub async fn updater_install(
     download_and_install_internal(
         Some(&app),
         &client,
-        &download_url,
-        signature.as_deref(),
-        &version,
+        &checked.download_url,
+        Some(&checked.signature),
+        &checked.version,
         trusted_key.as_deref(),
         is_running,
     )
@@ -727,6 +807,91 @@ pub fn updater_open_download_url(url: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn install_request_must_match_checked_update() {
+        let checked = CheckedUpdate {
+            version: "9.9.9".into(),
+            download_url: "https://example.com/wex-9.9.9.exe".into(),
+            signature: "sig".into(),
+        };
+        assert!(match_checked_update(Some(&checked), "9.9.9", &checked.download_url).is_ok());
+        // Downgrade/other version from the webview.
+        assert!(match_checked_update(Some(&checked), "0.0.1", &checked.download_url).is_err());
+        // Other URL.
+        assert!(
+            match_checked_update(Some(&checked), "9.9.9", "https://evil.example/x.exe").is_err()
+        );
+        // Nothing was checked.
+        assert!(match_checked_update(None, "9.9.9", &checked.download_url).is_err());
+    }
+
+    fn sample(version: &str) -> CheckedUpdate {
+        CheckedUpdate {
+            version: version.into(),
+            download_url: format!("https://example.com/wex-{version}.exe"),
+            signature: "sig".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn install_rechecks_once_when_nothing_or_another_update_is_stored() {
+        let url = sample("9.9.9").download_url;
+        // Nothing stored: the re-check fills it in.
+        let store = Mutex::new(None);
+        let got = resolve_with_recheck(&store, "9.9.9", &url, || async {
+            *store.lock().unwrap() = Some(sample("9.9.9"));
+        })
+        .await
+        .unwrap();
+        assert_eq!(got.version, "9.9.9");
+        // Stale card: stored is older, the re-check finds the newer one.
+        let store = Mutex::new(Some(sample("9.9.8")));
+        assert!(resolve_with_recheck(&store, "9.9.9", &url, || async {
+            *store.lock().unwrap() = Some(sample("9.9.9"));
+        })
+        .await
+        .is_ok());
+        // Matching store: no re-check at all.
+        let store = Mutex::new(Some(sample("9.9.9")));
+        assert!(resolve_with_recheck(&store, "9.9.9", &url, || async {
+            panic!("must not re-check")
+        })
+        .await
+        .is_ok());
+        // Still unverifiable after the re-check: clear failure, and a downgrade stays rejected.
+        let store = Mutex::new(Some(sample("9.9.9")));
+        let err = resolve_with_recheck(&store, "0.0.1", &sample("0.0.1").download_url, || async {})
+            .await
+            .unwrap_err();
+        assert!(err.contains("подтвердить"));
+    }
+
+    #[test]
+    fn only_signed_available_updates_are_remembered() {
+        let mut info = LauncherUpdateInfoDto {
+            update_available: true,
+            current_version: "0.1.0".into(),
+            latest_version: Some("9.9.9".into()),
+            notes: None,
+            pub_date: None,
+            download_url: Some("https://example.com/a.exe".into()),
+            signature: Some("sig".into()),
+            is_signed: false,
+            can_auto_update: false,
+        };
+        remember_checked_update(&info);
+        assert!(CHECKED_UPDATE.lock().unwrap().is_none());
+        info.can_auto_update = true;
+        remember_checked_update(&info);
+        assert_eq!(
+            CHECKED_UPDATE.lock().unwrap().as_ref().unwrap().version,
+            "9.9.9"
+        );
+        info.update_available = false;
+        remember_checked_update(&info);
+        assert!(CHECKED_UPDATE.lock().unwrap().is_none());
+    }
     use std::io::Write;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};

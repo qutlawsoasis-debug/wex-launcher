@@ -299,7 +299,8 @@ pub async fn cloud_create(
     seed: Option<String>,
     state: State<'_, CloudState>,
 ) -> Result<CloudStartView, String> {
-    state.create(&name, &version, seed).await
+    let version = crate::commands::logs::validate_game_version(Some(&version))?;
+    state.create(&name, version, seed).await
 }
 
 #[tauri::command]

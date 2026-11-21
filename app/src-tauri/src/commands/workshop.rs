@@ -40,6 +40,13 @@ pub fn validate_single_component(name: &str) -> Result<&str, String> {
     }
 }
 
+/// Like `validate_single_component`, but returns the name untouched: the caller
+/// must use the exact on-disk spelling (leading/trailing spaces included).
+pub fn validate_single_component_exact(name: &str) -> Result<&str, String> {
+    validate_single_component(name)?;
+    Ok(name)
+}
+
 pub fn resolve_and_validate_world_dir(
     input: &str,
     version: Option<&str>,

@@ -147,6 +147,29 @@ pub async fn read_varint<R: AsyncRead + Unpin>(reader: &mut R) -> io::Result<i32
 pub async fn resolve_minecraft_address(address: &str) -> (String, u16) {
     let address = address.trim();
 
+    // Bracketed IPv6 literal: `[v6]` or `[v6]:port`. Strip the brackets for connect
+    // and never ask DNS for an SRV record of an IP literal.
+    if let Some(rest) = address.strip_prefix('[') {
+        if let Some((inner, tail)) = rest.split_once(']') {
+            let port = match tail.strip_prefix(':') {
+                Some(p) => p.parse::<u16>().ok(),
+                None if tail.is_empty() => Some(25565),
+                None => None,
+            };
+            if let Some(port) = port {
+                return (inner.to_string(), port);
+            }
+        }
+    }
+    // Bare IPv6 (several colons) is an address, not host:port.
+    if address.parse::<std::net::Ipv6Addr>().is_ok() {
+        return (address.to_string(), 25565);
+    }
+    // IPv4 literal without a port: no SRV either.
+    if address.parse::<std::net::Ipv4Addr>().is_ok() {
+        return (address.to_string(), 25565);
+    }
+
     // Check for explicit port
     if let Some(colon_pos) = address.rfind(':') {
         let host = &address[..colon_pos];
@@ -335,6 +358,31 @@ mod tests {
     use super::*;
     use std::io::Cursor;
     use tokio::io::duplex;
+
+    #[tokio::test]
+    async fn bracketed_and_bare_ipv6_resolve_without_srv() {
+        // Awaiting would hang on DNS if an SRV lookup were attempted for these.
+        assert_eq!(
+            resolve_minecraft_address("[::1]").await,
+            ("::1".to_string(), 25565)
+        );
+        assert_eq!(
+            resolve_minecraft_address("[2001:db8::1]:25570").await,
+            ("2001:db8::1".to_string(), 25570)
+        );
+        assert_eq!(
+            resolve_minecraft_address("2001:db8::1").await,
+            ("2001:db8::1".to_string(), 25565)
+        );
+        assert_eq!(
+            resolve_minecraft_address("192.0.2.7").await,
+            ("192.0.2.7".to_string(), 25565)
+        );
+        assert_eq!(
+            resolve_minecraft_address("192.0.2.7:1234").await,
+            ("192.0.2.7".to_string(), 1234)
+        );
+    }
 
     #[test]
     fn test_srv_target_filters_other_answers_and_preserves_first_srv_port() {

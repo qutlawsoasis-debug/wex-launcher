@@ -2,7 +2,10 @@ use crate::accounts::GameSession;
 use crate::config::{LauncherConfig, WexPaths};
 use crate::error::{Result, WexError};
 use crate::event::{Event, EventHandler, LogLevel};
-use crate::fabric::{fetch_fabric_profile, install_fabric_libraries, resolve_fabric_libraries};
+use crate::fabric::{
+    fetch_fabric_profile, install_fabric_libraries_enriching, resolve_fabric_libraries,
+    write_fabric_profile_cache,
+};
 use crate::java::ensure_mojang_java;
 use crate::minecraft::{
     fetch_version_package, install_assets, install_minecraft_client, install_vanilla_libraries,
@@ -628,7 +631,7 @@ pub async fn install_full_environment(
         step: 2,
         total_steps: 4,
     });
-    let fabric_profile = match fetch_fabric_profile(client, version, None).await {
+    let mut fabric_profile = match fetch_fabric_profile(client, version, None).await {
         Ok(prof) => {
             fs::write(&fabric_cache_file, serde_json::to_vec_pretty(&prof)?)?;
             prof
@@ -650,8 +653,13 @@ pub async fn install_full_environment(
         }
     };
 
-    let fabric_libs =
-        install_fabric_libraries(paths, &fabric_profile, client, events, concurrency).await?;
+    let (fabric_libs, enriched) =
+        install_fabric_libraries_enriching(paths, &mut fabric_profile, client, events, concurrency)
+            .await?;
+    if enriched {
+        // Keep the sidecar hashes so offline runs verify against the cache.
+        write_fabric_profile_cache(&fabric_cache_file, &fabric_profile)?;
+    }
 
     // 3. Java Runtime
     events.on_event(&Event::StageStarted {
@@ -1390,6 +1398,36 @@ mod tests {
             );
             assert_eq!(plain.len() + 2, args.len());
         }
+    }
+
+    #[test]
+    fn quick_play_multiplayer_keeps_bracketed_ipv6_as_one_argument() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let config = LauncherConfig::default();
+        let java_bin = PathBuf::from("java.exe");
+        let client_jar = PathBuf::from("client.jar");
+        let opts = LaunchOptions {
+            paths: &paths,
+            config: &config,
+            version: "1.21.1",
+            java_binary: &java_bin,
+            client_jar: &client_jar,
+            vanilla_libraries: &[],
+            fabric_libraries: &[],
+            asset_index_id: "6",
+            extra_jvm_args: &[],
+            quick_play_multiplayer: Some("[2001:db8::1]:25565"),
+            prewarm_signal: None,
+            prewarm_parent_pid: None,
+        };
+        let args = build_launch_args(&opts);
+        let pos = args
+            .iter()
+            .position(|a| a == "--quickPlayMultiplayer")
+            .unwrap();
+        assert_eq!(args[pos + 1], "[2001:db8::1]:25565");
+        assert_eq!(args.len(), pos + 2);
     }
 
     #[test]
