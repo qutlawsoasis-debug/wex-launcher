@@ -1,8 +1,9 @@
 /* Shared controls of the redesigned pages (reference: .btn, .mini, .tile, .panel,
  * .h-row, .empty, .live, .dot). Scoped under .wx so the previous screens, which
  * still render inside the new frame until their stage, are not affected.
- * HIG › Buttons: 40 px standard, 52 px large, press scales to 97 %; one blue
- * (systemBlue) prominent action per area.
+ * HIG › Buttons: 40 px standard, 52 px large, press scales to 97 %; «Keep the
+ * number of prominent buttons to one or two per view» (aura-knowledge «Кнопка —
+ * акцентный стиль»). Button states: «Состояния кнопки Aura» (fills, no extra blues).
  */
 
 .wx :where(button) {
@@ -28,7 +29,7 @@
   height: var(--control-h);
   padding: 0 16px;
   border-radius: var(--r-s);
-  background: var(--fill-2);
+  background: var(--fill);
   font-weight: var(--w-semibold);
   font-size: var(--t-sub);
   display: inline-flex;
@@ -40,19 +41,25 @@
     transform var(--dur-micro) var(--ease),
     opacity var(--dur-micro);
 }
-.wx .btn:hover {
-  background: var(--fill);
+/* Normal: systemFill at rest, secondarySystemFill on hover, tertiarySystemFill pressed. */
+.wx .btn:hover,
+.wx .mini:hover {
+  background: var(--fill-2);
 }
 .wx .btn:active,
 .wx .mini:active {
   transform: scale(var(--press-scale));
+  background: var(--fill-3);
 }
-.wx .btn.blue {
+/* Primary: the accent; no change on hover, 20 % toward secondarySystemFill pressed. */
+.wx .btn.blue,
+.wx .mini.blue {
   background: var(--blue);
   color: var(--blue-ink);
 }
-.wx .btn.blue:hover {
-  background: var(--blue-hi);
+.wx .btn.blue:active,
+.wx .mini.blue:active {
+  background: color-mix(in srgb, var(--blue) 80%, var(--fill-2));
 }
 .wx .btn.big {
   height: var(--control-h-big);
@@ -65,9 +72,11 @@
   height: 14px;
   fill: currentColor;
 }
+/* Disabled: quaternarySystemFill with quaternaryLabel, also for Primary. */
 .wx .btn[disabled],
 .wx .mini[disabled] {
-  opacity: 0.5;
+  background: var(--fill-4);
+  color: var(--label-4);
   cursor: default;
   transform: none;
 }
@@ -76,23 +85,13 @@
   height: 32px;
   padding: 0 12px;
   border-radius: var(--r-s);
-  background: var(--fill-2);
+  background: var(--fill);
   font-size: var(--t-foot);
   font-weight: var(--w-semibold);
   white-space: nowrap;
   transition:
     background-color var(--dur-micro),
     transform var(--dur-micro) var(--ease);
-}
-.wx .mini:hover {
-  background: var(--fill);
-}
-.wx .mini.blue {
-  background: var(--blue);
-  color: var(--blue-ink);
-}
-.wx .mini.blue:hover {
-  background: var(--blue-hi);
 }
 
 .wx .tile {
@@ -106,8 +105,9 @@
     transform var(--dur-short) var(--ease),
     box-shadow var(--dur-short);
 }
+/* Hover: a quaternarySystemFill overlay on the card, not a second surface colour. */
 .wx .tile:hover {
-  background: var(--card-hover);
+  background: linear-gradient(var(--fill-4), var(--fill-4)) var(--card);
   transform: translateY(var(--hover-lift));
   box-shadow:
     inset 0 0 0 1px var(--edge),
@@ -133,14 +133,19 @@
   font-size: var(--t-t3);
   font-weight: var(--w-bold);
 }
+/* Section links ("All", "New server"): neutral like every non-primary control;
+   blue stays the one primary action (AGENTS.md; HIG › Color: «Avoid using the
+   same color to mean different things»). */
 .wx .h-row a,
 .wx .h-row button {
   font-size: var(--t-sub);
-  color: var(--blue-text);
+  color: var(--label-2);
   font-weight: var(--w-medium);
+  transition: color var(--dur-micro);
 }
 .wx .h-row a:hover,
 .wx .h-row button:hover {
+  color: var(--label);
   text-decoration: underline;
 }
 
@@ -158,11 +163,14 @@
   align-items: center;
   gap: 8px;
 }
+/* Status dot ("running", "in game"): gray, the words next to it carry the state.
+   Green is for toggles only (AGENTS.md; HIG › Color: «Avoid relying solely on
+   color to differentiate between objects»). */
 .wx .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--green);
+  background: var(--gray);
   flex: none;
 }
 
@@ -222,12 +230,14 @@
   font-size: var(--t-foot);
 }
 
-/* Toggle (reference: .switch). HIG › Toggles: systemGreen when on; spring knob. */
+/* Toggle (reference: .switch). «Цвет включённого переключателя Aura»: on systemGreen,
+   off tertiarySystemFill, disabled quaternarySystemFill, knob #FFFFFF (disabled
+   75 % white). HIG › Toggles. */
 .wx .switch {
   width: 51px;
   height: 31px;
   border-radius: var(--r-pill);
-  background: var(--fill);
+  background: var(--fill-3);
   position: relative;
   flex: none;
   transition: background-color var(--dur-short);
@@ -240,7 +250,7 @@
   width: 27px;
   height: 27px;
   border-radius: 50%;
-  background: var(--label);
+  background: #ffffff;
   box-shadow: 0 3px 8px var(--shade);
   transition: transform var(--dur-ind) var(--spring);
 }
@@ -251,8 +261,11 @@
   transform: translateX(20px);
 }
 .wx .switch[disabled] {
-  opacity: 0.4;
+  background: var(--fill-4);
   cursor: default;
+}
+.wx .switch[disabled]::after {
+  background: rgba(255, 255, 255, 0.75);
 }
 
 /* Tools row, search field, segmented control (reference: .tools / .search / .seg).
@@ -272,7 +285,7 @@
   height: 40px;
   padding: 0 12px;
   border-radius: var(--r-s);
-  background: var(--fill-3);
+  background: var(--fill-4);
   color: var(--label-3);
 }
 .wx .search input {
@@ -286,7 +299,8 @@
   /* Browser default field padding; the base reset in wex.css removes it. */
   padding: 1px 2px;
 }
-/* The field shows focus with its own 2 px ring (focus-within), not a second outline. */
+/* «Цвета поля Aura»: field quaternarySystemFill, accent border in focus. The field
+   shows focus with that border (focus-within), not a second outline. */
 .wx .search input:focus-visible {
   outline: none !important;
 }
@@ -301,12 +315,14 @@
   stroke-width: 2;
   flex: none;
 }
+/* «Цвета вкладок Aura»: track quaternarySystemFill, plate secondarySystemFill,
+   selected label Semibold, others secondaryLabel Regular. */
 .wx .seg {
   position: relative;
   display: inline-flex;
   padding: 2px;
   border-radius: var(--r-s);
-  background: var(--fill-3);
+  background: var(--fill-4);
 }
 .wx .seg button {
   position: relative;
@@ -315,13 +331,17 @@
   padding: 0 12px;
   border-radius: var(--r-xs);
   font-size: var(--t-sub);
-  font-weight: var(--w-medium);
+  font-weight: var(--w-regular);
   color: var(--label-2);
   white-space: nowrap;
   transition: color var(--dur-micro);
 }
+.wx .seg button:hover {
+  color: var(--label);
+}
 .wx .seg button[aria-pressed='true'] {
   color: var(--label);
+  font-weight: var(--w-semibold);
 }
 .wx .seg > .ind {
   position: absolute;
@@ -330,14 +350,16 @@
   z-index: 0;
   pointer-events: none;
   border-radius: var(--r-xs);
-  background: var(--fill);
+  background: var(--fill-2);
   transition:
     transform var(--dur-ind) var(--spring),
     width var(--dur-ind) var(--spring),
     opacity var(--dur-short);
 }
 
-/* Tabs (reference: .tabs): a gliding underline under the selected tab. */
+/* Tabs (reference: .tabs): a plate glides under the selected tab. Selection is a
+   fill, never a coloured underline (AGENTS.md); the plate is secondarySystemFill
+   and the selected label is label (aura-knowledge «Цвета вкладок Aura»). */
 .wx .tabs {
   position: relative;
   display: flex;
@@ -371,10 +393,10 @@
 .wx .tabs > .ind {
   position: absolute;
   left: 0;
-  bottom: 0;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--blue-text);
+  top: 6px;
+  bottom: 6px;
+  border-radius: var(--r-s);
+  background: var(--fill-2);
   pointer-events: none;
   transition:
     transform var(--dur-ind) var(--spring),
@@ -421,9 +443,9 @@
   padding: 0 12px;
   border-radius: var(--r-s);
   border: 0;
-  background: var(--fill-3);
+  background: var(--fill-4);
   color: var(--label);
-  box-shadow: inset 0 0 0 1px var(--edge);
+  box-shadow: inset 0 0 0 1px var(--separator);
   outline: 0;
   font: inherit;
   transition: box-shadow var(--dur-micro);
@@ -431,14 +453,16 @@
 .wx .field:focus {
   box-shadow: inset 0 0 0 2px var(--blue);
 }
+/* Invalid value: a label-coloured border and the message under the field; red
+   stays for destructive actions (AGENTS.md; HIG › Color). */
 .wx .field.bad {
-  box-shadow: inset 0 0 0 2px var(--red);
+  box-shadow: inset 0 0 0 2px var(--label);
 }
 .wx select {
   height: 36px;
   border-radius: var(--r-s);
   padding: 0 12px;
-  background: var(--fill-2);
+  background: var(--fill);
   border: 0;
   font: inherit;
   color: inherit;
@@ -448,6 +472,7 @@
   font: inherit;
   /* Browser default margin; the base reset in wex.css removes it. */
   margin: 2px;
+  /* «Геометрия ползунка Aura»: the filled part is the accent. */
   accent-color: var(--blue);
 }
 .wx .btn.danger {
@@ -475,9 +500,10 @@
   font-size: var(--t-foot);
   color: var(--label-2);
 }
+/* Drop target armed: a denser neutral fill, not a blue tint (selection is a fill). */
 .wx .drop.over {
-  border-color: var(--blue-text);
-  background: var(--blue-tint);
+  border-color: var(--label-2);
+  background: var(--fill-2);
   transform: scale(1.02);
 }
 

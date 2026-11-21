@@ -117,11 +117,7 @@
     border-color: var(--separator);
   }
 
-  .apple-toggle:focus-visible {
-    outline: 2px solid var(--blue);
-    outline-offset: 2px;
-    box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.35);
-  }
+  /* Focus: the global ring in app.css («Кольцо фокуса Aura»), no halo of its own. */
 
   .apple-toggle:active:not([aria-disabled="true"]) .thumb {
     width: 24px;

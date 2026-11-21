@@ -207,9 +207,11 @@
     transform: scale(var(--press-scale, 0.97));
   }
 
+  /* The same 2 px accent ring («Кольцо фокуса Aura»), drawn inside: grouped lists
+     clip their rows at the rounded corners. */
   .apple-row.clickable:focus-visible {
-    outline: 2px solid var(--blue);
-    outline-offset: -2px;
+    outline: 2px solid var(--blue) !important;
+    outline-offset: -2px !important;
     z-index: 1;
   }
 

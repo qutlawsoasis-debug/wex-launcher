@@ -7,10 +7,34 @@
   box-sizing: border-box;
 }
 
+/* The one focus ring of the app: 2 px in the accent, drawn outward from the shape by
+   its own thickness (aura-knowledge «Кольцо фокуса Aura»: «Толщина 2 px, Цвет accent,
+   Отступ наружу от формы на толщину кольца»; the same ring on buttons, toggles,
+   sliders and tabs). HIG › Accessibility, Keyboard: people can move by keyboard
+   alone, so focus must be visible. Components never draw a second halo. */
 :focus-visible {
-  /* Reference: 3 px ring in the text blue. */
-  outline: 3px solid var(--blue-text) !important;
+  outline: 2px solid var(--blue) !important;
   outline-offset: 2px !important;
+}
+
+/* Error and warning text: the warning symbol (the Icon "warning" glyph, SF Symbols
+   style exclamationmark.triangle) in front of words in the label colour. Red is
+   reserved for destructive actions (AGENTS.md), and HIG › Color asks not to rely on
+   colour alone («Avoid relying solely on color to differentiate between objects»).
+   The symbol is a mask, so it takes the text colour in both themes. */
+.alert-sym {
+  color: var(--label) !important;
+}
+.alert-sym::before {
+  content: '';
+  display: inline-block;
+  width: 1.05em;
+  height: 1.05em;
+  margin-right: 0.35em;
+  vertical-align: -0.17em;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z'/%3E%3Cpath d='M12 9v4M12 17h.01'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z'/%3E%3Cpath d='M12 9v4M12 17h.01'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 /* Pointer use never shows a focus ring on controls; text fields keep theirs. */

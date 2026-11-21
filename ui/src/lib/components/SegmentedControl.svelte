@@ -3,11 +3,9 @@
   Reference benchmark: C:\Users\Public\agy-multiuser\status\segmented-liquid-glass.html
   Specifications:
   - Track: 40px height, border-radius 20px
-  - Dark: background rgba(120,120,128,.22), border 0.5px rgba(255,255,255,.16), blur 20px saturate(180%)
-  - Light: background rgba(118,118,128,.14), border 0.5px rgba(0,0,0,.08)
+  - Colours (aura-knowledge «Цвета вкладок Aura»): track quaternarySystemFill, plate
+    secondarySystemFill, selected label Semibold, others secondaryLabel Regular
   - Drop: 34px height, border-radius 17px, 3px padding from track edges
-  - Dark drop: rgba(255,255,255,.13), on-press .20, inset highlight & top gradient
-  - Light drop: #ffffff, shadow 0 1px 3px rgba(0,0,0,.12), on-press #f5f5f7
   - Physics: spring v += (goal - x) * 0.05; v *= 0.8; stretch = min(|v|*1.2, 14) px
   - Dual-layer text counter-translated lens (.lens-in) with progressive opacity fading (no double rendering)
   - Pointer dragging & closest-segment snapping, keyboard arrow navigation, reduced-motion 150ms
@@ -444,33 +442,34 @@
 </div>
 
 <style>
+  /* Colours: aura-knowledge «Цвета вкладок Aura» (HIG › Segmented controls):
+     track quaternarySystemFill, plate secondarySystemFill, selected text label
+     Semibold, other text secondaryLabel Regular, disabled quaternaryLabel.
+     The selected segment is a fill, never a coloured outline (AGENTS.md).
+     No blur: «Размытие Aura» blurs only the capsule container, inside are flat fills,
+     so Reduce Transparency needs nothing extra here. */
   .apple-segmented-control.liquid-glass {
     position: relative;
     width: 100%;
     max-width: 640px;
     height: 40px;
     border-radius: 20px;
-    background: rgba(120, 120, 128, 0.22);
-    border: 0.5px solid rgba(255, 255, 255, 0.16);
+    background: var(--fill-4);
     touch-action: none;
     user-select: none;
     cursor: pointer;
     overflow: hidden;
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
     box-sizing: border-box;
     display: block;
   }
 
   .apple-segmented-control.liquid-glass.disabled {
-    opacity: 0.45;
     pointer-events: none;
   }
 
-  /* Light Theme */
-  :global([data-theme="light"]) .apple-segmented-control.liquid-glass {
-    background: rgba(118, 118, 128, 0.14);
-    border: 0.5px solid rgba(0, 0, 0, 0.08);
+  .apple-segmented-control.liquid-glass.disabled .labels span,
+  .apple-segmented-control.liquid-glass.disabled .lens-in span {
+    color: var(--label-4);
   }
 
   /* Labels layers (Base and Lens) */
@@ -484,8 +483,8 @@
     grid-auto-flow: column;
     align-items: center;
     text-align: center;
-    font-family: var(--font-family, Onest), system-ui, -apple-system, sans-serif;
-    font-weight: 500;
+    font-family: var(--font);
+    font-weight: var(--w-regular);
     font-size: 15px;
     line-height: 1;
     pointer-events: none;
@@ -493,7 +492,7 @@
   }
 
   .labels span {
-    color: rgba(255, 255, 255, 0.62);
+    color: var(--label-2);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -501,11 +500,7 @@
     will-change: opacity;
   }
 
-  :global([data-theme="light"]) .labels span {
-    color: rgba(0, 0, 0, 0.55);
-  }
-
-  /* Drop */
+  /* Drop: the plate under the selected segment. */
   .drop {
     position: absolute;
     top: 3px;
@@ -515,61 +510,29 @@
     overflow: hidden;
     pointer-events: none;
     will-change: transform, width;
-    background: rgba(255, 255, 255, 0.13);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.5),
-      inset 0 -1px 1px rgba(255, 255, 255, 0.1);
+    background: var(--fill-2);
     transition: background-color 200ms ease;
     box-sizing: border-box;
   }
 
+  /* Pressed: one step denser, like a pressed button (aura-knowledge «Состояния кнопки Aura»). */
   .drop.on {
-    background: rgba(255, 255, 255, 0.2);
-  }
-
-  .drop::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.22),
-      rgba(255, 255, 255, 0) 50%
-    );
-    pointer-events: none;
-  }
-
-  /* Light Theme Drop */
-  :global([data-theme="light"]) .drop {
-    background: #ffffff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-  }
-
-  :global([data-theme="light"]) .drop.on {
-    background: #f5f5f7;
-  }
-
-  :global([data-theme="light"]) .drop::after {
-    display: none;
+    background: var(--fill);
   }
 
   /* Inside Drop Lens Text */
   .lens-in {
     top: -3px;
+    font-weight: var(--w-semibold);
     will-change: transform;
   }
 
   .lens-in span {
-    color: #ffffff;
+    color: var(--label);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     padding: 0 4px;
-  }
-
-  :global([data-theme="light"]) .lens-in span {
-    color: #000000;
   }
 
   /* Accessible Interactive Radio Buttons Layer */
@@ -594,9 +557,11 @@
     margin: 0;
   }
 
+  /* The same 2 px accent ring as everywhere («Кольцо фокуса Aura»), drawn inside
+     because the track clips anything outside it (overflow: hidden for the drop). */
   .segment-button:focus-visible {
-    outline: 2px solid var(--blue);
-    outline-offset: -2px;
+    outline: 2px solid var(--blue) !important;
+    outline-offset: -2px !important;
     border-radius: 17px;
   }
 
@@ -610,93 +575,5 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
-  }
-
-  /* Reduce Transparency & High Contrast (L9) */
-  @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-    .apple-segmented-control.liquid-glass {
-      backdrop-filter: none !important;
-      -webkit-backdrop-filter: none !important;
-      background: #1c1c1e !important;
-      border: 1px solid rgba(255, 255, 255, 0.3) !important;
-    }
-    :global([data-theme="light"]) .apple-segmented-control.liquid-glass {
-      background: #e5e5ea !important;
-      border: 1px solid rgba(0, 0, 0, 0.25) !important;
-    }
-    .drop {
-      background: #3a3a3c !important;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
-    }
-    .drop::after {
-      display: none !important;
-    }
-    :global([data-theme="light"]) .drop {
-      background: #ffffff !important;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2) !important;
-    }
-    .labels span {
-      color: #aeaeb2 !important;
-    }
-    :global([data-theme="light"]) .labels span {
-      color: #48484a !important;
-    }
-    .lens-in span {
-      color: #ffffff !important;
-    }
-    :global([data-theme="light"]) .lens-in span {
-      color: #000000 !important;
-    }
-  }
-
-  :global([data-reduce-transparency="true"]) .apple-segmented-control.liquid-glass,
-  :global([data-high-contrast="true"]) .apple-segmented-control.liquid-glass {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    background: #1c1c1e !important;
-    border: 1px solid rgba(255, 255, 255, 0.3) !important;
-  }
-
-  :global([data-theme="light"][data-reduce-transparency="true"]) .apple-segmented-control.liquid-glass,
-  :global([data-theme="light"][data-high-contrast="true"]) .apple-segmented-control.liquid-glass {
-    background: #e5e5ea !important;
-    border: 1px solid rgba(0, 0, 0, 0.25) !important;
-  }
-
-  :global([data-reduce-transparency="true"]) .drop,
-  :global([data-high-contrast="true"]) .drop {
-    background: #3a3a3c !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
-  }
-
-  :global([data-reduce-transparency="true"]) .drop::after,
-  :global([data-high-contrast="true"]) .drop::after {
-    display: none !important;
-  }
-
-  :global([data-theme="light"][data-reduce-transparency="true"]) .drop,
-  :global([data-theme="light"][data-high-contrast="true"]) .drop {
-    background: #ffffff !important;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2) !important;
-  }
-
-  :global([data-reduce-transparency="true"]) .labels span,
-  :global([data-high-contrast="true"]) .labels span {
-    color: #aeaeb2 !important;
-  }
-
-  :global([data-theme="light"][data-reduce-transparency="true"]) .labels span,
-  :global([data-theme="light"][data-high-contrast="true"]) .labels span {
-    color: #48484a !important;
-  }
-
-  :global([data-reduce-transparency="true"]) .lens-in span,
-  :global([data-high-contrast="true"]) .lens-in span {
-    color: #ffffff !important;
-  }
-
-  :global([data-theme="light"][data-reduce-transparency="true"]) .lens-in span,
-  :global([data-theme="light"][data-high-contrast="true"]) .lens-in span {
-    color: #000000 !important;
   }
 </style>

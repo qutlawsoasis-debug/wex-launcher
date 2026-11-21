@@ -91,8 +91,9 @@
     max-width: 320px;
     height: 32px;
     padding: 0 8px 0 10px;
-    background-color: var(--fill-3);
-    border: 1px solid var(--edge);
+    /* «Цвета поля Aura»: quaternarySystemFill, separator border without focus. */
+    background-color: var(--fill-4);
+    border: 1px solid var(--separator);
     border-radius: var(--r-s);
     transition:
       background-color var(--dur-micro) ease,
@@ -104,12 +105,15 @@
     background-color: var(--fill-3);
   }
 
+  /* «Цвета поля Aura»: in focus the field's border is the accent, without focus the
+     separator. That border is the field's focus indicator; no extra halo or outline. */
   .apple-search-field:focus-within {
     background-color: var(--card);
-    border-color: var(--blue-text);
-    outline: 2px solid var(--blue);
-    outline-offset: 1px;
-    box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
+    border-color: var(--blue);
+  }
+
+  .search-input:focus-visible {
+    outline: none !important;
   }
 
   .apple-search-field.disabled {
@@ -165,11 +169,6 @@
 
   .clear-btn:active {
     background-color: var(--fill);
-  }
-
-  .clear-btn:focus-visible {
-    outline: 2px solid var(--blue);
-    outline-offset: 1px;
   }
 
 

@@ -145,7 +145,8 @@
     left: 0;
     height: 4px;
     border-radius: var(--r-pill);
-    background-color: var(--blue-text);
+    /* «Геометрия ползунка Aura»: the filled part is the accent. */
+    background-color: var(--blue);
     pointer-events: none;
     transition: width var(--dur-micro) ease;
   }
@@ -176,12 +177,11 @@
     transform: scale(1.08);
   }
 
+  /* The native range input is invisible, so the thumb carries the same global ring
+     («Кольцо фокуса Aura»: 2 px accent, offset outward by its thickness). No halo. */
   .apple-slider-container:has(.range-input:focus-visible) .slider-thumb {
     outline: 2px solid var(--blue);
     outline-offset: 2px;
-    box-shadow:
-      0 0 0 3px rgba(0, 145, 255, 0.35),
-      0 2px 6px rgba(0, 0, 0, 0.28);
   }
 
   .range-input {

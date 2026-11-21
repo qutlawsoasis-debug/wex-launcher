@@ -205,12 +205,10 @@ html.winter .wx .search:not(.set-search):focus-within,
 html.winter .wx .field:focus {
   box-shadow: inset 0 0 0 2px var(--blue);
 }
+/* Invalid value: label-coloured border, red stays for destructive actions; no
+   glow under the primary button (selection and emphasis are fills, AGENTS.md). */
 html.winter .wx .field.bad {
-  box-shadow: inset 0 0 0 2px var(--red);
-}
-html.winter .wx .mini.blue,
-html.winter .wx .btn.blue {
-  box-shadow: 0 0 12px var(--frost-glow);
+  box-shadow: inset 0 0 0 2px var(--label);
 }
 
 /* While the game runs the launcher idles: no blur (energy, as App.svelte does). */

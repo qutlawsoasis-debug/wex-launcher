@@ -83,9 +83,7 @@
     transition:
       transform var(--dur-micro) var(--ease),
       background-color var(--dur-micro) ease,
-      opacity var(--dur-micro) ease,
-      box-shadow var(--dur-micro) ease;
-    outline: none;
+      opacity var(--dur-micro) ease;
   }
 
   .apple-button:active:not(:disabled) {
@@ -93,11 +91,8 @@
     transition-timing-function: var(--ease);
   }
 
-  .apple-button:focus-visible {
-    outline: 2px solid var(--blue);
-    outline-offset: 2px;
-    box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.3);
-  }
+  /* Focus: the one global ring in app.css (2 px accent outline, offset outward;
+     aura-knowledge «Кольцо фокуса Aura»). No second halo here. */
 
   /* Sizes */
   .apple-button.small {
@@ -132,57 +127,48 @@
     width: 100%;
   }
 
-  /* Variants */
+  /* Variants. States from aura-knowledge «Состояния кнопки Aura» (HIG › Buttons):
+     Normal/Destructive rest on systemFill, hover goes to secondarySystemFill,
+     pressed to tertiarySystemFill; Primary rests on the accent, does not change on
+     hover and moves 20 % toward secondarySystemFill when pressed; Disabled is
+     quaternarySystemFill with quaternaryLabel. Text: label, Destructive systemRed,
+     Primary onAccent. No coloured shadows: selection and emphasis are fills. */
   .apple-button.primary {
-    background-color: var(--blue-text);
+    background-color: var(--blue);
     color: var(--blue-ink);
-    box-shadow: 0 2px 8px rgba(0, 145, 255, 0.28);
-  }
-
-  .apple-button.primary:hover:not(:disabled) {
-    background-color: #1a9dff;
-    box-shadow: 0 4px 14px rgba(0, 145, 255, 0.38);
   }
 
   .apple-button.primary:active:not(:disabled) {
     transform: scale(var(--press-scale));
-    background-color: #0077e6;
+    background-color: color-mix(in srgb, var(--blue) 80%, var(--fill-2));
   }
 
-  .apple-button.secondary {
+  .apple-button.secondary,
+  .apple-button.destructive {
     background-color: var(--fill);
     color: var(--label);
-    border: 1px solid var(--edge);
   }
 
-  .apple-button.secondary:hover:not(:disabled) {
+  .apple-button.destructive {
+    color: var(--red);
+  }
+
+  .apple-button.secondary:hover:not(:disabled),
+  .apple-button.destructive:hover:not(:disabled) {
     background-color: var(--fill-2);
   }
 
-  .apple-button.secondary:active:not(:disabled) {
+  .apple-button.secondary:active:not(:disabled),
+  .apple-button.destructive:active:not(:disabled) {
     transform: scale(var(--press-scale));
     background-color: var(--fill-3);
   }
 
-  .apple-button.destructive {
-    background-color: var(--red);
-    color: #ffffff;
-    box-shadow: 0 2px 8px rgba(255, 69, 58, 0.25);
-  }
-
-  .apple-button.destructive:hover:not(:disabled) {
-    background-color: #ff5449;
-    box-shadow: 0 4px 14px rgba(255, 69, 58, 0.35);
-  }
-
-  .apple-button.destructive:active:not(:disabled) {
-    transform: scale(var(--press-scale));
-    background-color: #e03228;
-  }
-
+  /* Ghost: a borderless button, neutral like every non-primary control
+     (AGENTS.md: controls are neutral by default). */
   .apple-button.ghost {
     background-color: transparent;
-    color: var(--blue-text);
+    color: var(--label);
   }
 
   .apple-button.ghost:hover:not(:disabled) {
@@ -191,40 +177,51 @@
 
   .apple-button.ghost:active:not(:disabled) {
     transform: scale(var(--press-scale));
+    background-color: var(--fill-2);
   }
 
+  /* Glass: over imagery (HIG › Materials; Liquid Glass takes its colour from what
+     is behind it, «Цвет на стекле»). White text over the cover, like the hero buttons. */
   .apple-button.glass {
-    background-color: rgba(118, 118, 128, 0.24);
-    color: rgba(255, 255, 255, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    background-color: var(--hero-btn);
+    color: var(--cover-ink);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   }
 
   .apple-button.glass:hover:not(:disabled) {
-    background-color: rgba(118, 118, 128, 0.36);
-    border-color: rgba(255, 255, 255, 0.28);
-    color: #ffffff;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    background-color: var(--hero-btn-hi);
   }
 
   .apple-button.glass:active:not(:disabled) {
     transform: scale(var(--press-scale));
-    background-color: rgba(118, 118, 128, 0.44);
   }
 
-  .apple-button.glass :global(svg) {
-    color: rgba(255, 255, 255, 0.90);
+  /* Reduce Transparency: the glass becomes an opaque surface (HIG › Accessibility,
+     Materials). The global rule in wex.css already removes the blur. */
+  :global(:root[data-reduce-transparency='true']) .apple-button.glass {
+    background-color: var(--card);
+    color: var(--label);
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .apple-button.glass {
+      background-color: var(--card);
+      color: var(--label);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
   }
 
   /* Disabled state */
   .apple-button:disabled {
-    opacity: 0.42;
+    background-color: var(--fill-4);
+    color: var(--label-4);
     cursor: not-allowed;
     transform: none !important;
-    box-shadow: none !important;
+  }
+
+  .apple-button.ghost:disabled {
+    background-color: transparent;
   }
 
   /* Loading spinner */
