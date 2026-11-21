@@ -8,6 +8,7 @@ pub mod event;
 pub mod fabric;
 pub mod ipc_adapter;
 pub mod java;
+pub mod java_probe;
 pub mod jvm_args;
 pub mod launcher;
 pub mod minecraft;
