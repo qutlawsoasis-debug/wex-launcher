@@ -273,8 +273,12 @@ pub async fn reset_settings_impl(
     core: &dyn LauncherCore,
 ) -> Result<LauncherSettingsDto, String> {
     let default_cfg = CoreConfig::default();
-    wex_core::config::update_config(&paths.config_file, |cfg| *cfg = default_cfg.clone())
-        .map_err(|e| format!("Не удалось сбросить конфигурацию: {}", e))?;
+    {
+        let _config_guard = wex_core::config::lock_config();
+        default_cfg
+            .save(&paths.config_file)
+            .map_err(|e| format!("Не удалось сбросить конфигурацию: {}", e))?;
+    }
 
     let _ = core.save_config(default_cfg.into()).await;
 
