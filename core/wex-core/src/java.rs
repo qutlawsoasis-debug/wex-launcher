@@ -176,8 +176,7 @@ pub async fn ensure_mojang_java(
     let mut download_tasks = Vec::new();
 
     for (rel_path, file_entry) in &pkg.files {
-        let clean_path = rel_path.replace('\\', "/");
-        let target_path = comp_dir.join(&clean_path);
+        let target_path = crate::safe_path::safe_join(&comp_dir, rel_path)?;
 
         if file_entry.file_type == "directory" {
             let _ = fs::create_dir_all(&target_path);

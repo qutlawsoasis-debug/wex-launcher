@@ -11,9 +11,8 @@ use wex_ipc::models::{ScreenshotItemDto, WorldBackupItemDto, WorldItemDto};
 
 use super::launch::PlayState;
 
-fn resolve_game_dir(paths: &WexPaths, version: Option<&str>) -> PathBuf {
-    let ver = version.unwrap_or("1.21.1");
-    paths.instance_dir(ver)
+fn resolve_game_dir(paths: &WexPaths, version: Option<&str>) -> Result<PathBuf, String> {
+    crate::commands::logs::validate_and_resolve_instance_dir(paths, version)
 }
 
 /// Validates that an input string is a single path component without separators or traversal.
@@ -55,7 +54,7 @@ pub fn resolve_and_validate_world_dir(
         return Err("Относительные переходы пути запрещены".to_string());
     }
 
-    let game_dir = resolve_game_dir(paths, version);
+    let game_dir = resolve_game_dir(paths, version)?;
     let saves_dir = game_dir.join("saves");
 
     let candidate = if p.components().count() == 1 {
@@ -132,7 +131,7 @@ pub fn restore_world_backup_impl(
         return Err("Файл резервной копии должен находиться внутри папки Wex".to_string());
     }
 
-    let game_dir = resolve_game_dir(paths, version);
+    let game_dir = resolve_game_dir(paths, version)?;
     let saves_dir = game_dir.join("saves");
     fs::create_dir_all(&saves_dir).map_err(|e| e.to_string())?;
     let canon_saves = saves_dir.canonicalize().map_err(|e| e.to_string())?;
@@ -207,7 +206,7 @@ pub async fn workshop_list_worlds(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<Vec<WorldItemDto>, String> {
-    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
     let worlds = wex_social::list_worlds(&game_dir).map_err(|e| e.to_string())?;
     Ok(worlds.into_iter().map(Into::into).collect())
 }
@@ -221,7 +220,7 @@ pub async fn social_list_worlds(
 ) -> Result<SocialListWorldsResponse, String> {
     let game_dir = match request {
         Some(req) if !req.game_dir.is_empty() => PathBuf::from(req.game_dir),
-        _ => resolve_game_dir(&state.paths, version.as_deref()),
+        _ => resolve_game_dir(&state.paths, version.as_deref())?,
     };
     let worlds = wex_social::list_worlds(&game_dir).map_err(|e| e.to_string())?;
     Ok(SocialListWorldsResponse {
@@ -238,7 +237,7 @@ pub async fn workshop_create_world_backup(
 ) -> Result<WorldBackupItemDto, String> {
     let world_path =
         resolve_and_validate_world_dir(&world_folder, version.as_deref(), &state.paths)?;
-    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
     let backup_base_dir = game_dir.join("backups");
     let zip_path = wex_social::create_world_backup(&world_path, &backup_base_dir)
         .map_err(|e| e.to_string())?;
@@ -302,7 +301,7 @@ pub async fn workshop_list_world_backups(
     display_name: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<Vec<WorldBackupItemDto>, String> {
-    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
     let backup_base_dir = game_dir.join("backups");
     let folder_name = world_folder_name.as_deref().unwrap_or("");
     let d_name = display_name.as_deref().unwrap_or(folder_name);
@@ -373,7 +372,7 @@ pub async fn workshop_list_screenshots(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<Vec<ScreenshotItemDto>, String> {
-    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
     let screenshots_dir = game_dir.join("screenshots");
     let list = wex_social::list_screenshots(&screenshots_dir).map_err(|e| e.to_string())?;
     Ok(list.into_iter().map(Into::into).collect())
@@ -387,9 +386,11 @@ pub async fn social_list_screenshots(
     state: State<'_, PlayState>,
 ) -> Result<SocialListScreenshotsResponse, String> {
     let screenshots_dir = match request {
-        Some(req) if !req.screenshots_dir.is_empty() => PathBuf::from(req.screenshots_dir),
+        Some(req) if !req.screenshots_dir.is_empty() => {
+            validate_open_path(&state.paths, &req.screenshots_dir)?
+        }
         _ => {
-            let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+            let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
             game_dir.join("screenshots")
         }
     };
@@ -399,15 +400,79 @@ pub async fn social_list_screenshots(
     })
 }
 
-/// Reveal a file or folder in system file manager (Explorer / Finder / xdg-open).
-#[tauri::command]
-pub async fn workshop_open_path(path: String) -> Result<(), String> {
-    let p = PathBuf::from(&path);
+/// Drops the `\\?\` verbatim prefix `canonicalize` adds on Windows (local drive paths only).
+fn strip_verbatim(p: PathBuf) -> PathBuf {
+    let s = p.to_string_lossy();
+    match s.strip_prefix(r"\\?\") {
+        Some(rest) if !rest.starts_with("UNC\\") => PathBuf::from(rest),
+        _ => p,
+    }
+}
+
+const UNC_REJECTED: &str = "Сетевые (UNC) пути не поддерживаются.";
+
+/// Accepts only existing local paths located under the Wex data root (symlinks resolved).
+pub fn validate_open_path(paths: &WexPaths, path: &str) -> Result<PathBuf, String> {
+    let p = PathBuf::from(path);
+    if wex_core::safe_path::is_unc_path(&p) {
+        return Err(UNC_REJECTED.to_string());
+    }
     if !p.exists() {
         return Err(
             "Указанный путь не существует на диске. Проверьте правильность папки.".to_string(),
         );
     }
+    let canon = strip_verbatim(p.canonicalize().map_err(|e| e.to_string())?);
+    let root = strip_verbatim(
+        paths
+            .root
+            .canonicalize()
+            .unwrap_or_else(|_| paths.root.clone()),
+    );
+    // A path written under the data root without `..` is accepted even when a
+    // junction moves part of the root to another drive.
+    let lexically_inside = p.starts_with(&paths.root)
+        && !p
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir));
+    if !lexically_inside && (wex_core::safe_path::is_unc_path(&canon) || !canon.starts_with(&root))
+    {
+        return Err("Путь находится за пределами папки данных Wex.".to_string());
+    }
+    // Hand back the path as the caller wrote it: canonicalize expands 8.3 short
+    // names and junctions, which the user never typed.
+    Ok(p)
+}
+
+/// Accepts only files inside `<root>/instances/<supported version>/screenshots`.
+pub fn validate_screenshot_path(paths: &WexPaths, path: &str) -> Result<PathBuf, String> {
+    let p = PathBuf::from(path);
+    if wex_core::safe_path::is_unc_path(&p) {
+        return Err(UNC_REJECTED.to_string());
+    }
+    let canon = strip_verbatim(
+        p.canonicalize()
+            .map_err(|_| "Файл скриншота не найден на диске.".to_string())?,
+    );
+    for ver in crate::commands::logs::SUPPORTED_LOG_VERSIONS {
+        let dir = paths.instance_dir(ver).join("screenshots");
+        if let Ok(dir) = dir.canonicalize() {
+            if canon.starts_with(strip_verbatim(dir)) {
+                return Ok(canon);
+            }
+        }
+    }
+    Err("Файл не находится в папке скриншотов Wex.".to_string())
+}
+
+/// Reveal a file or folder in system file manager (Explorer / Finder / xdg-open).
+#[tauri::command]
+pub async fn workshop_open_path(path: String, state: State<'_, PlayState>) -> Result<(), String> {
+    open_path_impl(&state.paths, &path)
+}
+
+pub fn open_path_impl(paths: &WexPaths, path: &str) -> Result<(), String> {
+    let p = validate_open_path(paths, path)?;
 
     #[cfg(target_os = "windows")]
     {
@@ -460,12 +525,12 @@ pub async fn workshop_open_screenshots_folder(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
-    let game_dir = resolve_game_dir(&state.paths, version.as_deref());
+    let game_dir = resolve_game_dir(&state.paths, version.as_deref())?;
     let screenshots_dir = game_dir.join("screenshots");
     if !screenshots_dir.exists() {
         let _ = std::fs::create_dir_all(&screenshots_dir);
     }
-    workshop_open_path(screenshots_dir.to_string_lossy().to_string()).await
+    open_path_impl(&state.paths, &screenshots_dir.to_string_lossy())
 }
 
 /// Copies the image at the given path directly into the system clipboard as bitmap data.
@@ -480,15 +545,27 @@ where
     set_clipboard(&p)
 }
 
+/// The script is a constant: the image path travels in an environment variable, never in
+/// the command text, so no quote character in a file name can break out of it.
+const CLIPBOARD_SCRIPT: &str = "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile($env:WEX_IMG); [System.Windows.Forms.Clipboard]::SetImage($img); $img.Dispose()";
+
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn build_clipboard_command(path: &Path) -> std::process::Command {
+    let mut cmd = std::process::Command::new("powershell");
+    cmd.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        CLIPBOARD_SCRIPT,
+    ])
+    .env("WEX_IMG", path);
+    cmd
+}
+
 fn system_set_clipboard_image(path: &Path) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        let script = format!(
-            "Add-Type -AssemblyName System.Windows.Forms; $img = [System.Drawing.Image]::FromFile('{}'); [System.Windows.Forms.Clipboard]::SetImage($img); $img.Dispose()",
-            path.to_string_lossy().replace('\'', "''")
-        );
-        let status = std::process::Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        let status = build_clipboard_command(path)
             .status()
             .map_err(|e| format!("Ошибка копирования изображения: {}", e))?;
         if !status.success() {
@@ -506,8 +583,12 @@ fn system_set_clipboard_image(path: &Path) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn workshop_copy_screenshot_image(path: String) -> Result<(), String> {
-    copy_screenshot_image_internal(&path, system_set_clipboard_image)
+pub async fn workshop_copy_screenshot_image(
+    path: String,
+    state: State<'_, PlayState>,
+) -> Result<(), String> {
+    let safe = validate_screenshot_path(&state.paths, &path)?;
+    copy_screenshot_image_internal(&safe.to_string_lossy(), system_set_clipboard_image)
 }
 
 // ============================================================================
@@ -618,8 +699,83 @@ mod tests {
 
     #[tokio::test]
     async fn test_workshop_open_nonexistent_path() {
-        let res = workshop_open_path("C:\\nonexistent_dir_12345_67890".to_string()).await;
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let res = open_path_impl(&paths, "C:\\nonexistent_dir_12345_67890");
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_sec_open_path_rejects_unc_and_outside_root() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        paths.ensure_dirs().unwrap();
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+
+        for unc in [r"\\evil\share\x", r"\\?\UNC\evil\share", "//evil/share/x"] {
+            assert!(validate_open_path(&paths, unc).unwrap_err().contains("UNC"));
+        }
+        assert!(validate_open_path(&paths, &outside.to_string_lossy())
+            .unwrap_err()
+            .contains("за пределами"));
+        let inside = paths.root.join("instances");
+        fs::create_dir_all(&inside).unwrap();
+        assert_eq!(
+            validate_open_path(&paths, &inside.to_string_lossy()).unwrap(),
+            inside,
+            "the caller's spelling is kept (no 8.3 or junction expansion)"
+        );
+        let sneaky = paths
+            .root
+            .join("instances")
+            .join("..")
+            .join("..")
+            .join("outside");
+        assert!(validate_open_path(&paths, &sneaky.to_string_lossy())
+            .unwrap_err()
+            .contains("за пределами"));
+    }
+
+    #[test]
+    fn test_sec_screenshot_path_must_be_in_screenshots_folder() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let shots = paths.instance_dir("1.21.1").join("screenshots");
+        fs::create_dir_all(&shots).unwrap();
+        let good = shots.join("a.png");
+        fs::write(&good, b"x").unwrap();
+        let other = tmp.path().join("b.png");
+        fs::write(&other, b"x").unwrap();
+
+        assert!(validate_screenshot_path(&paths, &good.to_string_lossy()).is_ok());
+        assert!(validate_screenshot_path(&paths, &other.to_string_lossy()).is_err());
+        let traversal = shots
+            .join("..")
+            .join("..")
+            .join("..")
+            .join("..")
+            .join("b.png");
+        assert!(validate_screenshot_path(&paths, &traversal.to_string_lossy()).is_err());
+        assert!(validate_screenshot_path(&paths, r"\\evil\share\a.png").is_err());
+    }
+
+    #[test]
+    fn test_sec_clipboard_command_passes_path_via_env_not_script() {
+        let nasty = Path::new("C:\\x\u{2019}; calc; \u{2018}.png");
+        let cmd = build_clipboard_command(nasty);
+        let args: Vec<_> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert!(args.iter().all(|a| !a.contains("calc")));
+        assert!(args.iter().any(|a| a.contains("$env:WEX_IMG")));
+        let env = cmd
+            .get_envs()
+            .find(|(k, _)| *k == "WEX_IMG")
+            .and_then(|(_, v)| v)
+            .unwrap();
+        assert_eq!(env, nasty.as_os_str());
     }
 
     #[tokio::test]
@@ -667,7 +823,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
         ];
         fs::write(&shot_file, png_bytes).unwrap();
-        let res = workshop_copy_screenshot_image(shot_file.to_string_lossy().to_string()).await;
+        let res = system_set_clipboard_image(&shot_file);
         assert!(res.is_ok());
     }
 

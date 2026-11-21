@@ -260,6 +260,8 @@ pub fn list_log_files_impl(paths: &WexPaths, version: Option<&str>) -> Vec<LogFi
 
                 let file_type = if fname == "latest.log" {
                     "latest"
+                } else if fname == wex_core::GAME_OUTPUT_LOG {
+                    "game_output"
                 } else {
                     "archived"
                 };
@@ -342,15 +344,18 @@ pub fn list_log_files_impl(paths: &WexPaths, version: Option<&str>) -> Vec<LogFi
     }
 
     // Sorting:
-    // 1. "latest.log" always first
+    // 1. "latest.log" always first, then the game output Wex captured
     // 2. crash reports sorted by modification time descending
     // 3. other logs by modification time descending
+    let rank = |t: &str| match t {
+        "latest" => 0,
+        "game_output" => 1,
+        _ => 2,
+    };
     files.sort_by(|a, b| {
-        if a.file_type == "latest" {
-            return std::cmp::Ordering::Less;
-        }
-        if b.file_type == "latest" {
-            return std::cmp::Ordering::Greater;
+        let (ra, rb) = (rank(&a.file_type), rank(&b.file_type));
+        if ra != rb {
+            return ra.cmp(&rb);
         }
         if a.is_crash != b.is_crash {
             return b.is_crash.cmp(&a.is_crash);
@@ -617,6 +622,36 @@ mod tests {
     }
 
     #[test]
+    fn game_output_capture_is_listed_right_after_latest_log() {
+        let dir = tempdir().unwrap();
+        let paths = WexPaths::new(Some(dir.path().to_path_buf()));
+        let logs_dir = paths.instance_dir("1.20.1").join("logs");
+        fs::create_dir_all(&logs_dir).unwrap();
+        fs::write(logs_dir.join("2026-11-07-1.log"), b"old").unwrap();
+        fs::write(logs_dir.join(wex_core::GAME_OUTPUT_LOG), b"stdout").unwrap();
+        fs::write(logs_dir.join("latest.log"), b"log4j").unwrap();
+
+        let files = list_log_files_impl(&paths, Some("1.20.1"));
+        let names: Vec<_> = files.iter().map(|f| f.file_name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["latest.log", "wex-game-output.log", "2026-11-07-1.log"]
+        );
+        assert_eq!(files[1].file_type, "game_output");
+        assert_eq!(files[1].relative_path, "logs/wex-game-output.log");
+
+        let read = read_log_file_impl(
+            &paths,
+            Some("1.20.1"),
+            "logs/wex-game-output.log",
+            None,
+            None,
+            None,
+        );
+        assert!(read.is_ok(), "the capture can be read: {:?}", read.err());
+    }
+
+    #[test]
     fn test_list_log_files_and_order() {
         let dir = tempdir().unwrap();
         let paths = WexPaths::new(Some(dir.path().to_path_buf()));
@@ -639,6 +674,7 @@ mod tests {
 
         // latest.log must always be first
         assert_eq!(files[0].file_name, "latest.log");
+        assert!(files.iter().all(|f| f.file_type != "game_output"));
         assert_eq!(files[0].file_type, "latest");
         assert!(!files[0].is_crash);
 

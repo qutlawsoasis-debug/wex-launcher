@@ -314,13 +314,62 @@ pub fn restore_world_backup(
         return Err(WorkshopError::NotFound(zip_path.to_path_buf()));
     }
 
-    if target_world_folder.exists() {
-        fs::remove_dir_all(target_world_folder)?;
-    }
-    fs::create_dir_all(target_world_folder)?;
-
     let file = File::open(zip_path)?;
     let mut archive = ZipArchive::new(file)?;
+
+    // Check every entry before touching the existing world: a backup with a
+    // name this OS cannot hold must fail without deleting anything.
+    for i in 0..archive.len() {
+        if archive.by_index(i)?.enclosed_name().is_none() {
+            return Err(std::io::Error::other("Invalid path in ZIP").into());
+        }
+    }
+
+    // Extract next to the target, then swap, so a failure halfway (disk full,
+    // locked file) leaves the current world as it was.
+    let parent = target_world_folder
+        .parent()
+        .ok_or_else(|| std::io::Error::other("World folder has no parent"))?;
+    fs::create_dir_all(parent)?;
+    let folder_name = target_world_folder
+        .file_name()
+        .ok_or_else(|| std::io::Error::other("World folder has no name"))?
+        .to_string_lossy()
+        .into_owned();
+    let staging = parent.join(format!(".{folder_name}.wex-restore"));
+    let old = parent.join(format!(".{folder_name}.wex-old"));
+    for leftover in [&staging, &old] {
+        if leftover.exists() {
+            fs::remove_dir_all(leftover)?;
+        }
+    }
+
+    if let Err(e) = extract_world_archive(&mut archive, &staging) {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(e);
+    }
+
+    if target_world_folder.exists() {
+        fs::rename(target_world_folder, &old)?;
+    }
+    if let Err(e) = fs::rename(&staging, target_world_folder) {
+        if old.exists() {
+            let _ = fs::rename(&old, target_world_folder);
+        }
+        let _ = fs::remove_dir_all(&staging);
+        return Err(e.into());
+    }
+    if old.exists() {
+        let _ = fs::remove_dir_all(&old);
+    }
+    Ok(())
+}
+
+fn extract_world_archive(
+    archive: &mut ZipArchive<File>,
+    target_world_folder: &Path,
+) -> Result<(), WorkshopError> {
+    fs::create_dir_all(target_world_folder)?;
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
@@ -331,7 +380,7 @@ pub fn restore_world_backup(
 
         let outpath = target_world_folder.join(enclosed_name);
 
-        if file.name().ends_with('/') {
+        if file.name()?.ends_with('/') {
             fs::create_dir_all(&outpath)?;
         } else {
             if let Some(p) = outpath.parent() {
@@ -535,6 +584,48 @@ mod tests {
 
         assert!(restore_dir.join("level.dat").is_file());
         assert!(restore_dir.join("chunk_0_0.mca").is_file());
+    }
+
+    #[test]
+    fn restore_replaces_existing_world_and_leaves_no_staging() {
+        let dir = tempdir().unwrap();
+        let world_dir = dir.path().join("saves").join("W");
+        fs::create_dir_all(&world_dir).unwrap();
+        fs::write(world_dir.join("level.dat"), b"backup").unwrap();
+        let zip_path = create_world_backup(&world_dir, &dir.path().join("b")).unwrap();
+
+        fs::write(world_dir.join("level.dat"), b"current").unwrap();
+        fs::write(world_dir.join("extra.mca"), b"x").unwrap();
+        restore_world_backup(&zip_path, &world_dir).unwrap();
+
+        assert_eq!(fs::read(world_dir.join("level.dat")).unwrap(), b"backup");
+        assert!(!world_dir.join("extra.mca").exists());
+        let names: Vec<_> = fs::read_dir(dir.path().join("saves"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["W".to_string()]);
+    }
+
+    #[test]
+    fn restore_with_bad_entry_keeps_existing_world() {
+        let dir = tempdir().unwrap();
+        let world_dir = dir.path().join("saves").join("W");
+        fs::create_dir_all(&world_dir).unwrap();
+        fs::write(world_dir.join("level.dat"), b"current").unwrap();
+
+        let zip_path = dir.path().join("bad.zip");
+        let mut zip = ZipWriter::new(File::create(&zip_path).unwrap());
+        let opts = SimpleFileOptions::default();
+        zip.start_file("level.dat", opts).unwrap();
+        zip.write_all(b"backup").unwrap();
+        zip.start_file("../escape.txt", opts).unwrap();
+        zip.write_all(b"x").unwrap();
+        zip.finish().unwrap();
+
+        assert!(restore_world_backup(&zip_path, &world_dir).is_err());
+        assert_eq!(fs::read(world_dir.join("level.dat")).unwrap(), b"current");
+        assert!(!dir.path().join("escape.txt").exists());
     }
 
     #[test]

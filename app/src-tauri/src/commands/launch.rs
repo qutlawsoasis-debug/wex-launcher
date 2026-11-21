@@ -328,8 +328,7 @@ impl PlayState {
             }
             let version = cfg.selected_version.clone();
             let paths_clone = state_clone.paths.clone();
-            let client = reqwest::Client::builder()
-                .user_agent("WexLauncher/0.1.0")
+            let client = wex_core::download::http_client_builder()
                 .build()
                 .unwrap_or_default();
             let events = Arc::new(wex_core::NoopEventHandler);
@@ -579,8 +578,7 @@ impl PlayState {
             let _ = std::fs::remove_file(&signal_file);
             let parent_pid = std::process::id();
 
-            let client = reqwest::Client::builder()
-                .user_agent("WexLauncher/0.1.0")
+            let client = wex_core::download::http_client_builder()
                 .build()
                 .unwrap_or_default();
             let events = Arc::new(wex_core::NoopEventHandler);
@@ -723,6 +721,23 @@ pub async fn start_game<R: tauri::Runtime>(
     server: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<LaunchGameResponse, String> {
+    if !crate::commands::logs::SUPPORTED_LOG_VERSIONS.contains(&version.as_str()) {
+        return Err(format!("Неподдерживаемая версия игры: '{}'", version));
+    }
+    // 0. The server address ends up in the game's argument file: validate it first
+    // (before the launch flag is taken, so a rejected address leaks no state).
+    let server = match server {
+        Some(s) if s.trim().is_empty() => None,
+        Some(s) => {
+            let s = s.trim().to_string();
+            if !crate::commands::deeplink::validate_server_address(&s) {
+                return Err(format!("Недопустимый адрес сервера: '{}'", s));
+            }
+            Some(s)
+        }
+        None => None,
+    };
+
     // 1. Guard against duplicate starts
     if state.is_running.load(Ordering::SeqCst)
         || state
@@ -1803,7 +1818,7 @@ mod tests {
         let game_proc = wex_core::GameProcess {
             pid: child.id().unwrap_or(0),
             child,
-            log_path: tmp.path().join("latest.log"),
+            log_path: tmp.path().join(wex_core::GAME_OUTPUT_LOG),
             #[cfg(windows)]
             _job_object: None,
         };
@@ -1866,7 +1881,7 @@ mod tests {
         let game_proc = wex_core::GameProcess {
             pid: child.id().unwrap_or(0),
             child,
-            log_path: tmp.path().join("latest.log"),
+            log_path: tmp.path().join(wex_core::GAME_OUTPUT_LOG),
             #[cfg(windows)]
             _job_object: None,
         };
@@ -1923,7 +1938,7 @@ mod tests {
         let game_proc = wex_core::GameProcess {
             pid,
             child,
-            log_path: tmp.path().join("latest.log"),
+            log_path: tmp.path().join(wex_core::GAME_OUTPUT_LOG),
             #[cfg(windows)]
             _job_object: None,
         };

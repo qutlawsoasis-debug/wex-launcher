@@ -29,8 +29,7 @@ impl WexLauncherCore {
     }
 
     pub fn with_event_handler(paths: WexPaths, events: Arc<dyn EventHandler>) -> Self {
-        let client = reqwest::Client::builder()
-            .user_agent("WexLauncher/0.1.0")
+        let client = crate::download::http_client_builder()
             .build()
             .unwrap_or_default();
         Self {

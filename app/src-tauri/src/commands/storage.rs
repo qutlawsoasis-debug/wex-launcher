@@ -135,8 +135,10 @@ pub fn scan_cache(paths: &WexPaths) -> ScannedCache {
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_default();
 
-                    // Never delete active latest.log
-                    if file_name.eq_ignore_ascii_case("latest.log") {
+                    // Never delete the active latest.log or the game output Wex captured
+                    if file_name.eq_ignore_ascii_case("latest.log")
+                        || file_name.eq_ignore_ascii_case(wex_core::GAME_OUTPUT_LOG)
+                    {
                         continue;
                     }
 
@@ -659,6 +661,8 @@ mod tests {
         // Protected files that MUST NOT be touched
         let active_log = logs_dir.join("latest.log");
         fs::write(&active_log, b"active game log").unwrap();
+        let game_output = logs_dir.join(wex_core::GAME_OUTPUT_LOG);
+        fs::write(&game_output, b"captured game output").unwrap();
 
         let world_level = saves_dir.join("level.dat");
         fs::write(&world_level, b"precious world save file").unwrap();
@@ -691,6 +695,10 @@ mod tests {
 
         // Assert strictly preserved files
         assert!(active_log.exists(), "latest.log must remain preserved");
+        assert!(
+            game_output.exists(),
+            "wex-game-output.log must remain preserved"
+        );
         assert!(
             world_level.exists(),
             "World saves level.dat must be preserved!"

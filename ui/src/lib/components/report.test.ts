@@ -32,6 +32,8 @@ describe('ReportSheet Component (SPEC 2.10 & wex-parity)', () => {
     expect(target.textContent).toContain('C:\\Users\\***');
     expect(target.textContent).toContain('Сохранить на рабочий стол (.zip)');
     expect(target.textContent).toContain('Скопировать отчёт');
+    // The archive carries the game output Wex captured, not Minecraft's latest.log.
+    expect(target.querySelector('.data-manifest')?.textContent).toContain('wex-game-output.log');
     unmount(comp);
   });
 

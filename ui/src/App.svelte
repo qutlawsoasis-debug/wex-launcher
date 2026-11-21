@@ -13,7 +13,7 @@
   import type { CrashDiagnosisDto, DeepLinkActionDto } from './lib/ipc/generated/models';
   import type { DeepLinkAction } from './lib/components/DeepLinkConfirmationModal.svelte';
   import { initIdleManager, setGameRunning } from './lib/design/idleManager';
-  import { friendsLive, parseWexJoinUri } from './lib/services/friendsLive';
+  import { friendsLive, lobbyInviteTitle, parseWexJoinUri } from './lib/services/friendsLive';
   import UpdateCard from './lib/components/UpdateCard.svelte';
 
   import Sidebar from './lib/shell/Sidebar.svelte';
@@ -321,8 +321,17 @@
       on<{ title: string; description: string }>('social-achievement-toast', (a) =>
         toasts.show(t('friends.ach_unlocked_title', { title: a.title }), a.description)
       ),
-      on<{ lobby_code: string; from_nick: string }>('social-lobby-invite', (inv) =>
-        toasts.show(t('friends.lobby_invite_title', { code: inv.lobby_code }), t('friends.lobby_invite_desc', { nick: inv.from_nick }))
+      on<{ id: string; lobby_code: string; from_id: string; from_nick: string }>('social-lobby-invite', (inv) =>
+        toasts.show(lobbyInviteTitle(inv.lobby_code), t('friends.lobby_invite_desc', { nick: inv.from_nick }), {
+          label: t('friends.notify_join'),
+          run: () => {
+            const invite = { id: inv.id, lobby_code: inv.lobby_code ?? '', from_id: inv.from_id ?? '', from_nick: inv.from_nick };
+            void friendsLive.joinInvite(invite).catch((error) => {
+              const f = formatError(error, 'lobby');
+              toasts.show(f.title, f.description);
+            });
+          },
+        })
       )
     );
 

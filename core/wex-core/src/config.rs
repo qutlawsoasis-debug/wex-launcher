@@ -52,8 +52,21 @@ impl WexPaths {
         }
     }
 
+    /// Instance directory for `version`. A version that is not a plain single path
+    /// component (traversal, separators, drive letters) cannot escape `instances/`: it
+    /// maps to the inert `_invalid` folder.
     pub fn instance_dir(&self, version: &str) -> PathBuf {
-        self.instances_dir.join(version)
+        let plain = !version.is_empty()
+            && version != "."
+            && version != ".."
+            && version
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '+'));
+        if !plain {
+            tracing::warn!(version, "unsafe instance version, using instances/_invalid");
+        }
+        self.instances_dir
+            .join(if plain { version } else { "_invalid" })
     }
 
     pub fn instance_natives_dir(&self, version: &str) -> PathBuf {
@@ -673,5 +686,19 @@ mod tests {
         assert_eq!(default_graphics_preset(), "High");
 
         std::env::remove_var("WEX_FORCE_WEAK_PC");
+    }
+
+    #[test]
+    fn instance_dir_cannot_escape_instances() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        for bad in ["..", "../x", r"..\x", r"C:\x", "a/b", "", "/abs"] {
+            let d = paths.instance_dir(bad);
+            assert_eq!(d, paths.instances_dir.join("_invalid"), "{bad:?}");
+        }
+        assert_eq!(
+            paths.instance_dir("1.21.1"),
+            paths.instances_dir.join("1.21.1")
+        );
     }
 }

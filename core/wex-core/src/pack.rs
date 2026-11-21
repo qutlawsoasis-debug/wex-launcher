@@ -5,7 +5,7 @@ use crate::event::{Event, EventHandler, LogLevel};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio_util::sync::CancellationToken;
 
 pub const DEFAULT_PACK_REPO: &str = "qutlawsoasis-debug/Aura-Pack";
@@ -99,6 +99,13 @@ pub fn get_manifest_filename(version: &str) -> &'static str {
     } else {
         "manifest.json"
     }
+}
+
+/// Validates a manifest-supplied relative path and resolves it inside `instance_dir`.
+/// Returns the slash-normalized relative path and the absolute target.
+pub fn resolve_pack_file(instance_dir: &Path, rel: &str) -> Result<(String, PathBuf)> {
+    let target = crate::safe_path::safe_join(instance_dir, rel)?;
+    Ok((rel.replace('\\', "/"), target))
 }
 
 pub fn get_repo_prefix(version: &str) -> &'static str {
@@ -226,12 +233,12 @@ pub async fn sync_aura_pack_cancellable(
     let mut download_tasks = Vec::new();
 
     for file in &manifest.files {
-        let clean_path = file.path.replace('\\', "/");
-        let target_path = instance_dir.join(&clean_path);
+        let (clean_path, target_path) = resolve_pack_file(&instance_dir, &file.path)?;
 
         // Check if mod was disabled by user (.disabled)
         if clean_path.starts_with("mods/") && clean_path.ends_with(".jar") {
-            let disabled_target_path = instance_dir.join(format!("{}.disabled", clean_path));
+            let disabled_target_path =
+                crate::safe_path::safe_join(&instance_dir, &format!("{}.disabled", clean_path))?;
             if disabled_target_path.exists() {
                 if let Ok(meta) = fs::metadata(&disabled_target_path) {
                     if meta.len() == file.size {
@@ -843,5 +850,29 @@ mod tests {
         let sync_result = res.unwrap();
         assert_eq!(sync_result.pack_version, "20261108.offline");
         assert_eq!(sync_result.files_downloaded, 0);
+    }
+
+    #[test]
+    fn resolve_pack_file_rejects_traversal() {
+        let tmp = tempdir().unwrap();
+        for bad in [
+            "../evil.jar",
+            "mods/../../evil",
+            r"C:\evil",
+            "/abs",
+            "a/b:ads",
+        ] {
+            assert!(resolve_pack_file(tmp.path(), bad).is_err(), "{}", bad);
+        }
+        let err = resolve_pack_file(tmp.path(), "mods/../../evil.jar")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("mods/../../evil.jar"),
+            "error must name the path: {err}"
+        );
+        let (clean, target) = resolve_pack_file(tmp.path(), r"mods\ok.jar").unwrap();
+        assert_eq!(clean, "mods/ok.jar");
+        assert!(target.starts_with(tmp.path()));
     }
 }

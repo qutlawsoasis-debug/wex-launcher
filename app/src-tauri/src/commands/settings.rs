@@ -502,12 +502,14 @@ pub async fn verify_instance_files_impl(
     let mut repaired_files = 0;
 
     for file in &manifest.files {
-        let clean_path = file.path.replace('\\', "/");
-        let target_path = instance_dir.join(&clean_path);
+        let (clean_path, target_path) =
+            wex_core::pack::resolve_pack_file(&instance_dir, &file.path)
+                .map_err(|e| format!("Небезопасный путь в манифесте: {}", e))?;
 
         let is_mod = clean_path.starts_with("mods/") && clean_path.ends_with(".jar");
         let disabled_target_path = if is_mod {
-            instance_dir.join(format!("{}.disabled", clean_path))
+            wex_core::safe_path::safe_join(&instance_dir, &format!("{}.disabled", clean_path))
+                .map_err(|e| format!("Небезопасный путь в манифесте: {}", e))?
         } else {
             PathBuf::new()
         };

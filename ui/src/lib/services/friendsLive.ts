@@ -19,6 +19,7 @@
 
 import type { UserPresenceDto } from '../ipc/generated/models';
 import type { LobbyRoom } from '../pages/friends/lobbyTypes';
+import { t } from '../i18n';
 
 export interface FriendItem {
   id: string;
@@ -104,7 +105,7 @@ export interface FriendsLiveNotification {
   title: string;
   description: string;
   lobbyCode?: string;
-  /** Invite whose room code the server hands out only on accept. */
+  /** The invite behind an invite notification, so a click can answer it on the server. */
   inviteId?: string;
   action?: {
     label: string;
@@ -164,6 +165,12 @@ export function checkFriendNotificationCooldown(
   return currentTime - lastNotificationTime >= cooldownMs;
 }
 
+/** Title of the `social-lobby-invite` toast; no dangling code when the server sent none. */
+export function lobbyInviteTitle(code: string | null | undefined): string {
+  const c = (code ?? '').trim();
+  return c ? t('friends.lobby_invite_title', { code: c }) : t('friends.lobby_invite_title_nocode');
+}
+
 /**
  * Parses lobby code from a wex://join URL or hash route.
  */
@@ -199,6 +206,12 @@ export class FriendsLiveService {
   private timer: any = null;
   private previousFriendsMap: Map<string, FriendItem> = new Map();
   private seenInviteIds: Set<string> = new Set();
+  /** Invites this player already answered (joined or declined): later syncs drop them. */
+  private answeredInviteIds: Set<string> = new Set();
+  /** One respond + join per invite, whoever asks (page, toast, OS notification). */
+  private inviteJoins = new Map<string, Promise<void>>();
+  /** Bumped on account change: a poll that started before it is dropped. */
+  private generation = 0;
   private friendCooldowns: Map<string, number> = new Map();
   private initialSyncDone: boolean = false;
 
@@ -418,6 +431,7 @@ export class FriendsLiveService {
    */
   public async pollNow(): Promise<SyncResponse | null> {
     if (this.isPaused && this.isStarted) return null;
+    const generation = this.generation;
 
     try {
       if (this.managed && this.connection.state !== 'signed_in') {
@@ -428,6 +442,8 @@ export class FriendsLiveService {
       }
       if (this.isStarted) void this.publishPresence();
       const data = await this.executeSync();
+      // The account changed while this poll ran: its lists belong to the old player.
+      if (generation !== this.generation) return null;
       this.processSyncResult(data);
       if (this.managed) await this.refreshConnection();
       return data;
@@ -531,6 +547,9 @@ export class FriendsLiveService {
     this.invites = [];
     this.previousFriendsMap.clear();
     this.seenInviteIds.clear();
+    this.answeredInviteIds.clear();
+    this.inviteJoins.clear();
+    this.generation++;
     this.initialSyncDone = false;
     for (const listener of this.dataListeners) listener({ friends: [], incoming_requests: [], incoming_invites: [] });
     if (this.managed) void this.retry();
@@ -538,16 +557,92 @@ export class FriendsLiveService {
 
   /** Accept an invite whose room code the server gives only on accept, then join. */
   public async acceptInvite(inviteId: string): Promise<void> {
-    if (typeof window === 'undefined' || !(window as any).__TAURI_INTERNALS__) return;
-    const { invoke } = await import('@tauri-apps/api/core');
-    const code = await invoke<string | null>('social_respond_lobby_invite', { inviteId, accept: true });
-    this.invites = this.invites.filter((i) => i.id !== inviteId);
-    if (!code) throw new Error('Сервер друзей не прислал код комнаты для этого приглашения.');
-    await this.handleJoin(code);
+    const known = this.invites.find((i) => i.id === inviteId);
+    await this.joinInvite(known ?? { id: inviteId, lobby_code: '', from_id: '', from_nick: '' });
   }
 
   /**
-   * Handles user clicking "Присоединиться" or executing wex://join.
+   * «Зайти» on an invite (list, toast or notification): accept it with core so
+   * the server forgets it, then join its room. When the server cannot be told
+   * but the invite already carries a room code, the join still goes ahead.
+   */
+  public joinInvite(invite: LobbyInviteItem): Promise<void> {
+    const running = this.inviteJoins.get(invite.id);
+    if (running) return running;
+    const joins = this.inviteJoins;
+    const run = this.runJoinInvite(invite).finally(() => {
+      if (joins.get(invite.id) === run) joins.delete(invite.id);
+    });
+    joins.set(invite.id, run);
+    return run;
+  }
+
+  private async runJoinInvite(invite: LobbyInviteItem): Promise<void> {
+    let code: string | null = invite.lobby_code || null;
+    // Answered from now on: a sync that lands meanwhile must not bring it back.
+    this.answeredInviteIds.add(invite.id);
+    if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        code = (await invoke<string | null>('social_respond_lobby_invite', { inviteId: invite.id, accept: true })) || code;
+      } catch (error) {
+        if (!code) {
+          this.answeredInviteIds.delete(invite.id);
+          throw error;
+        }
+        // The room code is known, so the join goes ahead; the server still
+        // holds the invite, which stays hidden here (answeredInviteIds).
+        console.warn('[friends] could not answer the invite on the server; joining by its code', error);
+        this.reportError(error, 'friends');
+      }
+    }
+    if (!code) {
+      this.answeredInviteIds.delete(invite.id);
+      throw new Error(t('friends2.invite_no_code'));
+    }
+    this.dropInvite(invite.id);
+    await this.handleJoin(code);
+  }
+
+  /** «Отклонить» on an invite: core tells the server, then the invite leaves the list. */
+  public async declineInvite(inviteId: string): Promise<void> {
+    if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('social_respond_lobby_invite', { inviteId, accept: false });
+    }
+    this.answeredInviteIds.add(inviteId);
+    this.dropInvite(inviteId);
+  }
+
+  /**
+   * Join from a notification click. The invite in the list is answered on the
+   * server, then joined. An invite no longer in the list (account switch, a
+   * sync in between) is still answered when its id is known; with only a room
+   * code it joins by code, and says so in the log.
+   */
+  private joinFromNotification(lobbyCode?: string, inviteId?: string): Promise<void> {
+    const clean = (c: string) => c.trim().replace(/^#/, '').toUpperCase();
+    const known = this.invites.find(
+      (i) => (inviteId && i.id === inviteId) || (lobbyCode && i.lobby_code && clean(i.lobby_code) === clean(lobbyCode))
+    );
+    if (known) return this.joinInvite(known);
+    if (inviteId) return this.joinInvite({ id: inviteId, lobby_code: lobbyCode ?? '', from_id: '', from_nick: '' });
+    if (lobbyCode) {
+      console.info(`[friends] notification invite is not in the list; joining room ${clean(lobbyCode)} by code`);
+      return this.handleJoin(lobbyCode);
+    }
+    return Promise.resolve();
+  }
+
+  private dropInvite(inviteId: string): void {
+    if (!this.invites.some((i) => i.id === inviteId)) return;
+    this.invites = this.invites.filter((i) => i.id !== inviteId);
+    const snapshot: SyncResponse = { friends: this.friends, incoming_requests: this.requests, incoming_invites: this.invites };
+    for (const listener of this.dataListeners) listener(snapshot);
+  }
+
+  /**
+   * Joins a room by code (invite action, friend's «Зайти» or wex://join).
    */
   public async handleJoin(code: string): Promise<void> {
     const cleanCode = code.trim().replace(/^#/, '').toUpperCase();
@@ -710,8 +805,10 @@ export class FriendsLiveService {
   private processSyncResult(answer: SyncResponse | null | undefined): void {
     const raw: SyncResponse = answer ?? { friends: [], incoming_requests: [], incoming_invites: [] };
     const newFriends = (raw.friends || []).map((f) => ({ ...f, status: normalizeStatus(f.status) }));
-    const data: SyncResponse = { ...raw, friends: newFriends };
-    const newInvites = data.incoming_invites || [];
+    // Invites already answered here stay out, even if the server (or a poll
+    // that started before the answer) still lists them.
+    const newInvites = (raw.incoming_invites || []).filter((i) => !this.answeredInviteIds.has(i.id));
+    const data: SyncResponse = { ...raw, friends: newFriends, incoming_invites: newInvites };
     const newRequests = data.incoming_requests || [];
 
     if (this.initialSyncDone && this.notificationsEnabled) {
@@ -726,25 +823,24 @@ export class FriendsLiveService {
           if (checkFriendNotificationCooldown(lastSent, now)) {
             this.friendCooldowns.set(friend.id, now);
 
-            const serverInfo = friend.world_name
-              ? ` на сервере «${friend.world_name}»`
-              : friend.game_version
-                ? ` (${friend.game_version})`
-                : '';
-
             const notif: FriendsLiveNotification = {
               id: `notif-playing-${friend.id}-${now}`,
               friendId: friend.id,
               type: 'friend_playing',
-              title: `${friend.nick} зашёл в игру`,
-              description: `${friend.nick} играет${serverInfo}`,
+              title: t('friends.notify_playing_title', { nick: friend.nick }),
+              description: friend.world_name
+                ? t('friends.notify_playing_world', { nick: friend.nick, world: friend.world_name })
+                : friend.game_version
+                  ? t('friends.notify_playing_version', { nick: friend.nick, version: friend.game_version })
+                  : t('friends.notify_playing', { nick: friend.nick }),
             };
             this.dispatchNotification(notif);
           }
         }
       }
 
-      // 2. Check for new incoming lobby invites
+      // 2. Check for new incoming lobby invites. The cooldown only limits the
+      // notification: every invite stays in `invites` (the Friends page list).
       for (const invite of newInvites) {
         if (!this.seenInviteIds.has(invite.id)) {
           this.seenInviteIds.add(invite.id);
@@ -759,15 +855,16 @@ export class FriendsLiveService {
               id: `notif-invite-${invite.id}`,
               friendId: invite.from_id,
               type: 'invite',
-              title: `${invite.from_nick} приглашает в лобби`,
-              description: code ? `${invite.from_nick} зовёт вас в игру в лобби ${code}` : `${invite.from_nick} зовёт вас в игру`,
+              title: t('friends.notify_invite_title', { nick: invite.from_nick }),
+              description: code
+                ? t('friends.notify_invite_code', { nick: invite.from_nick, code })
+                : t('friends.notify_invite', { nick: invite.from_nick }),
               lobbyCode: code || undefined,
-              inviteId: code ? undefined : invite.id,
+              inviteId: invite.id,
               action: {
-                label: 'Присоединиться',
+                label: t('friends.notify_join'),
                 onClick: () => {
-                  const run = code ? this.handleJoin(code) : this.acceptInvite(invite.id);
-                  void run.catch(error => this.reportError(error, 'lobby'));
+                  void this.joinInvite(invite).catch(error => this.reportError(error, 'lobby'));
                 },
               },
             };
@@ -776,7 +873,8 @@ export class FriendsLiveService {
         }
       }
     } else {
-      // Record initial baseline
+      // Record initial baseline: no notification for invites that were already
+      // waiting, but they are still shown in the invites list.
       for (const inv of newInvites) {
         this.seenInviteIds.add(inv.id);
       }
@@ -847,7 +945,7 @@ export class FriendsLiveService {
           sendNotification({
             title: notif.title,
             body: notif.description,
-            extra: notif.lobbyCode ? { lobbyCode: notif.lobbyCode } : notif.inviteId ? { inviteId: notif.inviteId } : undefined,
+            extra: notif.lobbyCode || notif.inviteId ? { ...(notif.lobbyCode ? { lobbyCode: notif.lobbyCode } : {}), ...(notif.inviteId ? { inviteId: notif.inviteId } : {}) } : undefined,
           });
           return;
         }
@@ -897,10 +995,8 @@ export class FriendsLiveService {
       } catch {}
     }
 
-    if (notif.lobbyCode) {
-      await this.handleJoin(notif.lobbyCode);
-    } else if (notif.inviteId) {
-      await this.acceptInvite(notif.inviteId);
+    if (notif.lobbyCode || notif.inviteId) {
+      await this.joinFromNotification(notif.lobbyCode, notif.inviteId);
     } else if (notif.action) {
       notif.action.onClick();
     }
@@ -914,10 +1010,10 @@ export class FriendsLiveService {
             if (!this.isStarted || lifecycle !== this.lifecycle) return;
             const lobbyCode = action.notification?.extra?.lobbyCode;
             const inviteId = action.notification?.extra?.inviteId;
-            if (typeof lobbyCode === 'string') {
-              void this.handleJoin(lobbyCode).catch(error => this.reportError(error, 'lobby'));
-            } else if (typeof inviteId === 'string') {
-              void this.acceptInvite(inviteId).catch(error => this.reportError(error, 'lobby'));
+            const code = typeof lobbyCode === 'string' ? lobbyCode : undefined;
+            const id = typeof inviteId === 'string' ? inviteId : undefined;
+            if (code || id) {
+              void this.joinFromNotification(code, id).catch(error => this.reportError(error, 'lobby'));
             }
         });
         if (!this.isStarted || lifecycle !== this.lifecycle) await listener.unregister();
