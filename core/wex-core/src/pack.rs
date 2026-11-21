@@ -84,6 +84,114 @@ pub struct PackState {
     pub installed_at_utc: String,
     #[serde(rename = "installedMods", default)]
     pub installed_mods: Vec<String>,
+    /// [`manifest_digest`] of the manifest this state was synced from. Empty in
+    /// states written by older Wex versions, which forces one re-sync.
+    #[serde(rename = "manifestDigest", default)]
+    pub manifest_digest: String,
+}
+
+/// SHA-256 over the manifest's file list (path, hash, size, mode), independent of
+/// file order. Two manifests with the same digest install the same files.
+pub fn manifest_digest(manifest: &Manifest) -> String {
+    use sha2::Digest as _;
+    let mut lines: Vec<String> = manifest
+        .files
+        .iter()
+        .map(|f| {
+            format!(
+                "{}\t{}\t{}\t{}\n",
+                f.path.replace('\\', "/"),
+                f.sha256.to_ascii_lowercase(),
+                f.size,
+                f.mode.to_ascii_lowercase()
+            )
+        })
+        .collect();
+    lines.sort();
+    let mut hasher = sha2::Sha256::new();
+    for line in &lines {
+        hasher.update(line.as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+/// Whether the installed pack matches the published manifest.
+#[derive(Debug)]
+pub enum PackFreshness {
+    /// pack.state.json records exactly this manifest.
+    Current,
+    /// The published manifest differs from what was installed (or nothing was).
+    Outdated(Box<Manifest>),
+    /// The manifest could not be fetched (offline, GitHub down).
+    Unknown(WexError),
+}
+
+pub fn read_pack_state(paths: &WexPaths, version: &str) -> Option<PackState> {
+    let content = fs::read_to_string(paths.instance_dir(version).join("pack.state.json")).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+/// Overall deadline of the update check before a fast launch. Throttled
+/// raw.githubusercontent.com must not hold Play for the full connect + read timeouts.
+pub const PACK_CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4);
+
+/// Orders pack versions like `20261025.1406`: dot-separated numbers compared
+/// numerically, anything non-numeric compared as text.
+pub fn compare_pack_versions(a: &str, b: &str) -> std::cmp::Ordering {
+    let mut left = a.split('.');
+    let mut right = b.split('.');
+    loop {
+        match (left.next(), right.next()) {
+            (None, None) => return std::cmp::Ordering::Equal,
+            (Some(_), None) => return std::cmp::Ordering::Greater,
+            (None, Some(_)) => return std::cmp::Ordering::Less,
+            (Some(x), Some(y)) => {
+                let order = match (x.parse::<u64>(), y.parse::<u64>()) {
+                    (Ok(x), Ok(y)) => x.cmp(&y),
+                    _ => x.cmp(y),
+                };
+                if order != std::cmp::Ordering::Equal {
+                    return order;
+                }
+            }
+        }
+    }
+}
+
+/// Compares the published manifest at `url` with the installed pack.state.json.
+/// Only a newer pack version, or the same version with a different file list,
+/// counts as an update: a stale CDN edge serving an older manifest must not make
+/// the launcher flip between two packs.
+pub async fn check_pack_freshness_at(
+    paths: &WexPaths,
+    version: &str,
+    client: &reqwest::Client,
+    url: &str,
+) -> PackFreshness {
+    let manifest = match fetch_manifest_within(client, url, PACK_CHECK_TIMEOUT).await {
+        Ok(m) => m,
+        Err(e) => return PackFreshness::Unknown(e),
+    };
+    let Some(state) = read_pack_state(paths, version) else {
+        return PackFreshness::Outdated(Box::new(manifest));
+    };
+    match compare_pack_versions(&manifest.pack_version, &state.pack_version) {
+        std::cmp::Ordering::Greater => PackFreshness::Outdated(Box::new(manifest)),
+        std::cmp::Ordering::Equal if state.manifest_digest != manifest_digest(&manifest) => {
+            PackFreshness::Outdated(Box::new(manifest))
+        }
+        _ => PackFreshness::Current,
+    }
+}
+
+/// [`check_pack_freshness_at`] against the default Aura-Pack repository.
+pub async fn check_pack_freshness(
+    paths: &WexPaths,
+    version: &str,
+    client: &reqwest::Client,
+) -> PackFreshness {
+    let url = manifest_url(version, None, None);
+    check_pack_freshness_at(paths, version, client, &url).await
 }
 
 #[derive(Debug, Clone)]
@@ -116,26 +224,73 @@ pub fn get_repo_prefix(version: &str) -> &'static str {
     }
 }
 
+/// Cache-busting URL of the published manifest for `version`.
+pub fn manifest_url(version: &str, repo: Option<&str>, branch: Option<&str>) -> String {
+    let repo = repo.unwrap_or(DEFAULT_PACK_REPO);
+    let branch = branch.unwrap_or(DEFAULT_PACK_BRANCH);
+    let filename = get_manifest_filename(version);
+    format!(
+        "https://raw.githubusercontent.com/{}/{}/{}?t={}",
+        repo,
+        branch,
+        filename,
+        chrono::Utc::now().timestamp_millis()
+    )
+}
+
+pub async fn fetch_manifest_from(client: &reqwest::Client, url: &str) -> Result<Manifest> {
+    let resp = client.get(url).send().await?.error_for_status()?;
+    let manifest: Manifest = resp.json().await?;
+    Ok(manifest)
+}
+
+/// [`fetch_manifest_from`] with an overall deadline for the whole request; running
+/// out of time is a network timeout (`is_network_unavailable`).
+pub async fn fetch_manifest_within(
+    client: &reqwest::Client,
+    url: &str,
+    deadline: std::time::Duration,
+) -> Result<Manifest> {
+    let resp = client
+        .get(url)
+        .timeout(deadline)
+        .send()
+        .await?
+        .error_for_status()?;
+    let manifest: Manifest = resp.json().await?;
+    Ok(manifest)
+}
+
+/// A failed pack sync that left the installed pack untouched and that a later
+/// online start can repair: transport errors and bad downloads. Cancel, disk and
+/// manifest errors are not in this group.
+pub fn is_transient_sync_failure(err: &WexError) -> bool {
+    matches!(
+        err,
+        WexError::Network(_)
+            | WexError::DownloadError { .. }
+            | WexError::HashMismatch { .. }
+            | WexError::SizeMismatch { .. }
+    )
+}
+
 pub async fn fetch_manifest(
     client: &reqwest::Client,
     version: &str,
     repo: Option<&str>,
     branch: Option<&str>,
 ) -> Result<Manifest> {
-    let repo = repo.unwrap_or(DEFAULT_PACK_REPO);
-    let branch = branch.unwrap_or(DEFAULT_PACK_BRANCH);
-    let filename = get_manifest_filename(version);
-    let url = format!(
-        "https://raw.githubusercontent.com/{}/{}/{}?t={}",
-        repo,
-        branch,
-        filename,
-        chrono::Utc::now().timestamp_millis()
-    );
+    fetch_manifest_from(client, &manifest_url(version, repo, branch)).await
+}
 
-    let resp = client.get(&url).send().await?.error_for_status()?;
-    let manifest: Manifest = resp.json().await?;
-    Ok(manifest)
+/// Stores the manifest a sync is about to use, for offline starts.
+pub fn cache_manifest(paths: &WexPaths, version: &str, manifest: &Manifest) {
+    if let Ok(json) = serde_json::to_vec_pretty(manifest) {
+        let _ = crate::fs_util::write_atomic(
+            &paths.instance_dir(version).join("manifest.cache.json"),
+            &json,
+        );
+    }
 }
 
 pub async fn fetch_pack_settings(
@@ -187,12 +342,6 @@ pub async fn sync_aura_pack_cancellable(
     paths.ensure_instance_dirs(version)?;
     let instance_dir = paths.instance_dir(version);
 
-    events.on_event(&Event::StageStarted {
-        stage: format!("Aura-Pack sync ({})", version),
-        step: 1,
-        total_steps: 1,
-    });
-
     events.on_event(&Event::Log {
         level: LogLevel::Info,
         message: format!("Fetching Aura-Pack manifest for Minecraft {}...", version),
@@ -201,9 +350,7 @@ pub async fn sync_aura_pack_cancellable(
     let manifest_cache_file = instance_dir.join("manifest.cache.json");
     let manifest = match fetch_manifest(client, version, None, None).await {
         Ok(m) => {
-            if let Ok(json) = serde_json::to_string_pretty(&m) {
-                let _ = fs::write(&manifest_cache_file, json);
-            }
+            cache_manifest(paths, version, &m);
             m
         }
         Err(e) => {
@@ -222,119 +369,107 @@ pub async fn sync_aura_pack_cancellable(
             }
         }
     };
-    let settings = fetch_pack_settings(client, None, None).await;
+    sync_aura_pack_with_manifest(
+        paths,
+        version,
+        client,
+        events,
+        concurrency,
+        cancel_token,
+        manifest,
+    )
+    .await
+}
 
-    let force_set: HashSet<String> = settings
-        .force_configs
-        .iter()
-        .map(|s| s.replace('\\', "/").trim_start_matches('/').to_lowercase())
-        .collect();
+/// Folder inside the instance where a sync downloads new pack files. Files move
+/// into place only after every download succeeded, so a dropped connection or
+/// Cancel never leaves a mix of old and new mods.
+pub const PACK_STAGING_DIR: &str = ".pack-staging";
+/// Written when all staged files are verified, removed after the commit finished.
+/// While it exists the instance may be half-committed and must not be launched.
+pub const PACK_COMMIT_PLAN: &str = "pack.commit.json";
 
-    let mut download_tasks = Vec::new();
+pub fn pack_staging_dir(paths: &WexPaths, version: &str) -> PathBuf {
+    paths.instance_dir(version).join(PACK_STAGING_DIR)
+}
 
-    for file in &manifest.files {
-        let (clean_path, target_path) = resolve_pack_file(&instance_dir, &file.path)?;
+fn pack_commit_plan_path(paths: &WexPaths, version: &str) -> PathBuf {
+    paths.instance_dir(version).join(PACK_COMMIT_PLAN)
+}
 
-        // Check if mod was disabled by user (.disabled)
-        if clean_path.starts_with("mods/") && clean_path.ends_with(".jar") {
-            let disabled_target_path =
-                crate::safe_path::safe_join(&instance_dir, &format!("{}.disabled", clean_path))?;
-            if disabled_target_path.exists() {
-                if let Ok(meta) = fs::metadata(&disabled_target_path) {
-                    if meta.len() == file.size {
-                        // User disabled this mod and file size matches manifest. Keep it disabled!
-                        continue;
-                    }
-                }
-            }
-        }
+/// True when a commit was interrupted (crash, power loss) and still has to finish.
+pub fn has_pending_pack_commit(paths: &WexPaths, version: &str) -> bool {
+    pack_commit_plan_path(paths, version).exists()
+}
 
-        let is_forced = force_set.contains(&clean_path.to_lowercase())
-            || (clean_path.starts_with("config/")
-                && force_set.contains(&clean_path["config/".len()..].to_lowercase()));
+#[derive(Debug, Serialize, Deserialize)]
+struct PackCommitPlan {
+    manifest: Manifest,
+    /// Slash-separated paths, relative to the instance, waiting in the staging dir.
+    staged: Vec<String>,
+}
 
-        let is_default_mode = file.mode.eq_ignore_ascii_case("default") && !is_forced;
-
-        if is_default_mode && target_path.exists() {
-            // Keep user config/options
-            continue;
-        }
-
-        // If sync mode, check if already valid
-        let reason = match fs::metadata(&target_path) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => "missing".to_string(),
-            Err(e) => format!("cannot read metadata: {}", e),
-            Ok(meta) if meta.len() != file.size => {
-                format!("size {} != {}", meta.len(), file.size)
-            }
-            Ok(_) => match crate::download::compute_file_hash(&target_path, HashType::Sha256) {
-                Ok(actual) if actual.eq_ignore_ascii_case(&file.sha256) => continue,
-                Ok(actual) => format!("sha256 {} != {}", actual, file.sha256),
-                Err(e) => format!("cannot hash: {}", e),
-            },
-        };
-        events.on_event(&Event::Log {
-            level: LogLevel::Info,
-            message: format!("Aura-Pack: will download {} ({})", clean_path, reason),
-        });
-
-        let (download_url, fallback_url) = pack_file_urls(version, file);
-
-        download_tasks.push(DownloadTask {
-            url: download_url,
-            fallback_url,
-            target_path,
-            size: Some(file.size),
-            hash: Some((file.sha256.clone(), HashType::Sha256)),
-        });
-    }
-
+/// Finishes a commit that was interrupted after all files were staged. Needs no
+/// network. Returns whether there was one.
+pub fn finish_pending_pack_commit(
+    paths: &WexPaths,
+    version: &str,
+    events: &dyn EventHandler,
+) -> Result<bool> {
+    let plan_path = pack_commit_plan_path(paths, version);
+    let content = match fs::read(&plan_path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e.into()),
+    };
+    let plan: PackCommitPlan = serde_json::from_slice(&content)?;
     events.on_event(&Event::Log {
-        level: LogLevel::Info,
+        level: LogLevel::Warn,
         message: format!(
-            "Aura-Pack: {} files to download ({} total in manifest)",
-            download_tasks.len(),
-            manifest.files.len()
+            "Aura-Pack {}: finishing an interrupted update for Minecraft {}",
+            plan.manifest.pack_version, version
         ),
     });
+    commit_pack(paths, version, &plan, events)?;
+    Ok(true)
+}
 
-    let files_to_download_count = download_tasks.len();
-    if !download_tasks.is_empty() {
-        download_pool_cancellable(
-            client,
-            download_tasks,
-            concurrency,
-            events,
-            &format!("Pack {}", version),
-            cancel_token.cloned(),
-        )
-        .await?;
-    }
-
-    if let Some(token) = cancel_token {
-        if token.is_cancelled() {
-            return Err(WexError::Cancelled);
+/// Moves staged files into place, removes orphaned pack mods, writes the state
+/// and drops the plan. Every step can be repeated after a crash.
+fn commit_pack(
+    paths: &WexPaths,
+    version: &str,
+    plan: &PackCommitPlan,
+    events: &dyn EventHandler,
+) -> Result<usize> {
+    let instance_dir = paths.instance_dir(version);
+    let staging_dir = pack_staging_dir(paths, version);
+    for rel in &plan.staged {
+        let src = crate::safe_path::safe_join(&staging_dir, rel)?;
+        let (_, dst) = resolve_pack_file(&instance_dir, rel)?;
+        if !src.is_file() {
+            continue; // moved before the interruption
         }
+        if let Some(parent) = dst.parent() {
+            fs::create_dir_all(parent).map_err(|e| crate::download::map_io_err(e, parent))?;
+        }
+        crate::download::rename_with_retry_blocking(&src, &dst)
+            .map_err(|e| crate::download::map_io_err(e, &dst))?;
     }
 
+    let manifest = &plan.manifest;
     // Clean orphan mods (ONLY mods previously installed by Wex, never delete user mods!)
     let mut mods_deleted = 0;
     let mods_dir = instance_dir.join("mods");
     let state_path = instance_dir.join("pack.state.json");
-    let previous_installed_mods: HashSet<String> = if state_path.exists() {
-        fs::read_to_string(&state_path)
-            .ok()
-            .and_then(|content| serde_json::from_str::<PackState>(&content).ok())
-            .map(|s| {
-                s.installed_mods
-                    .into_iter()
-                    .map(|m| m.to_lowercase())
-                    .collect()
-            })
-            .unwrap_or_default()
-    } else {
-        HashSet::new()
-    };
+    let previous_installed_mods: HashSet<String> = read_pack_state(paths, version)
+        .map(|s| {
+            s.installed_mods
+                .into_iter()
+                .map(|m| m.to_lowercase())
+                .collect()
+        })
+        .unwrap_or_default();
 
     if mods_dir.exists() {
         let manifest_mod_names: HashSet<String> = manifest
@@ -406,20 +541,176 @@ pub async fn sync_aura_pack_cancellable(
         fabric_loader: manifest.fabric_loader.clone(),
         installed_at_utc: chrono::Utc::now().to_rfc3339(),
         installed_mods: current_installed_mods,
+        manifest_digest: manifest_digest(manifest),
     };
     let state_json = serde_json::to_string_pretty(&state)?;
-    fs::write(&state_path, state_json)?;
+    crate::fs_util::write_atomic(&state_path, state_json.as_bytes())?;
+
+    match fs::remove_file(pack_commit_plan_path(paths, version)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
+    // Leftovers (stale .part files of other manifests) go with the folder.
+    let _ = fs::remove_dir_all(&staging_dir);
+    Ok(mods_deleted)
+}
+
+/// Syncs the instance to an already fetched manifest (no second manifest request).
+///
+/// Two phases: changed files are downloaded and verified in [`PACK_STAGING_DIR`]
+/// (an interrupted run resumes from there), then committed into the instance in
+/// one quick local step. A failed or cancelled download leaves the installed pack
+/// exactly as it was.
+pub async fn sync_aura_pack_with_manifest(
+    paths: &WexPaths,
+    version: &str,
+    client: &reqwest::Client,
+    events: &dyn EventHandler,
+    concurrency: usize,
+    cancel_token: Option<&CancellationToken>,
+    manifest: Manifest,
+) -> Result<PackSyncResult> {
+    if cancel_token.is_some_and(|t| t.is_cancelled()) {
+        return Err(WexError::Cancelled);
+    }
+    paths.ensure_instance_dirs(version)?;
+    let instance_dir = paths.instance_dir(version);
+    let staging_dir = pack_staging_dir(paths, version);
+    // A commit cut short by a crash is finished first, so planning sees a whole pack.
+    finish_pending_pack_commit(paths, version, events)?;
+
+    events.on_event(&Event::StageStarted {
+        stage: format!("Aura-Pack sync ({})", version),
+        step: 1,
+        total_steps: 1,
+    });
+
+    let settings = fetch_pack_settings(client, None, None).await;
+
+    let force_set: HashSet<String> = settings
+        .force_configs
+        .iter()
+        .map(|s| s.replace('\\', "/").trim_start_matches('/').to_lowercase())
+        .collect();
+
+    let mut download_tasks = Vec::new();
+    let mut staged = Vec::new();
+
+    for file in &manifest.files {
+        let (clean_path, target_path) = resolve_pack_file(&instance_dir, &file.path)?;
+
+        // Check if mod was disabled by user (.disabled)
+        if clean_path.starts_with("mods/") && clean_path.ends_with(".jar") {
+            let disabled_target_path =
+                crate::safe_path::safe_join(&instance_dir, &format!("{}.disabled", clean_path))?;
+            if disabled_target_path.exists() {
+                if let Ok(meta) = fs::metadata(&disabled_target_path) {
+                    if meta.len() == file.size {
+                        // User disabled this mod and file size matches manifest. Keep it disabled!
+                        continue;
+                    }
+                }
+            }
+        }
+
+        let is_forced = force_set.contains(&clean_path.to_lowercase())
+            || (clean_path.starts_with("config/")
+                && force_set.contains(&clean_path["config/".len()..].to_lowercase()));
+
+        let is_default_mode = file.mode.eq_ignore_ascii_case("default") && !is_forced;
+
+        if is_default_mode && target_path.exists() {
+            // Keep user config/options
+            continue;
+        }
+
+        // If sync mode, check if already valid
+        let reason = match fs::metadata(&target_path) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => "missing".to_string(),
+            Err(e) => format!("cannot read metadata: {}", e),
+            Ok(meta) if meta.len() != file.size => {
+                format!("size {} != {}", meta.len(), file.size)
+            }
+            // Hashing a mod jar is blocking IO: run it on the blocking pool.
+            Ok(_) => match crate::download::compute_file_hash_async(
+                target_path.clone(),
+                HashType::Sha256,
+            )
+            .await
+            {
+                Ok(actual) if actual.eq_ignore_ascii_case(&file.sha256) => continue,
+                Ok(actual) => format!("sha256 {} != {}", actual, file.sha256),
+                Err(e) => format!("cannot hash: {}", e),
+            },
+        };
+        events.on_event(&Event::Log {
+            level: LogLevel::Info,
+            message: format!("Aura-Pack: will download {} ({})", clean_path, reason),
+        });
+
+        let (download_url, fallback_url) = pack_file_urls(version, file);
+        // Already verified staged files (an interrupted earlier sync) are not
+        // downloaded again: the downloader checks the hash first.
+        let staged_path = crate::safe_path::safe_join(&staging_dir, &clean_path)?;
+
+        download_tasks.push(DownloadTask {
+            url: download_url,
+            fallback_url,
+            target_path: staged_path,
+            size: Some(file.size),
+            hash: Some((file.sha256.clone(), HashType::Sha256)),
+        });
+        staged.push(clean_path);
+    }
+
+    events.on_event(&Event::Log {
+        level: LogLevel::Info,
+        message: format!(
+            "Aura-Pack: {} files to download ({} total in manifest)",
+            download_tasks.len(),
+            manifest.files.len()
+        ),
+    });
+
+    let files_to_download_count = download_tasks.len();
+    if !download_tasks.is_empty() {
+        download_pool_cancellable(
+            client,
+            download_tasks,
+            concurrency,
+            events,
+            &format!("Pack {}", version),
+            cancel_token.cloned(),
+        )
+        .await?;
+    }
+
+    if let Some(token) = cancel_token {
+        if token.is_cancelled() {
+            return Err(WexError::Cancelled);
+        }
+    }
+
+    // Phase 2: every file is staged and verified. Record the plan, then commit.
+    let pack_version = manifest.pack_version.clone();
+    let plan = PackCommitPlan { manifest, staged };
+    crate::fs_util::write_atomic(
+        &pack_commit_plan_path(paths, version),
+        &serde_json::to_vec(&plan)?,
+    )?;
+    let mods_deleted = commit_pack(paths, version, &plan, events)?;
 
     events.on_event(&Event::Log {
         level: LogLevel::Info,
         message: format!(
             "Aura-Pack sync complete: version {}, {} files updated, {} orphan mods deleted",
-            manifest.pack_version, files_to_download_count, mods_deleted
+            pack_version, files_to_download_count, mods_deleted
         ),
     });
 
     Ok(PackSyncResult {
-        pack_version: manifest.pack_version,
+        pack_version,
         files_downloaded: files_to_download_count,
         mods_deleted,
     })
@@ -765,6 +1056,7 @@ mod tests {
             fabric_loader: "0.19.5".to_string(),
             installed_at_utc: chrono::Utc::now().to_rfc3339(),
             installed_mods: vec!["important_mod.jar".to_string()],
+            manifest_digest: String::new(),
         };
         fs::write(&state_path, serde_json::to_string(&initial_state).unwrap()).unwrap();
 
@@ -874,5 +1166,207 @@ mod tests {
         let (clean, target) = resolve_pack_file(tmp.path(), r"mods\ok.jar").unwrap();
         assert_eq!(clean, "mods/ok.jar");
         assert!(target.starts_with(tmp.path()));
+    }
+
+    fn sample_manifest(version: &str, pack_version: &str, sha: &str) -> Manifest {
+        Manifest {
+            name: "Aura".into(),
+            pack_version: pack_version.into(),
+            minecraft: version.into(),
+            fabric_loader: "0.19.5".into(),
+            servers: None,
+            files: vec![ManifestFileEntry {
+                path: "mods/a.jar".into(),
+                sha256: sha.into(),
+                size: 3,
+                mode: "sync".into(),
+                url: None,
+                side: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn manifest_digest_tracks_file_set_and_hashes_not_order() {
+        let a = sample_manifest("1.21.1", "1", &"a".repeat(64));
+        let mut b = a.clone();
+        b.files.push(ManifestFileEntry {
+            path: "config/x.json".into(),
+            ..a.files[0].clone()
+        });
+        let mut b_reordered = b.clone();
+        b_reordered.files.reverse();
+        assert_ne!(manifest_digest(&a), manifest_digest(&b));
+        assert_eq!(manifest_digest(&b), manifest_digest(&b_reordered));
+        let c = sample_manifest("1.21.1", "1", &"b".repeat(64));
+        assert_ne!(manifest_digest(&a), manifest_digest(&c));
+    }
+
+    #[tokio::test]
+    async fn pack_freshness_compares_published_manifest_with_state() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        for version in ["1.20.1", "1.21.1"] {
+            let tmp = tempdir().unwrap();
+            let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+            paths.ensure_instance_dirs(version).unwrap();
+            let installed = sample_manifest(version, "1", &"a".repeat(64));
+            let state = PackState {
+                pack_version: "1".into(),
+                minecraft: version.into(),
+                fabric_loader: "0.19.5".into(),
+                installed_at_utc: "t".into(),
+                installed_mods: vec!["a.jar".into()],
+                manifest_digest: manifest_digest(&installed),
+            };
+            fs::write(
+                paths.instance_dir(version).join("pack.state.json"),
+                serde_json::to_vec(&state).unwrap(),
+            )
+            .unwrap();
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/same.json"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&installed))
+                .mount(&server)
+                .await;
+            let bumped = sample_manifest(version, "2", &"a".repeat(64));
+            Mock::given(method("GET"))
+                .and(path("/bumped.json"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&bumped))
+                .mount(&server)
+                .await;
+            let rehashed = sample_manifest(version, "1", &"c".repeat(64));
+            Mock::given(method("GET"))
+                .and(path("/rehashed.json"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&rehashed))
+                .mount(&server)
+                .await;
+            let client = reqwest::Client::new();
+            let check = |p: &'static str| {
+                let url = format!("{}{}", server.uri(), p);
+                let paths = paths.clone();
+                let client = client.clone();
+                async move { check_pack_freshness_at(&paths, version, &client, &url).await }
+            };
+            assert!(matches!(check("/same.json").await, PackFreshness::Current));
+            assert!(matches!(
+                check("/bumped.json").await,
+                PackFreshness::Outdated(_)
+            ));
+            assert!(matches!(
+                check("/rehashed.json").await,
+                PackFreshness::Outdated(_)
+            ));
+            let offline = check_pack_freshness_at(
+                &paths,
+                version,
+                &client,
+                "http://127.0.0.1:1/manifest.json",
+            )
+            .await;
+            assert!(matches!(offline, PackFreshness::Unknown(_)));
+        }
+    }
+
+    #[test]
+    fn pack_versions_compare_numerically() {
+        use std::cmp::Ordering::*;
+        assert_eq!(
+            compare_pack_versions("20261025.1406", "20261025.1406"),
+            Equal
+        );
+        assert_eq!(
+            compare_pack_versions("20261025.1406", "20261025.959"),
+            Greater
+        );
+        assert_eq!(
+            compare_pack_versions("20261101.0000", "20261025.2359"),
+            Greater
+        );
+        assert_eq!(compare_pack_versions("2", "10"), Less);
+        assert_eq!(compare_pack_versions("1.2", "1.2.1"), Less);
+        assert_eq!(compare_pack_versions("test", "test"), Equal);
+    }
+
+    #[tokio::test]
+    async fn stale_older_manifest_does_not_downgrade_the_pack() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        for version in ["1.20.1", "1.21.1"] {
+            let tmp = tempdir().unwrap();
+            let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+            paths.ensure_instance_dirs(version).unwrap();
+            let installed = sample_manifest(version, "20261102.1200", &"a".repeat(64));
+            let state = PackState {
+                pack_version: installed.pack_version.clone(),
+                minecraft: version.into(),
+                fabric_loader: "0.19.5".into(),
+                installed_at_utc: "t".into(),
+                installed_mods: vec!["a.jar".into()],
+                manifest_digest: manifest_digest(&installed),
+            };
+            fs::write(
+                paths.instance_dir(version).join("pack.state.json"),
+                serde_json::to_vec(&state).unwrap(),
+            )
+            .unwrap();
+            let server = MockServer::start().await;
+            let older = sample_manifest(version, "20261101.0900", &"b".repeat(64));
+            Mock::given(method("GET"))
+                .and(path("/older.json"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&older))
+                .mount(&server)
+                .await;
+            let newer = sample_manifest(version, "20261102.1300", &"a".repeat(64));
+            Mock::given(method("GET"))
+                .and(path("/newer.json"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&newer))
+                .mount(&server)
+                .await;
+            let client = reqwest::Client::new();
+            let older_url = format!("{}/older.json", server.uri());
+            let newer_url = format!("{}/newer.json", server.uri());
+            assert!(matches!(
+                check_pack_freshness_at(&paths, version, &client, &older_url).await,
+                PackFreshness::Current
+            ));
+            assert!(matches!(
+                check_pack_freshness_at(&paths, version, &client, &newer_url).await,
+                PackFreshness::Outdated(_)
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn slow_manifest_check_gives_up_within_the_deadline() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(sample_manifest("1.21.1", "2", &"a".repeat(64)))
+                    .set_delay(std::time::Duration::from_secs(10)),
+            )
+            .mount(&server)
+            .await;
+        // The production client: 15 s connect + 30 s idle read, no total deadline.
+        let client = crate::download::http_client_builder().build().unwrap();
+        let start = std::time::Instant::now();
+        let res = check_pack_freshness_at(
+            &paths,
+            "1.21.1",
+            &client,
+            &format!("{}/manifest.json", server.uri()),
+        )
+        .await;
+        let PackFreshness::Unknown(e) = res else {
+            panic!("expected Unknown, got {res:?}");
+        };
+        assert!(e.is_network_unavailable(), "{e}");
+        assert!(start.elapsed() < PACK_CHECK_TIMEOUT + std::time::Duration::from_secs(2));
     }
 }

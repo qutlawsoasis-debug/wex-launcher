@@ -6,6 +6,7 @@ pub mod download;
 pub mod error;
 pub mod event;
 pub mod fabric;
+pub mod fs_util;
 pub mod ipc_adapter;
 pub mod java;
 pub mod java_probe;
@@ -35,10 +36,11 @@ pub use jvm_args::{
     detect_system_ram_mb, GcProfile, ProcessPriority,
 };
 pub use launcher::{
-    apply_current_process_affinity, build_classpath, build_launch_command, game_output_log_path,
-    install_full_environment, is_fast_path_ready, launch_game_process, mark_fast_path_verified,
-    prepare_and_launch, prepare_and_launch_with_options, prepare_and_prewarm, prewarm_jvm,
-    resolve_fast_path_environment, set_current_process_priority_low,
+    apply_current_process_affinity, build_classpath, build_launch_command, ensure_pack_current,
+    game_output_log_path, install_full_environment, install_full_environment_cancellable,
+    is_fast_path_ready, launch_game_process, mark_fast_path_verified, prepare_and_launch,
+    prepare_and_launch_cancellable, prepare_and_launch_with_options, prepare_and_prewarm,
+    prewarm_jvm, resolve_fast_path_environment, set_current_process_priority_low,
     set_current_process_priority_normal, GameProcess, LaunchOptions, GAME_OUTPUT_LOG,
 };
 pub use pack::{sync_aura_pack, sync_aura_pack_cancellable};

@@ -699,8 +699,9 @@ pub async fn verify_instance_files(
         }
     };
     let ver = crate::commands::logs::validate_game_version(Some(&ver))?.to_string();
-    let client = wex_core::reqwest::Client::builder()
-        .user_agent("WexLauncher/0.1.0")
+    // Connect and idle-read timeouts: a stalled connection must fail instead of
+    // holding the install lock forever.
+    let client = wex_core::download::http_client_builder()
         .build()
         .map_err(|e| e.to_string())?;
 

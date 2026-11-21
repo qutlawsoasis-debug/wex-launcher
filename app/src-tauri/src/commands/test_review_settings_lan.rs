@@ -250,3 +250,110 @@ async fn publish_and_retry_preserve_actual_lan_port_and_propagate_open_failure()
         .await
         .is_none());
 }
+
+/// Core that records whether the install lock was held while it installed.
+struct LockProbeCore {
+    inner: MockLauncherCore,
+    lock: std::sync::OnceLock<Arc<tokio::sync::Mutex<()>>>,
+    installed_under_lock: std::sync::Mutex<Vec<bool>>,
+}
+#[async_trait::async_trait]
+impl LauncherCore for LockProbeCore {
+    async fn get_config(&self) -> IpcResult<LauncherConfig> {
+        self.inner.get_config().await
+    }
+    async fn save_config(&self, c: LauncherConfig) -> IpcResult<()> {
+        self.inner.save_config(c).await
+    }
+    async fn get_installed_versions(&self) -> IpcResult<Vec<InstalledVersion>> {
+        self.inner.get_installed_versions().await
+    }
+    async fn install_instance(
+        &self,
+        r: InstallInstanceRequest,
+    ) -> IpcResult<InstallInstanceResponse> {
+        let held = self.lock.get().unwrap().try_lock().is_err();
+        self.installed_under_lock.lock().unwrap().push(held);
+        self.inner.install_instance(r).await
+    }
+    async fn launch_game(&self, r: LaunchGameRequest) -> IpcResult<LaunchGameResponse> {
+        self.inner.launch_game(r).await
+    }
+    async fn cancel_launch(&self) -> IpcResult<()> {
+        self.inner.cancel_launch().await
+    }
+    async fn is_running(&self, id: &str) -> IpcResult<bool> {
+        self.inner.is_running(id).await
+    }
+    async fn kill_game(&self, id: &str) -> IpcResult<()> {
+        self.inner.kill_game(id).await
+    }
+}
+
+// Regression: lobby repair installed files without the shared install lock, so it
+// could overlap a background install or a settings repair of the same version.
+#[tokio::test]
+async fn lobby_repair_installs_under_the_install_lock_both_versions() {
+    use std::sync::atomic::AtomicUsize;
+    for version in ["1.20.1", "1.21.1"] {
+        let core = Arc::new(LockProbeCore {
+            inner: MockLauncherCore::new(),
+            lock: std::sync::OnceLock::new(),
+            installed_under_lock: std::sync::Mutex::new(Vec::new()),
+        });
+        let f = Fixture::with_core(core.clone()).await;
+        core.lock.set(f.play().install_lock.clone()).unwrap();
+        f.respond("/api/lobby/join", 200, json!({"success":true,"code":"ABC123","status":"open","tunnelAddress":"test.ply.gg:12345","playerCount":2})).await;
+        let calls = Arc::new(AtomicUsize::new(0));
+        let count = calls.clone();
+        let mismatch = wex_net::ModMismatchItem {
+            mod_id: "fixture-missing".into(),
+            mod_name: "Fixture".into(),
+            mismatch_type: wex_net::ModMismatchType::Missing,
+            type_ru: "нет".into(),
+            is_fixable: true,
+            player_version: None,
+            host_version: Some("1.0".into()),
+            display_description: "fixture".into(),
+        };
+        Mock::given(path("/api/lobby/status")).respond_with(move |_: &wiremock::Request| {
+            let repaired = count.fetch_add(1, Ordering::SeqCst) >= 1;
+            ResponseTemplate::new(200).set_body_json(json!({
+                "code":"ABC123","status":"open","tunnelAddress":"test.ply.gg:12345","playerCount":2,"lastHeartbeat":0,
+                "players":["Host","Guest"],"hostName":"Host",
+                "modSync":{"Guest":{"status":if repaired {"synced"} else {"mismatch"},
+                    "mismatches":if repaired {json!([])} else {json!([mismatch.clone()])}}}
+            }))
+        }).mount(&f.server).await;
+
+        // A background install holds the lock first: the repair must wait for it.
+        let background = f.play().install_lock.clone().lock_owned().await;
+        let probe = core.clone();
+        let release = async move {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            assert!(
+                probe.installed_under_lock.lock().unwrap().is_empty(),
+                "repair installed while a background install held the lock"
+            );
+            drop(background);
+        };
+        let (room, ()) = tokio::join!(
+            lobby::prepare_lobby_join(
+                f.app.handle().clone(),
+                "ABC123".into(),
+                "Guest".into(),
+                version.into(),
+                true,
+                f.play(),
+                f.room(),
+            ),
+            release
+        );
+        room.unwrap();
+        assert_eq!(*core.installed_under_lock.lock().unwrap(), vec![true]);
+        assert!(
+            f.play().install_lock.try_lock().is_ok(),
+            "repair must release the lock"
+        );
+    }
+}

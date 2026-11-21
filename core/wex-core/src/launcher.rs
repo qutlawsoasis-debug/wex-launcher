@@ -6,12 +6,15 @@ use crate::fabric::{
     fetch_fabric_profile, install_fabric_libraries_enriching, resolve_fabric_libraries,
     write_fabric_profile_cache,
 };
-use crate::java::ensure_mojang_java;
+use crate::java::ensure_mojang_java_cancellable;
 use crate::minecraft::{
-    fetch_version_package, install_assets, install_minecraft_client, install_vanilla_libraries,
-    resolve_vanilla_libraries,
+    fetch_version_package, install_assets_cancellable, install_minecraft_client_cancellable,
+    install_vanilla_libraries_cancellable, resolve_vanilla_libraries,
 };
-use crate::pack::sync_aura_pack;
+use crate::pack::{
+    cache_manifest, check_pack_freshness_at, sync_aura_pack_cancellable,
+    sync_aura_pack_with_manifest, PackFreshness,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::{self, File};
@@ -21,6 +24,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use tokio::io::AsyncBufReadExt;
 use tokio::process::Command;
+use tokio_util::sync::CancellationToken;
 
 #[cfg(test)]
 #[path = "launcher_integrity_tests.rs"]
@@ -580,6 +584,42 @@ pub async fn install_full_environment(
     events: &dyn EventHandler,
     concurrency: usize,
 ) -> Result<(PathBuf, PathBuf, Vec<PathBuf>, Vec<PathBuf>, String)> {
+    install_full_environment_cancellable(paths, version, client, events, concurrency, None).await
+}
+
+fn check_cancelled(cancel: Option<&CancellationToken>) -> Result<()> {
+    match cancel {
+        Some(t) if t.is_cancelled() => Err(WexError::Cancelled),
+        _ => Ok(()),
+    }
+}
+
+/// [`install_full_environment`] that stops (with [`WexError::Cancelled`]) as soon as
+/// `cancel` fires: in-flight downloads abort and no further stage starts.
+pub async fn install_full_environment_cancellable(
+    paths: &WexPaths,
+    version: &str,
+    client: &reqwest::Client,
+    events: &dyn EventHandler,
+    concurrency: usize,
+    cancel: Option<&CancellationToken>,
+) -> Result<(PathBuf, PathBuf, Vec<PathBuf>, Vec<PathBuf>, String)> {
+    install_full_environment_impl(paths, version, client, events, concurrency, cancel, false).await
+}
+
+/// `pack_verified`: the pack was compared with (and if needed synced to) the
+/// published manifest moments ago, so the Aura-Pack stage is skipped instead of
+/// fetching the manifest and hashing every mod again.
+pub(crate) async fn install_full_environment_impl(
+    paths: &WexPaths,
+    version: &str,
+    client: &reqwest::Client,
+    events: &dyn EventHandler,
+    concurrency: usize,
+    cancel: Option<&CancellationToken>,
+    pack_verified: bool,
+) -> Result<(PathBuf, PathBuf, Vec<PathBuf>, Vec<PathBuf>, String)> {
+    check_cancelled(cancel)?;
     paths.ensure_dirs()?;
     paths.ensure_instance_dirs(version)?;
 
@@ -602,7 +642,7 @@ pub async fn install_full_environment(
     });
     let pkg = match fetch_version_package(client, version).await {
         Ok(p) => {
-            fs::write(&pkg_cache_file, serde_json::to_vec_pretty(&p)?)?;
+            crate::fs_util::write_atomic(&pkg_cache_file, &serde_json::to_vec_pretty(&p)?)?;
             p
         }
         Err(e) => {
@@ -624,10 +664,21 @@ pub async fn install_full_environment(
 
     // These installers already verify cached artifacts before attempting a download.
     // A failed repair cannot be replaced with an unchecked path or partial classpath.
-    let client_jar = install_minecraft_client(paths, version, &pkg, client, events).await?;
-    let vanilla_libs =
-        install_vanilla_libraries(paths, version, &pkg, client, events, concurrency).await?;
-    install_assets(paths, &pkg, client, events, concurrency).await?;
+    check_cancelled(cancel)?;
+    let client_jar =
+        install_minecraft_client_cancellable(paths, version, &pkg, client, events, cancel).await?;
+    let vanilla_libs = install_vanilla_libraries_cancellable(
+        paths,
+        version,
+        &pkg,
+        client,
+        events,
+        concurrency,
+        cancel,
+    )
+    .await?;
+    install_assets_cancellable(paths, &pkg, client, events, concurrency, cancel).await?;
+    check_cancelled(cancel)?;
 
     // 2. Fabric Profile & Libraries (with offline fallback cache)
     events.on_event(&Event::StageStarted {
@@ -637,7 +688,7 @@ pub async fn install_full_environment(
     });
     let mut fabric_profile = match fetch_fabric_profile(client, version, None).await {
         Ok(prof) => {
-            fs::write(&fabric_cache_file, serde_json::to_vec_pretty(&prof)?)?;
+            crate::fs_util::write_atomic(&fabric_cache_file, &serde_json::to_vec_pretty(&prof)?)?;
             prof
         }
         Err(e) => {
@@ -664,6 +715,7 @@ pub async fn install_full_environment(
         // Keep the sidecar hashes so offline runs verify against the cache.
         write_fabric_profile_cache(&fabric_cache_file, &fabric_profile)?;
     }
+    check_cancelled(cancel)?;
 
     // 3. Java Runtime
     events.on_event(&Event::StageStarted {
@@ -671,7 +723,9 @@ pub async fn install_full_environment(
         step: 3,
         total_steps: 4,
     });
-    let java_binary = ensure_mojang_java(paths, version, client, events, concurrency).await?;
+    let java_binary =
+        ensure_mojang_java_cancellable(paths, version, client, events, concurrency, cancel).await?;
+    check_cancelled(cancel)?;
 
     // 4. Aura-Pack sync
     events.on_event(&Event::StageStarted {
@@ -681,7 +735,18 @@ pub async fn install_full_environment(
     });
     // Pack sync supports a cached manifest and verifies each required file itself.
     // pack.state.json alone is never evidence that a failed sync is safe to launch.
-    sync_aura_pack(paths, version, client, events, concurrency).await?;
+    if pack_verified {
+        events.on_event(&Event::Log {
+            level: LogLevel::Info,
+            message: format!(
+                "Aura-Pack ({}) was checked against the published manifest just now; skipping",
+                version
+            ),
+        });
+    } else {
+        sync_aura_pack_cancellable(paths, version, client, events, concurrency, cancel).await?;
+    }
+    check_cancelled(cancel)?;
 
     let asset_index_id = pkg.asset_index.id;
     mark_fast_path_verified(paths, version)?;
@@ -762,11 +827,95 @@ pub fn mark_fast_path_verified(paths: &WexPaths, version: &str) -> Result<()> {
     };
     let inst_dir = paths.instance_dir(version);
     fs::create_dir_all(&inst_dir)?;
-    fs::write(
-        fast_path_state_path(paths, version),
-        serde_json::to_vec_pretty(&state)?,
+    crate::fs_util::write_atomic(
+        &fast_path_state_path(paths, version),
+        &serde_json::to_vec_pretty(&state)?,
     )?;
     Ok(())
+}
+
+/// Before a fast launch: the fast path skips the full install, so check here that
+/// the installed Aura-Pack is still the published one and sync it when it is not.
+/// When the manifest cannot be fetched (offline, slow) or the update download
+/// fails, the installed pack is used: the two-phase sync leaves it intact.
+/// Returns whether the pack now matches the published manifest.
+pub async fn ensure_pack_current(
+    paths: &WexPaths,
+    version: &str,
+    client: &reqwest::Client,
+    events: &dyn EventHandler,
+    concurrency: usize,
+    cancel: Option<&CancellationToken>,
+) -> Result<bool> {
+    let url = crate::pack::manifest_url(version, None, None);
+    ensure_pack_current_at(paths, version, client, events, concurrency, cancel, &url).await
+}
+
+pub(crate) async fn ensure_pack_current_at(
+    paths: &WexPaths,
+    version: &str,
+    client: &reqwest::Client,
+    events: &dyn EventHandler,
+    concurrency: usize,
+    cancel: Option<&CancellationToken>,
+    manifest_url: &str,
+) -> Result<bool> {
+    check_cancelled(cancel)?;
+    // An update interrupted between staging and commit is finished first (no
+    // network needed), so the game never starts on a half-committed pack.
+    crate::pack::finish_pending_pack_commit(paths, version, events)?;
+    match check_pack_freshness_at(paths, version, client, manifest_url).await {
+        PackFreshness::Current => Ok(true),
+        PackFreshness::Outdated(manifest) => {
+            let installed = crate::pack::read_pack_state(paths, version)
+                .map(|s| s.pack_version)
+                .unwrap_or_else(|| "-".to_string());
+            events.on_event(&Event::Log {
+                level: LogLevel::Info,
+                message: format!(
+                    "[FAST-LAUNCH] Aura-Pack {} -> {} для Minecraft {}: синхронизация сборки",
+                    installed, manifest.pack_version, version
+                ),
+            });
+            cache_manifest(paths, version, &manifest);
+            match sync_aura_pack_with_manifest(
+                paths,
+                version,
+                client,
+                events,
+                concurrency,
+                cancel,
+                *manifest,
+            )
+            .await
+            {
+                Ok(_) => Ok(true),
+                Err(e) if crate::pack::is_transient_sync_failure(&e) => {
+                    // Nothing was committed: the installed pack is whole. Downloaded
+                    // files stay staged and the next online start resumes from them.
+                    events.on_event(&Event::Log {
+                        level: LogLevel::Warn,
+                        message: format!(
+                            "[FAST-LAUNCH] Обновление Aura-Pack не загрузилось ({}); запуск с установленной сборкой",
+                            e
+                        ),
+                    });
+                    Ok(false)
+                }
+                Err(e) => Err(e),
+            }
+        }
+        PackFreshness::Unknown(e) => {
+            events.on_event(&Event::Log {
+                level: LogLevel::Warn,
+                message: format!(
+                    "[FAST-LAUNCH] Не удалось проверить обновления Aura-Pack ({}); запуск с установленной сборкой",
+                    e
+                ),
+            });
+            Ok(false)
+        }
+    }
 }
 
 pub fn is_fast_path_ready(paths: &WexPaths, version: &str) -> bool {
@@ -815,6 +964,11 @@ pub fn is_fast_path_ready(paths: &WexPaths, version: &str) -> bool {
     if !pack_state_file.exists() {
         return false;
     }
+    // A pack update stopped between staging and commit: the instance may hold a
+    // mix of old and new files until the commit is finished.
+    if crate::pack::has_pending_pack_commit(paths, version) {
+        return false;
+    }
 
     // Check Mojang Java binary exists and is non-empty
     let java_dir = if version == "1.20.1" {
@@ -833,6 +987,9 @@ pub fn is_fast_path_ready(paths: &WexPaths, version: &str) -> bool {
     match fs::metadata(&mojang_java) {
         Ok(m) if m.len() > 0 => {}
         _ => return false,
+    }
+    if !crate::java::runtime_complete_marker(&paths.runtime_dir, java_dir).is_file() {
+        return false;
     }
 
     // Verify resolved fast-path environment libraries are present on disk
@@ -968,6 +1125,62 @@ pub async fn prepare_and_launch_with_options(
     prewarm_signal: Option<&Path>,
     prewarm_parent_pid: Option<u32>,
 ) -> Result<GameProcess> {
+    prepare_and_launch_inner(
+        paths,
+        config,
+        version,
+        client,
+        events,
+        concurrency,
+        extra_jvm_args,
+        prewarm_signal,
+        prewarm_parent_pid,
+        None,
+    )
+    .await
+}
+
+/// [`prepare_and_launch`] that `cancel` can stop while files are installed: it
+/// returns [`WexError::Cancelled`] and never starts the game.
+#[allow(clippy::too_many_arguments)]
+pub async fn prepare_and_launch_cancellable(
+    paths: &WexPaths,
+    config: &LauncherConfig,
+    version: &str,
+    client: &reqwest::Client,
+    events: Arc<dyn EventHandler>,
+    concurrency: usize,
+    extra_jvm_args: &[String],
+    cancel: &CancellationToken,
+) -> Result<GameProcess> {
+    prepare_and_launch_inner(
+        paths,
+        config,
+        version,
+        client,
+        events,
+        concurrency,
+        extra_jvm_args,
+        None,
+        None,
+        Some(cancel),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn prepare_and_launch_inner(
+    paths: &WexPaths,
+    config: &LauncherConfig,
+    version: &str,
+    client: &reqwest::Client,
+    events: Arc<dyn EventHandler>,
+    concurrency: usize,
+    extra_jvm_args: &[String],
+    prewarm_signal: Option<&Path>,
+    prewarm_parent_pid: Option<u32>,
+    cancel: Option<&CancellationToken>,
+) -> Result<GameProcess> {
     // Who plays: resolved from the active account before anything is installed, so
     // a sign-in problem is reported at once (and an expired token refreshed).
     let with_session;
@@ -997,6 +1210,9 @@ pub async fn prepare_and_launch_with_options(
                     version
                 ),
             });
+        let pack_verified =
+            ensure_pack_current(paths, version, client, events.as_ref(), concurrency, cancel)
+                .await?;
         match resolve_fast_path_environment(paths, version) {
             Ok(env) => env,
             Err(e) => {
@@ -1007,12 +1223,28 @@ pub async fn prepare_and_launch_with_options(
                         e
                     ),
                 });
-                install_full_environment(paths, version, client, events.as_ref(), concurrency)
-                    .await?
+                install_full_environment_impl(
+                    paths,
+                    version,
+                    client,
+                    events.as_ref(),
+                    concurrency,
+                    cancel,
+                    pack_verified,
+                )
+                .await?
             }
         }
     } else {
-        install_full_environment(paths, version, client, events.as_ref(), concurrency).await?
+        install_full_environment_cancellable(
+            paths,
+            version,
+            client,
+            events.as_ref(),
+            concurrency,
+            cancel,
+        )
+        .await?
     };
 
     // One custom Java serves both versions; use the Mojang runtime when it is too old.
@@ -1075,6 +1307,8 @@ pub async fn prepare_and_launch_with_options(
         prewarm_parent_pid,
     };
 
+    // Cancel pressed while the last files were checked: do not start the game.
+    check_cancelled(cancel)?;
     launch_game_process(launch_opts, events).await
 }
 
@@ -1624,6 +1858,14 @@ mod tests {
             "java"
         });
         fs::write(&java_bin, b"stub").unwrap();
+        fs::write(
+            java_dir
+                .parent()
+                .unwrap()
+                .join(crate::java::RUNTIME_COMPLETE_MARKER),
+            b"test",
+        )
+        .unwrap();
 
         // Mark verified
         mark_fast_path_verified(&paths, version).unwrap();
@@ -1676,6 +1918,14 @@ mod tests {
             "java"
         });
         fs::write(&java_bin, b"stub").unwrap();
+        fs::write(
+            java_dir
+                .parent()
+                .unwrap()
+                .join(crate::java::RUNTIME_COMPLETE_MARKER),
+            b"test",
+        )
+        .unwrap();
 
         // Mark verified when jar was valid
         mark_fast_path_verified(&paths, version).unwrap();
