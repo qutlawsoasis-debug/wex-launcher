@@ -391,7 +391,7 @@ pub fn create_args_file(instance_dir: &Path, args: &[String]) -> Result<PathBuf>
     let args_file = instance_dir.join("argsFile.txt");
     let mut content = String::new();
     for arg in args {
-        content.push_str(&format_arg_for_file(&crate::argfile::java_safe_arg(arg)));
+        content.push_str(&format_arg_for_file(&crate::argfile::java_safe_arg(arg)?));
         content.push('\n');
     }
     // The Java launcher reads @files in the ANSI code page on Windows, not UTF-8.
@@ -410,7 +410,7 @@ pub fn build_launch_command(opts: &LaunchOptions) -> Result<Command> {
     cmd.arg(crate::argfile::java_safe_arg(&format!(
         "@{}",
         args_file.display()
-    )));
+    ))?);
     cmd.args(&secret_args);
 
     cmd.current_dir(&instance_dir);
@@ -967,7 +967,15 @@ pub async fn prepare_and_launch_with_options(
         config
     } else {
         let mut c = config.clone();
-        c.session = Some(crate::accounts::resolve_session(&paths.root, client, config).await?);
+        let (session, note) =
+            crate::accounts::resolve_session_noted(&paths.root, client, config).await?;
+        if let Some(note) = note {
+            events.on_event(&Event::Log {
+                level: LogLevel::Warn,
+                message: note,
+            });
+        }
+        c.session = Some(session);
         with_session = c;
         &with_session
     };

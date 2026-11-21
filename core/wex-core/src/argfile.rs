@@ -12,6 +12,8 @@
 //! On other systems the launcher uses the locale (UTF-8 in practice), so the file
 //! stays UTF-8 and arguments are passed unchanged.
 
+use crate::error::{Result, WexError};
+
 /// Bytes of an argfile body for the Java launcher on this system.
 pub fn encode_for_java(text: &str) -> Vec<u8> {
     imp::encode(text)
@@ -19,30 +21,47 @@ pub fn encode_for_java(text: &str) -> Vec<u8> {
 
 /// `arg` in a form the Java launcher can read back exactly: unchanged when the
 /// system code page can hold it, otherwise with its path parts shortened to 8.3
-/// names. Arguments that still cannot be represented are returned as they are
-/// (with a warning) and lose the characters the code page lacks.
-pub fn java_safe_arg(arg: &str) -> String {
+/// names.
+///
+/// A path that still cannot be represented (8.3 names turned off on the drive)
+/// is an error naming the folder: Java would otherwise fail later with a bare
+/// `ClassNotFoundException`. Other arguments keep going with a warning and lose
+/// the characters the code page lacks.
+pub fn java_safe_arg(arg: &str) -> Result<String> {
     if imp::representable(arg) {
-        return arg.to_string();
+        return Ok(arg.to_string());
     }
     let (prefix, value) = split_prefix(arg);
-    let fixed: Vec<String> = value
-        .split(';')
-        .map(|part| {
-            if imp::representable(part) {
-                part.to_string()
-            } else {
-                imp::short_path(part).unwrap_or_else(|| part.to_string())
-            }
-        })
-        .collect();
-    let out = format!("{}{}", prefix, fixed.join(";"));
-    if !imp::representable(&out) {
-        tracing::warn!(
-            "a Java argument has characters outside the system code page and no short name; Java will see '?' instead of them"
-        );
+    let mut fixed = Vec::new();
+    for part in value.split(';') {
+        if imp::representable(part) {
+            fixed.push(part.to_string());
+        } else if let Some(short) = imp::short_path(part) {
+            fixed.push(short);
+        } else if std::path::Path::new(part).is_absolute() {
+            return Err(unreadable_path(part));
+        } else {
+            tracing::warn!(
+                "a Java argument has characters outside the system code page; Java will see '?' instead of them"
+            );
+            fixed.push(part.to_string());
+        }
     }
-    out
+    Ok(format!("{}{}", prefix, fixed.join(";")))
+}
+
+fn unreadable_path(path: &str) -> WexError {
+    let p = std::path::Path::new(path);
+    // Name the first folder Java cannot read, not a file deep inside it.
+    let folder = p
+        .ancestors()
+        .filter(|a| !imp::representable(&a.to_string_lossy()))
+        .last()
+        .unwrap_or(p);
+    WexError::LaunchError(format!(
+        "Java не сможет прочитать путь «{}»: в нём есть символы, которых нет в кодировке Windows, а короткие имена (8.3) на этом диске выключены. Перенесите папку данных Wex в путь только из латинских букв и цифр (например, C:\\Wex) и запустите игру снова.",
+        folder.display()
+    ))
 }
 
 /// True when the Java launcher on this system reads `text` back unchanged.
@@ -247,7 +266,7 @@ mod tests {
             "@C:\\x y\\f.txt",
         ] {
             assert!(is_representable(a));
-            assert_eq!(java_safe_arg(a), a);
+            assert_eq!(java_safe_arg(a).unwrap(), a);
         }
         assert_eq!(encode_for_java("-Xmx1M\n"), b"-Xmx1M\n");
     }
@@ -272,7 +291,13 @@ mod tests {
             format!("@{}", jar),
             missing.clone(),
         ] {
-            let safe = java_safe_arg(&arg);
+            let safe = match java_safe_arg(&arg) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("skipped: {e}");
+                    return;
+                }
+            };
             if !is_representable(&safe) {
                 eprintln!("skipped: no code page form and no 8.3 names on this volume");
                 return;
@@ -297,6 +322,24 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A path no 8.3 name can save stops the launch with the folder named.
+    #[cfg(windows)]
+    #[test]
+    fn unreadable_path_fails_with_the_folder_named() {
+        if is_representable("张") {
+            eprintln!("skipped: the code page holds this character");
+            return;
+        }
+        // A folder that does not exist has no short name.
+        let arg = "-Dx=C:\\wex-no-such-张\\libs\\a.jar";
+        let err = java_safe_arg(arg).unwrap_err().to_string();
+        assert!(err.contains("C:\\wex-no-such-张"), "{err}");
+        assert!(!err.contains("a.jar"), "{err}");
+        assert!(err.contains("латинских"), "{err}");
+        // Not a path: goes on (with a warning) instead of failing.
+        assert!(java_safe_arg("-Dname=张").is_ok());
     }
 
     #[cfg(windows)]
@@ -326,7 +369,14 @@ mod tests {
                 "-XshowSettings:properties".to_string(),
                 "-version".to_string(),
             ];
-            let safe: Vec<String> = args.iter().map(|a| java_safe_arg(a)).collect();
+            let Ok(safe) = args
+                .iter()
+                .map(|a| java_safe_arg(a))
+                .collect::<Result<Vec<_>>>()
+            else {
+                eprintln!("skipped {name}: no code page form and no 8.3 names on this volume");
+                continue;
+            };
             if !safe.iter().all(|a| is_representable(a)) {
                 eprintln!("skipped {name}: no code page form and no 8.3 names on this volume");
                 continue;
@@ -339,7 +389,7 @@ mod tests {
             let file = dir.join("аргументы.txt");
             std::fs::write(&file, encode_for_java(&body)).unwrap();
             let out = match std::process::Command::new(&java)
-                .arg(java_safe_arg(&format!("@{}", file.display())))
+                .arg(java_safe_arg(&format!("@{}", file.display())).unwrap())
                 .output()
             {
                 Ok(o) => o,
