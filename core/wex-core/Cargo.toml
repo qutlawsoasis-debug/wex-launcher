@@ -1,6 +1,6 @@
 [package]
 name = "wex-core"
-version = "0.10.2"
+version = "0.10.3"
 edition = "2021"
 authors = ["AuraDev"]
 description = "Core launcher library for Wex (Aura Minecraft Launcher)"
