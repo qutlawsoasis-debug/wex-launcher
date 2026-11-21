@@ -12,6 +12,7 @@ import { builds } from './builds.svelte';
 import { launch } from './launch.svelte';
 import { router } from './router.svelte';
 import { palette, selectBuild } from './commands.svelte';
+import { overlays } from './overlays.svelte';
 
 export interface HotkeyContext {
   /** True while a sheet, alert or the onboarding is open: only Esc and Ctrl K apply. */
@@ -50,7 +51,7 @@ export function handleHotkey(e: KeyboardEvent, ctx: HotkeyContext): boolean {
     }
     return ctx.closeOverlay();
   }
-  if (palette.open || ctx.overlayOpen) return false;
+  if (palette.open || ctx.overlayOpen || overlays.count > 0) return false;
 
   if (mod && !e.altKey && !e.shiftKey && (key === '1' || key === '2')) {
     const b = builds.list[Number(key) - 1];

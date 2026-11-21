@@ -14,6 +14,7 @@ import { handleHotkey } from './hotkeys';
 import { buildIntent } from '../pages/build/build.svelte';
 import { i18n } from '../i18n';
 import CommandPalette from './CommandPalette.svelte';
+import Sheet from '../components/Sheet.svelte';
 
 let settings: Record<string, unknown>;
 
@@ -213,6 +214,17 @@ describe('hotkeys', () => {
     target.querySelector<HTMLInputElement>('.cmd-in input')!.dispatchEvent(key('Enter'));
     window.removeEventListener('keydown', onWindow);
     expect(onWindow).not.toHaveBeenCalled();
+  });
+
+  it('an open Sheet (account, logs, report, import) switches the hotkeys off', async () => {
+    const sheet = mount(Sheet, { target, props: { open: true } });
+    flushSync();
+    expect(handleHotkey(key('2', { ctrlKey: true }), ctx)).toBe(false);
+    expect(handleHotkey(key('Enter'), ctx)).toBe(false);
+    expect(mocks.invoke).not.toHaveBeenCalledWith('start_game', expect.anything());
+    unmount(sheet);
+    flushSync();
+    expect(handleHotkey(key('2', { ctrlKey: true }), ctx)).toBe(true);
   });
 
   it('while a sheet is open only Esc and Ctrl K work', () => {

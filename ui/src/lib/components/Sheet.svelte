@@ -12,6 +12,7 @@
   import type { Snippet } from 'svelte';
   import Button from './Button.svelte';
   import { t } from '../i18n';
+  import { overlays } from '../shell/overlays.svelte';
 
   interface Props {
     open?: boolean;
@@ -66,6 +67,11 @@
     }
     close();
   }
+
+  // While open the sheet is a modal overlay: window hotkeys stay off behind it.
+  $effect(() => {
+    if (open) return overlays.register();
+  });
 
   $effect(() => {
     if (open) {
