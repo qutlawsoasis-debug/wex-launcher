@@ -65,12 +65,16 @@ class Palette {
   }
 
   /** Servers and the selected build's mods are fetched when the palette opens. */
+  private refreshSeq = 0;
+
   async refresh(): Promise<void> {
+    const seq = ++this.refreshSeq;
     const version = builds.selectedId;
     const [servers, mods] = await Promise.all([
       call<ServerEntry[]>('list_servers', { version: null }).catch(() => [] as ServerEntry[]),
       call<ModEntry[]>('list_mods', { version }).catch(() => [] as ModEntry[]),
     ]);
+    if (seq !== this.refreshSeq) return;
     this.servers = servers;
     this.mods = mods;
   }

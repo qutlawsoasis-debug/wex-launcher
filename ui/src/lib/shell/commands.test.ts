@@ -126,6 +126,22 @@ describe('command palette', () => {
     await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('start_game', expect.objectContaining({ server: 'mc.auramc.net' })));
   });
 
+  it('overlapping refreshes: only the newest reply is applied', async () => {
+    const gates: Array<(v: unknown) => void> = [];
+    mocks.invoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_servers') return new Promise((r) => gates.push(r));
+      if (cmd === 'list_mods') return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
+    const first = palette.refresh();
+    const second = palette.refresh();
+    gates[1]([{ name: 'New', address: 'new' }]);
+    await second;
+    gates[0]([{ name: 'Old', address: 'old' }]);
+    await first;
+    expect(palette.servers.map((s) => s.name)).toEqual(['New']);
+  });
+
   it('a mod opens the build page on the Mods tab with the name searched', async () => {
     await openPalette();
     const input = target.querySelector<HTMLInputElement>('.cmd-in input')!;
