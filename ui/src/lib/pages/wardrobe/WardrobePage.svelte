@@ -442,7 +442,7 @@
   </section>
 
   <section class="wd-panel">
-    <div class="tabs" role="tablist" aria-label={t('shell.nav_wardrobe')} use:indicator={{ selector: '[aria-selected="true"]', key: tab, kind: 'underline' }}>
+    <div class="tabs" role="tablist" aria-label={t('shell.nav_wardrobe')} use:indicator={{ selector: '[aria-selected="true"]', key: tab, kind: 'plate' }}>
       {#each TABS as [id, label] (id)}
         <button type="button" role="tab" aria-selected={tab === id} onclick={() => (tab = id)}>{t(label)}</button>
       {/each}
@@ -505,7 +505,7 @@
             <div class="d" id="wd-nick-hint">{t('acc.ms_name_locked')}</div>
           {:else}
             <input id="wd-nick" class="field" class:bad={!nickOk} bind:value={nick} oninput={onNick} maxlength="16" autocomplete="off" spellcheck="false" aria-invalid={!nickOk} aria-describedby="wd-nick-hint" />
-            <div class="d" class:bad={!nickOk} id="wd-nick-hint">{nickOk ? t('wardrobe2.nick_hint') : t('wardrobe2.nick_bad')}</div>
+            <div class="d" class:bad={!nickOk} class:alert-sym={!nickOk} id="wd-nick-hint">{nickOk ? t('wardrobe2.nick_hint') : t('wardrobe2.nick_bad')}</div>
           {/if}
         </div>
         {#if achievements.length}
@@ -845,9 +845,10 @@
     background: var(--fill-2);
     color: var(--label);
   }
+  /* Pressed (on) state: a denser neutral fill with label, not a blue tint. */
   .icon-b[aria-pressed='true'] {
-    background: var(--blue-tint);
-    color: var(--blue-text);
+    background: var(--fill);
+    color: var(--label);
   }
   .icon-b svg {
     width: 16px;
@@ -878,8 +879,8 @@
     cursor: pointer;
   }
   .drop:hover {
-    border-color: var(--blue-text);
-    background: var(--blue-tint);
+    border-color: var(--label-2);
+    background: var(--fill-2);
   }
   .skin-grid {
     display: grid;
@@ -924,11 +925,13 @@
     font-size: var(--t-cap);
     color: var(--label-3);
   }
+  /* Selected skin: a fill (hover is fill-2, selected is the denser systemFill) and
+     label text; never a blue tint (AGENTS.md: selection is a fill). */
   .skin-card[aria-pressed='true'] {
-    background: var(--blue-tint);
+    background: var(--fill);
   }
   .skin-card[aria-pressed='true'] span {
-    color: var(--blue-text);
+    color: var(--label);
     font-weight: var(--w-semibold);
   }
   .wrow {
@@ -956,7 +959,7 @@
     margin: 0;
   }
   .d.bad {
-    color: var(--red);
+    color: var(--label);
   }
   .ach-row {
     width: 100%;
@@ -986,8 +989,13 @@
     place-items: center;
     background: var(--fill-2);
   }
+  /* Done: the icon plate turns solid label colour with the check cut in the base
+     colour; green is for toggles only (AGENTS.md). */
   .done .ach-ic {
-    background: var(--green);
+    background: var(--label);
+  }
+  .done .ach-ic svg {
+    stroke: var(--base);
   }
   .ach-ic svg {
     width: 14px;
@@ -999,8 +1007,8 @@
     stroke-linejoin: round;
   }
   .tag.up {
-    background: var(--blue-tint);
-    color: var(--blue-text);
+    background: var(--fill-2);
+    color: var(--label);
   }
   .ach-meter {
     display: grid;
@@ -1021,7 +1029,7 @@
     content: '';
     display: block;
     height: 100%;
-    background: var(--blue-text);
+    background: var(--gray);
     transform: scaleX(var(--w));
     transform-origin: left;
   }
@@ -1046,7 +1054,7 @@
     background: var(--fill-2);
   }
   .cape-card[aria-pressed='true'] {
-    background: var(--blue-tint);
+    background: var(--fill);
   }
   .cape-sw {
     grid-row: 1 / 3;

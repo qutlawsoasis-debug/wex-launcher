@@ -252,12 +252,14 @@
     font-size: var(--t-cap);
     color: var(--label-3);
   }
+  /* "Selected for launch" marker: a label-coloured dot, not the accent; the row's
+     selection itself is the fill plate (AGENTS.md: selection is a fill). */
   .sel {
     margin-left: auto;
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--blue-text);
+    background: var(--label);
     flex: none;
   }
   .foot {
@@ -310,7 +312,8 @@
   .me div > span {
     display: block;
     font-size: var(--t-cap);
-    color: var(--green);
+    /* Online status is said in words; green is for toggles only (AGENTS.md). */
+    color: var(--label-2);
   }
   .me div > span.off {
     color: var(--label-3);

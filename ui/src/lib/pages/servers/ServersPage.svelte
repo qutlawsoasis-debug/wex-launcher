@@ -158,7 +158,7 @@
         </div>
         <div class="acts">
           <button type="button" class="mini" aria-label={t('servers2.edit_label', { name: s.name })} onclick={() => edit(s)}>{t('servers2.edit')}</button>
-          <button type="button" class="btn" class:blue={i === 0} disabled={launch.busy} onclick={() => launch.start(s.address)}>{t('home.join')}</button>
+          <button type="button" class="btn" disabled={launch.busy} onclick={() => launch.start(s.address)}>{t('home.join')}</button>
         </div>
       </div>
     {/each}
@@ -228,7 +228,8 @@
     content: '';
     display: block;
     height: 100%;
-    background: var(--green);
+    /* Meter fill: systemGray; green is for toggles only (AGENTS.md). */
+    background: var(--gray);
     transform: scaleX(var(--w));
     transform-origin: left;
   }

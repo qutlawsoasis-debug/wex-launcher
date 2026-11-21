@@ -228,13 +228,14 @@
   .cmd-row:hover {
     background: var(--fill-3);
   }
+  /* The highlighted command is a neutral fill with label text: selection is a fill,
+     never the accent (AGENTS.md; aura-knowledge «Список — отклик на выбор»). */
   .cmd-row[aria-selected='true'] {
-    background: var(--blue);
-    color: var(--blue-ink);
+    background: var(--fill-2);
+    color: var(--label);
   }
   .cmd-row[aria-selected='true'] span {
-    color: var(--blue-ink);
-    opacity: 0.8;
+    color: var(--label-2);
   }
   kbd {
     font: 600 11px var(--font);

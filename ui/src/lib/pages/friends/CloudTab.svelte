@@ -121,14 +121,14 @@
       </div>
       <div class="acts">
         {#if w.state === 'running'}
-          <button type="button" class="btn blue" disabled={launch.busy || !w.address} onclick={() => join(w)}>{t('home.join')}</button>
+          <button type="button" class="btn" disabled={launch.busy || !w.address} onclick={() => join(w)}>{t('home.join')}</button>
           <button type="button" class="btn" disabled={!!busy} onclick={() => cloudWorlds.stop(w)}>{t('cloud.stop')}</button>
         {:else if w.state === 'starting'}
-          <button type="button" class="btn blue" disabled>{t('cloud.starting')}</button>
+          <button type="button" class="btn" disabled>{t('cloud.starting')}</button>
         {:else if w.state === 'stopping'}
           <button type="button" class="btn" disabled>{t('cloud.stopping')}</button>
         {:else}
-          <button type="button" class="btn blue" disabled={!!busy} onclick={() => cloudWorlds.start(w)}>{t('cloud.start')}</button>
+          <button type="button" class="btn" disabled={!!busy} onclick={() => cloudWorlds.start(w)}>{t('cloud.start')}</button>
         {/if}
       </div>
     </div>
@@ -156,7 +156,7 @@
           {t('cloud.access', { n: w.allowedPlayers.length })}
         </button>
         {#if confirmDelete === w.id}
-          <span class="warn">{t('cloud.delete_confirm')}</span>
+          <span class="warn alert-sym">{t('cloud.delete_confirm')}</span>
           <button type="button" class="mini danger" disabled={busy === 'delete'} onclick={() => remove(w)}>{t('cloud.delete')}</button>
           <button type="button" class="mini" onclick={() => (confirmDelete = null)}>{t('common.cancel')}</button>
         {:else}
@@ -279,7 +279,7 @@
 </datalist>
 
 {#if cloudWorlds.error}
-  <p class="bad" role="alert">{cloudWorlds.error}</p>
+  <p class="bad alert-sym" role="alert">{cloudWorlds.error}</p>
 {/if}
 
 <style>
@@ -377,7 +377,7 @@
   }
   .bad {
     margin: 12px 0 0;
-    color: var(--red);
+    color: var(--label);
     font-size: var(--t-foot);
   }
   .mini.danger {

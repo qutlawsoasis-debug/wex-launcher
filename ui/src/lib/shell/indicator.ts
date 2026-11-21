@@ -14,8 +14,8 @@ export interface IndicatorOptions {
   selector: string;
   /** Anything that changes when the selection changes. */
   key?: unknown;
-  /** 'fill' covers the item (sidebar, segments); 'underline' sits under it (tabs). */
-  kind?: 'fill' | 'underline';
+  /** 'fill' covers the item (sidebar, segments); 'plate' spans its width only and CSS sets its height (tabs). */
+  kind?: 'fill' | 'plate';
 }
 
 export function indicator(node: HTMLElement, options: IndicatorOptions) {
@@ -34,10 +34,10 @@ export function indicator(node: HTMLElement, options: IndicatorOptions) {
       return;
     }
     const x = target.offsetLeft;
-    const y = opts.kind === 'underline' ? 0 : target.offsetTop;
+    const y = opts.kind === 'plate' ? 0 : target.offsetTop;
     if (!animate || !placed) ind.style.transition = 'none';
     ind.style.width = `${target.offsetWidth}px`;
-    if (opts.kind !== 'underline') ind.style.height = `${target.offsetHeight}px`;
+    if (opts.kind !== 'plate') ind.style.height = `${target.offsetHeight}px`;
     ind.style.transform = `translate(${x}px, ${y}px)`;
     ind.style.opacity = '1';
     if (!animate || !placed) {

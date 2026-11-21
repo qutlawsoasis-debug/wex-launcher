@@ -50,12 +50,14 @@
     align-items: baseline;
   }
 
+  /* The wordmark is not a control, so it is not blue: blue means the primary
+     action (HIG › Color: «Avoid using the same color to mean different things»). */
   .letter-w {
-    color: var(--blue-text);
+    color: var(--label);
   }
 
   .letter-ex {
-    color: var(--label);
+    color: var(--label-2);
   }
 
   /* Size Presets */

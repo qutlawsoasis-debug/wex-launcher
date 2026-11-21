@@ -321,8 +321,11 @@
     display: block;
     background: var(--cover-ink);
   }
+  /* Update available: a hollow ring instead of an orange dot, so the state is told
+     by shape, not hue (HIG › Color: «Avoid relying solely on color…»). */
   .ready.upd i {
-    background: var(--orange);
+    background: transparent;
+    box-shadow: inset 0 0 0 2px var(--cover-ink);
   }
   :global(:root[data-reduce-motion='true']) .pane-body > *,
   :global(:root[data-reduce-motion='true']) .pane.open .pane-ver {

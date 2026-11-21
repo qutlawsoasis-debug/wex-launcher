@@ -3,7 +3,7 @@
   set large, facts, tabs: Mods, Worlds, the workshop (resource packs, shaders,
   screenshots, backups — owner decision) and Build settings.
   HIG › Tab views: tabs switch sections of one place, the selected one is marked
-  by a gliding underline; arrow keys move between tabs.
+  by a gliding fill plate; arrow keys move between tabs.
 -->
 <script lang="ts">
   import { builds, coverVar } from '../../shell/builds.svelte';
@@ -114,7 +114,8 @@
       {#if !selected}
         <button type="button" class="btn" disabled={launch.busy} onclick={select}>{t('build.select_for_launch')}</button>
       {/if}
-      <button type="button" class="btn blue big" disabled={launch.busy} onclick={play}>
+      <!-- Neutral: the launch bar's Play is the app's one blue Play (HIG › Buttons). -->
+      <button type="button" class="btn big" disabled={launch.busy} onclick={play}>
         <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1v8l7-4z" /></svg>{t('shell.play')}
       </button>
     </div>
@@ -135,7 +136,7 @@
 
 <div>
   <!-- svelte-ignore a11y_interactive_supports_focus -->
-  <div class="tabs" role="tablist" aria-label={t('shell.build_tabs')} tabindex="-1" onkeydown={onTabKey} use:indicator={{ selector: '[aria-selected="true"]', key: tab, kind: 'underline' }}>
+  <div class="tabs" role="tablist" aria-label={t('shell.build_tabs')} tabindex="-1" onkeydown={onTabKey} use:indicator={{ selector: '[aria-selected="true"]', key: tab, kind: 'plate' }}>
     {#each BUILD_TABS as id (id)}
       <button
         type="button"
@@ -211,19 +212,20 @@
     gap: 8px;
     align-items: center;
   }
-  .build-head :global(.btn:not(.blue)) {
+  /* Hero buttons sit on the build's cover colour: a white-alpha fill (glass over
+     imagery, HIG › Materials; «Цвет на стекле») with white text. Neither is blue:
+     the launch bar's Play is the primary action of every view. */
+  .build-head :global(.btn) {
     background: var(--hero-btn);
     color: var(--cover-ink);
   }
-  .build-head :global(.btn:not(.blue):hover) {
+  .build-head :global(.btn:hover) {
     background: var(--hero-btn-hi);
   }
-  .build-head :global(.btn.blue) {
-    background: var(--cover-ink);
-    color: var(--hero-c);
-  }
-  .build-head :global(.btn.blue:hover) {
-    opacity: 0.92;
+  .build-head :global(.btn[disabled]) {
+    background: var(--hero-btn);
+    color: var(--cover-ink);
+    opacity: 0.6;
   }
   .facts {
     display: grid;

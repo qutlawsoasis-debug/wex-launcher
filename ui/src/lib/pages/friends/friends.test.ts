@@ -116,7 +116,9 @@ describe('servers page', () => {
     // Description from the server (colour codes removed), then the address.
     expect(target.querySelector('.lrow-srv > div > span')?.textContent).toBe('Выживание и PvP, mc.auramc.net');
     expect(target.textContent).not.toMatch(/Aura Creative|Aura Minigames|примеры/);
-    expect(target.querySelector('.lrow-srv .btn')?.classList.contains('blue')).toBe(true);
+    // Row Join is neutral: the launch bar's Play is the view's primary (one accent per view).
+    expect(target.querySelector('.lrow-srv .btn')?.classList.contains('blue')).toBe(false);
+    expect(target.querySelectorAll('.lrow-srv .blue').length).toBe(0);
     (target.querySelector('.lrow-srv .btn') as HTMLButtonElement).click();
     await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('start_game', expect.objectContaining({ server: 'mc.auramc.net' })));
   });

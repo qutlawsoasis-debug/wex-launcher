@@ -116,7 +116,9 @@
     width: 18px;
     height: 18px;
     fill: none;
-    stroke: var(--blue-text);
+    /* Choice list: the checkmark marks the pick (aura-knowledge «Список — отклик на
+       выбор»: «короткая подсветка, затем галочка»), in label colour like the rest. */
+    stroke: var(--label);
     stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -129,8 +131,9 @@
     margin-left: 8px;
     vertical-align: 1px;
   }
+  /* Drop target armed: a fill over the list, not a blue outline (selection is a fill). */
   .list.over {
-    box-shadow: inset 0 0 0 2px var(--blue-text);
+    background: linear-gradient(var(--fill-3), var(--fill-3)) var(--card);
   }
   .hint {
     margin: 8px 0 0;

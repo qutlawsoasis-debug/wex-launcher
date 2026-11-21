@@ -3,8 +3,13 @@
   Ready → stage of the launch with progress (launch-status / install-progress)
   → game running with a timer → stopped. One button changes role:
   Play (systemBlue, the single accent) → Cancel → Stop (systemRed text).
-  HIG › Buttons: one prominent action; HIG › Progress indicators: determinate
-  bar when the amount is known; HIG › Materials for the bar background.
+  The bar is visible on every page, so its Play is the app's primary action:
+  pages do not repeat a blue Play (BuildPage's hero Play is neutral) and add at
+  most one blue commit of their own (a form's Create/Add/Enter), which keeps every
+  view within «one or two» prominent buttons (HIG › Buttons; aura-knowledge
+  «Кнопка — акцентный стиль»). States: «Состояния кнопки Aura».
+  HIG › Progress indicators: determinate bar when the amount is known; the fill is
+  systemGray, green stays for toggles. HIG › Materials for the bar background.
 -->
 <script lang="ts">
   import { launch, readiness } from './launch.svelte';
@@ -181,7 +186,7 @@
     right: 0;
     top: -1px;
     height: 2px;
-    background: var(--green);
+    background: var(--gray);
     transform-origin: left;
     animation: started var(--dur-started) var(--ease) both;
   }
@@ -235,11 +240,12 @@
     align-items: center;
     gap: 8px;
   }
+  /* "In game": a gray dot, the words say it (green is for toggles only). */
   .dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--green);
+    background: var(--gray);
     flex: none;
   }
   .sub {
@@ -260,7 +266,7 @@
   .track i {
     display: block;
     height: 100%;
-    background: var(--blue-text);
+    background: var(--gray);
     transform-origin: left;
     transition: transform 200ms linear;
   }
@@ -302,14 +308,14 @@
       transform var(--dur-micro) var(--ease),
       opacity var(--dur-micro);
   }
-  .play:hover {
-    background: var(--blue-hi);
-  }
+  /* Primary: no change on hover; pressed moves 20 % toward secondarySystemFill. */
   .play:active {
     transform: scale(var(--press-scale));
+    background: color-mix(in srgb, var(--blue) 80%, var(--fill-2));
   }
   .play[disabled] {
-    opacity: 0.5;
+    background: var(--fill-4);
+    color: var(--label-4);
     cursor: default;
   }
   .play svg {
@@ -317,16 +323,22 @@
     height: 14px;
     fill: currentColor;
   }
+  /* Cancel (Normal) and Stop (Destructive, systemRed text): systemFill at rest,
+     secondarySystemFill on hover, tertiarySystemFill pressed. */
   .play.cancel {
-    background: var(--fill-2);
+    background: var(--fill);
     color: var(--label);
   }
   .play.cancel:hover,
   .play.stop:hover {
-    background: var(--fill);
+    background: var(--fill-2);
+  }
+  .play.cancel:active,
+  .play.stop:active {
+    background: var(--fill-3);
   }
   .play.stop {
-    background: var(--fill-2);
+    background: var(--fill);
     color: var(--red);
   }
   :global(.play.swap) {

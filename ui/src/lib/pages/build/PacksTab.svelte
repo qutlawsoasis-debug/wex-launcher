@@ -105,8 +105,9 @@
   .lrow-mod {
     grid-template-columns: 40px minmax(0, 1fr) auto auto;
   }
+  /* Drop target armed: a fill over the list, not a blue outline (selection is a fill). */
   .list.over {
-    box-shadow: inset 0 0 0 2px var(--blue-text);
+    background: linear-gradient(var(--fill-3), var(--fill-3)) var(--card);
   }
   .hint {
     margin: 8px 0 0;

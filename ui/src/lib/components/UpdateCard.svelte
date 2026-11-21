@@ -141,11 +141,11 @@
     <div class="update-banner-top">
       <div class="update-banner-icon {updateStage}">
         {#if updateStage === 'ready_to_restart'}
-          <Icon name="check" size={13} color="var(--green)" />
+          <Icon name="check" size={13} color="var(--label)" />
         {:else if updateStage === 'error'}
-          <Icon name="error" size={13} color="var(--red)" />
+          <Icon name="warning" size={13} color="var(--label)" />
         {:else}
-          <Icon name="refresh" size={13} color="var(--blue)" />
+          <Icon name="refresh" size={13} color="var(--label-2)" />
         {/if}
       </div>
       <span class="update-banner-headline" class:update-banner-headline-error={updateStage === 'error'}>
@@ -198,7 +198,7 @@
 
     {#if updateStage === 'available'}
       {#if canAutoUpdate}
-        <Button variant="primary" size="small" fullWidth onclick={handleStartUpdate} title={t('update_card.update_title')}>
+        <Button variant="secondary" size="small" fullWidth onclick={handleStartUpdate} title={t('update_card.update_title')}>
           <span>{t('update_card.update')}</span>
         </Button>
       {:else if updateInfo?.download_url}
@@ -207,7 +207,7 @@
         </Button>
       {/if}
     {:else if updateStage === 'ready_to_restart'}
-      <Button variant="primary" size="small" fullWidth onclick={handleRestart} title={t('update_card.restart_title')}>
+      <Button variant="secondary" size="small" fullWidth onclick={handleRestart} title={t('update_card.restart_title')}>
         <span>{t('update_card.restart')}</span>
       </Button>
     {:else if updateStage === 'error'}
@@ -244,16 +244,10 @@
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    background: rgba(0, 145, 255, 0.14);
+    /* Neutral plate for every stage; the symbol (refresh, check, warning) and the
+       headline tell the stage, not blue/green/red tints (AGENTS.md; HIG › Color). */
+    background: var(--fill-3);
     flex-shrink: 0;
-  }
-
-  .update-banner-icon.ready_to_restart {
-    background: rgba(48, 209, 88, 0.16);
-  }
-
-  .update-banner-icon.error {
-    background: rgba(255, 69, 58, 0.16);
   }
 
   .update-banner-headline {
@@ -267,7 +261,7 @@
   }
 
   .update-banner-headline-error {
-    color: var(--red);
+    color: var(--label);
   }
 
   .update-banner-subtext {

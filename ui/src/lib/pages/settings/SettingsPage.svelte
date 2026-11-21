@@ -346,7 +346,7 @@
               <div>
                 <div class="l">{a.name}</div>
                 <div class="d">
-                  {a.kind === 'microsoft' ? t('acc.kind_microsoft') : t('acc.kind_offline')}{#if a.needs_sign_in} · <span class="warn">{t('acc.needs_sign_in')}</span>{/if}
+                  {a.kind === 'microsoft' ? t('acc.kind_microsoft') : t('acc.kind_offline')}{#if a.needs_sign_in} · <span class="warn alert-sym">{t('acc.needs_sign_in')}</span>{/if}
                 </div>
               </div>
             </div>
@@ -397,7 +397,7 @@
           <div class="srow-h">
             <div>
               <div class="l">{t('build.memory')}</div>
-              <div class="d">{memWarn ? t('settings2.memory_warn') : t('build.memory_shared')}</div>
+              <div class="d" class:alert-sym={memWarn}>{memWarn ? t('settings2.memory_warn') : t('build.memory_shared')}</div>
             </div>
             {#if s}<b class="val">{t('shell.gb', { n: memGb })}</b>{/if}
           </div>
@@ -706,12 +706,11 @@
   .ram-legend .sys {
     background: var(--label-3);
   }
+  /* Meter: neutral shades only (label-3 the rest of the PC, label Minecraft, fill
+     free). Too much memory is said by the warning line above, not by orange. */
   .ram .mc,
   .ram-legend .mc {
-    background: var(--blue);
-  }
-  .ram .mc.warn {
-    background: var(--orange);
+    background: var(--label);
   }
   .ram .free,
   .ram-legend .free {
@@ -766,8 +765,9 @@
     font-size: var(--t-cap);
     color: var(--label-2);
   }
+  /* Selected preset: a neutral fill over the card (selection is a fill, AGENTS.md). */
   .preset[aria-checked='true'] {
-    background: var(--blue-tint);
+    background: linear-gradient(var(--fill-2), var(--fill-2)) var(--card);
   }
   .bars {
     display: flex;
@@ -795,7 +795,7 @@
     height: 16px;
   }
   .bars i.on {
-    background: var(--blue-text);
+    background: var(--label);
   }
   .hint {
     margin: 0 0 0 4px;
@@ -823,7 +823,7 @@
     padding-left: 4px;
   }
   .theme-card[aria-checked='true'] {
-    background: var(--blue-tint);
+    background: var(--fill);
   }
   .mini-win {
     display: grid;
@@ -923,6 +923,6 @@
     stroke-linejoin: round;
   }
   .warn {
-    color: var(--red);
+    color: var(--label);
   }
 </style>

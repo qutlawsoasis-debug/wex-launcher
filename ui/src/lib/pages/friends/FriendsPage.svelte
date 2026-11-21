@@ -148,7 +148,7 @@
 </div>
 
 <div>
-  <div class="tabs" role="tablist" aria-label={t('shell.nav_friends')} use:indicator={{ selector: '[aria-selected="true"]', key: tab, kind: 'underline' }}>
+  <div class="tabs" role="tablist" aria-label={t('shell.nav_friends')} use:indicator={{ selector: '[aria-selected="true"]', key: tab, kind: 'plate' }}>
     <button type="button" role="tab" aria-selected={tab === 'friends'} onclick={() => (tab = 'friends')}>{t('friends2.tab_friends')}</button>
     <button type="button" role="tab" aria-selected={tab === 'rooms'} onclick={() => (tab = 'rooms')}>{t('friends2.tab_rooms')}</button>
     <button type="button" role="tab" aria-selected={tab === 'server'} onclick={() => (tab = 'server')}>{t('friends2.tab_server')}</button>
@@ -188,7 +188,7 @@
             <div><label class="l" for="friend-code">{t('friends2.add_label')}</label><div class="d">{t('friends2.add_d')}</div></div>
             <div class="code-row">
               <input id="friend-code" class="field" bind:value={addCode} maxlength="32" autocomplete="off" spellcheck="false" placeholder={t('friends2.add_placeholder')} />
-              <button type="submit" class="mini blue" disabled={!addCode.trim() || adding}>{adding ? t('friends2.adding') : t('friends2.add')}</button>
+              <button type="submit" class="mini" disabled={!addCode.trim() || adding}>{adding ? t('friends2.adding') : t('friends2.add')}</button>
             </div>
           </form>
         </div>
