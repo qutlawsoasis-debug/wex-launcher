@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { arcPoint, firstDelay, makePass, makeSparkles, nextDelay, rng, starPath } from './santa';
 
 const draws = (n: number, seed: number) => {
@@ -85,5 +87,16 @@ describe('santa trail', () => {
     expect(d.startsWith('M0 -4')).toBe(true);
     expect(d.endsWith('Z')).toBe(true);
     expect((d.match(/Q/g) ?? []).length).toBe(4);
+  });
+});
+
+describe('santa debug hook', () => {
+  it('the wex-santa window event exists only in dev builds (AGENTS.md rule 7)', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/lib/design/winter/Santa.svelte'), 'utf8');
+    const script = src.slice(src.indexOf('<script'), src.indexOf('</script>'));
+    const adds = script.split('\n').filter((l) => l.includes("addEventListener('wex-santa'"));
+    expect(adds).toHaveLength(1);
+    expect(adds[0]).toMatch(/if \(debugHook\)/);
+    expect(script).toMatch(/const debugHook = import\.meta\.env\.DEV;/);
   });
 });

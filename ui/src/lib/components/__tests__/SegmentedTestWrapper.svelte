@@ -1,5 +1,5 @@
 <script lang="ts">
-  import SegmentedControl, { type Option } from './SegmentedControl.svelte';
+  import SegmentedControl, { type Option } from '../SegmentedControl.svelte';
 
   let options = $state<Option[]>([
     { value: 'opt1', label: '1.21.1' },

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, unmount, tick } from 'svelte';
 import SegmentedControl from './SegmentedControl.svelte';
-import SegmentedTestWrapper from './SegmentedTestWrapper.svelte';
+import SegmentedTestWrapper from './__tests__/SegmentedTestWrapper.svelte';
 
 describe('SegmentedControl Component - Liquid Glass', () => {
   let target: HTMLElement;

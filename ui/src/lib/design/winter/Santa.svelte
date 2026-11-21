@@ -11,8 +11,10 @@
   systemRed #ff3b30 and systemYellow #ffd60a for the sleigh, coat and harness,
   systemBlue/systemGreen/systemPurple for the gifts; browns and whites are
   illustration colours where no system colour fits.
-  Debug (decorative only): window.dispatchEvent(new Event('wex-santa')) flies a
-  pass right away.
+  Debug, dev builds only (import.meta.env.DEV, AGENTS.md rule 7: debug paths are
+  opt-in): window.dispatchEvent(new Event('wex-santa')) flies a pass right away.
+  A release build has no listener, so nothing outside can trigger a pass (or the
+  «Видел Санту» achievement it reports).
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -91,11 +93,12 @@
     };
     const onHook = () => fly();
     later(firstDelay(), tick);
-    window.addEventListener('wex-santa', onHook);
+    const debugHook = import.meta.env.DEV;
+    if (debugHook) window.addEventListener('wex-santa', onHook);
     return () => {
       clearTimeout(timer);
       finish = () => {};
-      window.removeEventListener('wex-santa', onHook);
+      if (debugHook) window.removeEventListener('wex-santa', onHook);
     };
   });
 
