@@ -150,12 +150,23 @@ impl Shared {
             }
             text.truncate(cut);
         }
-        let seq = self.seq.fetch_add(1, Ordering::SeqCst) + 1;
+        // The sequence number is taken under the log lock, so lines are always
+        // stored in seq order and a reader never skips a line still in flight.
         let mut log = self.log.lock().unwrap();
+        let seq = self.seq.fetch_add(1, Ordering::SeqCst) + 1;
         if log.len() >= LOG_CAPACITY {
             log.pop_front();
         }
         log.push_back(ServerLogLine { seq, text });
+    }
+
+    /// Lines after `since` and the cursor to pass next time: the last returned
+    /// seq (or `since` when nothing is new), never a seq that is not stored yet.
+    fn lines_since(&self, since: u64) -> (Vec<ServerLogLine>, u64) {
+        let log = self.log.lock().unwrap();
+        let lines: Vec<ServerLogLine> = log.iter().filter(|l| l.seq > since).cloned().collect();
+        let next = lines.last().map_or(since, |l| l.seq);
+        (lines, next)
     }
 
     fn handle_line(&self, line: String) {
@@ -246,21 +257,13 @@ impl ServerProcess {
     }
 
     pub fn snapshot(&self, since: u64) -> ServerSnapshot {
-        let lines = self
-            .shared
-            .log
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|l| l.seq > since)
-            .cloned()
-            .collect();
+        let (lines, next_seq) = self.shared.lines_since(since);
         ServerSnapshot {
             status: self.status(),
             exit_code: *self.shared.exit_code.lock().unwrap(),
             players: self.players(),
             lines,
-            next_seq: self.shared.seq.load(Ordering::SeqCst),
+            next_seq,
             started_at: self.started_at.clone(),
             pid: self.pid,
             problem: self.shared.problem.lock().unwrap().clone(),
@@ -550,6 +553,79 @@ mod tests {
         );
         shared.handle_line("é".repeat(LINE_MAX));
         assert!(shared.log.lock().unwrap().back().unwrap().text.len() <= LINE_MAX);
+    }
+
+    fn test_shared() -> Shared {
+        Shared {
+            status: Mutex::new(ServerStatus::Starting),
+            exit_code: Mutex::new(None),
+            players: Mutex::new(BTreeSet::new()),
+            log: Mutex::new(VecDeque::new()),
+            seq: AtomicU64::new(0),
+            stop_requested: AtomicBool::new(false),
+            problem: Mutex::new(None),
+        }
+    }
+
+    /// Readers polling with `next_seq` while several writers push must see
+    /// every line exactly once, in order.
+    #[test]
+    fn concurrent_pushes_never_skip_lines_for_a_polling_reader() {
+        let shared = Arc::new(test_shared());
+        let writers = 4;
+        let per_writer = 400; // stays under LOG_CAPACITY so nothing is evicted
+        let done = Arc::new(AtomicBool::new(false));
+        let reader = {
+            let shared = shared.clone();
+            let done = done.clone();
+            std::thread::spawn(move || {
+                let mut since = 0;
+                let mut seen = Vec::new();
+                loop {
+                    let finished = done.load(Ordering::SeqCst);
+                    let (lines, next) = shared.lines_since(since);
+                    assert!(next >= since);
+                    seen.extend(lines.iter().map(|l| l.seq));
+                    since = next;
+                    if finished {
+                        break;
+                    }
+                }
+                seen
+            })
+        };
+        let handles: Vec<_> = (0..writers)
+            .map(|w| {
+                let shared = shared.clone();
+                std::thread::spawn(move || {
+                    for i in 0..per_writer {
+                        shared.push(format!("w{w} {i}"));
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+        done.store(true, Ordering::SeqCst);
+        let seen = reader.join().unwrap();
+        let expected: Vec<u64> = (1..=(writers * per_writer) as u64).collect();
+        assert_eq!(seen, expected);
+        let stored: Vec<u64> = shared.log.lock().unwrap().iter().map(|l| l.seq).collect();
+        assert_eq!(stored, expected);
+    }
+
+    #[test]
+    fn next_seq_is_the_last_returned_line_or_since() {
+        let shared = test_shared();
+        assert_eq!(shared.lines_since(0), (vec![], 0));
+        shared.push("a".into());
+        shared.push("b".into());
+        let (lines, next) = shared.lines_since(0);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(next, 2);
+        assert_eq!(shared.lines_since(next), (vec![], 2));
+        assert_eq!(shared.lines_since(u64::MAX).1, u64::MAX);
     }
 
     #[tokio::test]
