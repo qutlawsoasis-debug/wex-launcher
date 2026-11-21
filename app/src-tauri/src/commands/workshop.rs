@@ -429,10 +429,19 @@ pub fn validate_open_path(paths: &WexPaths, path: &str) -> Result<PathBuf, Strin
             .canonicalize()
             .unwrap_or_else(|_| paths.root.clone()),
     );
-    if wex_core::safe_path::is_unc_path(&canon) || !canon.starts_with(&root) {
+    // A path written under the data root without `..` is accepted even when a
+    // junction moves part of the root to another drive.
+    let lexically_inside = p.starts_with(&paths.root)
+        && !p
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir));
+    if !lexically_inside && (wex_core::safe_path::is_unc_path(&canon) || !canon.starts_with(&root))
+    {
         return Err("Путь находится за пределами папки данных Wex.".to_string());
     }
-    Ok(canon)
+    // Hand back the path as the caller wrote it: canonicalize expands 8.3 short
+    // names and junctions, which the user never typed.
+    Ok(p)
 }
 
 /// Accepts only files inside `<root>/instances/<supported version>/screenshots`.
@@ -712,7 +721,20 @@ mod tests {
             .contains("за пределами"));
         let inside = paths.root.join("instances");
         fs::create_dir_all(&inside).unwrap();
-        assert!(validate_open_path(&paths, &inside.to_string_lossy()).is_ok());
+        assert_eq!(
+            validate_open_path(&paths, &inside.to_string_lossy()).unwrap(),
+            inside,
+            "the caller's spelling is kept (no 8.3 or junction expansion)"
+        );
+        let sneaky = paths
+            .root
+            .join("instances")
+            .join("..")
+            .join("..")
+            .join("outside");
+        assert!(validate_open_path(&paths, &sneaky.to_string_lossy())
+            .unwrap_err()
+            .contains("за пределами"));
     }
 
     #[test]
