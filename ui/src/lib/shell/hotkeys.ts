@@ -33,6 +33,8 @@ function enterIsFree(el: Element | null): boolean {
 
 /** Handle a keydown on the window. Returns true when the key was used. */
 export function handleHotkey(e: KeyboardEvent, ctx: HotkeyContext): boolean {
+  // A widget that already used this key (Enter in a palette, a field...) owns it.
+  if (e.defaultPrevented) return false;
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
 

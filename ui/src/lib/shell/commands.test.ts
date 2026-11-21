@@ -199,6 +199,22 @@ describe('hotkeys', () => {
     btn.remove();
   });
 
+  it('a key already handled by a widget (defaultPrevented) is not a hotkey', () => {
+    const e = key('Enter', { cancelable: true });
+    e.preventDefault();
+    expect(handleHotkey(e, ctx)).toBe(false);
+    expect(mocks.invoke).not.toHaveBeenCalledWith('start_game', expect.anything());
+  });
+
+  it('Enter in the palette does not bubble to the window hotkey', async () => {
+    await openPalette();
+    const onWindow = vi.fn();
+    window.addEventListener('keydown', onWindow);
+    target.querySelector<HTMLInputElement>('.cmd-in input')!.dispatchEvent(key('Enter'));
+    window.removeEventListener('keydown', onWindow);
+    expect(onWindow).not.toHaveBeenCalled();
+  });
+
   it('while a sheet is open only Esc and Ctrl K work', () => {
     const closeOverlay = vi.fn(() => true);
     const sheet = { overlayOpen: true, closeOverlay };

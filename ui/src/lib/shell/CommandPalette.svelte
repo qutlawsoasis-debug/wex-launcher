@@ -53,6 +53,7 @@
       index = Math.max(0, index - 1);
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      e.stopPropagation();
       run(results[index]);
     } else if (e.key === 'Escape') {
       e.preventDefault();
