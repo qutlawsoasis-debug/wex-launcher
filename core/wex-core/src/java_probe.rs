@@ -40,8 +40,8 @@ pub fn parse_java_major(output: &str) -> Option<u32> {
 
 type CacheKey = (PathBuf, Option<SystemTime>, u64);
 
-fn cache() -> &'static Mutex<HashMap<CacheKey, Option<u32>>> {
-    static CACHE: OnceLock<Mutex<HashMap<CacheKey, Option<u32>>>> = OnceLock::new();
+fn cache() -> &'static Mutex<HashMap<CacheKey, u32>> {
+    static CACHE: OnceLock<Mutex<HashMap<CacheKey, u32>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -58,18 +58,19 @@ fn console_java(java: &Path) -> PathBuf {
 }
 
 /// Major version of the Java at `java`, or `None` when it does not run or answer
-/// within 20 seconds. Blocking; the answer is cached until the file changes.
+/// within 20 seconds. Blocking; a version is cached until the file changes, a
+/// failure (timeout, crash) is not, so the next launch asks again.
 pub fn probe_java_major(java: &Path) -> Option<u32> {
     let meta = std::fs::metadata(java).ok()?;
     let key = (java.to_path_buf(), meta.modified().ok(), meta.len());
-    if let Some(hit) = cache().lock().ok()?.get(&key) {
-        return *hit;
+    if let Some(hit) = cache().lock().ok().and_then(|c| c.get(&key).copied()) {
+        return Some(hit);
     }
-    let major = run_version(&console_java(java));
+    let major = run_version(&console_java(java))?;
     if let Ok(mut c) = cache().lock() {
         c.insert(key, major);
     }
-    major
+    Some(major)
 }
 
 fn run_version(java: &Path) -> Option<u32> {
@@ -222,6 +223,12 @@ mod tests {
             .join(if cfg!(windows) { "java.exe" } else { "java" });
         std::fs::write(&fake, b"not a program").unwrap();
         assert_eq!(probe_java_major(&fake), None);
+        let meta = std::fs::metadata(&fake).unwrap();
+        let key = (fake.clone(), meta.modified().ok(), meta.len());
+        assert!(
+            !cache().lock().unwrap().contains_key(&key),
+            "a failed probe is not cached"
+        );
         assert_eq!(probe_java_major(&tmp.path().join("missing")), None);
     }
 
