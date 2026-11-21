@@ -151,7 +151,7 @@ pub async fn download_file_resumable_cancellable(
             existing_len = meta.len();
             if let Some(exp_size) = expected_size {
                 if existing_len >= exp_size {
-                    let _ = fs::remove_file(&part_path);
+                    remove_part(&part_path);
                     existing_len = 0;
                 }
             }
@@ -168,7 +168,7 @@ pub async fn download_file_resumable_cancellable(
         attempts += 1;
         if let Some(token) = cancel_token {
             if token.is_cancelled() {
-                let _ = fs::remove_file(&part_path);
+                remove_part(&part_path);
                 return Err(WexError::Cancelled);
             }
         }
@@ -204,7 +204,7 @@ pub async fn download_file_resumable_cancellable(
         let status = resp.status();
         // If range was requested but server returned 416 (Range Not Satisfiable), restart from byte 0
         if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
-            let _ = fs::remove_file(&part_path);
+            remove_part(&part_path);
             existing_len = 0;
             if attempts >= MAX_ATTEMPTS {
                 return Err(WexError::DownloadError {
@@ -217,7 +217,7 @@ pub async fn download_file_resumable_cancellable(
 
         // If client permanent error 404 (Not Found) or 410 (Gone): fail immediately without sleeping/retrying
         if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::GONE {
-            let _ = fs::remove_file(&part_path);
+            remove_part(&part_path);
             return Err(WexError::DownloadError {
                 url: url.to_string(),
                 message: format!("HTTP error status: {}", status),
@@ -226,7 +226,7 @@ pub async fn download_file_resumable_cancellable(
 
         if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
             if attempts >= MAX_ATTEMPTS {
-                let _ = fs::remove_file(&part_path);
+                remove_part(&part_path);
                 return Err(WexError::DownloadError {
                     url: url.to_string(),
                     message: format!("HTTP error status: {}", status),
@@ -243,17 +243,19 @@ pub async fn download_file_resumable_cancellable(
                 .append(true)
                 .open(&part_path)
                 .map_err(|e| {
-                    let _ = fs::remove_file(&part_path);
+                    remove_part(&part_path);
                     map_io_err(e, &part_path)
                 })?
         } else {
             existing_len = 0;
+            let file = File::create(&part_path).map_err(|e| {
+                remove_part(&part_path);
+                map_io_err(e, &part_path)
+            })?;
+            // The .part is empty now; only then does it get the new response's validator.
             validator = response_validator(resp.headers());
             write_part_validator(&part_path, validator.as_deref());
-            File::create(&part_path).map_err(|e| {
-                let _ = fs::remove_file(&part_path);
-                map_io_err(e, &part_path)
-            })?
+            file
         };
 
         let mut stream = resp.bytes_stream();
@@ -264,7 +266,7 @@ pub async fn download_file_resumable_cancellable(
             if let Some(token) = cancel_token {
                 if token.is_cancelled() {
                     drop(file);
-                    let _ = fs::remove_file(&part_path);
+                    remove_part(&part_path);
                     return Err(WexError::Cancelled);
                 }
             }
@@ -272,7 +274,7 @@ pub async fn download_file_resumable_cancellable(
                 Ok(chunk) => {
                     if let Err(e) = file.write_all(&chunk) {
                         drop(file);
-                        let _ = fs::remove_file(&part_path);
+                        remove_part(&part_path);
                         return Err(map_io_err(e, &part_path));
                     }
                     downloaded_bytes += chunk.len() as u64;
@@ -291,14 +293,14 @@ pub async fn download_file_resumable_cancellable(
 
         if let Err(e) = file.flush() {
             drop(file);
-            let _ = fs::remove_file(&part_path);
+            remove_part(&part_path);
             return Err(map_io_err(e, &part_path));
         }
         drop(file);
 
         if stream_interrupted {
             if attempts >= MAX_ATTEMPTS {
-                let _ = fs::remove_file(&part_path);
+                remove_part(&part_path);
                 return Err(WexError::DownloadError {
                     url: url.to_string(),
                     message: format!("Stream error after {} attempts", attempts),
@@ -312,7 +314,7 @@ pub async fn download_file_resumable_cancellable(
         let actual_len = match fs::metadata(&part_path) {
             Ok(m) => m.len(),
             Err(e) => {
-                let _ = fs::remove_file(&part_path);
+                remove_part(&part_path);
                 return Err(map_io_err(e, &part_path));
             }
         };
@@ -324,11 +326,11 @@ pub async fn download_file_resumable_cancellable(
                     existing_len = actual_len;
                 } else {
                     // Oversized file: purge and restart from byte 0
-                    let _ = fs::remove_file(&part_path);
+                    remove_part(&part_path);
                     existing_len = 0;
                 }
                 if attempts >= MAX_ATTEMPTS {
-                    let _ = fs::remove_file(&part_path);
+                    remove_part(&part_path);
                     return Err(WexError::SizeMismatch {
                         path: target_path.to_path_buf(),
                         expected: exp_size,
@@ -353,7 +355,7 @@ pub async fn download_file_resumable_cancellable(
                         actual_hash
                     ),
                 });
-                let _ = fs::remove_file(&part_path);
+                remove_part(&part_path);
                 if attempts >= MAX_ATTEMPTS {
                     return Err(WexError::HashMismatch {
                         path: target_path.to_path_buf(),
@@ -372,7 +374,7 @@ pub async fn download_file_resumable_cancellable(
             let _ = fs::remove_file(target_path);
         }
         if let Err(e) = fs::rename(&part_path, target_path) {
-            let _ = fs::remove_file(&part_path);
+            remove_part(&part_path);
             return Err(map_io_err(e, target_path));
         }
         write_part_validator(&part_path, None);
@@ -411,6 +413,12 @@ fn response_validator(headers: &HeaderMap) -> Option<String> {
     header(ETAG)
         .filter(|e| !e.starts_with("W/"))
         .or_else(|| header(LAST_MODIFIED))
+}
+
+/// Delete a `.part` together with its validator.
+fn remove_part(part_path: &Path) {
+    let _ = fs::remove_file(part_path);
+    write_part_validator(part_path, None);
 }
 
 fn read_part_validator(part_path: &Path) -> Option<String> {
@@ -830,6 +838,38 @@ mod tests {
         assert_eq!(fs::read(&target).unwrap(), b"ABCDEFGH");
         let requests = server.received_requests().await.unwrap();
         assert!(requests.iter().all(|r| !r.headers.contains_key("range")));
+    }
+
+    #[tokio::test]
+    async fn validator_is_deleted_with_the_part() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/gone.bin"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("gone.bin");
+        let part = tmp.path().join("gone.bin.part");
+        fs::write(&part, b"1234").unwrap();
+        fs::write(part_validator_path(&part), "\"v1\"").unwrap();
+
+        let res = download_file_resumable_cancellable(
+            &reqwest::Client::new(),
+            &format!("{}/gone.bin", server.uri()),
+            &target,
+            Some(8),
+            None,
+            &crate::event::NoopEventHandler,
+            None,
+        )
+        .await;
+        assert!(res.is_err());
+        assert!(!part.exists());
+        assert!(!part_validator_path(&part).exists());
     }
 
     #[test]
