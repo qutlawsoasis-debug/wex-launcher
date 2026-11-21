@@ -531,25 +531,104 @@ impl From<LauncherConfig> for wex_ipc::models::LauncherConfig {
 }
 
 impl LauncherConfig {
+    /// Read the config, or defaults when there is none. An unreadable file is
+    /// copied to `config.json.broken` (and a warning logged) before defaults are
+    /// used, so a damaged file never silently costs the player their settings.
     pub fn load_or_default(path: &Path) -> Self {
-        if path.exists() {
-            if let Ok(content) = fs::read_to_string(path) {
-                if let Ok(cfg) = serde_json::from_str(&content) {
-                    return cfg;
-                }
+        let content = match fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Self::default(),
+            Err(e) => {
+                tracing::warn!(
+                    "config {} is unreadable ({}), using defaults",
+                    path.display(),
+                    e
+                );
+                return Self::default();
+            }
+        };
+        match serde_json::from_str(&content) {
+            Ok(cfg) => cfg,
+            Err(e) => {
+                let broken = broken_config_path(path);
+                tracing::warn!(
+                    "config {} is damaged ({}), kept as {} and defaults are used",
+                    path.display(),
+                    e,
+                    broken.display()
+                );
+                let _ = fs::copy(path, &broken);
+                Self::default()
             }
         }
-        Self::default()
     }
 
+    /// Write the config atomically: a temporary file next to it, then a rename,
+    /// so a crash mid-write leaves the previous file intact.
     pub fn save(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
         let json = serde_json::to_string_pretty(self)?;
-        fs::write(path, json)?;
+        write_file_atomic(path, json.as_bytes())?;
         Ok(())
     }
+}
+
+/// Serialises load-modify-save of `config.json` within the process.
+static CONFIG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Hold the config lock for a load-modify-save written out by hand. Prefer
+/// [`update_config`]; never hold the guard across an `.await` or call
+/// `update_config` while holding it (the lock is not re-entrant).
+pub fn lock_config() -> std::sync::MutexGuard<'static, ()> {
+    CONFIG_LOCK.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Load the config, let `change` edit it and save it, all under one process-wide
+/// lock, so two commands changing different settings never undo each other.
+/// The file is written only when something actually changed.
+pub fn update_config<R>(path: &Path, change: impl FnOnce(&mut LauncherConfig) -> R) -> Result<R> {
+    let _guard = lock_config();
+    let mut cfg = LauncherConfig::load_or_default(path);
+    let before = serde_json::to_value(&cfg)?;
+    let out = change(&mut cfg);
+    if !path.exists() || serde_json::to_value(&cfg)? != before {
+        cfg.save(path)?;
+    }
+    Ok(out)
+}
+
+fn broken_config_path(path: &Path) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".broken");
+    path.with_file_name(name)
+}
+
+/// Write `data` to a unique temporary file beside `path`, flush it to disk and
+/// rename it over `path` (the rename replaces the old file on Windows too).
+pub fn write_file_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    use std::io::Write as _;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(
+        ".{}.{}.tmp",
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+    let tmp = path.with_file_name(name);
+    let result = (|| {
+        let mut f = fs::File::create(&tmp)?;
+        f.write_all(data)?;
+        f.sync_all()?;
+        drop(f);
+        fs::rename(&tmp, path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    result
 }
 
 #[cfg(test)]
@@ -584,6 +663,65 @@ mod tests {
         cfg.save(&path).unwrap();
         let again = LauncherConfig::load_or_default(&path);
         assert_eq!(again.cloud_secret.as_deref(), Some("s"));
+    }
+
+    #[test]
+    fn damaged_config_is_kept_as_broken_and_save_is_atomic() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("config.json");
+        std::fs::write(&path, b"{\"nickname\": \"Ste").unwrap();
+        let cfg = LauncherConfig::load_or_default(&path);
+        assert_eq!(cfg.nickname, LauncherConfig::default().nickname);
+        let broken = tmp.path().join("config.json.broken");
+        assert_eq!(std::fs::read(&broken).unwrap(), b"{\"nickname\": \"Ste");
+
+        let cfg = LauncherConfig {
+            nickname: "Steve".into(),
+            ..Default::default()
+        };
+        cfg.save(&path).unwrap();
+        assert_eq!(LauncherConfig::load_or_default(&path).nickname, "Steve");
+        let names: Vec<String> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            names.iter().all(|n| !n.ends_with(".tmp")),
+            "no temporary files left: {names:?}"
+        );
+    }
+
+    #[test]
+    fn update_config_never_loses_a_concurrent_change() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("config.json");
+        update_config(&path, |c| c.max_memory_mb = 2048).unwrap();
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..25 {
+                        update_config(&path, |c| c.max_memory_mb += 1).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        assert_eq!(LauncherConfig::load_or_default(&path).max_memory_mb, 2248);
+    }
+
+    #[test]
+    fn update_config_skips_unchanged_writes() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("config.json");
+        update_config(&path, |_| ()).unwrap();
+        assert!(path.exists(), "a missing config is created");
+        std::fs::write(&path, b"{\"nickname\":\"Alex\"}").unwrap();
+        let name = update_config(&path, |c| c.nickname.clone()).unwrap();
+        assert_eq!(name, "Alex");
+        assert_eq!(std::fs::read(&path).unwrap(), b"{\"nickname\":\"Alex\"}");
     }
 
     #[test]

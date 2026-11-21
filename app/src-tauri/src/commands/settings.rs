@@ -215,6 +215,8 @@ pub async fn save_launcher_settings_impl(
     paths: &WexPaths,
     _core: &dyn LauncherCore,
 ) -> Result<(), String> {
+    // Load-modify-save under the config lock, so a concurrent change is not undone.
+    let config_guard = wex_core::config::lock_config();
     let mut cfg = CoreConfig::load_or_default(&paths.config_file);
 
     cfg.selected_version = new_settings.selected_version;
@@ -253,6 +255,7 @@ pub async fn save_launcher_settings_impl(
 
     cfg.save(&paths.config_file)
         .map_err(|e| format!("Не удалось сохранить конфигурацию: {}", e))?;
+    drop(config_guard);
 
     // Apply graphics preset to instance dir (options.txt, shaderpacks) via wex-extras
     let pool_dirs = vec![paths.root.join("shaderpacks_pool")];
@@ -270,8 +273,7 @@ pub async fn reset_settings_impl(
     core: &dyn LauncherCore,
 ) -> Result<LauncherSettingsDto, String> {
     let default_cfg = CoreConfig::default();
-    default_cfg
-        .save(&paths.config_file)
+    wex_core::config::update_config(&paths.config_file, |cfg| *cfg = default_cfg.clone())
         .map_err(|e| format!("Не удалось сбросить конфигурацию: {}", e))?;
 
     let _ = core.save_config(default_cfg.into()).await;

@@ -94,11 +94,11 @@ pub fn save_microsoft_login(store: &mut AccountStore, login: &MinecraftLogin) ->
 /// the launcher that shows or compares the nickname sees the same player.
 pub fn sync_config_nickname(config_file: &Path, account: Option<&Account>) -> Result<()> {
     if let Some(acc) = account {
-        let mut cfg = LauncherConfig::load_or_default(config_file);
-        if cfg.nickname != acc.name {
-            cfg.nickname = acc.name.clone();
-            cfg.save(config_file)?;
-        }
+        crate::config::update_config(config_file, |cfg| {
+            if cfg.nickname != acc.name {
+                cfg.nickname = acc.name.clone();
+            }
+        })?;
     }
     Ok(())
 }

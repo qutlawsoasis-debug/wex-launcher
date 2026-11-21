@@ -586,6 +586,7 @@ pub async fn apply_import_internal(
     }
 
     // 1b. Update core config file directly to preserve graphics_preset and exact RAM
+    let config_guard = wex_core::config::lock_config();
     let mut core_cfg = wex_core::config::LauncherConfig::load_or_default(&paths.config_file);
     let mut core_modified = false;
     if req.import_nickname {
@@ -649,6 +650,7 @@ pub async fn apply_import_internal(
             errors.push(format!("Не удалось сохранить настройки импорта: {err}"));
         }
     }
+    drop(config_guard);
 
     // 2. Safe non-destructive servers import: append to Wex root servers.dat AND instance servers.dat
     if req.import_servers && !req.servers.is_empty() {
