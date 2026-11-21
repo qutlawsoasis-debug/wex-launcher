@@ -176,6 +176,24 @@ describe('i18n Guard & Enforcement Engine (Apple HIG)', () => {
     });
   });
 
+  describe('template expressions in .svelte', () => {
+    it('flags Cyrillic string literals inside {…} expressions and attribute expressions', () => {
+      const svelte = `
+        <script lang="ts"></script>
+        <span>{label || (busy ? 'Выполнение…' : t('common.progress'))}</span>
+        <div aria-label={label || 'Переключатель'}></div>
+        <p>{t('a.b')}</p>
+      `;
+      const texts = scanSvelteContent('X.svelte', svelte).map((v) => v.text);
+      expect(texts).toEqual(['Выполнение…', 'Переключатель']);
+    });
+
+    it('allowlisted literals in expressions pass', () => {
+      const svelte = `<button>{lang === 'ru' ? 'Русский' : 'English'}</button>`;
+      expect(scanSvelteContent('X.svelte', svelte).filter((v) => v.type === 'cyrillic_hardcoded')).toEqual([]);
+    });
+  });
+
   describe('.ts module scanning', () => {
     it('flags a Cyrillic string literal and ignores comments', () => {
       const ts = `

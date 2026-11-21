@@ -17,7 +17,7 @@
   import Toggle from './Toggle.svelte';
   import Icon from './icons/Icon.svelte';
   import Row from './Row.svelte';
-  import { t, i18n } from '../i18n';
+  import { t } from '../i18n';
   import type { OldLauncherDataDto, ImportedServerDto, ImportedSkinDto } from '../ipc/generated/models';
 
   interface Props {
@@ -166,7 +166,7 @@
   bind:open
   title={t('import.sheet_title')}
   cancelLabel={t('import.action_skip')}
-  doneLabel={isImporting ? (i18n.locale === 'en' ? 'Importing…' : 'Импорт...') : t('import.action_import')}
+  doneLabel={isImporting ? t('import.importing') : t('import.action_import')}
   showCancel={true}
   showDone={Boolean(oldData) && !successMessage}
   maxWidth="580px"

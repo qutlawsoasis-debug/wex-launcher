@@ -148,7 +148,7 @@
       onkeydown={handleCardKeyDown}
       role="dialog"
       aria-modal="true"
-      aria-label={title || 'Модальное окно'}
+      aria-label={title || t('common.dialog')}
       tabindex="-1"
     >
       <div class="grabber-area">

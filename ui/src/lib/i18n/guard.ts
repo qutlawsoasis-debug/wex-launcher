@@ -755,7 +755,53 @@ export function scanSvelteContent(
     }
   }
 
+  // 3D. String literals inside template expressions: {label || 'Прогресс'},
+  // aria-label={x ? 'А' : 'Б'}. Text outside braces was checked above.
+  for (const expr of templateExpressions(templateOnly)) {
+    const strRegex = /(["'`])((?:\\.|(?!\1)[^\\])*)\1/g;
+    let m: RegExpExecArray | null;
+    while ((m = strRegex.exec(expr.text)) !== null) {
+      const literal = m[2];
+      if (!CYRILLIC_REGEX.test(literal) || isException(relFilePath, literal, exceptions)) continue;
+      const offset = expr.start + m.index;
+      violations.push({
+        file: relFilePath,
+        line: templateOnly.slice(0, offset).split('\n').length,
+        column: offset - templateOnly.slice(0, offset).lastIndexOf('\n'),
+        text: literal,
+        type: 'cyrillic_hardcoded',
+        context: expr.text.trim().slice(0, 120),
+      });
+    }
+  }
+
   return violations;
+}
+
+/** Top-level `{...}` expressions of a template (balanced braces, quotes respected). */
+function templateExpressions(template: string): { text: string; start: number }[] {
+  const out: { text: string; start: number }[] = [];
+  let depth = 0;
+  let start = -1;
+  let quote: string | null = null;
+  for (let i = 0; i < template.length; i++) {
+    const ch = template[i];
+    if (depth > 0 && quote) {
+      if (ch === '\\') i++;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (depth > 0 && (ch === '"' || ch === "'" || ch === '`')) {
+      quote = ch;
+    } else if (ch === '{') {
+      if (depth === 0) start = i + 1;
+      depth++;
+    } else if (ch === '}' && depth > 0) {
+      depth--;
+      if (depth === 0) out.push({ text: template.slice(start, i), start });
+    }
+  }
+  return out;
 }
 
 /**

@@ -989,6 +989,12 @@ export const ru = {
   'cloud.err_list': 'Не удалось получить список облачных миров',
   'cloud.err_generic': 'Не удалось выполнить действие с облачным миром',
   'common.progress': 'Прогресс',
+  'common.in_progress': 'Выполнение…',
+  'common.loading': 'Загрузка…',
+  'common.toggle': 'Переключатель',
+  'common.dialog': 'Модальное окно',
+  'import.importing': 'Импорт…',
+  'settings2.motion_effects_off': 'Эффекты выключены, поэтому анимации тоже выключены',
   // Error messages (lib/design/errors.ts › formatError)
   'err.network_error.title': 'Нет подключения к интернету',
   'err.network_error.desc': 'Проверьте сетевое соединение или Wi-Fi и повторите попытку.',

@@ -10,6 +10,7 @@
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { t } from '../i18n';
 
   interface Props {
     checked?: boolean;
@@ -53,7 +54,7 @@
     class="apple-toggle"
     class:checked
     role="switch"
-    aria-label={ariaLabel || label || 'Переключатель'}
+    aria-label={ariaLabel || label || t('common.toggle')}
     aria-checked={checked}
     aria-disabled={disabled}
     tabindex={disabled ? -1 : 0}

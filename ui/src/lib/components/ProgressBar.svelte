@@ -27,7 +27,7 @@
     detail,
     height = 6,
     /* Progress is status, not an action: systemGray, not the accent (AGENTS.md). */
-    color = 'var(--gray)',
+    color = 'var(--meter)',
     hideInfo = false,
   }: Props = $props();
 
@@ -37,7 +37,7 @@
 <div class="apple-progress-container" aria-label={label || t('common.progress')}>
   {#if !hideInfo && (label || detail || !indeterminate)}
     <div class="progress-info">
-      <span class="progress-label">{label || (indeterminate ? 'Выполнение...' : 'Прогресс')}</span>
+      <span class="progress-label">{label || (indeterminate ? t('common.in_progress') : t('common.progress'))}</span>
       <span class="progress-detail">
         {#if detail}
           {detail}
@@ -55,14 +55,14 @@
         style="background-color: {color};"
         role="progressbar"
         aria-busy="true"
-        aria-label={label || 'Загрузка...'}
+        aria-label={label || t('common.loading')}
       ></div>
     {:else}
       <div
         class="progress-fill"
         style="width: {clampedPct}%; background-color: {color};"
         role="progressbar"
-        aria-label={label || 'Прогресс'}
+        aria-label={label || t('common.progress')}
         aria-valuenow={Math.round(clampedPct)}
         aria-valuemin="0"
         aria-valuemax="100"

@@ -989,6 +989,12 @@ export const en = {
   'cloud.err_list': 'Could not get the list of cloud worlds',
   'cloud.err_generic': 'The cloud world action failed',
   'common.progress': 'Progress',
+  'common.in_progress': 'Working…',
+  'common.loading': 'Loading…',
+  'common.toggle': 'Switch',
+  'common.dialog': 'Dialog',
+  'import.importing': 'Importing…',
+  'settings2.motion_effects_off': 'Effects are off, so animations are off too',
   // Error messages (lib/design/errors.ts › formatError)
   'err.network_error.title': 'No internet connection',
   'err.network_error.desc': 'Check your network or Wi-Fi and try again.',
