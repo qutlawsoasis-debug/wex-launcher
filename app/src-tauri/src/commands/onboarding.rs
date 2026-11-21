@@ -87,6 +87,7 @@ pub async fn onboarding_complete(
     req: OnboardingCompleteRequest,
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
+    let _config_guard = wex_core::config::lock_config();
     let mut cfg = LauncherConfig::load_or_default(&state.paths.config_file);
 
     let clean_nick = req.nickname.trim();

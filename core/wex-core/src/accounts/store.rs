@@ -88,25 +88,38 @@ impl AccountStore {
     }
 
     pub fn open_with(root: &Path, cipher: Box<dyn SecretCipher>) -> Result<Self> {
-        let path = root.join("accounts.json");
-        let file = match fs::read_to_string(&path) {
-            Ok(text) => serde_json::from_str::<AccountsFile>(&text).unwrap_or_else(|e| {
-                // Keep the unreadable file for diagnosis; the player signs in again.
-                tracing::warn!(
-                    "accounts.json is unreadable ({}), kept as accounts.json.broken",
-                    e
-                );
-                let _ = fs::copy(&path, root.join("accounts.json.broken"));
-                AccountsFile::default()
-            }),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => AccountsFile::default(),
-            Err(e) => return Err(e.into()),
-        };
         Ok(Self {
             root: root.to_path_buf(),
-            file,
+            file: Self::read_file(root)?,
             cipher,
         })
+    }
+
+    /// Read accounts.json again, dropping what this store had in memory. Used after
+    /// waiting for a lock or a network call, when another part of the launcher may
+    /// have switched or added accounts in the meantime.
+    pub fn reload(&mut self) -> Result<()> {
+        self.file = Self::read_file(&self.root)?;
+        Ok(())
+    }
+
+    fn read_file(root: &Path) -> Result<AccountsFile> {
+        let path = root.join("accounts.json");
+        match fs::read_to_string(&path) {
+            Ok(text) => Ok(
+                serde_json::from_str::<AccountsFile>(&text).unwrap_or_else(|e| {
+                    // Keep the unreadable file for diagnosis; the player signs in again.
+                    tracing::warn!(
+                        "accounts.json is unreadable ({}), kept as accounts.json.broken",
+                        e
+                    );
+                    let _ = fs::copy(&path, root.join("accounts.json.broken"));
+                    AccountsFile::default()
+                }),
+            ),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(AccountsFile::default()),
+            Err(e) => Err(e.into()),
+        }
     }
 
     pub fn cipher_name(&self) -> &'static str {
@@ -272,7 +285,10 @@ impl AccountStore {
         Ok(self.active().cloned())
     }
 
+    /// Record that an account was just used. Re-reads accounts.json first, so a
+    /// switch or sign-in made since this store was opened is not written over.
     pub fn mark_used(&mut self, id: &str) -> Result<()> {
+        self.reload()?;
         if let Some(acc) = self.get_mut(id) {
             acc.last_used_at = Some(Utc::now());
         }

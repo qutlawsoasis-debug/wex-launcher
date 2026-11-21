@@ -51,21 +51,22 @@ impl LauncherCore for WexLauncherCore {
     }
 
     async fn save_config(&self, config: IpcConfig) -> IpcResult<()> {
-        let mut core_cfg = CoreConfig::load_or_default(&self.paths.config_file);
-        core_cfg.selected_version = config.selected_version;
-        core_cfg.nickname = config.player_name;
-        core_cfg.max_memory_mb = if config.ram_gb <= 64 {
-            config.ram_gb * 1024
-        } else {
-            config.ram_gb
-        };
-        core_cfg.reduce_motion = config.reduce_motion;
-        core_cfg.reduce_transparency = config.reduce_transparency;
-        core_cfg.appearance = config.appearance;
-        core_cfg.accent = config.accent;
-        core_cfg.fast_start_jvm = config.fast_start_jvm;
-        core_cfg.fast_launch = config.fast_launch;
-        core_cfg.save(&self.paths.config_file).map_err(|e| {
+        crate::config::update_config(&self.paths.config_file, |core_cfg| {
+            core_cfg.selected_version = config.selected_version;
+            core_cfg.nickname = config.player_name;
+            core_cfg.max_memory_mb = if config.ram_gb <= 64 {
+                config.ram_gb * 1024
+            } else {
+                config.ram_gb
+            };
+            core_cfg.reduce_motion = config.reduce_motion;
+            core_cfg.reduce_transparency = config.reduce_transparency;
+            core_cfg.appearance = config.appearance;
+            core_cfg.accent = config.accent;
+            core_cfg.fast_start_jvm = config.fast_start_jvm;
+            core_cfg.fast_launch = config.fast_launch;
+        })
+        .map_err(|e| {
             IpcError::internal(
                 "Не удалось сохранить файл конфигурации. Проверьте свободное место на диске.",
                 Some(e.to_string()),
@@ -115,11 +116,15 @@ impl LauncherCore for WexLauncherCore {
     }
 
     async fn launch_game(&self, request: LaunchGameRequest) -> IpcResult<LaunchGameResponse> {
-        let mut cfg = CoreConfig::load_or_default(&self.paths.config_file);
-        cfg.nickname = request.nickname;
-        cfg.selected_version = request.version.clone();
-        cfg.quick_play_multiplayer = request.quick_play_multiplayer;
-        let _ = cfg.save(&self.paths.config_file);
+        let apply = |cfg: &mut CoreConfig| {
+            cfg.nickname = request.nickname.clone();
+            cfg.selected_version = request.version.clone();
+            cfg.quick_play_multiplayer = request.quick_play_multiplayer.clone();
+            cfg.clone()
+        };
+        // A failed save must not stop the game: launch with the settings in memory.
+        let cfg = crate::config::update_config(&self.paths.config_file, apply)
+            .unwrap_or_else(|_| apply(&mut CoreConfig::load_or_default(&self.paths.config_file)));
 
         let events = self.event_handler.clone();
         let jvm_args = request.jvm_args.unwrap_or_default();

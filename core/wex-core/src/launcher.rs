@@ -394,10 +394,11 @@ pub fn create_args_file(instance_dir: &Path, args: &[String]) -> Result<PathBuf>
     let args_file = instance_dir.join("argsFile.txt");
     let mut content = String::new();
     for arg in args {
-        content.push_str(&format_arg_for_file(arg));
+        content.push_str(&format_arg_for_file(&crate::argfile::java_safe_arg(arg)?));
         content.push('\n');
     }
-    fs::write(&args_file, content)?;
+    // The Java launcher reads @files in the ANSI code page on Windows, not UTF-8.
+    fs::write(&args_file, crate::argfile::encode_for_java(&content))?;
     Ok(args_file)
 }
 
@@ -409,7 +410,10 @@ pub fn build_launch_command(opts: &LaunchOptions) -> Result<Command> {
 
     let mut cmd = Command::new(opts.java_binary);
     // Use @argsFile to avoid the 32767 character command-line limit on Windows
-    cmd.arg(format!("@{}", args_file.display()));
+    cmd.arg(crate::argfile::java_safe_arg(&format!(
+        "@{}",
+        args_file.display()
+    ))?);
     cmd.args(&secret_args);
 
     cmd.current_dir(&instance_dir);
@@ -971,7 +975,15 @@ pub async fn prepare_and_launch_with_options(
         config
     } else {
         let mut c = config.clone();
-        c.session = Some(crate::accounts::resolve_session(&paths.root, client, config).await?);
+        let (session, note) =
+            crate::accounts::resolve_session_noted(&paths.root, client, config).await?;
+        if let Some(note) = note {
+            events.on_event(&Event::Log {
+                level: LogLevel::Warn,
+                message: note,
+            });
+        }
+        c.session = Some(session);
         with_session = c;
         &with_session
     };
@@ -1003,15 +1015,26 @@ pub async fn prepare_and_launch_with_options(
         install_full_environment(paths, version, client, events.as_ref(), concurrency).await?
     };
 
-    let java_binary = if let Some(custom) = &config.custom_java_path {
-        if custom.exists() {
-            custom.clone()
-        } else {
-            mojang_java
-        }
-    } else {
-        mojang_java
-    };
+    // One custom Java serves both versions; use the Mojang runtime when it is too old.
+    let custom_java = config.custom_java_path.clone();
+    let version_owned = version.to_string();
+    let (java_binary, java_note) = tokio::task::spawn_blocking(move || {
+        crate::java_probe::choose_java(
+            custom_java.as_deref(),
+            mojang_java,
+            &version_owned,
+            crate::java_probe::probe_java_major,
+        )
+    })
+    .await
+    .map_err(|e| WexError::JavaError(e.to_string()))?;
+    if let Some(note) = java_note {
+        tracing::warn!("{}", note);
+        events.on_event(&Event::Log {
+            level: LogLevel::Warn,
+            message: format!("[JAVA] {}", note),
+        });
+    }
 
     if config.fast_start_jvm {
         events.on_event(&Event::Log {

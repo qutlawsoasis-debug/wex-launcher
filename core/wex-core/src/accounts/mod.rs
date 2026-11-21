@@ -94,11 +94,11 @@ pub fn save_microsoft_login(store: &mut AccountStore, login: &MinecraftLogin) ->
 /// the launcher that shows or compares the nickname sees the same player.
 pub fn sync_config_nickname(config_file: &Path, account: Option<&Account>) -> Result<()> {
     if let Some(acc) = account {
-        let mut cfg = LauncherConfig::load_or_default(config_file);
-        if cfg.nickname != acc.name {
-            cfg.nickname = acc.name.clone();
-            cfg.save(config_file)?;
-        }
+        crate::config::update_config(config_file, |cfg| {
+            if cfg.nickname != acc.name {
+                cfg.nickname = acc.name.clone();
+            }
+        })?;
     }
     Ok(())
 }
@@ -110,15 +110,29 @@ pub fn sync_config_nickname(config_file: &Path, account: Option<&Account>) -> Re
 /// - Active offline account: `config.nickname` is the name (the player edits it in
 ///   the wardrobe); the account follows it.
 /// - Active Microsoft account: the Minecraft token is refreshed when it is about to
-///   expire. A refresh rejected by Microsoft marks the account and asks to sign in again.
+///   expire. A refresh rejected by Microsoft marks the account and asks to sign in again;
+///   a refresh that cannot reach Microsoft (no network) launches with the saved token,
+///   so singleplayer still works offline.
 pub async fn resolve_session(
     root: &Path,
     client: &reqwest::Client,
     cfg: &LauncherConfig,
 ) -> Result<GameSession> {
+    resolve_session_noted(root, client, cfg)
+        .await
+        .map(|(session, _)| session)
+}
+
+/// [`resolve_session`] plus a note for the player when the launch goes ahead in a
+/// degraded way (an expired Microsoft sign-in that could not be renewed offline).
+pub async fn resolve_session_noted(
+    root: &Path,
+    client: &reqwest::Client,
+    cfg: &LauncherConfig,
+) -> Result<(GameSession, Option<String>)> {
     let auth = microsoft_client_id(cfg).map(|id| MsAuth::new(client.clone(), id));
     let mut store = AccountStore::open(root)?;
-    resolve_session_with(&mut store, auth.as_ref(), cfg).await
+    resolve_session_with_note(&mut store, auth.as_ref(), cfg).await
 }
 
 pub async fn resolve_session_with(
@@ -126,13 +140,28 @@ pub async fn resolve_session_with(
     auth: Option<&MsAuth>,
     cfg: &LauncherConfig,
 ) -> Result<GameSession> {
+    resolve_session_with_note(store, auth, cfg)
+        .await
+        .map(|(session, _)| session)
+}
+
+/// Shown when the saved Minecraft sign-in has expired and Microsoft cannot be reached.
+pub const OFFLINE_EXPIRED_NOTE: &str = "Нет связи с Microsoft, вход не обновлён. Одиночная игра работает, а для игры на серверах подключитесь к интернету и запустите игру снова.";
+
+pub async fn resolve_session_with_note(
+    store: &mut AccountStore,
+    auth: Option<&MsAuth>,
+    cfg: &LauncherConfig,
+) -> Result<(GameSession, Option<String>)> {
+    // The store may have been opened before a switch or a sign-in saved theirs.
+    store.reload()?;
     let active = match store.active().cloned() {
         Some(a) => a,
         None => {
             let name = if is_valid_offline_name(cfg.nickname.trim()) {
                 cfg.nickname.trim().to_string()
             } else {
-                return Ok(GameSession::offline(&cfg.nickname));
+                return Ok((GameSession::offline(&cfg.nickname), None));
             };
             store.add_offline(&name)?
         }
@@ -147,10 +176,22 @@ pub async fn resolve_session_with(
                 active
             };
             let _ = store.mark_used(&acc.id);
-            Ok(GameSession::offline(&acc.name))
+            Ok((GameSession::offline(&acc.name), None))
         }
         AccountKind::Microsoft => {
+            // Only Microsoft accounts wait here (offline ones never do): one token
+            // refresh at a time, on the accounts as they are once the lock is ours.
             let _guard = REFRESH_LOCK.lock().await;
+            store.reload()?;
+            let active = store
+                .get(&active.id)
+                .cloned()
+                .ok_or_else(|| WexError::Auth {
+                    code: "AUTH_ACCOUNT_NOT_FOUND",
+                    message: "Этого аккаунта больше нет в лаунчере.".to_string(),
+                    details: None,
+                })?;
+            let mut note = None;
             let mut secrets = store.read_secrets(&active.id)?;
             let mut name = active.name.clone();
             if secrets.mc_expires_at - Utc::now() < Duration::minutes(REFRESH_MARGIN_MINUTES) {
@@ -162,7 +203,17 @@ pub async fn resolve_session_with(
                     details: None,
                 })?;
                 let login = match refresh_login(auth, &secrets.refresh_token).await {
-                    Ok(l) => l,
+                    Ok(l) => Some(l),
+                    Err(e) if is_network_unavailable(&e) => {
+                        tracing::warn!(
+                            "Microsoft token refresh failed without network ({}); launching with the saved token",
+                            e
+                        );
+                        if secrets.mc_expires_at <= Utc::now() {
+                            note = Some(OFFLINE_EXPIRED_NOTE.to_string());
+                        }
+                        None
+                    }
                     Err(e) => {
                         if matches!(
                             e,
@@ -176,26 +227,51 @@ pub async fn resolve_session_with(
                         return Err(e);
                     }
                 };
-                if login.uuid != active.uuid {
-                    return Err(WexError::Auth {
-                        code: "AUTH_SIGN_IN_AGAIN",
-                        message: "Сохранённый вход относится к другому профилю. Войдите в аккаунт ещё раз.".to_string(),
-                        details: None,
-                    });
+                if let Some(login) = login {
+                    if login.uuid != active.uuid {
+                        return Err(WexError::Auth {
+                            code: "AUTH_SIGN_IN_AGAIN",
+                            message: "Сохранённый вход относится к другому профилю. Войдите в аккаунт ещё раз.".to_string(),
+                            details: None,
+                        });
+                    }
+                    // The refresh was a network round trip: save onto the accounts as they
+                    // are now and keep whichever account the player made active meanwhile.
+                    store.reload()?;
+                    let active_now = store.active_id().map(str::to_string);
+                    save_microsoft_login(store, &login)?;
+                    if let Some(other) = active_now.filter(|id| *id != active.id) {
+                        store.switch(&other)?;
+                    }
+                    secrets = store.read_secrets(&active.id)?;
+                    name = login.name;
                 }
-                save_microsoft_login(store, &login)?;
-                secrets = store.read_secrets(&active.id)?;
-                name = login.name;
             }
             let _ = store.mark_used(&active.id);
-            Ok(GameSession {
-                username: name,
-                uuid: active.uuid.clone(),
-                access_token: secrets.mc_access_token,
-                user_type: "msa".to_string(),
-                xuid: secrets.xuid,
-            })
+            Ok((
+                GameSession {
+                    username: name,
+                    uuid: active.uuid.clone(),
+                    access_token: secrets.mc_access_token,
+                    user_type: "msa".to_string(),
+                    xuid: secrets.xuid,
+                },
+                note,
+            ))
         }
+    }
+}
+
+/// True when an auth error means Microsoft could not be reached at all (no network,
+/// DNS failure, timeout), as opposed to Microsoft refusing the request.
+fn is_network_unavailable(e: &WexError) -> bool {
+    match e {
+        WexError::Auth {
+            code: "AUTH_OFFLINE",
+            ..
+        } => true,
+        WexError::Network(e) => e.is_connect() || e.is_timeout() || e.is_request(),
+        _ => false,
     }
 }
 
@@ -383,6 +459,133 @@ mod tests {
             again.read_secrets(&acc.id).unwrap().mc_access_token,
             "mc-new"
         );
+    }
+
+    #[tokio::test]
+    async fn expired_token_without_network_launches_with_saved_token() {
+        let tmp = tempdir().unwrap();
+        let mut store = AccountStore::open(tmp.path()).unwrap();
+        store
+            .upsert_microsoft(
+                "069a79f444e94726a5befca90e38aaf5",
+                "Notch",
+                &MsSecrets {
+                    refresh_token: "r".into(),
+                    mc_access_token: "mc-cached".into(),
+                    mc_expires_at: Utc::now() - Duration::hours(1),
+                    xuid: None,
+                },
+            )
+            .unwrap();
+        // Nothing listens on port 1: the connection is refused, as with no network.
+        let auth = MsAuth::with_endpoints(
+            reqwest::Client::new(),
+            "cid",
+            MsEndpoints::single("http://127.0.0.1:1"),
+        );
+        let (s, note) =
+            resolve_session_with_note(&mut store, Some(&auth), &LauncherConfig::default())
+                .await
+                .unwrap();
+        assert_eq!(note.as_deref(), Some(OFFLINE_EXPIRED_NOTE));
+        assert_eq!(s.access_token, "mc-cached");
+        assert_eq!(s.user_type, "msa");
+        assert!(!store.active().unwrap().needs_sign_in);
+    }
+
+    #[tokio::test]
+    async fn token_still_valid_offline_has_no_note() {
+        let tmp = tempdir().unwrap();
+        let mut store = AccountStore::open(tmp.path()).unwrap();
+        store
+            .upsert_microsoft(
+                "069a79f444e94726a5befca90e38aaf5",
+                "Notch",
+                &MsSecrets {
+                    refresh_token: "r".into(),
+                    // Inside the refresh margin but not expired yet.
+                    mc_access_token: "mc-cached".into(),
+                    mc_expires_at: Utc::now() + Duration::minutes(5),
+                    xuid: None,
+                },
+            )
+            .unwrap();
+        let auth = MsAuth::with_endpoints(
+            reqwest::Client::new(),
+            "cid",
+            MsEndpoints::single("http://127.0.0.1:1"),
+        );
+        let (s, note) =
+            resolve_session_with_note(&mut store, Some(&auth), &LauncherConfig::default())
+                .await
+                .unwrap();
+        assert_eq!(s.access_token, "mc-cached");
+        assert!(note.is_none());
+    }
+
+    #[tokio::test]
+    async fn offline_account_does_not_wait_for_a_microsoft_refresh() {
+        let tmp = tempdir().unwrap();
+        let mut store = AccountStore::open(tmp.path()).unwrap();
+        store.add_offline("Builder").unwrap();
+        let cfg = LauncherConfig {
+            nickname: "Builder".into(),
+            ..Default::default()
+        };
+        // A slow Microsoft refresh elsewhere holds the lock.
+        let _held = REFRESH_LOCK.lock().await;
+        let s = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            resolve_session_with(&mut store, None, &cfg),
+        )
+        .await
+        .expect("offline launch must not wait for REFRESH_LOCK")
+        .unwrap();
+        assert_eq!(s.username, "Builder");
+    }
+
+    #[tokio::test]
+    async fn resolve_sees_an_account_switch_made_after_the_store_was_opened() {
+        let tmp = tempdir().unwrap();
+        let mut early = AccountStore::open(tmp.path()).unwrap();
+        early
+            .upsert_microsoft(
+                "069a79f444e94726a5befca90e38aaf5",
+                "Notch",
+                &MsSecrets {
+                    refresh_token: "r".into(),
+                    mc_access_token: "mc-fresh".into(),
+                    mc_expires_at: Utc::now() + Duration::hours(20),
+                    xuid: None,
+                },
+            )
+            .unwrap();
+        let mut stale = AccountStore::open(tmp.path()).unwrap();
+        // The player switches to an offline account in another window.
+        let offline = early.add_offline("Builder").unwrap();
+        let cfg = LauncherConfig {
+            nickname: "Builder".into(),
+            ..Default::default()
+        };
+        let s = resolve_session_with(&mut stale, None, &cfg).await.unwrap();
+        assert_eq!(s.username, "Builder");
+        let disk = AccountStore::open(tmp.path()).unwrap();
+        assert_eq!(disk.active_id(), Some(offline.id.as_str()));
+        assert_eq!(disk.accounts().len(), 2);
+    }
+
+    #[test]
+    fn mark_used_does_not_undo_a_concurrent_switch() {
+        let tmp = tempdir().unwrap();
+        let mut a = AccountStore::open(tmp.path()).unwrap();
+        let first = a.add_offline("First").unwrap();
+        let mut b = AccountStore::open(tmp.path()).unwrap();
+        let second = b.add_offline("Second").unwrap();
+        a.mark_used(&first.id).unwrap();
+        let disk = AccountStore::open(tmp.path()).unwrap();
+        assert_eq!(disk.active_id(), Some(second.id.as_str()));
+        assert_eq!(disk.accounts().len(), 2);
+        assert!(disk.get(&first.id).unwrap().last_used_at.is_some());
     }
 
     #[tokio::test]
