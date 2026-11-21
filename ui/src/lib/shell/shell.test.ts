@@ -126,6 +126,35 @@ describe('builds', () => {
     expect(settings).toMatchObject({ selected_version: '1.20.1', player_name: 'Alice', ram_mb: 6144 });
   });
 
+  it('concurrent saves are serialized: no patch is lost', async () => {
+    const realGet = mocks.invoke.getMockImplementation()!;
+    mocks.invoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      const r = await realGet(cmd, args);
+      if (cmd === 'get_launcher_settings') await new Promise((res) => setTimeout(res, 5));
+      return r;
+    });
+    await Promise.all([builds.saveSettings({ ram_mb: 4096 }), builds.saveSettings({ player_name: 'Bob' }), builds.select('1.20.1')]);
+    expect(settings.ram_mb).toBe(4096);
+    expect(settings.player_name).toBe('Bob');
+    expect(settings.selected_version).toBe('1.20.1');
+  });
+
+  it('a load that started before a selection does not revert it', async () => {
+    const realGet = mocks.invoke.getMockImplementation()!;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    mocks.invoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      const r = await realGet(cmd, args);
+      if (cmd === 'get_installed_versions') await gate;
+      return r;
+    });
+    const loading = builds.load();
+    await builds.select('1.20.1');
+    release();
+    await loading;
+    expect(builds.selectedId).toBe('1.20.1');
+  });
+
   it('rolls back the selection if saving fails', async () => {
     mocks.invoke.mockImplementationOnce(async () => {
       throw new Error('disk');

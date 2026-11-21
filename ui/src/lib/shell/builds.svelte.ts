@@ -63,13 +63,25 @@ class Builds {
     return this.list.find((b) => b.id === this.selectedId) ?? this.list[0];
   }
 
+  /** Bumped by every selection: a slower read that began earlier must not undo it. */
+  private selectionEpoch = 0;
+  /** Settings writes run one after another so a patch never overwrites another. */
+  private saveChain: Promise<unknown> = Promise.resolve();
+
+  private enqueue<T>(job: () => Promise<T>): Promise<T> {
+    const run = this.saveChain.then(job, job);
+    this.saveChain = run.catch(() => {});
+    return run;
+  }
+
   async load(): Promise<void> {
+    const epoch = this.selectionEpoch;
     try {
       const [settings, versions] = await Promise.all([
         call<LauncherSettings>('get_launcher_settings').catch(() => ({}) as LauncherSettings),
         call<InstalledVersion[]>('get_installed_versions'),
       ]);
-      this.applySettings(settings);
+      this.applySettings(settings, epoch !== this.selectionEpoch);
       this.list = versions.map((v) => ({ id: v.id, java: typeof v.required_java === 'number' ? v.required_java : null, installed: v.is_installed, mods: null }));
       if (!this.list.some((b) => b.id === this.selectedId) && this.list[0]) {
         this.selectedId = this.list[0].id;
@@ -86,9 +98,9 @@ class Builds {
     }
   }
 
-  applySettings(settings: LauncherSettings): void {
+  applySettings(settings: LauncherSettings, keepSelection = false): void {
     this.settings = settings;
-    if (typeof settings.selected_version === 'string' && settings.selected_version) {
+    if (!keepSelection && typeof settings.selected_version === 'string' && settings.selected_version) {
       this.selectedId = settings.selected_version;
     }
     if (typeof settings.player_name === 'string' && settings.player_name) {
@@ -114,12 +126,15 @@ class Builds {
    * Save some fields of the launcher settings through core without touching the
    * others (get, merge, save). Returns the saved settings.
    */
-  async saveSettings(patch: LauncherSettings): Promise<LauncherSettings> {
-    const current = await call<LauncherSettings>('get_launcher_settings');
-    const next = { ...current, ...patch };
-    await call('save_launcher_settings', { newSettings: next });
-    this.applySettings(next);
-    return next;
+  saveSettings(patch: LauncherSettings): Promise<LauncherSettings> {
+    return this.enqueue(async () => {
+      const epoch = this.selectionEpoch;
+      const current = await call<LauncherSettings>('get_launcher_settings');
+      const next = { ...current, ...patch };
+      await call('save_launcher_settings', { newSettings: next });
+      this.applySettings(next, epoch !== this.selectionEpoch);
+      return next;
+    });
   }
 
   /** Choose the build Play starts; saved to the launcher config. */
@@ -127,14 +142,21 @@ class Builds {
     if (id === this.selectedId || !this.list.some((b) => b.id === id)) return false;
     const previous = this.selectedId;
     this.selectedId = id;
-    this.notify();
-    try {
+    const epoch = ++this.selectionEpoch;
+    const saved = this.enqueue(async () => {
       const settings = await call<LauncherSettings>('get_launcher_settings');
       await call('save_launcher_settings', { newSettings: { ...settings, selected_version: id } });
+    });
+    this.notify();
+    try {
+      await saved;
       return true;
     } catch (e) {
-      this.selectedId = previous;
-      this.notify();
+      // Roll back only if nothing was selected since.
+      if (epoch === this.selectionEpoch) {
+        this.selectedId = previous;
+        this.notify();
+      }
       throw e;
     }
   }
