@@ -121,11 +121,14 @@ pub struct FriendHostedServerModel {
 }
 
 /// Returns the path to `servers.dat` for the specified version.
-pub fn get_servers_dat_path(paths: &wex_core::config::WexPaths, version: Option<&str>) -> PathBuf {
-    let ver = version.unwrap_or("1.21.1");
+pub fn get_servers_dat_path(
+    paths: &wex_core::config::WexPaths,
+    version: Option<&str>,
+) -> Result<PathBuf, String> {
+    let ver = crate::commands::logs::validate_game_version(version)?;
     let inst_dir = paths.instance_dir(ver);
     let _ = std::fs::create_dir_all(&inst_dir);
-    inst_dir.join("servers.dat")
+    Ok(inst_dir.join("servers.dat"))
 }
 
 /// Servers that earlier Wex builds wrote into an empty `servers.dat` on their own.
@@ -214,7 +217,7 @@ pub async fn list_servers(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<Vec<ServerEntryModel>, String> {
-    let servers_dat_path = get_servers_dat_path(&state.paths, version.as_deref());
+    let servers_dat_path = get_servers_dat_path(&state.paths, version.as_deref())?;
 
     // Only the player's own servers: Wex has no public server to put in the list.
     let mut root = load_servers_dat(&servers_dat_path).map_err(|e| e.to_string())?;
@@ -253,7 +256,7 @@ pub fn add_server_impl(
         return Err("Название и адрес сервера не могут быть пустыми".to_string());
     }
 
-    let servers_dat_path = get_servers_dat_path(paths, version);
+    let servers_dat_path = get_servers_dat_path(paths, version)?;
     let mut root = if servers_dat_path.exists() {
         load_servers_dat(&servers_dat_path)
             .map_err(|e| format!("Не удалось прочитать {}: {}", servers_dat_path.display(), e))?
@@ -346,7 +349,7 @@ pub async fn edit_server(
         return Err("Название и адрес сервера не могут быть пустыми".to_string());
     }
 
-    let servers_dat_path = get_servers_dat_path(&state.paths, version.as_deref());
+    let servers_dat_path = get_servers_dat_path(&state.paths, version.as_deref())?;
     let mut root = load_servers_dat(&servers_dat_path).map_err(|e| e.to_string())?;
 
     let old_norm = normalize_address(&old_address);
@@ -401,7 +404,7 @@ pub async fn remove_server(
     address: String,
     state: State<'_, PlayState>,
 ) -> Result<(), String> {
-    let servers_dat_path = get_servers_dat_path(&state.paths, version.as_deref());
+    let servers_dat_path = get_servers_dat_path(&state.paths, version.as_deref())?;
     let mut root = load_servers_dat(&servers_dat_path).map_err(|e| e.to_string())?;
 
     let norm = normalize_address(&address);
@@ -550,7 +553,7 @@ pub fn import_servers_from_instances_internal(
 
     // Save unified deduplicated list back to both 1.20.1 and 1.21.1 instances
     for ver in &["1.20.1", "1.21.1"] {
-        let p = get_servers_dat_path(paths, Some(ver));
+        let p = get_servers_dat_path(paths, Some(ver))?;
         save_servers_dat(&p, &unified_root)
             .map_err(|e| format!("Не удалось сохранить {}: {}", p.display(), e))?;
     }
@@ -778,6 +781,15 @@ mod tests {
     use wex_core::config::WexPaths;
 
     #[test]
+    fn servers_dat_path_rejects_unsupported_versions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = wex_core::config::WexPaths::new(Some(tmp.path().to_path_buf()));
+        assert!(get_servers_dat_path(&paths, Some("1.19.4")).is_err());
+        assert!(get_servers_dat_path(&paths, Some("..")).is_err());
+        assert!(get_servers_dat_path(&paths, Some("1.20.1")).is_ok());
+    }
+
+    #[test]
     fn test_nbt_parsing_and_defaults() {
         let root = NbtTag::Compound(vec![(
             "servers".to_string(),
@@ -821,7 +833,7 @@ mod tests {
     fn test_servers_dat_add_edit_remove_cycle() {
         let tmp = tempdir().unwrap();
         let paths = WexPaths::new(Some(tmp.path().join("Wex")));
-        let servers_dat = get_servers_dat_path(&paths, Some("1.21.1"));
+        let servers_dat = get_servers_dat_path(&paths, Some("1.21.1")).unwrap();
 
         // 1. Initial save of default servers
         let mut root = NbtTag::Compound(vec![(
@@ -928,7 +940,7 @@ mod tests {
         let paths = WexPaths::new(Some(tmp.path().join("Wex")));
 
         // 1. Setup 1.20.1 servers.dat with Server 1 and Duplicate Server
-        let v120_dat = get_servers_dat_path(&paths, Some("1.20.1"));
+        let v120_dat = get_servers_dat_path(&paths, Some("1.20.1")).unwrap();
         let root120 = NbtTag::Compound(vec![(
             "servers".to_string(),
             NbtTag::List {
@@ -954,7 +966,7 @@ mod tests {
         save_servers_dat(&v120_dat, &root120).unwrap();
 
         // 2. Setup 1.21.1 servers.dat with Server 2 and Duplicate Server (with normalized alias "hub.auramc.net")
-        let v121_dat = get_servers_dat_path(&paths, Some("1.21.1"));
+        let v121_dat = get_servers_dat_path(&paths, Some("1.21.1")).unwrap();
         let root121 = NbtTag::Compound(vec![(
             "servers".to_string(),
             NbtTag::List {
@@ -1028,7 +1040,7 @@ mod tests {
         let tmp = tempdir().unwrap();
         let paths = WexPaths::new(Some(tmp.path().join("Wex")));
 
-        let v120_dat = get_servers_dat_path(&paths, Some("1.20.1"));
+        let v120_dat = get_servers_dat_path(&paths, Some("1.20.1")).unwrap();
         if let Some(parent) = v120_dat.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }

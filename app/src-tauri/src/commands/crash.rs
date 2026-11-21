@@ -230,11 +230,8 @@ pub async fn extras_analyze_crash(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<CrashDiagnosisDto, String> {
-    Ok(analyze_crash_impl(
-        &state.paths,
-        &request,
-        version.as_deref(),
-    ))
+    let version = crate::commands::logs::validate_game_version(version.as_deref())?;
+    Ok(analyze_crash_impl(&state.paths, &request, Some(version)))
 }
 
 /// Retrieve the latest crash diagnosis from the instance logs.
@@ -249,7 +246,8 @@ pub async fn crash_get_last_diagnosis(
         log_text: None,
         crash_report_text: None,
     };
-    Ok(analyze_crash_impl(&state.paths, &req, version.as_deref()))
+    let version = crate::commands::logs::validate_game_version(version.as_deref())?;
+    Ok(analyze_crash_impl(&state.paths, &req, Some(version)))
 }
 
 /// Opens the latest crash report, the captured game output
@@ -259,7 +257,8 @@ pub async fn crash_open_log_file(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<String, String> {
-    let inst_dir = resolve_instance_dir(&state.paths, version.as_deref());
+    let version = crate::commands::logs::validate_game_version(version.as_deref())?;
+    let inst_dir = resolve_instance_dir(&state.paths, Some(version));
     if let Some(log_path) = find_latest_log_path(&inst_dir) {
         let path_str = log_path.to_string_lossy().to_string();
         open_file_in_os(&log_path)?;
@@ -282,7 +281,8 @@ pub async fn crash_disable_mod(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<String, String> {
-    disable_offending_mod_impl(&state.paths, version.as_deref(), &mod_identifier)
+    let version = crate::commands::logs::validate_game_version(version.as_deref())?;
+    disable_offending_mod_impl(&state.paths, Some(version), &mod_identifier)
 }
 
 // ============================================================================

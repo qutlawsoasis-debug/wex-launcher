@@ -215,6 +215,8 @@ pub async fn save_launcher_settings_impl(
     paths: &WexPaths,
     _core: &dyn LauncherCore,
 ) -> Result<(), String> {
+    // Load-modify-save under the config lock, so a concurrent change is not undone.
+    let config_guard = wex_core::config::lock_config();
     let mut cfg = CoreConfig::load_or_default(&paths.config_file);
 
     cfg.selected_version = new_settings.selected_version;
@@ -253,6 +255,7 @@ pub async fn save_launcher_settings_impl(
 
     cfg.save(&paths.config_file)
         .map_err(|e| format!("Не удалось сохранить конфигурацию: {}", e))?;
+    drop(config_guard);
 
     // Apply graphics preset to instance dir (options.txt, shaderpacks) via wex-extras
     let pool_dirs = vec![paths.root.join("shaderpacks_pool")];
@@ -270,9 +273,12 @@ pub async fn reset_settings_impl(
     core: &dyn LauncherCore,
 ) -> Result<LauncherSettingsDto, String> {
     let default_cfg = CoreConfig::default();
-    default_cfg
-        .save(&paths.config_file)
-        .map_err(|e| format!("Не удалось сбросить конфигурацию: {}", e))?;
+    {
+        let _config_guard = wex_core::config::lock_config();
+        default_cfg
+            .save(&paths.config_file)
+            .map_err(|e| format!("Не удалось сбросить конфигурацию: {}", e))?;
+    }
 
     let _ = core.save_config(default_cfg.into()).await;
 
@@ -685,12 +691,17 @@ pub async fn verify_instance_files(
     version: Option<String>,
     state: State<'_, PlayState>,
 ) -> Result<IntegrityCheckResult, String> {
-    let ver = version.unwrap_or_else(|| {
-        let cfg = wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file);
-        cfg.selected_version
-    });
-    let client = wex_core::reqwest::Client::builder()
-        .user_agent("WexLauncher/0.1.0")
+    let ver = match version {
+        Some(v) => v,
+        None => {
+            wex_core::config::LauncherConfig::load_or_default(&state.paths.config_file)
+                .selected_version
+        }
+    };
+    let ver = crate::commands::logs::validate_game_version(Some(&ver))?.to_string();
+    // Connect and idle-read timeouts: a stalled connection must fail instead of
+    // holding the install lock forever.
+    let client = wex_core::download::http_client_builder()
         .build()
         .map_err(|e| e.to_string())?;
 

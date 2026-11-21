@@ -1,7 +1,7 @@
 use crate::error::{Result, WexError};
 use crate::event::{Event, EventHandler};
 use futures_util::StreamExt;
-use reqwest::header::RANGE;
+use reqwest::header::{HeaderMap, ETAG, IF_RANGE, LAST_MODIFIED, RANGE};
 use sha1::Digest as _;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
@@ -98,6 +98,78 @@ pub fn verify_file(
     }
 }
 
+/// [`compute_file_hash`] on the blocking pool, so hashing big jars never stalls
+/// the async runtime (and with it the UI event loop).
+pub async fn compute_file_hash_async(path: PathBuf, hash_type: HashType) -> Result<String> {
+    tokio::task::spawn_blocking(move || compute_file_hash(&path, hash_type))
+        .await
+        .map_err(|e| WexError::Io(std::io::Error::other(e)))?
+}
+
+/// [`verify_file`] on the blocking pool.
+pub async fn verify_file_async(
+    path: &Path,
+    expected_size: Option<u64>,
+    expected_hash: Option<(&str, HashType)>,
+) -> bool {
+    let path = path.to_path_buf();
+    let expected_hash = expected_hash.map(|(h, t)| (h.to_string(), t));
+    tokio::task::spawn_blocking(move || {
+        verify_file(
+            &path,
+            expected_size,
+            expected_hash.as_ref().map(|(h, t)| (h.as_str(), *t)),
+        )
+    })
+    .await
+    .unwrap_or(false)
+}
+
+/// Sharing violation (32) or access denied (5): on Windows an antivirus or the
+/// search indexer briefly holds a freshly written file open.
+fn is_transient_lock_error(err: &std::io::Error) -> bool {
+    cfg!(windows) && matches!(err.raw_os_error(), Some(5) | Some(32))
+}
+
+const RENAME_RETRIES: u32 = 5;
+const RENAME_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
+
+/// Moves a verified `.part` file over the target in one step. `fs::rename` replaces an
+/// existing target atomically on Windows (MoveFileEx with REPLACE_EXISTING) and Unix,
+/// so the old file is never deleted first; transient locks are retried with a delay.
+pub async fn rename_with_retry(from: &Path, to: &Path) -> std::io::Result<()> {
+    let mut retries = 0;
+    loop {
+        match fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(e) if should_retry_rename(&e, retries) => {
+                retries += 1;
+                tokio::time::sleep(RENAME_RETRY_DELAY).await;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+/// [`rename_with_retry`] for synchronous callers (atomic writes, pack commit).
+pub fn rename_with_retry_blocking(from: &Path, to: &Path) -> std::io::Result<()> {
+    let mut retries = 0;
+    loop {
+        match fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(e) if should_retry_rename(&e, retries) => {
+                retries += 1;
+                std::thread::sleep(RENAME_RETRY_DELAY);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+fn should_retry_rename(err: &std::io::Error, retries_done: u32) -> bool {
+    retries_done < RENAME_RETRIES && is_transient_lock_error(err)
+}
+
 use tokio_util::sync::CancellationToken;
 
 pub async fn download_file_resumable(
@@ -135,7 +207,7 @@ pub async fn download_file_resumable_cancellable(
         }
     }
 
-    if verify_file(target_path, expected_size, expected_hash) {
+    if verify_file_async(target_path, expected_size, expected_hash).await {
         return Ok(false);
     }
 
@@ -146,17 +218,36 @@ pub async fn download_file_resumable_cancellable(
     let part_path = PathBuf::from(format!("{}.part", target_path.display()));
     let mut existing_len = 0u64;
 
+    // A complete, verified part from an earlier run whose final rename failed
+    // (antivirus lock): finish it without downloading again.
+    if expected_hash.is_some()
+        && expected_size.is_some()
+        && verify_file_async(&part_path, expected_size, expected_hash).await
+    {
+        rename_with_retry(&part_path, target_path)
+            .await
+            .map_err(|e| map_io_err(e, target_path))?;
+        events.on_event(&Event::FileDownloaded {
+            path: target_path.display().to_string(),
+            bytes: expected_size.unwrap_or_default(),
+        });
+        return Ok(true);
+    }
+
     if part_path.exists() {
         if let Ok(meta) = fs::metadata(&part_path) {
             existing_len = meta.len();
             if let Some(exp_size) = expected_size {
                 if existing_len >= exp_size {
-                    let _ = fs::remove_file(&part_path);
+                    remove_part(&part_path);
                     existing_len = 0;
                 }
             }
         }
     }
+
+    // ETag / Last-Modified of the response the .part was started from.
+    let mut validator = read_part_validator(&part_path);
 
     let mut attempts = 0;
     const MAX_ATTEMPTS: u32 = 3;
@@ -165,15 +256,23 @@ pub async fn download_file_resumable_cancellable(
         attempts += 1;
         if let Some(token) = cancel_token {
             if token.is_cancelled() {
-                let _ = fs::remove_file(&part_path);
+                remove_part(&part_path);
                 return Err(WexError::Cancelled);
             }
         }
 
+        if existing_len > 0 && validator.is_none() && expected_hash.is_none() {
+            // Nothing proves the server still has the same file: start over.
+            existing_len = 0;
+        }
         let mut req = client.get(url);
         let resuming = existing_len > 0;
         if resuming {
             req = req.header(RANGE, format!("bytes={}-", existing_len));
+            if let Some(v) = &validator {
+                // A changed file comes back whole (200) instead of a mismatched tail.
+                req = req.header(IF_RANGE, v.as_str());
+            }
         }
 
         let resp = match req.send().await {
@@ -193,7 +292,7 @@ pub async fn download_file_resumable_cancellable(
         let status = resp.status();
         // If range was requested but server returned 416 (Range Not Satisfiable), restart from byte 0
         if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
-            let _ = fs::remove_file(&part_path);
+            remove_part(&part_path);
             existing_len = 0;
             if attempts >= MAX_ATTEMPTS {
                 return Err(WexError::DownloadError {
@@ -206,7 +305,7 @@ pub async fn download_file_resumable_cancellable(
 
         // If client permanent error 404 (Not Found) or 410 (Gone): fail immediately without sleeping/retrying
         if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::GONE {
-            let _ = fs::remove_file(&part_path);
+            remove_part(&part_path);
             return Err(WexError::DownloadError {
                 url: url.to_string(),
                 message: format!("HTTP error status: {}", status),
@@ -215,7 +314,7 @@ pub async fn download_file_resumable_cancellable(
 
         if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
             if attempts >= MAX_ATTEMPTS {
-                let _ = fs::remove_file(&part_path);
+                remove_part(&part_path);
                 return Err(WexError::DownloadError {
                     url: url.to_string(),
                     message: format!("HTTP error status: {}", status),
@@ -232,15 +331,19 @@ pub async fn download_file_resumable_cancellable(
                 .append(true)
                 .open(&part_path)
                 .map_err(|e| {
-                    let _ = fs::remove_file(&part_path);
+                    remove_part(&part_path);
                     map_io_err(e, &part_path)
                 })?
         } else {
             existing_len = 0;
-            File::create(&part_path).map_err(|e| {
-                let _ = fs::remove_file(&part_path);
+            let file = File::create(&part_path).map_err(|e| {
+                remove_part(&part_path);
                 map_io_err(e, &part_path)
-            })?
+            })?;
+            // The .part is empty now; only then does it get the new response's validator.
+            validator = response_validator(resp.headers());
+            write_part_validator(&part_path, validator.as_deref());
+            file
         };
 
         let mut stream = resp.bytes_stream();
@@ -251,7 +354,7 @@ pub async fn download_file_resumable_cancellable(
             if let Some(token) = cancel_token {
                 if token.is_cancelled() {
                     drop(file);
-                    let _ = fs::remove_file(&part_path);
+                    remove_part(&part_path);
                     return Err(WexError::Cancelled);
                 }
             }
@@ -259,7 +362,7 @@ pub async fn download_file_resumable_cancellable(
                 Ok(chunk) => {
                     if let Err(e) = file.write_all(&chunk) {
                         drop(file);
-                        let _ = fs::remove_file(&part_path);
+                        remove_part(&part_path);
                         return Err(map_io_err(e, &part_path));
                     }
                     downloaded_bytes += chunk.len() as u64;
@@ -278,14 +381,14 @@ pub async fn download_file_resumable_cancellable(
 
         if let Err(e) = file.flush() {
             drop(file);
-            let _ = fs::remove_file(&part_path);
+            remove_part(&part_path);
             return Err(map_io_err(e, &part_path));
         }
         drop(file);
 
         if stream_interrupted {
             if attempts >= MAX_ATTEMPTS {
-                let _ = fs::remove_file(&part_path);
+                remove_part(&part_path);
                 return Err(WexError::DownloadError {
                     url: url.to_string(),
                     message: format!("Stream error after {} attempts", attempts),
@@ -299,7 +402,7 @@ pub async fn download_file_resumable_cancellable(
         let actual_len = match fs::metadata(&part_path) {
             Ok(m) => m.len(),
             Err(e) => {
-                let _ = fs::remove_file(&part_path);
+                remove_part(&part_path);
                 return Err(map_io_err(e, &part_path));
             }
         };
@@ -311,11 +414,11 @@ pub async fn download_file_resumable_cancellable(
                     existing_len = actual_len;
                 } else {
                     // Oversized file: purge and restart from byte 0
-                    let _ = fs::remove_file(&part_path);
+                    remove_part(&part_path);
                     existing_len = 0;
                 }
                 if attempts >= MAX_ATTEMPTS {
-                    let _ = fs::remove_file(&part_path);
+                    remove_part(&part_path);
                     return Err(WexError::SizeMismatch {
                         path: target_path.to_path_buf(),
                         expected: exp_size,
@@ -329,7 +432,7 @@ pub async fn download_file_resumable_cancellable(
 
         // Verification of hash
         if let Some((exp_hash, hash_type)) = expected_hash {
-            let actual_hash = compute_file_hash(&part_path, hash_type)?;
+            let actual_hash = compute_file_hash_async(part_path.clone(), hash_type).await?;
             if !actual_hash.eq_ignore_ascii_case(exp_hash) {
                 events.on_event(&Event::Log {
                     level: crate::event::LogLevel::Warn,
@@ -340,7 +443,7 @@ pub async fn download_file_resumable_cancellable(
                         actual_hash
                     ),
                 });
-                let _ = fs::remove_file(&part_path);
+                remove_part(&part_path);
                 if attempts >= MAX_ATTEMPTS {
                     return Err(WexError::HashMismatch {
                         path: target_path.to_path_buf(),
@@ -354,14 +457,12 @@ pub async fn download_file_resumable_cancellable(
             }
         }
 
-        // Atomically replace target file
-        if target_path.exists() {
-            let _ = fs::remove_file(target_path);
-        }
-        if let Err(e) = fs::rename(&part_path, target_path) {
-            let _ = fs::remove_file(&part_path);
+        // Atomically replace the target (never delete it first). On failure the
+        // verified part is kept: the next run moves it without downloading.
+        if let Err(e) = rename_with_retry(&part_path, target_path).await {
             return Err(map_io_err(e, target_path));
         }
+        write_part_validator(&part_path, None);
 
         let final_len = fs::metadata(target_path)
             .map(|m| m.len())
@@ -373,6 +474,54 @@ pub async fn download_file_resumable_cancellable(
         });
 
         return Ok(true);
+    }
+}
+
+/// File beside a `.part` that keeps the validator of the response it came from.
+fn part_validator_path(part_path: &Path) -> PathBuf {
+    let mut name = part_path.file_name().unwrap_or_default().to_os_string();
+    name.push(".validator");
+    part_path.with_file_name(name)
+}
+
+/// A validator usable in `If-Range`: a strong ETag, else Last-Modified (weak
+/// ETags are not allowed there).
+fn response_validator(headers: &HeaderMap) -> Option<String> {
+    let header = |name| {
+        headers
+            .get(name)
+            .and_then(|v: &reqwest::header::HeaderValue| v.to_str().ok())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    header(ETAG)
+        .filter(|e| !e.starts_with("W/"))
+        .or_else(|| header(LAST_MODIFIED))
+}
+
+/// Delete a `.part` together with its validator.
+fn remove_part(part_path: &Path) {
+    let _ = fs::remove_file(part_path);
+    write_part_validator(part_path, None);
+}
+
+fn read_part_validator(part_path: &Path) -> Option<String> {
+    fs::read_to_string(part_validator_path(part_path))
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty() && !v.contains(['\r', '\n']))
+}
+
+fn write_part_validator(part_path: &Path, validator: Option<&str>) {
+    let path = part_validator_path(part_path);
+    match validator {
+        Some(v) => {
+            let _ = fs::write(path, v);
+        }
+        None => {
+            let _ = fs::remove_file(path);
+        }
     }
 }
 
@@ -479,6 +628,14 @@ pub async fn download_pool_cancellable(
     stage_name: &str,
     cancel_token: Option<CancellationToken>,
 ) -> Result<u64> {
+    // Several entries may point at one file (asset names sharing a hash, a native
+    // classifier equal to the artifact). Two tasks for one target would share one
+    // `.part` file and corrupt each other, so only the first is kept.
+    let mut seen_targets = std::collections::HashSet::new();
+    let tasks: Vec<DownloadTask> = tasks
+        .into_iter()
+        .filter(|t| seen_targets.insert(t.target_path.clone()))
+        .collect();
     let total_tasks = tasks.len();
     if total_tasks == 0 {
         return Ok(0);
@@ -672,6 +829,161 @@ mod tests {
             disk_data, full_payload,
             "Target file content must match full payload"
         );
+    }
+
+    #[tokio::test]
+    async fn resume_sends_if_range_with_the_stored_validator() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/f.bin"))
+            .and(header("Range", "bytes=4-"))
+            .and(header("If-Range", "\"v1\""))
+            .respond_with(ResponseTemplate::new(206).set_body_bytes(b"5678".to_vec()))
+            .mount(&server)
+            .await;
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("f.bin");
+        let part = tmp.path().join("f.bin.part");
+        fs::write(&part, b"1234").unwrap();
+        fs::write(part_validator_path(&part), "\"v1\"").unwrap();
+
+        let res = download_file_resumable_cancellable(
+            &reqwest::Client::new(),
+            &format!("{}/f.bin", server.uri()),
+            &target,
+            Some(8),
+            None,
+            &crate::event::NoopEventHandler,
+            None,
+        )
+        .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(fs::read(&target).unwrap(), b"12345678");
+        assert!(!part_validator_path(&part).exists());
+    }
+
+    #[tokio::test]
+    async fn changed_file_comes_back_whole_and_replaces_the_part() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        // The server's file changed: If-Range does not match, so it sends all of it.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/f.bin"))
+            .and(header("If-Range", "\"old\""))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("ETag", "\"new\"")
+                    .set_body_bytes(b"NEWDATA!".to_vec()),
+            )
+            .mount(&server)
+            .await;
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("f.bin");
+        let part = tmp.path().join("f.bin.part");
+        fs::write(&part, b"OLD-").unwrap();
+        fs::write(part_validator_path(&part), "\"old\"").unwrap();
+
+        let res = download_file_resumable_cancellable(
+            &reqwest::Client::new(),
+            &format!("{}/f.bin", server.uri()),
+            &target,
+            Some(8),
+            None,
+            &crate::event::NoopEventHandler,
+            None,
+        )
+        .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(fs::read(&target).unwrap(), b"NEWDATA!");
+    }
+
+    #[tokio::test]
+    async fn part_without_validator_or_hash_is_not_resumed() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/f.bin"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"ABCDEFGH".to_vec()))
+            .mount(&server)
+            .await;
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("f.bin");
+        fs::write(tmp.path().join("f.bin.part"), b"zzzz").unwrap();
+
+        let res = download_file_resumable_cancellable(
+            &reqwest::Client::new(),
+            &format!("{}/f.bin", server.uri()),
+            &target,
+            Some(8),
+            None,
+            &crate::event::NoopEventHandler,
+            None,
+        )
+        .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(fs::read(&target).unwrap(), b"ABCDEFGH");
+        let requests = server.received_requests().await.unwrap();
+        assert!(requests.iter().all(|r| !r.headers.contains_key("range")));
+    }
+
+    #[tokio::test]
+    async fn validator_is_deleted_with_the_part() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/gone.bin"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("gone.bin");
+        let part = tmp.path().join("gone.bin.part");
+        fs::write(&part, b"1234").unwrap();
+        fs::write(part_validator_path(&part), "\"v1\"").unwrap();
+
+        let res = download_file_resumable_cancellable(
+            &reqwest::Client::new(),
+            &format!("{}/gone.bin", server.uri()),
+            &target,
+            Some(8),
+            None,
+            &crate::event::NoopEventHandler,
+            None,
+        )
+        .await;
+        assert!(res.is_err());
+        assert!(!part.exists());
+        assert!(!part_validator_path(&part).exists());
+    }
+
+    #[test]
+    fn only_strong_etags_or_dates_are_validators() {
+        let mut h = HeaderMap::new();
+        assert_eq!(response_validator(&h), None);
+        h.insert(
+            LAST_MODIFIED,
+            "Wed, 21 Oct 2015 07:28:00 GMT".parse().unwrap(),
+        );
+        assert_eq!(
+            response_validator(&h).as_deref(),
+            Some("Wed, 21 Oct 2015 07:28:00 GMT")
+        );
+        h.insert(ETAG, "W/\"weak\"".parse().unwrap());
+        assert_eq!(
+            response_validator(&h).as_deref(),
+            Some("Wed, 21 Oct 2015 07:28:00 GMT")
+        );
+        h.insert(ETAG, "\"strong\"".parse().unwrap());
+        assert_eq!(response_validator(&h).as_deref(), Some("\"strong\""));
     }
 
     #[tokio::test]
@@ -919,5 +1231,157 @@ mod tests {
             .expect("download_pool deadlocked with concurrency 0")
             .is_ok());
         assert_eq!(fs::read(&target).unwrap(), b"hello");
+    }
+
+    #[tokio::test]
+    async fn download_pool_dedupes_tasks_for_the_same_target() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/shared.bin"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_bytes(b"hello".to_vec())
+                    .set_delay(std::time::Duration::from_millis(300)),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("objects/ab/abcdef");
+        let task = DownloadTask {
+            url: format!("{}/shared.bin", server.uri()),
+            fallback_url: None,
+            target_path: target.clone(),
+            size: Some(5),
+            hash: None,
+        };
+        let client = http_client_builder().build().unwrap();
+        let res = download_pool(
+            &client,
+            vec![task.clone(), task.clone(), task],
+            4,
+            &crate::event::NoopEventHandler,
+            "test",
+        )
+        .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(fs::read(&target).unwrap(), b"hello");
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn rename_replaces_existing_target_without_deleting_first() {
+        let tmp = tempdir().unwrap();
+        let part = tmp.path().join("a.jar.part");
+        let target = tmp.path().join("a.jar");
+        fs::write(&part, b"new").unwrap();
+        fs::write(&target, b"old").unwrap();
+        rename_with_retry(&part, &target).await.unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"new");
+        assert!(!part.exists());
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn rename_retries_while_target_is_locked() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let tmp = tempdir().unwrap();
+        let part = tmp.path().join("b.jar.part");
+        let target = tmp.path().join("b.jar");
+        fs::write(&part, b"new").unwrap();
+        fs::write(&target, b"old").unwrap();
+        // No sharing at all: like an antivirus scanner holding the file.
+        let lock = OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&target)
+            .unwrap();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(350));
+            drop(lock);
+        });
+        let res = rename_with_retry(&part, &target).await;
+        release.join().unwrap();
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(fs::read(&target).unwrap(), b"new");
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn rename_gives_up_after_retries_on_a_permanent_lock() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let tmp = tempdir().unwrap();
+        let part = tmp.path().join("c.jar.part");
+        let target = tmp.path().join("c.jar");
+        fs::write(&part, b"new").unwrap();
+        fs::write(&target, b"old").unwrap();
+        let _lock = OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&target)
+            .unwrap();
+        let start = std::time::Instant::now();
+        assert!(rename_with_retry(&part, &target).await.is_err());
+        assert!(start.elapsed() >= RENAME_RETRY_DELAY * RENAME_RETRIES);
+        assert!(part.exists(), "the verified part survives for the next try");
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn verified_part_survives_a_failed_rename_and_is_reused() {
+        use sha2::Digest;
+        use std::os::windows::fs::OpenOptionsExt;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        let body = b"fresh mod".to_vec();
+        let sha = hex::encode(sha2::Sha256::digest(&body));
+        Mock::given(method("GET"))
+            .and(path("/m.jar"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(body.clone()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("m.jar");
+        let part = tmp.path().join("m.jar.part");
+        fs::write(&target, b"old").unwrap();
+        let url = format!("{}/m.jar", server.uri());
+        let client = reqwest::Client::new();
+        let events = crate::event::NoopEventHandler;
+        let lock = OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&target)
+            .unwrap();
+        let first = download_file_resumable(
+            &client,
+            &url,
+            &target,
+            Some(body.len() as u64),
+            Some((&sha, HashType::Sha256)),
+            &events,
+        )
+        .await;
+        assert!(first.is_err());
+        assert_eq!(fs::read(&part).unwrap(), body, "verified part is kept");
+        drop(lock);
+        let second = download_file_resumable(
+            &client,
+            &url,
+            &target,
+            Some(body.len() as u64),
+            Some((&sha, HashType::Sha256)),
+            &events,
+        )
+        .await;
+        assert!(second.unwrap());
+        assert_eq!(fs::read(&target).unwrap(), body);
+        assert!(!part.exists());
+        server.verify().await;
     }
 }

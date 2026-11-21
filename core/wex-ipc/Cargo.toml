@@ -1,6 +1,6 @@
 [package]
 name = "wex-ipc"
-version = "0.10.2"
+version = "0.10.3"
 edition = "2021"
 description = "Typed IPC contract between Wex Rust core and UI"
 

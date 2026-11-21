@@ -98,6 +98,7 @@ pub fn load_window_state(paths: &WexPaths) -> WindowStateDto {
 
 /// Save window state to launcher config.
 pub fn save_window_state(paths: &WexPaths, state: WindowStateDto) -> Result<(), String> {
+    let _config_guard = wex_core::config::lock_config();
     let mut cfg = CoreConfig::load_or_default(&paths.config_file);
     cfg.window_state.width = state.width;
     cfg.window_state.height = state.height;
@@ -117,6 +118,7 @@ pub fn is_minimize_to_tray_enabled(paths: &WexPaths) -> bool {
 
 /// Set minimize to tray preference in config.
 pub fn set_minimize_to_tray_preference(paths: &WexPaths, enabled: bool) -> Result<(), String> {
+    let _config_guard = wex_core::config::lock_config();
     let mut cfg = CoreConfig::load_or_default(&paths.config_file);
     cfg.minimize_to_tray = enabled;
     cfg.game_window_behavior = if enabled { "tray" } else { "keep" }.into();

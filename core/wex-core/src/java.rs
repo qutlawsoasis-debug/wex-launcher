@@ -1,11 +1,16 @@
 use crate::config::WexPaths;
-use crate::download::{download_pool, DownloadTask, HashType};
+use crate::download::{download_pool_cancellable, DownloadTask, HashType};
 use crate::error::{Result, WexError};
 use crate::event::{Event, EventHandler, LogLevel};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use tokio_util::sync::CancellationToken;
+
+/// Written into a runtime folder only after every file of the runtime manifest was
+/// downloaded and verified. Holds the SHA-1 of that manifest.
+pub const RUNTIME_COMPLETE_MARKER: &str = ".wex-complete";
 
 pub const MOJANG_JAVA_ALL_JSON: &str =
     "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
@@ -97,6 +102,25 @@ pub fn get_java_binary_path(runtime_dir: &Path, component: &str, use_javaw: bool
     }
 }
 
+pub fn runtime_complete_marker(runtime_dir: &Path, component: &str) -> PathBuf {
+    runtime_dir.join(component).join(RUNTIME_COMPLETE_MARKER)
+}
+
+/// A runtime is usable only when its download finished (the marker) and the
+/// launcher binary is there and not empty. `javaw.exe` + `release` alone can be a
+/// half download.
+///
+/// Downloaded files are not fsynced before the marker is written, so after a
+/// power loss the marker can survive while a file was cut to zero bytes. The size
+/// check catches that for the binary; other files are re-verified by hash on the
+/// next repair.
+pub fn is_runtime_complete(runtime_dir: &Path, component: &str) -> bool {
+    let non_empty = |p: PathBuf| fs::metadata(p).map(|m| m.len() > 0).unwrap_or(false);
+    let has_binary = non_empty(get_java_binary_path(runtime_dir, component, true))
+        || non_empty(get_java_binary_path(runtime_dir, component, false));
+    has_binary && runtime_complete_marker(runtime_dir, component).is_file()
+}
+
 pub async fn ensure_mojang_java(
     paths: &WexPaths,
     mc_version: &str,
@@ -104,14 +128,42 @@ pub async fn ensure_mojang_java(
     events: &dyn EventHandler,
     concurrency: usize,
 ) -> Result<PathBuf> {
-    let component = get_java_component_for_version(mc_version);
-    let comp_dir = paths.runtime_dir.join(component);
-    let javaw_exe = get_java_binary_path(&paths.runtime_dir, component, true);
-    let java_exe = get_java_binary_path(&paths.runtime_dir, component, false);
+    ensure_mojang_java_cancellable(paths, mc_version, client, events, concurrency, None).await
+}
 
-    // If javaw.exe exists and release file exists, we consider it installed
-    let release_file = comp_dir.join("release");
-    if (javaw_exe.exists() || java_exe.exists()) && release_file.exists() {
+pub async fn ensure_mojang_java_cancellable(
+    paths: &WexPaths,
+    mc_version: &str,
+    client: &reqwest::Client,
+    events: &dyn EventHandler,
+    concurrency: usize,
+    cancel: Option<&CancellationToken>,
+) -> Result<PathBuf> {
+    ensure_mojang_java_from(
+        paths,
+        mc_version,
+        client,
+        events,
+        concurrency,
+        cancel,
+        MOJANG_JAVA_ALL_JSON,
+    )
+    .await
+}
+
+async fn ensure_mojang_java_from(
+    paths: &WexPaths,
+    mc_version: &str,
+    client: &reqwest::Client,
+    events: &dyn EventHandler,
+    concurrency: usize,
+    cancel: Option<&CancellationToken>,
+    all_json_url: &str,
+) -> Result<PathBuf> {
+    let component = get_java_component_for_version(mc_version);
+    let javaw_exe = get_java_binary_path(&paths.runtime_dir, component, true);
+
+    if is_runtime_complete(&paths.runtime_dir, component) {
         events.on_event(&Event::Log {
             level: LogLevel::Info,
             message: format!(
@@ -120,6 +172,70 @@ pub async fn ensure_mojang_java(
             ),
         });
         return Ok(javaw_exe);
+    }
+    if cancel.is_some_and(|t| t.is_cancelled()) {
+        return Err(WexError::Cancelled);
+    }
+
+    match download_mojang_java(
+        paths,
+        mc_version,
+        component,
+        client,
+        events,
+        concurrency,
+        cancel,
+        all_json_url,
+    )
+    .await
+    {
+        Ok(path) => Ok(path),
+        Err(e)
+            if e.is_network_unavailable() && is_legacy_runtime(&paths.runtime_dir, component) =>
+        {
+            // Runtime installed by an older Wex (no marker yet) and no network to
+            // verify it: keep players able to play offline; the next online start
+            // checks every file and writes the marker.
+            events.on_event(&Event::Log {
+                level: LogLevel::Warn,
+                message: format!(
+                    "Network unavailable ({}); using unverified Java runtime {} until the next online start",
+                    e, component
+                ),
+            });
+            Ok(javaw_exe)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// A runtime from before the completion marker existed.
+fn is_legacy_runtime(runtime_dir: &Path, component: &str) -> bool {
+    (get_java_binary_path(runtime_dir, component, true).exists()
+        || get_java_binary_path(runtime_dir, component, false).exists())
+        && runtime_dir.join(component).join("release").exists()
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn download_mojang_java(
+    paths: &WexPaths,
+    mc_version: &str,
+    component: &str,
+    client: &reqwest::Client,
+    events: &dyn EventHandler,
+    concurrency: usize,
+    cancel: Option<&CancellationToken>,
+    all_json_url: &str,
+) -> Result<PathBuf> {
+    let comp_dir = paths.runtime_dir.join(component);
+    let javaw_exe = get_java_binary_path(&paths.runtime_dir, component, true);
+    let java_exe = get_java_binary_path(&paths.runtime_dir, component, false);
+    let marker = runtime_complete_marker(&paths.runtime_dir, component);
+    // Whatever happens below, the runtime is not complete until the pool succeeds.
+    match fs::remove_file(&marker) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
     }
 
     events.on_event(&Event::StageStarted {
@@ -137,11 +253,7 @@ pub async fn ensure_mojang_java(
     });
 
     let platform_key = get_platform_key();
-    let all_resp = client
-        .get(MOJANG_JAVA_ALL_JSON)
-        .send()
-        .await?
-        .error_for_status()?;
+    let all_resp = client.get(all_json_url).send().await?.error_for_status()?;
     let all_data: serde_json::Value = all_resp.json().await?;
 
     let platform_obj = all_data.get(platform_key).ok_or_else(|| {
@@ -158,18 +270,34 @@ pub async fn ensure_mojang_java(
         ))
     })?;
 
-    let manifest_url = comp_entries
+    let manifest_ref: MojangRuntimeManifestRef = comp_entries
         .as_array()
         .and_then(|arr| arr.first())
         .and_then(|item| item.get("manifest"))
-        .and_then(|m| m.get("url"))
-        .and_then(|u| u.as_str())
+        .and_then(|m| serde_json::from_value(m.clone()).ok())
         .ok_or_else(|| {
             WexError::JavaError("Failed to parse Mojang runtime manifest URL".to_string())
         })?;
 
-    let pkg_resp = client.get(manifest_url).send().await?.error_for_status()?;
-    let pkg: MojangRuntimePackage = pkg_resp.json().await?;
+    let pkg_bytes = client
+        .get(&manifest_ref.url)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
+    let pkg_sha1 = {
+        use sha1::Digest as _;
+        hex::encode(sha1::Sha1::digest(&pkg_bytes))
+    };
+    if !pkg_sha1.eq_ignore_ascii_case(&manifest_ref.sha1) {
+        return Err(WexError::HashMismatch {
+            path: PathBuf::from(&manifest_ref.url),
+            expected: manifest_ref.sha1.clone(),
+            actual: pkg_sha1,
+        });
+    }
+    let pkg: MojangRuntimePackage = serde_json::from_slice(&pkg_bytes)?;
 
     fs::create_dir_all(&comp_dir)?;
 
@@ -205,12 +333,13 @@ pub async fn ensure_mojang_java(
         ),
     });
 
-    download_pool(
+    download_pool_cancellable(
         client,
         download_tasks,
         concurrency,
         events,
         &format!("Java {}", component),
+        cancel.cloned(),
     )
     .await?;
 
@@ -234,6 +363,8 @@ pub async fn ensure_mojang_java(
             javaw_exe.display()
         )));
     }
+
+    crate::fs_util::write_atomic(&marker, manifest_ref.sha1.as_bytes())?;
 
     events.on_event(&Event::Log {
         level: LogLevel::Info,
@@ -263,5 +394,195 @@ mod tests {
     fn test_platform_key() {
         let key = get_platform_key();
         assert!(!key.is_empty());
+    }
+
+    use crate::event::NoopEventHandler;
+    use sha1::Digest as _;
+    use tempfile::tempdir;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn sha1_hex(data: &[u8]) -> String {
+        hex::encode(sha1::Sha1::digest(data))
+    }
+
+    /// Mojang-style all.json + runtime manifest with two binaries and one extra file.
+    /// `broken` makes the extra file 404.
+    async fn mount_runtime(server: &MockServer, component: &str, broken: bool) {
+        let file = |name: &str, body: &[u8]| {
+            serde_json::json!({"type": "file", "downloads": {"raw": {
+                "sha1": sha1_hex(body), "size": body.len(), "url": format!("{}/files/{}", server.uri(), name)
+            }}})
+        };
+        let manifest = serde_json::json!({"files": {
+            "bin": {"type": "directory"},
+            "bin/javaw.exe": file("javaw.exe", b"javaw"),
+            "bin/java.exe": file("java.exe", b"java"),
+            "bin/java": file("java", b"java"),
+            "release": file("release", b"JAVA_VERSION=21"),
+            "lib/modules": file("modules", b"modules"),
+        }});
+        let manifest_bytes = serde_json::to_vec(&manifest).unwrap();
+        let all = serde_json::json!({ get_platform_key(): { component: [{
+            "manifest": {"sha1": sha1_hex(&manifest_bytes), "size": manifest_bytes.len(),
+                "url": format!("{}/manifest.json", server.uri())}
+        }]}});
+        Mock::given(method("GET"))
+            .and(path("/all.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(all))
+            .mount(server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/manifest.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(manifest_bytes))
+            .mount(server)
+            .await;
+        for (name, body) in [
+            ("javaw.exe", &b"javaw"[..]),
+            ("java.exe", b"java"),
+            ("java", b"java"),
+            ("release", b"JAVA_VERSION=21"),
+        ] {
+            Mock::given(method("GET"))
+                .and(path(format!("/files/{name}")))
+                .respond_with(ResponseTemplate::new(200).set_body_bytes(body.to_vec()))
+                .mount(server)
+                .await;
+        }
+        let modules = if broken {
+            ResponseTemplate::new(404)
+        } else {
+            ResponseTemplate::new(200).set_body_bytes(b"modules".to_vec())
+        };
+        Mock::given(method("GET"))
+            .and(path("/files/modules"))
+            .respond_with(modules)
+            .mount(server)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn half_downloaded_runtime_is_never_treated_as_installed() {
+        for version in ["1.20.1", "1.21.1"] {
+            let component = get_java_component_for_version(version);
+            let tmp = tempdir().unwrap();
+            let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+            let client = reqwest::Client::new();
+            let broken = MockServer::start().await;
+            mount_runtime(&broken, component, true).await;
+            let url = format!("{}/all.json", broken.uri());
+            // Leftovers of an earlier download that died half-way.
+            let comp_dir = paths.runtime_dir.join(component);
+            fs::create_dir_all(comp_dir.join("bin")).unwrap();
+            fs::write(
+                get_java_binary_path(&paths.runtime_dir, component, true),
+                b"javaw",
+            )
+            .unwrap();
+            fs::write(
+                get_java_binary_path(&paths.runtime_dir, component, false),
+                b"java",
+            )
+            .unwrap();
+            fs::write(comp_dir.join("release"), b"JAVA_VERSION=21").unwrap();
+
+            // The pool fails on one file after the binaries and `release` landed.
+            let first =
+                ensure_mojang_java_from(&paths, version, &client, &NoopEventHandler, 1, None, &url)
+                    .await;
+            assert!(first.is_err(), "{version}: {first:?}");
+            assert!(!runtime_complete_marker(&paths.runtime_dir, component).exists());
+            assert!(!is_runtime_complete(&paths.runtime_dir, component));
+
+            // Next start must retry the download instead of reusing the half runtime.
+            let second =
+                ensure_mojang_java_from(&paths, version, &client, &NoopEventHandler, 1, None, &url)
+                    .await;
+            assert!(second.is_err(), "{version}: half runtime was reused");
+
+            let good = MockServer::start().await;
+            mount_runtime(&good, component, false).await;
+            let url = format!("{}/all.json", good.uri());
+            let third =
+                ensure_mojang_java_from(&paths, version, &client, &NoopEventHandler, 1, None, &url)
+                    .await
+                    .unwrap();
+            assert_eq!(
+                third,
+                get_java_binary_path(&paths.runtime_dir, component, true)
+            );
+            assert!(is_runtime_complete(&paths.runtime_dir, component));
+            assert!(paths
+                .runtime_dir
+                .join(component)
+                .join("lib/modules")
+                .exists());
+        }
+    }
+
+    #[tokio::test]
+    async fn legacy_runtime_without_marker_is_used_offline() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let component = get_java_component_for_version("1.21.1");
+        let exe = get_java_binary_path(&paths.runtime_dir, component, true);
+        fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        fs::write(&exe, b"x").unwrap();
+        fs::write(
+            get_java_binary_path(&paths.runtime_dir, component, false),
+            b"x",
+        )
+        .unwrap();
+        fs::write(paths.runtime_dir.join(component).join("release"), b"x").unwrap();
+        let client = reqwest::Client::new();
+        let res = ensure_mojang_java_from(
+            &paths,
+            "1.21.1",
+            &client,
+            &NoopEventHandler,
+            1,
+            None,
+            "http://127.0.0.1:1/all.json",
+        )
+        .await;
+        assert_eq!(res.unwrap(), exe);
+        assert!(!is_runtime_complete(&paths.runtime_dir, component));
+    }
+
+    #[tokio::test]
+    async fn cancelled_java_install_makes_no_requests() {
+        let server = MockServer::start().await;
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let token = CancellationToken::new();
+        token.cancel();
+        let res = ensure_mojang_java_from(
+            &paths,
+            "1.20.1",
+            &reqwest::Client::new(),
+            &NoopEventHandler,
+            1,
+            Some(&token),
+            &format!("{}/all.json", server.uri()),
+        )
+        .await;
+        assert!(matches!(res, Err(WexError::Cancelled)));
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[test]
+    fn empty_java_binary_is_not_a_complete_runtime() {
+        let tmp = tempdir().unwrap();
+        let runtime_dir = tmp.path();
+        let component = get_java_component_for_version("1.20.1");
+        let javaw = get_java_binary_path(runtime_dir, component, true);
+        let java = get_java_binary_path(runtime_dir, component, false);
+        fs::create_dir_all(javaw.parent().unwrap()).unwrap();
+        fs::write(&javaw, b"").unwrap();
+        fs::write(&java, b"").unwrap();
+        fs::write(runtime_complete_marker(runtime_dir, component), b"sha").unwrap();
+        assert!(!is_runtime_complete(runtime_dir, component));
+        fs::write(&javaw, b"MZ").unwrap();
+        assert!(is_runtime_complete(runtime_dir, component));
     }
 }

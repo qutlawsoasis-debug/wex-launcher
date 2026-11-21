@@ -1180,14 +1180,19 @@ pub async fn prepare_lobby_join<R: tauri::Runtime>(
             "Проверяем и восстанавливаем файлы сборки…",
         );
         play_state.cleanup_prewarm().await;
-        play_state
-            .core
-            .install_instance(wex_ipc::commands::InstallInstanceRequest {
-                version: version.clone(),
-                force_reinstall: false,
-            })
-            .await
-            .map_err(|e| e.message)?;
+        {
+            // Repairs write instance files: never overlap a background install,
+            // a settings repair or Play.
+            let _install = play_state.install_lock.lock().await;
+            play_state
+                .core
+                .install_instance(wex_ipc::commands::InstallInstanceRequest {
+                    version: version.clone(),
+                    force_reinstall: false,
+                })
+                .await
+                .map_err(|e| e.message)?;
+        }
         let status = state
             .client
             .get_status(&clean_code, Some(&player_name))

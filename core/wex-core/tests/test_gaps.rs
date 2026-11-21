@@ -506,6 +506,11 @@ async fn ensure_mojang_java_cached_runtime_never_accesses_network_both_versions(
             b"JAVA_VERSION=fixture",
         )
         .unwrap();
+        fs::write(
+            wex_core::java::runtime_complete_marker(&paths.runtime_dir, component),
+            b"fixture",
+        )
+        .unwrap();
         assert_eq!(
             ensure_mojang_java(&paths, version, &client(), &NoopEventHandler, 2)
                 .await

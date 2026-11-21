@@ -90,9 +90,26 @@ pub fn get_bundled_release_notes() -> Vec<ReleaseNoteVersion> {
         ReleaseNoteVersion {
             version: format!("v{}", env!("CARGO_PKG_VERSION")),
             internal_version: env!("CARGO_PKG_VERSION").to_string(),
+            date_text: "22 ноября 2026".to_string(),
+            short_title: "Надёжный запуск и обновление сборки".to_string(),
+            is_current: true,
+            items: vec![
+                ReleaseNoteItem::parse("[Исправлено] Игра запускается, если в имени пользователя Windows есть русские буквы"),
+                ReleaseNoteItem::parse("[Исправлено] Обновления сборки Aura-Pack снова приходят при обычном запуске"),
+                ReleaseNoteItem::parse("[Исправлено] Обрыв сети при обновлении сборки больше не оставляет смесь старых и новых модов"),
+                ReleaseNoteItem::parse("[Исправлено] Недокачанная Java больше не ломает запуск"),
+                ReleaseNoteItem::parse("[Исправлено] Кнопка «Отмена» останавливает загрузку"),
+                ReleaseNoteItem::parse("[Исправлено] Настройки не сбрасываются после сбоя"),
+                ReleaseNoteItem::parse("[Улучшено] Одиночная игра без интернета для аккаунтов Microsoft"),
+                ReleaseNoteItem::parse("[Улучшено] Своя Java слишком старой версии заменяется подходящей автоматически"),
+            ],
+        },
+        ReleaseNoteVersion {
+            version: "v0.10.2".to_string(),
+            internal_version: "0.10.2".to_string(),
             date_text: "21 ноября 2026".to_string(),
             short_title: "Приглашения, импорт и защита".to_string(),
-            is_current: true,
+            is_current: false,
             items: vec![
                 ReleaseNoteItem::parse("[Новое] Входящие приглашения в комнату видны на странице друзей: принять или отклонить"),
                 ReleaseNoteItem::parse("[Новое] Кнопка «Присоединиться» в сообщении о приглашении"),

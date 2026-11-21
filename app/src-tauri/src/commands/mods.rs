@@ -295,7 +295,7 @@ pub fn toggle_mod_impl(
     enabled: bool,
 ) -> Result<ModEntry, String> {
     let version = validate_version(version)?;
-    let file_name = crate::commands::workshop::validate_single_component(file_name)?;
+    let file_name = crate::commands::workshop::validate_single_component_exact(file_name)?;
     let inst_dir = paths.instance_dir(version);
     let mods_dir = inst_dir.join("mods");
     let current_path = mods_dir.join(file_name);
@@ -394,7 +394,7 @@ pub fn delete_custom_mod_impl(
     file_name: &str,
 ) -> Result<(), String> {
     let version = validate_version(version)?;
-    let file_name = crate::commands::workshop::validate_single_component(file_name)
+    let file_name = crate::commands::workshop::validate_single_component_exact(file_name)
         .map_err(|_| "Недопустимое имя файла мода. Проверьте имя файла.".to_string())?;
 
     let inst_dir = paths.instance_dir(version);
@@ -567,6 +567,31 @@ mod tests {
         );
         zip.write_all(json.as_bytes()).unwrap();
         zip.finish().unwrap();
+    }
+
+    #[test]
+    fn mod_with_surrounding_spaces_can_be_toggled_and_deleted() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        paths.ensure_dirs().unwrap();
+        paths.ensure_instance_dirs("1.21.1").unwrap();
+        let mods_dir = paths.instance_dir("1.21.1").join("mods");
+        // A leading space is a legal, distinct file name on every OS.
+        let spaced = " spaced-1.0.jar";
+        create_dummy_jar(&mods_dir.join(spaced), "spaced", "Spaced", "1.0.0");
+
+        let off = toggle_mod_impl(&paths, "1.21.1", spaced, false).unwrap();
+        assert_eq!(off.file_name, " spaced-1.0.jar.disabled");
+        assert!(mods_dir.join(" spaced-1.0.jar.disabled").exists());
+
+        let on = toggle_mod_impl(&paths, "1.21.1", " spaced-1.0.jar.disabled", true).unwrap();
+        assert_eq!(on.file_name, spaced);
+
+        delete_custom_mod_impl(&paths, "1.21.1", spaced).unwrap();
+        assert!(!mods_dir.join(spaced).exists());
+        // Validation must still reject traversal and blank names.
+        assert!(toggle_mod_impl(&paths, "1.21.1", " ../x ", false).is_err());
+        assert!(toggle_mod_impl(&paths, "1.21.1", "   ", false).is_err());
     }
 
     #[tokio::test]
