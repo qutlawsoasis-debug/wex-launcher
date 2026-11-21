@@ -1,7 +1,7 @@
 use crate::error::{Result, WexError};
 use crate::event::{Event, EventHandler};
 use futures_util::StreamExt;
-use reqwest::header::RANGE;
+use reqwest::header::{HeaderMap, ETAG, IF_RANGE, LAST_MODIFIED, RANGE};
 use sha1::Digest as _;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
@@ -158,6 +158,9 @@ pub async fn download_file_resumable_cancellable(
         }
     }
 
+    // ETag / Last-Modified of the response the .part was started from.
+    let mut validator = read_part_validator(&part_path);
+
     let mut attempts = 0;
     const MAX_ATTEMPTS: u32 = 3;
 
@@ -170,10 +173,18 @@ pub async fn download_file_resumable_cancellable(
             }
         }
 
+        if existing_len > 0 && validator.is_none() && expected_hash.is_none() {
+            // Nothing proves the server still has the same file: start over.
+            existing_len = 0;
+        }
         let mut req = client.get(url);
         let resuming = existing_len > 0;
         if resuming {
             req = req.header(RANGE, format!("bytes={}-", existing_len));
+            if let Some(v) = &validator {
+                // A changed file comes back whole (200) instead of a mismatched tail.
+                req = req.header(IF_RANGE, v.as_str());
+            }
         }
 
         let resp = match req.send().await {
@@ -237,6 +248,8 @@ pub async fn download_file_resumable_cancellable(
                 })?
         } else {
             existing_len = 0;
+            validator = response_validator(resp.headers());
+            write_part_validator(&part_path, validator.as_deref());
             File::create(&part_path).map_err(|e| {
                 let _ = fs::remove_file(&part_path);
                 map_io_err(e, &part_path)
@@ -362,6 +375,7 @@ pub async fn download_file_resumable_cancellable(
             let _ = fs::remove_file(&part_path);
             return Err(map_io_err(e, target_path));
         }
+        write_part_validator(&part_path, None);
 
         let final_len = fs::metadata(target_path)
             .map(|m| m.len())
@@ -373,6 +387,48 @@ pub async fn download_file_resumable_cancellable(
         });
 
         return Ok(true);
+    }
+}
+
+/// File beside a `.part` that keeps the validator of the response it came from.
+fn part_validator_path(part_path: &Path) -> PathBuf {
+    let mut name = part_path.file_name().unwrap_or_default().to_os_string();
+    name.push(".validator");
+    part_path.with_file_name(name)
+}
+
+/// A validator usable in `If-Range`: a strong ETag, else Last-Modified (weak
+/// ETags are not allowed there).
+fn response_validator(headers: &HeaderMap) -> Option<String> {
+    let header = |name| {
+        headers
+            .get(name)
+            .and_then(|v: &reqwest::header::HeaderValue| v.to_str().ok())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    header(ETAG)
+        .filter(|e| !e.starts_with("W/"))
+        .or_else(|| header(LAST_MODIFIED))
+}
+
+fn read_part_validator(part_path: &Path) -> Option<String> {
+    fs::read_to_string(part_validator_path(part_path))
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty() && !v.contains(['\r', '\n']))
+}
+
+fn write_part_validator(part_path: &Path, validator: Option<&str>) {
+    let path = part_validator_path(part_path);
+    match validator {
+        Some(v) => {
+            let _ = fs::write(path, v);
+        }
+        None => {
+            let _ = fs::remove_file(path);
+        }
     }
 }
 
@@ -672,6 +728,129 @@ mod tests {
             disk_data, full_payload,
             "Target file content must match full payload"
         );
+    }
+
+    #[tokio::test]
+    async fn resume_sends_if_range_with_the_stored_validator() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/f.bin"))
+            .and(header("Range", "bytes=4-"))
+            .and(header("If-Range", "\"v1\""))
+            .respond_with(ResponseTemplate::new(206).set_body_bytes(b"5678".to_vec()))
+            .mount(&server)
+            .await;
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("f.bin");
+        let part = tmp.path().join("f.bin.part");
+        fs::write(&part, b"1234").unwrap();
+        fs::write(part_validator_path(&part), "\"v1\"").unwrap();
+
+        let res = download_file_resumable_cancellable(
+            &reqwest::Client::new(),
+            &format!("{}/f.bin", server.uri()),
+            &target,
+            Some(8),
+            None,
+            &crate::event::NoopEventHandler,
+            None,
+        )
+        .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(fs::read(&target).unwrap(), b"12345678");
+        assert!(!part_validator_path(&part).exists());
+    }
+
+    #[tokio::test]
+    async fn changed_file_comes_back_whole_and_replaces_the_part() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        // The server's file changed: If-Range does not match, so it sends all of it.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/f.bin"))
+            .and(header("If-Range", "\"old\""))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("ETag", "\"new\"")
+                    .set_body_bytes(b"NEWDATA!".to_vec()),
+            )
+            .mount(&server)
+            .await;
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("f.bin");
+        let part = tmp.path().join("f.bin.part");
+        fs::write(&part, b"OLD-").unwrap();
+        fs::write(part_validator_path(&part), "\"old\"").unwrap();
+
+        let res = download_file_resumable_cancellable(
+            &reqwest::Client::new(),
+            &format!("{}/f.bin", server.uri()),
+            &target,
+            Some(8),
+            None,
+            &crate::event::NoopEventHandler,
+            None,
+        )
+        .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(fs::read(&target).unwrap(), b"NEWDATA!");
+    }
+
+    #[tokio::test]
+    async fn part_without_validator_or_hash_is_not_resumed() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/f.bin"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"ABCDEFGH".to_vec()))
+            .mount(&server)
+            .await;
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("f.bin");
+        fs::write(tmp.path().join("f.bin.part"), b"zzzz").unwrap();
+
+        let res = download_file_resumable_cancellable(
+            &reqwest::Client::new(),
+            &format!("{}/f.bin", server.uri()),
+            &target,
+            Some(8),
+            None,
+            &crate::event::NoopEventHandler,
+            None,
+        )
+        .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(fs::read(&target).unwrap(), b"ABCDEFGH");
+        let requests = server.received_requests().await.unwrap();
+        assert!(requests.iter().all(|r| !r.headers.contains_key("range")));
+    }
+
+    #[test]
+    fn only_strong_etags_or_dates_are_validators() {
+        let mut h = HeaderMap::new();
+        assert_eq!(response_validator(&h), None);
+        h.insert(
+            LAST_MODIFIED,
+            "Wed, 21 Oct 2015 07:28:00 GMT".parse().unwrap(),
+        );
+        assert_eq!(
+            response_validator(&h).as_deref(),
+            Some("Wed, 21 Oct 2015 07:28:00 GMT")
+        );
+        h.insert(ETAG, "W/\"weak\"".parse().unwrap());
+        assert_eq!(
+            response_validator(&h).as_deref(),
+            Some("Wed, 21 Oct 2015 07:28:00 GMT")
+        );
+        h.insert(ETAG, "\"strong\"".parse().unwrap());
+        assert_eq!(response_validator(&h).as_deref(), Some("\"strong\""));
     }
 
     #[tokio::test]
