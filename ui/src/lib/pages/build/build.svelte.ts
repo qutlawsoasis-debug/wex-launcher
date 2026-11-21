@@ -168,38 +168,46 @@ class BuildData {
   }
 
   async toggleMod(mod: ModEntry): Promise<void> {
-    const updated = await call<ModEntry>('toggle_mod', { version: this.version, fileName: mod.file_name, enabled: !mod.enabled });
+    const v = this.version;
+    const updated = await call<ModEntry>('toggle_mod', { version: v, fileName: mod.file_name, enabled: !mod.enabled });
+    if (v !== this.version) return;
     this.mods = (this.mods ?? []).map((m) => (m.file_name === mod.file_name ? { ...m, ...updated } : m));
   }
 
   async addMods(paths: string[]): Promise<number> {
+    const v = this.version;
     let added = 0;
     for (const p of paths.filter((x) => /\.jar$/i.test(x))) {
-      const mod = await call<ModEntry>('add_custom_mod', { version: this.version, sourcePath: p });
-      this.mods = [mod, ...(this.mods ?? []).filter((m) => m.file_name !== mod.file_name)];
+      const mod = await call<ModEntry>('add_custom_mod', { version: v, sourcePath: p });
+      if (v === this.version) this.mods = [mod, ...(this.mods ?? []).filter((m) => m.file_name !== mod.file_name)];
       added++;
     }
     return added;
   }
 
   async togglePack(pack: PackItem): Promise<void> {
+    const v = this.version;
     const enabled = !pack.is_enabled;
-    await call('workshop_toggle_resource_pack', { fileName: pack.file_name, enabled, version: this.version });
+    await call('workshop_toggle_resource_pack', { fileName: pack.file_name, enabled, version: v });
+    if (v !== this.version) return;
     this.packs = (this.packs ?? []).map((p) => (p.file_name === pack.file_name ? { ...p, is_enabled: enabled } : p));
   }
 
   async setShader(fileName: string | null): Promise<void> {
-    await call('workshop_set_active_shader_pack', { shaderFileName: fileName, version: this.version });
+    const v = this.version;
+    await call('workshop_set_active_shader_pack', { shaderFileName: fileName, version: v });
+    if (v !== this.version) return;
     this.shaders = (this.shaders ?? []).map((s) => ({ ...s, is_active: s.file_name === fileName }));
   }
 
   async addPacks(paths: string[], packType: 'resourcepack' | 'shaderpack'): Promise<number> {
+    const v = this.version;
     let added = 0;
     for (const p of paths.filter((x) => /\.zip$/i.test(x))) {
-      await call<string>('workshop_add_pack_file', { sourcePath: p, packType, version: this.version });
+      await call<string>('workshop_add_pack_file', { sourcePath: p, packType, version: v });
       added++;
     }
-    if (added) await (packType === 'shaderpack' ? this.loadShaders() : this.loadPacks());
+    if (added && v === this.version) await (packType === 'shaderpack' ? this.loadShaders() : this.loadPacks());
     return added;
   }
 
