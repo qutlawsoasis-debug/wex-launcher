@@ -1393,6 +1393,36 @@ mod tests {
     }
 
     #[test]
+    fn quick_play_multiplayer_keeps_bracketed_ipv6_as_one_argument() {
+        let tmp = tempdir().unwrap();
+        let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+        let config = LauncherConfig::default();
+        let java_bin = PathBuf::from("java.exe");
+        let client_jar = PathBuf::from("client.jar");
+        let opts = LaunchOptions {
+            paths: &paths,
+            config: &config,
+            version: "1.21.1",
+            java_binary: &java_bin,
+            client_jar: &client_jar,
+            vanilla_libraries: &[],
+            fabric_libraries: &[],
+            asset_index_id: "6",
+            extra_jvm_args: &[],
+            quick_play_multiplayer: Some("[2001:db8::1]:25565"),
+            prewarm_signal: None,
+            prewarm_parent_pid: None,
+        };
+        let args = build_launch_args(&opts);
+        let pos = args
+            .iter()
+            .position(|a| a == "--quickPlayMultiplayer")
+            .unwrap();
+        assert_eq!(args[pos + 1], "[2001:db8::1]:25565");
+        assert_eq!(args.len(), pos + 2);
+    }
+
+    #[test]
     fn test_quick_play_multiplayer_argument_injection() {
         let tmp = tempdir().unwrap();
         let paths = WexPaths::new(Some(tmp.path().join("Wex")));

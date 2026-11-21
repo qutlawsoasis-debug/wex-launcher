@@ -171,6 +171,20 @@ pub fn validate_server_address(addr: &str) -> bool {
         return false;
     }
 
+    // Bracketed IPv6: `[v6]` or `[v6]:port`. Minecraft's quick play parses this form.
+    if let Some(rest) = addr.strip_prefix('[') {
+        let Some((inner, tail)) = rest.split_once(']') else {
+            return false;
+        };
+        if !inner.contains(':') || inner.parse::<std::net::Ipv6Addr>().is_err() {
+            return false;
+        }
+        return match tail.strip_prefix(':') {
+            None => tail.is_empty(),
+            Some(port) => port.parse::<u16>().is_ok_and(|p| p > 0),
+        };
+    }
+
     let parts: Vec<&str> = addr.split(':').collect();
     match parts.len() {
         1 => {
@@ -261,6 +275,49 @@ pub fn register_deep_link_schemes(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ipv6_addresses_use_the_bracketed_form() {
+        assert!(validate_server_address("[::1]"));
+        assert!(validate_server_address("[::1]:25565"));
+        assert!(validate_server_address("[2001:db8::1]:25565"));
+        assert!(validate_server_address("[fe80::1]"));
+        // Bare IPv6 is ambiguous with host:port and stays rejected.
+        assert!(!validate_server_address("::1"));
+        assert!(!validate_server_address("2001:db8::1"));
+        // Garbage.
+        for bad in [
+            "[]",
+            "[::1",
+            "::1]",
+            "[::1]:",
+            "[::1]:0",
+            "[::1]:99999",
+            "[::1]x",
+            "[::1]:25565:1",
+            "[zz::1]",
+            "[::1%eth0]",
+            "[1.2.3.4]",
+            "[not an ip]",
+            "[:::]",
+            "[::1]/x",
+        ] {
+            assert!(!validate_server_address(bad), "{bad}");
+        }
+        // Existing behaviour is untouched.
+        assert!(validate_server_address("play.example.com:25565"));
+        assert!(validate_server_address("localhost"));
+        assert!(!validate_server_address("a:b:c"));
+    }
+
+    #[test]
+    fn ipv6_server_link_keeps_the_address_for_quick_play() {
+        let action = parse_deep_link("wex://server/[::1]:25565").unwrap();
+        match action {
+            DeepLinkAction::ConnectServer { address } => assert_eq!(address, "[::1]:25565"),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
 
     #[test]
     fn security_regression_deep_link_unicode_returns_error_without_panic() {
