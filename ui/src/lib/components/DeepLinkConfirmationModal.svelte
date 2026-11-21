@@ -123,7 +123,7 @@
     >
       <div class="deeplink-icon-wrap">
         <div class="deeplink-icon-badge" class:server={action.kind === 'server'} class:join={action.kind === 'join'}>
-          <Icon name={iconName} size={28} color="var(--blue)" />
+          <Icon name={iconName} size={28} color="var(--label-2)" />
         </div>
       </div>
 

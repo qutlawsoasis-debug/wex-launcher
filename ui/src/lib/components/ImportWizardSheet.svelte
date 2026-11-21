@@ -179,13 +179,13 @@
   <div class="import-wizard-container">
     {#if isScanning}
       <div class="scanning-state">
-        <Icon name="refresh" size={24} color="var(--blue)" />
+        <Icon name="refresh" size={24} color="var(--label-2)" />
         <p class="scanning-text">{t('import.scan_progress')}</p>
       </div>
     {:else if successMessage}
       <div class="success-state">
         <div class="success-icon-wrap">
-          <Icon name="check" size={28} color="var(--green)" />
+          <Icon name="check" size={28} color="var(--label)" />
         </div>
         <h3 class="success-title">{t('import.success')}</h3>
         <p class="success-description">{successMessage}</p>
@@ -193,7 +193,7 @@
     {:else if oldData}
       <!-- Explanation of safe isolation -->
       <div class="isolation-notice">
-        <Icon name="info" size={16} color="var(--blue)" />
+        <Icon name="info" size={16} color="var(--label-2)" />
         <span class="notice-text">
           {t('import.found_desc')}
         </span>
@@ -319,7 +319,7 @@
 
     {#if errorMessage && oldData}
       <div class="inline-error-banner">
-        <Icon name="warning" size={15} color="var(--red)" />
+        <Icon name="warning" size={15} color="currentColor" />
         <span>{errorMessage}</span>
       </div>
     {/if}
@@ -502,8 +502,10 @@
     gap: 8px;
     padding: 8px 12px;
     border-radius: 8px;
-    background: rgba(255, 69, 58, 0.12);
-    color: var(--red);
+    /* Error banner: warning symbol + label on a neutral fill; red is for
+       destructive actions only (AGENTS.md; HIG › Color). */
+    background: var(--fill-3);
+    color: var(--label);
     font-size: var(--t-foot);
   }
 </style>

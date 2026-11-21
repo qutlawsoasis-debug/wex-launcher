@@ -260,8 +260,8 @@
   <div class="crash-sheet-content" data-testid="crash-sheet">
     <!-- Header alert area -->
     <div class="crash-header">
-      <div class="crash-icon-badge" class:warning={category.badgeType === 'unknown'}>
-        <Icon name={category.badgeType === 'unknown' ? 'warning' : 'error'} size={28} color="#ffffff" />
+      <div class="crash-icon-badge">
+        <Icon name="warning" size={28} color="currentColor" />
       </div>
 
       <div class="crash-title-group">
@@ -277,6 +277,7 @@
 
     <!-- Advice Card -->
     <div class="advice-card" class:success-state={modDisabledSuccess} data-testid="crash-advice">
+      {#if modDisabledSuccess}<Icon name="check" size={16} color="currentColor" />{/if}
       <p class="advice-text">{displayAdvice}</p>
     </div>
 
@@ -389,21 +390,20 @@
     gap: 16px;
   }
 
+  /* The crash badge is a neutral plate with the warning symbol in label colour:
+     an error state is not a destructive action, and red is reserved for those
+     (AGENTS.md; HIG › Color: «Avoid using the same color to mean different
+     things», «Avoid relying solely on color to differentiate between objects»). */
   .crash-icon-badge {
     width: 48px;
     height: 48px;
     border-radius: var(--r-m);
-    background-color: var(--red);
+    background-color: var(--fill-2);
+    color: var(--label);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    box-shadow: 0 4px 12px rgba(255, 59, 48, 0.25);
-  }
-
-  .crash-icon-badge.warning {
-    background-color: #ff9500;
-    box-shadow: 0 4px 12px rgba(255, 149, 0, 0.25);
   }
 
   .crash-title-group {
@@ -427,33 +427,9 @@
     border-radius: var(--r-s);
   }
 
-  .category-badge.oom {
-    background-color: rgba(255, 59, 48, 0.15);
-    color: var(--red);
-  }
-
-  .category-badge.mod {
-    background-color: rgba(175, 82, 222, 0.15);
-    color: #af52de;
-  }
-
-  .category-badge.java {
-    background-color: rgba(10, 132, 255, 0.15);
-    color: var(--blue-text);
-  }
-
-  .category-badge.gpu {
-    background-color: rgba(255, 149, 0, 0.15);
-    color: #ff9500;
-  }
-
-  .category-badge.corruption {
-    background-color: rgba(255, 69, 58, 0.15);
-    color: #ff453a;
-  }
-
-  .category-badge.unknown {
-    background-color: var(--fill-2);
+  /* Categories are told apart by their words, not by hue (HIG › Color). */
+  .category-badge {
+    background-color: var(--fill-3);
     color: var(--label-2);
   }
 
@@ -477,9 +453,12 @@
     border: 1px solid var(--edge);
   }
 
+  /* Success: the check symbol and the text say it; green is for toggles only. */
   .advice-card.success-state {
-    background-color: rgba(48, 209, 88, 0.12);
-    border-color: rgba(48, 209, 88, 0.3);
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    background-color: var(--fill-3);
   }
 
   .advice-text {
@@ -511,20 +490,21 @@
     background: none;
     border: none;
     font-size: 12px;
-    color: var(--blue-text);
+    color: var(--label-2);
+    text-decoration: underline;
     cursor: pointer;
     padding: 0;
     font-family: inherit;
   }
 
   .copy-link:hover {
-    text-decoration: underline;
+    color: var(--label);
   }
 
   .log-code-box {
     margin: 0;
     padding: 12px;
-    background-color: rgba(0, 0, 0, 0.35);
+    background-color: var(--fill-4);
     border: 1px solid var(--edge);
     border-radius: var(--r-s);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;

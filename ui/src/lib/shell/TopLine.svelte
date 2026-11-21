@@ -164,9 +164,12 @@
     background: var(--fill-2);
     color: var(--label);
   }
+  /* Windows caption Close: red on hover with white glyph, as Windows draws it.
+     Apple does not cover Windows caption buttons; closing the window is the one
+     destructive control here, so systemRed fits AGENTS.md. */
   .winctl button.close:hover {
     background: var(--red);
-    color: var(--blue-ink);
+    color: #ffffff;
   }
   .winctl svg {
     width: 11px;

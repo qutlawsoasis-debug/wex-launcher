@@ -24,7 +24,8 @@
     label,
     detail,
     height = 6,
-    color = 'var(--blue)',
+    /* Progress is status, not an action: systemGray, not the accent (AGENTS.md). */
+    color = 'var(--gray)',
     hideInfo = false,
   }: Props = $props();
 

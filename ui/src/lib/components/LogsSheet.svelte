@@ -260,11 +260,13 @@
           {#if logData}
             {#if logData.error_count > 0}
               <span class="metric-pill error-pill" title={t('logs.title_errors')}>
+                <Icon name="warning" size={11} color="currentColor" />
                 {logData.error_count === 1 ? t('logs.metric_error_one', { count: logData.error_count }) : t('logs.metric_error_other', { count: logData.error_count })}
               </span>
             {/if}
             {#if logData.warn_count > 0}
               <span class="metric-pill warn-pill" title={t('logs.title_warns')}>
+                <Icon name="info" size={11} color="currentColor" />
                 {logData.warn_count === 1 ? t('logs.metric_warn_one', { count: logData.warn_count }) : t('logs.metric_warn_other', { count: logData.warn_count })}
               </span>
             {/if}
@@ -469,8 +471,9 @@
     cursor: pointer;
   }
 
+  /* «Цвета поля Aura»: accent border in focus. */
   .file-select-dropdown:focus {
-    border-color: var(--blue-text);
+    border-color: var(--blue);
   }
 
   .metrics-row {
@@ -479,7 +482,14 @@
     gap: 6px;
   }
 
+  /* Status is said by a symbol and words in label colour, never by red or orange
+     alone: red is for destructive actions only (AGENTS.md; HIG › Color: «Avoid
+     relying solely on color to differentiate between objects», «Avoid using the
+     same color to mean different things»). */
   .metric-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     font-size: 11px;
     font-weight: 600;
     padding: 2px 8px;
@@ -487,15 +497,13 @@
   }
 
   .metric-pill.error-pill {
-    background-color: rgba(255, 59, 48, 0.15);
-    color: var(--red);
-    border: 1px solid rgba(255, 59, 48, 0.25);
+    background-color: var(--fill-2);
+    color: var(--label);
   }
 
   .metric-pill.warn-pill {
-    background-color: rgba(255, 149, 0, 0.15);
-    color: #ff9500;
-    border: 1px solid rgba(255, 149, 0, 0.25);
+    background-color: var(--fill-3);
+    color: var(--label);
   }
 
   .metric-pill.lines-pill {
@@ -517,7 +525,8 @@
 
   .terminal-view-card {
     flex: 1;
-    background-color: rgba(12, 14, 18, 0.88);
+    /* A neutral fill that works in both themes (it was a dark-only panel). */
+    background-color: var(--fill-4);
     border: 1px solid var(--edge);
     border-radius: var(--r-m);
     overflow-y: auto;
@@ -577,17 +586,19 @@
   }
 
   .log-row:hover {
-    background-color: rgba(255, 255, 255, 0.04);
+    background-color: var(--fill-4);
   }
 
+  /* Error and warning lines: a fill and a leading bar in label colour; the level
+     word (ERROR, WARN) carries the meaning, not a hue. */
   .log-row.error-row {
-    background-color: rgba(255, 59, 48, 0.08);
-    border-left-color: var(--red);
+    background-color: var(--fill-3);
+    border-left-color: var(--label);
   }
 
   .log-row.warn-row {
-    background-color: rgba(255, 149, 0, 0.06);
-    border-left-color: #ff9500;
+    background-color: var(--fill-4);
+    border-left-color: var(--label-2);
   }
 
   .log-row.debug-row {
@@ -617,13 +628,13 @@
   }
 
   .level-tag.error {
-    background-color: rgba(255, 59, 48, 0.22);
-    color: var(--red);
+    background-color: var(--fill);
+    color: var(--label);
   }
 
   .level-tag.warn {
-    background-color: rgba(255, 149, 0, 0.22);
-    color: #ff9500;
+    background-color: var(--fill-3);
+    color: var(--label);
   }
 
   .level-tag.info {
@@ -635,7 +646,7 @@
   }
 
   .line-thread {
-    color: #64d2ff;
+    color: var(--label-2);
     flex-shrink: 0;
   }
 
@@ -645,12 +656,11 @@
   }
 
   .log-row.error-row .line-message {
-    color: #ff453a;
-    font-weight: 500;
+    font-weight: 600;
   }
 
   .log-row.warn-row .line-message {
-    color: #ffd60a;
+    font-weight: 500;
   }
 
   .logs-footer-actions {

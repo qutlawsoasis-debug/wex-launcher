@@ -155,7 +155,7 @@
           aria-invalid={nameTouched && !nameOk}
           aria-describedby="acc-nick-hint"
         />
-        <div class="d" class:bad={nameTouched && !nameOk} id="acc-nick-hint">{nameTouched && !nameOk ? t('acc.nick_bad') : t('acc.nick_hint')}</div>
+        <div class="d" class:bad={nameTouched && !nameOk} class:alert-sym={nameTouched && !nameOk} id="acc-nick-hint">{nameTouched && !nameOk ? t('acc.nick_bad') : t('acc.nick_hint')}</div>
         <div class="actions">
           <button type="button" class="btn" onclick={() => (step = 'choose')}>{t('common.back')}</button>
           <button type="submit" class="btn blue" disabled={busy || !nameOk} aria-busy={busy}>{t('acc.add_offline')}</button>
@@ -186,7 +186,7 @@
       </div>
     {/if}
     {#if error}
-      <p class="err" role="alert">{error}</p>
+      <p class="err alert-sym" role="alert">{error}</p>
     {/if}
     <p class="foot">{t('acc.storage_note')}</p>
   </div>
@@ -250,9 +250,10 @@
   .l {
     font-weight: var(--w-medium);
   }
+  /* Error text: warning symbol + label (global .alert-sym in app.css). */
   .d.bad,
   .err {
-    color: var(--red);
+    color: var(--label);
   }
   .err {
     margin: 0;

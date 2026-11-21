@@ -196,8 +196,8 @@
     {:else if !s.installing}
       <p class="d">{t('own.install_d')}</p>
     {/if}
-    {#if s.problem}<p class="bad" role="alert">{s.problem}</p>{/if}
-    {#if s.status === 'crashed' && !s.problem}<p class="bad" role="alert">{t('own.crashed_d')}</p>{/if}
+    {#if s.problem}<p class="bad alert-sym" role="alert">{s.problem}</p>{/if}
+    {#if s.status === 'crashed' && !s.problem}<p class="bad alert-sym" role="alert">{t('own.crashed_d')}</p>{/if}
   </section>
 
   {#if !s.eulaAccepted}
@@ -347,7 +347,7 @@
   <section>
     <div class="acts">
       {#if confirmDelete}
-        <span class="warn">{t('own.delete_confirm')}</span>
+        <span class="warn alert-sym">{t('own.delete_confirm')}</span>
         <button type="button" class="btn danger" disabled={ownServers.busy === 'delete'} onclick={async () => { if (await ownServers.remove()) confirmDelete = false; }}>{t('own.delete')}</button>
         <button type="button" class="btn" onclick={() => (confirmDelete = false)}>{t('common.cancel')}</button>
       {:else}
@@ -361,7 +361,7 @@
 {/if}
 
 {#if ownServers.error}
-  <p class="bad" role="alert">{ownServers.error}</p>
+  <p class="bad alert-sym" role="alert">{ownServers.error}</p>
 {/if}
 
 <style>
@@ -414,7 +414,7 @@
   }
   .bad {
     margin: 8px 0 0;
-    color: var(--red);
+    color: var(--label);
     font-size: var(--t-foot);
   }
   .warn {
@@ -430,9 +430,11 @@
   .console {
     font-family: var(--font-mono);
   }
+  /* Inline text button: neutral and underlined; blue is the primary action only. */
   .link {
     padding: 0;
-    color: var(--blue);
+    color: var(--label);
+    text-decoration: underline;
     font-size: inherit;
   }
   .num {

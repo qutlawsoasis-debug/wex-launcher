@@ -162,7 +162,7 @@
         <span class="info-pill version-pill" data-testid="pill-version">{version}</span>
         {#if sys?.launcher_version}<span class="info-pill">Wex {sys.launcher_version}</span>{/if}
         <span class="info-pill secure-pill">
-          <Icon name="check" size={12} color="var(--green)" />
+          <Icon name="check" size={12} color="var(--label)" />
           <span>{t('report.anonymized_badge')}</span>
         </span>
       </div>
@@ -198,11 +198,11 @@
       <span class="section-label">{t('report.archive_includes')}</span>
       <div class="manifest-grid">
         <div class="manifest-item">
-          <Icon name="info" size={14} color="var(--blue)" />
+          <Icon name="info" size={14} color="var(--label-2)" />
           <span class="manifest-text"><strong>wex-game-output.log</strong> {t('report.inc_latest_log')}</span>
         </div>
         <div class="manifest-item">
-          <Icon name="warning" size={14} color="var(--orange)" />
+          <Icon name="warning" size={14} color="var(--label-2)" />
           <span class="manifest-text"><strong>crash-report</strong> {t('report.inc_crash_report')}</span>
         </div>
         <div class="manifest-item">
@@ -304,14 +304,15 @@
     color: var(--label-2);
   }
 
+  /* Pills are neutral; the check symbol marks "anonymised" (green is for toggles). */
   .info-pill.version-pill {
-    background-color: rgba(0, 122, 255, 0.15);
-    color: var(--blue-text);
+    background-color: var(--fill-2);
+    color: var(--label);
   }
 
   .info-pill.secure-pill {
-    background-color: rgba(48, 209, 88, 0.15);
-    color: var(--green);
+    background-color: var(--fill-3);
+    color: var(--label);
     display: flex;
     align-items: center;
     gap: 4px;
@@ -333,7 +334,7 @@
   .security-notice code {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 11px;
-    background-color: rgba(0, 0, 0, 0.2);
+    background-color: var(--fill-4);
     padding: 1px 4px;
     border-radius: 3px;
   }
@@ -365,9 +366,9 @@
     transition: border-color var(--dur-micro) ease;
   }
 
+  /* «Цвета поля Aura»: accent border in focus, no halo. */
   .comment-textarea:focus {
-    border-color: var(--blue-text);
-    box-shadow: 0 0 0 3px rgba(0, 145, 255, 0.25);
+    border-color: var(--blue);
   }
 
   .data-manifest {
@@ -416,7 +417,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--blue-text);
+    color: var(--label-2);
     font-size: 12px;
     cursor: pointer;
     padding: 0;
@@ -431,7 +432,7 @@
   .preview-codebox {
     margin: 0;
     padding: 10px 12px;
-    background-color: rgba(0, 0, 0, 0.35);
+    background-color: var(--fill-4);
     border: 1px solid var(--edge);
     border-radius: var(--r-s);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;

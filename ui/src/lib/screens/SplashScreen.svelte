@@ -162,7 +162,7 @@
 
     <!-- Dynamic Status or Progress -->
     <div class="status-section">
-      <p class="status-message" class:error={hasNetworkError}>
+      <p class="status-message" class:error={hasNetworkError} class:alert-sym={hasNetworkError}>
         {statusText}
       </p>
     </div>
@@ -274,7 +274,7 @@
   }
 
   .status-message.error {
-    color: var(--red);
+    color: var(--label);
     font-weight: 500;
   }
 

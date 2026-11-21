@@ -208,7 +208,7 @@
 {/if}
 
 {#if rooms.error}
-  <p class="err" role="alert">{rooms.error}</p>
+  <p class="err alert-sym" role="alert">{rooms.error}</p>
 {/if}
 
 <style>
@@ -261,7 +261,7 @@
     border-top: 1px solid var(--separator);
   }
   .tunnel.bad span {
-    color: var(--red);
+    color: var(--label);
   }
   .join {
     padding: 16px;
@@ -319,7 +319,7 @@
   }
   .err {
     margin: 16px 0 0;
-    color: var(--red);
+    color: var(--label);
     font-size: var(--t-foot);
   }
   .sr {
