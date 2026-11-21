@@ -94,8 +94,8 @@ fn match_checked_update(
     version: &str,
     download_url: &str,
 ) -> Result<CheckedUpdate, String> {
-    let checked = checked
-        .ok_or_else(|| "Update was not checked: run the update check first".to_string())?;
+    let checked =
+        checked.ok_or_else(|| "Update was not checked: run the update check first".to_string())?;
     if checked.version != version || checked.download_url != download_url {
         return Err("Requested update does not match the checked update".to_string());
     }
@@ -791,7 +791,9 @@ mod tests {
         // Downgrade/other version from the webview.
         assert!(match_checked_update(Some(&checked), "0.0.1", &checked.download_url).is_err());
         // Other URL.
-        assert!(match_checked_update(Some(&checked), "9.9.9", "https://evil.example/x.exe").is_err());
+        assert!(
+            match_checked_update(Some(&checked), "9.9.9", "https://evil.example/x.exe").is_err()
+        );
         // Nothing was checked.
         assert!(match_checked_update(None, "9.9.9", &checked.download_url).is_err());
     }

@@ -610,7 +610,15 @@ mod tests {
         assert_eq!(validate_game_version(None).unwrap(), "1.21.1");
         assert_eq!(validate_game_version(Some("1.20.1")).unwrap(), "1.20.1");
         assert_eq!(validate_game_version(Some(" 1.21.1 ")).unwrap(), "1.21.1");
-        for bad in ["", "1.19.4", "1.21.1.", "..", "1.21.1/../x", "_invalid", "1.21"] {
+        for bad in [
+            "",
+            "1.19.4",
+            "1.21.1.",
+            "..",
+            "1.21.1/../x",
+            "_invalid",
+            "1.21",
+        ] {
             assert!(validate_game_version(Some(bad)).is_err(), "{bad}");
         }
     }
