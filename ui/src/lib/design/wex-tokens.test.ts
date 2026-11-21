@@ -85,14 +85,16 @@ describe('Wex tokens follow the reference', () => {
     }
   });
 
-  it('Reduce Motion is resolved once into data-reduce-motion and zeroes every duration', () => {
+  it('Reduce Motion zeroes every duration from data-reduce-motion and from the system media query', () => {
     const names = [...css.matchAll(/--(dur-[a-z-]+|stagger):/g)].map((m) => m[1]);
     const unique = [...new Set(names)];
-    const sel = ":root[data-reduce-motion='true']";
-    for (const name of unique) expect(prop(css, sel, name), `${sel} --${name}`).toBe('0ms');
-    expect(prop(css, sel, 'press-scale')).toBe('1');
-    // No media query of its own: it would bypass the app's Animations switch.
-    expect(css).not.toContain('prefers-reduced-motion');
+    for (const sel of [":root[data-reduce-motion='true']", '@media (prefers-reduced-motion: reduce) {\n  :root {']) {
+      for (const name of unique) expect(prop(css, sel, name), `${sel} --${name}`).toBe('0ms');
+      expect(prop(css, sel, 'press-scale')).toBe('1');
+    }
+    // The system query also ends running animations, like the data attribute does.
+    const global = css.slice(css.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(global).toMatch(/animation-duration: 0\.001ms !important;[\s\S]*transition-duration: 0\.001ms !important;/);
   });
 
   it('Reduce Transparency makes the sidebar and launch bar solid', () => {
@@ -113,7 +115,6 @@ describe('Wex tokens follow the reference', () => {
 describe('Theme state', () => {
   afterEach(() => {
     theme.setAppearance('auto');
-    theme.motionExplicitOn = false;
     theme.setReduceMotion(false);
     theme.setReduceTransparency(false);
     theme.systemReduceMotion = false;
@@ -135,21 +136,24 @@ describe('Theme state', () => {
     expect(root.dataset.theme).toBe('light');
   });
 
-  it('Animations turned on in Wex beat Windows "Animation effects" off; off always turns motion off', () => {
+  it('Windows "Animation effects" off cannot be overridden by turning Animations on in Wex', () => {
     theme.systemReduceMotion = true;
     theme.setMotionEnabled(true);
-    expect(theme.motionReduced).toBe(false);
-    expect(document.documentElement.dataset.reduceMotion).toBe('false');
-    expect(duration('indicator')).toBe(WexMotion.ms.indicator);
-    expect(localStorage.getItem('wex_motion_on')).toBe('1');
+    expect(theme.motionReduced).toBe(true);
+    expect(document.documentElement.dataset.reduceMotion).toBe('true');
+    expect(duration('indicator')).toBe(0);
+    expect(localStorage.getItem('wex_motion_on')).toBeNull();
 
     theme.setMotionEnabled(false);
     expect(theme.motionReduced).toBe(true);
-    expect(localStorage.getItem('wex_motion_on')).toBeNull();
 
     theme.systemReduceMotion = false;
     theme.applyDom();
     expect(theme.motionReduced).toBe(true); // the app switch is off
+
+    theme.setMotionEnabled(true);
+    expect(theme.motionReduced).toBe(false); // neither the system nor the app reduces
+    expect(duration('indicator')).toBe(WexMotion.ms.indicator);
   });
 
   it('without an explicit choice the system setting applies', () => {

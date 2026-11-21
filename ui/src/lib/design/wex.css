@@ -226,6 +226,24 @@
   --press-scale: 1;
   --hover-lift: 0px;
 }
+/* The same from the system setting directly, before theme.svelte.ts has written
+   data-reduce-motion (and if it never does). Safe: the app can only add reduction,
+   never take the system's away (aura-knowledge «Reduce Motion в Aura»). */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-micro: 0ms;
+    --dur-short: 0ms;
+    --dur-ind: 0ms;
+    --dur-page: 0ms;
+    --dur-page-out: 0ms;
+    --dur-pair: 0ms;
+    --dur-swap: 0ms;
+    --dur-started: 0ms;
+    --stagger: 0ms;
+    --press-scale: 1;
+    --hover-lift: 0px;
+  }
+}
 
 /* Base: reset, window, form controls. */
 *,
@@ -277,6 +295,15 @@ textarea {
   animation-duration: 0.001ms !important;
   animation-iteration-count: 1 !important;
   transition-duration: 0.001ms !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 /* The window is minimised or the game is running: no animation at all (energy).

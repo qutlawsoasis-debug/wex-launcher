@@ -558,7 +558,7 @@ export const ru = {
   'settings2.k_motion': 'анимации движение переходы пружины',
   'settings2.motion': 'Анимации',
   'settings2.motion_d': 'Переходы и смена состояний',
-  'settings2.motion_system_off': 'В Windows выключены эффекты анимации. Включите здесь, чтобы Wex всё равно был плавным',
+  'settings2.motion_system_off': 'В Windows выключены эффекты анимации, поэтому Wex тоже уменьшает движение',
   'settings2.k_transparency': 'прозрачность размытие материал',
   'settings2.transparency': 'Уменьшить прозрачность',
   'settings2.winter': 'Зимнее оформление',

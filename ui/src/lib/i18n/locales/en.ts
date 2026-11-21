@@ -558,7 +558,7 @@ export const en = {
   'settings2.k_motion': 'animations motion transitions springs',
   'settings2.motion': 'Animations',
   'settings2.motion_d': 'Transitions and state changes',
-  'settings2.motion_system_off': 'Animation effects are off in Windows. Turn this on to keep Wex smooth anyway',
+  'settings2.motion_system_off': 'Animation effects are off in Windows, so Wex reduces motion too',
   'settings2.k_transparency': 'transparency blur material',
   'settings2.winter': 'Winter Look',
   'settings2.winter_d': 'Snow in the window and on the build tiles, November to February. No snowfall when motion is reduced',

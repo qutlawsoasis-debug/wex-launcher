@@ -4,10 +4,9 @@
  * appearance: 'auto' follows Windows (HIG › Dark Mode), 'light'/'dark' force one
  *   (aura-knowledge: Своя настройка темы, confirmed by the owner).
  * reduceMotion / reduceTransparency: the app's own switches, saved in the config.
- *   Reduce Transparency from the system always wins. Reduce Motion from the system
- *   (Windows "Animation effects" off) applies unless the user explicitly turned
- *   Animations on in Wex (motionExplicitOn, remembered on this PC): the user's own
- *   choice in the app comes first (owner's decision, 2026-11-12).
+ *   Each is reduced when the system OR the app says so; nothing in the app can
+ *   override the system setting (aura-knowledge «Reduce Motion в Aura»: it applies
+ *   when it is on in Windows or in the app; HIG › Accessibility, Motion).
  *
  * DOM contract read by wex.css:
  *   data-theme="light|dark"            resolved theme
@@ -29,8 +28,6 @@ class ThemeManager {
   systemIsDark = $state<boolean>(true);
   systemReduceMotion = $state<boolean>(false);
   systemReduceTransparency = $state<boolean>(false);
-  /** The user turned Animations on in Wex themselves; then the system setting does not turn them off. */
-  motionExplicitOn = $state<boolean>(false);
 
   constructor() {
     if (typeof window === 'undefined') return;
@@ -39,7 +36,8 @@ class ThemeManager {
       if (saved === 'dark' || saved === 'light' || saved === 'auto') {
         this.appearance = saved;
       }
-      this.motionExplicitOn = localStorage.getItem('wex_motion_on') === '1';
+      // The old "Animations on beats Windows" override is gone; drop its key.
+      localStorage.removeItem('wex_motion_on');
     } catch {}
 
     if (typeof window.matchMedia === 'function') {
@@ -62,18 +60,13 @@ class ThemeManager {
     return this.appearance === 'auto' ? this.systemIsDark : this.appearance === 'dark';
   }
 
-  /** Motion is reduced by the app's switch, by effects off, or by the system unless the user turned it on here. */
+  /** Motion is reduced by the system, by the app's switch, or by effects off. No override. */
   get motionReduced(): boolean {
-    return this.reduceMotion || this.effectsMode === 'off' || (this.systemReduceMotion && !this.motionExplicitOn);
+    return this.systemReduceMotion || this.reduceMotion || this.effectsMode === 'off';
   }
 
-  /** The Animations switch: on is an explicit choice that beats the system, off turns motion off. */
+  /** The app's Animations switch. Turning it on cannot bring motion back while the system reduces it. */
   setMotionEnabled(enabled: boolean) {
-    this.motionExplicitOn = enabled;
-    try {
-      if (enabled) localStorage.setItem('wex_motion_on', '1');
-      else localStorage.removeItem('wex_motion_on');
-    } catch {}
     this.reduceMotion = !enabled;
     this.applyDom();
   }
