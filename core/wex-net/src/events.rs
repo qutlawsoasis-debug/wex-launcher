@@ -24,6 +24,10 @@ pub enum NetEvent {
     LobbyHeartbeatSent { code: String },
     /// Heartbeat failed to send
     LobbyHeartbeatFailed { code: String, error: String },
+    /// Several heartbeats in a row failed: the room may look offline to others.
+    LobbyHeartbeatLost { code: String, failures: u32 },
+    /// The lobby service no longer knows the room (404); the heartbeat stopped.
+    LobbyRoomGone { code: String },
 }
 
 /// Status of the Playit.gg tunnel process

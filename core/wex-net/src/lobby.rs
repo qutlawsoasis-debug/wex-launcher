@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -27,9 +28,28 @@ pub enum LobbyError {
     Url(#[from] url::ParseError),
 }
 
+/// Heartbeats in a row that may fail before the loop reports the room as unreachable.
+pub const HEARTBEAT_FAILURE_LIMIT: u32 = 3;
+
+impl LobbyError {
+    /// The lobby service says the room does not exist (closed or expired).
+    pub fn is_not_found(&self) -> bool {
+        matches!(self, LobbyError::Api { status: 404, .. })
+    }
+}
+
 // ---------------------------------------------------------------------------
 // DTOs & Models
 // ---------------------------------------------------------------------------
+
+/// `null` and a missing field both become the type's default.
+fn null_as_default<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(d)?.unwrap_or_default())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -56,7 +76,9 @@ pub struct LobbyStatusResponse {
     pub code: String,
     pub status: String,
     pub tunnel_address: Option<String>,
+    #[serde(default, deserialize_with = "null_as_default")]
     pub player_count: u32,
+    #[serde(default, deserialize_with = "null_as_default")]
     pub last_heartbeat: i64,
     pub players: Option<Vec<String>>,
     pub host_name: Option<String>,
@@ -142,15 +164,49 @@ struct KickPlayerRequest<'a> {
 // Heartbeat Handle
 // ---------------------------------------------------------------------------
 
+/// What the heartbeat loop learned about the room, readable while it runs.
+#[derive(Debug, Default)]
+pub struct HeartbeatHealth {
+    consecutive_failures: AtomicU32,
+    room_gone: AtomicBool,
+}
+
+impl HeartbeatHealth {
+    /// Heartbeats in a row that did not reach the service or were refused.
+    pub fn consecutive_failures(&self) -> u32 {
+        self.consecutive_failures.load(Ordering::SeqCst)
+    }
+
+    /// The service answered 404: the room no longer exists and the loop stopped.
+    pub fn room_gone(&self) -> bool {
+        self.room_gone.load(Ordering::SeqCst)
+    }
+
+    /// At least [`HEARTBEAT_FAILURE_LIMIT`] heartbeats in a row failed.
+    pub fn failing(&self) -> bool {
+        self.consecutive_failures() >= HEARTBEAT_FAILURE_LIMIT
+    }
+}
+
 pub struct HeartbeatHandle {
     stop_tx: watch::Sender<bool>,
     task: JoinHandle<()>,
+    health: Arc<HeartbeatHealth>,
 }
 
 impl HeartbeatHandle {
     pub fn stop(self) {
         let _ = self.stop_tx.send(true);
         self.task.abort();
+    }
+
+    pub fn health(&self) -> Arc<HeartbeatHealth> {
+        self.health.clone()
+    }
+
+    /// The loop ended on its own (the room is gone).
+    pub fn is_finished(&self) -> bool {
+        self.task.is_finished()
     }
 }
 
@@ -270,24 +326,40 @@ impl LobbyApiClient {
 
     // 5. POST /api/lobby/heartbeat
     pub async fn heartbeat(&self, code: &str, host_token: &str) -> Result<bool, LobbyError> {
+        Ok((200..300).contains(&self.heartbeat_status(code, host_token).await?))
+    }
+
+    /// Sends one heartbeat and returns the HTTP status.
+    async fn heartbeat_status(&self, code: &str, host_token: &str) -> Result<u16, LobbyError> {
         let url = self.endpoint("api/lobby/heartbeat")?;
         let payload = HeartbeatRequest { code, host_token };
 
-        let resp = self.http.post(url).json(&payload).send().await?;
-        let success = resp.status().is_success();
+        let resp = match self.http.post(url).json(&payload).send().await {
+            Ok(resp) => resp,
+            Err(e) => {
+                if let Some(bus) = &self.events {
+                    bus.emit(NetEvent::LobbyHeartbeatFailed {
+                        code: code.to_string(),
+                        error: e.to_string(),
+                    });
+                }
+                return Err(e.into());
+            }
+        };
+        let status = resp.status();
         if let Some(bus) = &self.events {
-            if success {
+            if status.is_success() {
                 bus.emit(NetEvent::LobbyHeartbeatSent {
                     code: code.to_string(),
                 });
             } else {
                 bus.emit(NetEvent::LobbyHeartbeatFailed {
                     code: code.to_string(),
-                    error: format!("HTTP {}", resp.status()),
+                    error: format!("HTTP {status}"),
                 });
             }
         }
-        Ok(success)
+        Ok(status.as_u16())
     }
 
     // 6. POST /api/lobby/close
@@ -339,7 +411,11 @@ impl LobbyApiClient {
         Self::check_status_and_json(resp).await
     }
 
-    /// Spawns a background task that periodically sends a heartbeat every 15 seconds.
+    /// Spawns a background task that sends a heartbeat every `interval`.
+    ///
+    /// A 404 means the room is gone: the loop records it in [`HeartbeatHealth`],
+    /// emits [`NetEvent::LobbyRoomGone`] and stops. Repeated failures are
+    /// counted and reported once with [`NetEvent::LobbyHeartbeatLost`].
     pub fn start_heartbeat_loop(
         &self,
         code: String,
@@ -348,6 +424,8 @@ impl LobbyApiClient {
     ) -> HeartbeatHandle {
         let (stop_tx, mut stop_rx) = watch::channel(false);
         let client = self.clone();
+        let health = Arc::new(HeartbeatHealth::default());
+        let loop_health = health.clone();
 
         let task = tokio::spawn(async move {
             let mut ticker = tokio::time::interval(interval);
@@ -356,7 +434,30 @@ impl LobbyApiClient {
             loop {
                 tokio::select! {
                     _ = ticker.tick() => {
-                        let _ = client.heartbeat(&code, &host_token).await;
+                        match client.heartbeat_status(&code, &host_token).await {
+                            Ok(404) => {
+                                loop_health.room_gone.store(true, Ordering::SeqCst);
+                                if let Some(bus) = &client.events {
+                                    bus.emit(NetEvent::LobbyRoomGone { code: code.clone() });
+                                }
+                                break;
+                            }
+                            Ok(status) if (200..300).contains(&status) => {
+                                loop_health.consecutive_failures.store(0, Ordering::SeqCst);
+                            }
+                            _ => {
+                                let failures =
+                                    loop_health.consecutive_failures.fetch_add(1, Ordering::SeqCst) + 1;
+                                if failures == HEARTBEAT_FAILURE_LIMIT {
+                                    if let Some(bus) = &client.events {
+                                        bus.emit(NetEvent::LobbyHeartbeatLost {
+                                            code: code.clone(),
+                                            failures,
+                                        });
+                                    }
+                                }
+                            }
+                        }
                     }
                     _ = stop_rx.changed() => {
                         if *stop_rx.borrow() {
@@ -367,7 +468,11 @@ impl LobbyApiClient {
             }
         });
 
-        HeartbeatHandle { stop_tx, task }
+        HeartbeatHandle {
+            stop_tx,
+            task,
+            health,
+        }
     }
 
     async fn check_status_and_json<T: for<'de> Deserialize<'de>>(
@@ -554,6 +659,104 @@ mod tests {
 
         tokio::time::sleep(Duration::from_millis(150)).await;
         handle.stop();
+    }
+
+    #[tokio::test]
+    async fn heartbeat_loop_stops_when_the_room_is_gone() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/heartbeat"))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+        let bus = Arc::new(NetEventBus::new(16));
+        let mut rx = bus.subscribe();
+        let client = LobbyApiClient::new(&mock_server.uri(), Some(bus)).unwrap();
+        let handle =
+            client.start_heartbeat_loop("GONE".into(), "token".into(), Duration::from_millis(20));
+        let health = handle.health();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !handle.is_finished() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("heartbeat loop must stop on 404");
+        assert!(health.room_gone());
+        let mut gone = false;
+        while let Ok(event) = rx.try_recv() {
+            gone |= event == NetEvent::LobbyRoomGone { code: "GONE".into() };
+        }
+        assert!(gone);
+        // Only the first heartbeat was sent (checked by `expect(1)` on drop).
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        handle.stop();
+    }
+
+    #[tokio::test]
+    async fn heartbeat_loop_reports_repeated_failures_and_recovers() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/heartbeat"))
+            .respond_with(ResponseTemplate::new(503))
+            .up_to_n_times(HEARTBEAT_FAILURE_LIMIT as u64)
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/heartbeat"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+        let bus = Arc::new(NetEventBus::new(64));
+        let mut rx = bus.subscribe();
+        let client = LobbyApiClient::new(&mock_server.uri(), Some(bus)).unwrap();
+        let handle =
+            client.start_heartbeat_loop("FLAKY".into(), "token".into(), Duration::from_millis(20));
+        let health = handle.health();
+        let mut lost = false;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                match rx.recv().await.unwrap() {
+                    NetEvent::LobbyHeartbeatLost { failures, .. } => {
+                        assert_eq!(failures, HEARTBEAT_FAILURE_LIMIT);
+                        lost = true;
+                    }
+                    NetEvent::LobbyHeartbeatSent { .. } if lost => break,
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .expect("failures must be reported, then the loop recovers");
+        assert!(!health.room_gone());
+        assert_eq!(health.consecutive_failures(), 0);
+        assert!(!handle.is_finished());
+        handle.stop();
+    }
+
+    #[test]
+    fn status_tolerates_null_heartbeat_and_player_count() {
+        let parsed: LobbyStatusResponse = serde_json::from_value(serde_json::json!({
+            "code": "A", "status": "open", "tunnelAddress": null,
+            "playerCount": null, "lastHeartbeat": null,
+            "players": null, "hostName": null, "modSync": null
+        }))
+        .unwrap();
+        assert_eq!((parsed.player_count, parsed.last_heartbeat), (0, 0));
+        let missing: LobbyStatusResponse =
+            serde_json::from_value(serde_json::json!({"code": "A", "status": "open"})).unwrap();
+        assert_eq!((missing.player_count, missing.last_heartbeat), (0, 0));
+        assert!(LobbyError::Api {
+            status: 404,
+            message: String::new()
+        }
+        .is_not_found());
+        assert!(!LobbyError::Api {
+            status: 500,
+            message: "closed".into()
+        }
+        .is_not_found());
     }
 
     #[tokio::test]
