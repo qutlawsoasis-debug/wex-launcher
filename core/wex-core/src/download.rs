@@ -98,6 +98,59 @@ pub fn verify_file(
     }
 }
 
+/// [`compute_file_hash`] on the blocking pool, so hashing big jars never stalls
+/// the async runtime (and with it the UI event loop).
+pub async fn compute_file_hash_async(path: PathBuf, hash_type: HashType) -> Result<String> {
+    tokio::task::spawn_blocking(move || compute_file_hash(&path, hash_type))
+        .await
+        .map_err(|e| WexError::Io(std::io::Error::other(e)))?
+}
+
+/// [`verify_file`] on the blocking pool.
+pub async fn verify_file_async(
+    path: &Path,
+    expected_size: Option<u64>,
+    expected_hash: Option<(&str, HashType)>,
+) -> bool {
+    let path = path.to_path_buf();
+    let expected_hash = expected_hash.map(|(h, t)| (h.to_string(), t));
+    tokio::task::spawn_blocking(move || {
+        verify_file(
+            &path,
+            expected_size,
+            expected_hash.as_ref().map(|(h, t)| (h.as_str(), *t)),
+        )
+    })
+    .await
+    .unwrap_or(false)
+}
+
+/// Sharing violation (32) or access denied (5): on Windows an antivirus or the
+/// search indexer briefly holds a freshly written file open.
+fn is_transient_lock_error(err: &std::io::Error) -> bool {
+    cfg!(windows) && matches!(err.raw_os_error(), Some(5) | Some(32))
+}
+
+const RENAME_RETRIES: u32 = 5;
+const RENAME_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
+
+/// Moves a verified `.part` file over the target in one step. `fs::rename` replaces an
+/// existing target atomically on Windows (MoveFileEx with REPLACE_EXISTING) and Unix,
+/// so the old file is never deleted first; transient locks are retried with a delay.
+pub async fn rename_with_retry(from: &Path, to: &Path) -> std::io::Result<()> {
+    let mut retries = 0;
+    loop {
+        match fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(e) if retries < RENAME_RETRIES && is_transient_lock_error(&e) => {
+                retries += 1;
+                tokio::time::sleep(RENAME_RETRY_DELAY).await;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
 use tokio_util::sync::CancellationToken;
 
 pub async fn download_file_resumable(
@@ -135,7 +188,7 @@ pub async fn download_file_resumable_cancellable(
         }
     }
 
-    if verify_file(target_path, expected_size, expected_hash) {
+    if verify_file_async(target_path, expected_size, expected_hash).await {
         return Ok(false);
     }
 
@@ -329,7 +382,7 @@ pub async fn download_file_resumable_cancellable(
 
         // Verification of hash
         if let Some((exp_hash, hash_type)) = expected_hash {
-            let actual_hash = compute_file_hash(&part_path, hash_type)?;
+            let actual_hash = compute_file_hash_async(part_path.clone(), hash_type).await?;
             if !actual_hash.eq_ignore_ascii_case(exp_hash) {
                 events.on_event(&Event::Log {
                     level: crate::event::LogLevel::Warn,
@@ -354,11 +407,8 @@ pub async fn download_file_resumable_cancellable(
             }
         }
 
-        // Atomically replace target file
-        if target_path.exists() {
-            let _ = fs::remove_file(target_path);
-        }
-        if let Err(e) = fs::rename(&part_path, target_path) {
+        // Atomically replace the target (never delete it first).
+        if let Err(e) = rename_with_retry(&part_path, target_path).await {
             let _ = fs::remove_file(&part_path);
             return Err(map_io_err(e, target_path));
         }
@@ -479,6 +529,14 @@ pub async fn download_pool_cancellable(
     stage_name: &str,
     cancel_token: Option<CancellationToken>,
 ) -> Result<u64> {
+    // Several entries may point at one file (asset names sharing a hash, a native
+    // classifier equal to the artifact). Two tasks for one target would share one
+    // `.part` file and corrupt each other, so only the first is kept.
+    let mut seen_targets = std::collections::HashSet::new();
+    let tasks: Vec<DownloadTask> = tasks
+        .into_iter()
+        .filter(|t| seen_targets.insert(t.target_path.clone()))
+        .collect();
     let total_tasks = tasks.len();
     if total_tasks == 0 {
         return Ok(0);
@@ -919,5 +977,101 @@ mod tests {
             .expect("download_pool deadlocked with concurrency 0")
             .is_ok());
         assert_eq!(fs::read(&target).unwrap(), b"hello");
+    }
+
+    #[tokio::test]
+    async fn download_pool_dedupes_tasks_for_the_same_target() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/shared.bin"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_bytes(b"hello".to_vec())
+                    .set_delay(std::time::Duration::from_millis(300)),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("objects/ab/abcdef");
+        let task = DownloadTask {
+            url: format!("{}/shared.bin", server.uri()),
+            fallback_url: None,
+            target_path: target.clone(),
+            size: Some(5),
+            hash: None,
+        };
+        let client = http_client_builder().build().unwrap();
+        let res = download_pool(
+            &client,
+            vec![task.clone(), task.clone(), task],
+            4,
+            &crate::event::NoopEventHandler,
+            "test",
+        )
+        .await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(fs::read(&target).unwrap(), b"hello");
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn rename_replaces_existing_target_without_deleting_first() {
+        let tmp = tempdir().unwrap();
+        let part = tmp.path().join("a.jar.part");
+        let target = tmp.path().join("a.jar");
+        fs::write(&part, b"new").unwrap();
+        fs::write(&target, b"old").unwrap();
+        rename_with_retry(&part, &target).await.unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"new");
+        assert!(!part.exists());
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn rename_retries_while_target_is_locked() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let tmp = tempdir().unwrap();
+        let part = tmp.path().join("b.jar.part");
+        let target = tmp.path().join("b.jar");
+        fs::write(&part, b"new").unwrap();
+        fs::write(&target, b"old").unwrap();
+        // No sharing at all: like an antivirus scanner holding the file.
+        let lock = OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&target)
+            .unwrap();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(350));
+            drop(lock);
+        });
+        let res = rename_with_retry(&part, &target).await;
+        release.join().unwrap();
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(fs::read(&target).unwrap(), b"new");
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn rename_gives_up_after_retries_on_a_permanent_lock() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let tmp = tempdir().unwrap();
+        let part = tmp.path().join("c.jar.part");
+        let target = tmp.path().join("c.jar");
+        fs::write(&part, b"new").unwrap();
+        fs::write(&target, b"old").unwrap();
+        let _lock = OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&target)
+            .unwrap();
+        let start = std::time::Instant::now();
+        assert!(rename_with_retry(&part, &target).await.is_err());
+        assert!(start.elapsed() >= RENAME_RETRY_DELAY * RENAME_RETRIES);
+        assert!(part.exists(), "the verified part survives for the next try");
     }
 }
