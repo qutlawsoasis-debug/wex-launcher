@@ -67,6 +67,10 @@ mod tests {
             "play.example.com:40000"
         );
         assert_eq!(join_address("::1", 25570), "[::1]:25570");
+        // Bare bracketed form (no port) gets the port appended, never double brackets.
+        assert_eq!(join_address("[::1]", 25570), "[::1]:25570");
+        assert_eq!(join_address("[::1]", 25565), "[::1]");
+        assert_eq!(join_address("[::1]:40000", 25570), "[::1]:40000");
     }
 
     #[test]
