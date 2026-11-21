@@ -597,6 +597,21 @@ pub async fn install_full_environment_cancellable(
     concurrency: usize,
     cancel: Option<&CancellationToken>,
 ) -> Result<(PathBuf, PathBuf, Vec<PathBuf>, Vec<PathBuf>, String)> {
+    install_full_environment_impl(paths, version, client, events, concurrency, cancel, false).await
+}
+
+/// `pack_verified`: the pack was compared with (and if needed synced to) the
+/// published manifest moments ago, so the Aura-Pack stage is skipped instead of
+/// fetching the manifest and hashing every mod again.
+pub(crate) async fn install_full_environment_impl(
+    paths: &WexPaths,
+    version: &str,
+    client: &reqwest::Client,
+    events: &dyn EventHandler,
+    concurrency: usize,
+    cancel: Option<&CancellationToken>,
+    pack_verified: bool,
+) -> Result<(PathBuf, PathBuf, Vec<PathBuf>, Vec<PathBuf>, String)> {
     check_cancelled(cancel)?;
     paths.ensure_dirs()?;
     paths.ensure_instance_dirs(version)?;
@@ -708,7 +723,17 @@ pub async fn install_full_environment_cancellable(
     });
     // Pack sync supports a cached manifest and verifies each required file itself.
     // pack.state.json alone is never evidence that a failed sync is safe to launch.
-    sync_aura_pack_cancellable(paths, version, client, events, concurrency, cancel).await?;
+    if pack_verified {
+        events.on_event(&Event::Log {
+            level: LogLevel::Info,
+            message: format!(
+                "Aura-Pack ({}) was checked against the published manifest just now; skipping",
+                version
+            ),
+        });
+    } else {
+        sync_aura_pack_cancellable(paths, version, client, events, concurrency, cancel).await?;
+    }
     check_cancelled(cancel)?;
 
     let asset_index_id = pkg.asset_index.id;
@@ -799,7 +824,9 @@ pub fn mark_fast_path_verified(paths: &WexPaths, version: &str) -> Result<()> {
 
 /// Before a fast launch: the fast path skips the full install, so check here that
 /// the installed Aura-Pack is still the published one and sync it when it is not.
-/// When the manifest cannot be fetched (offline) the installed pack is used.
+/// When the manifest cannot be fetched (offline, slow) or the update download
+/// fails, the installed pack is used: the two-phase sync leaves it intact.
+/// Returns whether the pack now matches the published manifest.
 pub async fn ensure_pack_current(
     paths: &WexPaths,
     version: &str,
@@ -807,7 +834,7 @@ pub async fn ensure_pack_current(
     events: &dyn EventHandler,
     concurrency: usize,
     cancel: Option<&CancellationToken>,
-) -> Result<()> {
+) -> Result<bool> {
     let url = crate::pack::manifest_url(version, None, None);
     ensure_pack_current_at(paths, version, client, events, concurrency, cancel, &url).await
 }
@@ -820,10 +847,13 @@ pub(crate) async fn ensure_pack_current_at(
     concurrency: usize,
     cancel: Option<&CancellationToken>,
     manifest_url: &str,
-) -> Result<()> {
+) -> Result<bool> {
     check_cancelled(cancel)?;
+    // An update interrupted between staging and commit is finished first (no
+    // network needed), so the game never starts on a half-committed pack.
+    crate::pack::finish_pending_pack_commit(paths, version, events)?;
     match check_pack_freshness_at(paths, version, client, manifest_url).await {
-        PackFreshness::Current => Ok(()),
+        PackFreshness::Current => Ok(true),
         PackFreshness::Outdated(manifest) => {
             let installed = crate::pack::read_pack_state(paths, version)
                 .map(|s| s.pack_version)
@@ -836,7 +866,7 @@ pub(crate) async fn ensure_pack_current_at(
                 ),
             });
             cache_manifest(paths, version, &manifest);
-            sync_aura_pack_with_manifest(
+            match sync_aura_pack_with_manifest(
                 paths,
                 version,
                 client,
@@ -845,8 +875,23 @@ pub(crate) async fn ensure_pack_current_at(
                 cancel,
                 *manifest,
             )
-            .await?;
-            Ok(())
+            .await
+            {
+                Ok(_) => Ok(true),
+                Err(e) if crate::pack::is_transient_sync_failure(&e) => {
+                    // Nothing was committed: the installed pack is whole. Downloaded
+                    // files stay staged and the next online start resumes from them.
+                    events.on_event(&Event::Log {
+                        level: LogLevel::Warn,
+                        message: format!(
+                            "[FAST-LAUNCH] Обновление Aura-Pack не загрузилось ({}); запуск с установленной сборкой",
+                            e
+                        ),
+                    });
+                    Ok(false)
+                }
+                Err(e) => Err(e),
+            }
         }
         PackFreshness::Unknown(e) => {
             events.on_event(&Event::Log {
@@ -856,7 +901,7 @@ pub(crate) async fn ensure_pack_current_at(
                     e
                 ),
             });
-            Ok(())
+            Ok(false)
         }
     }
 }
@@ -905,6 +950,11 @@ pub fn is_fast_path_ready(paths: &WexPaths, version: &str) -> bool {
 
     let pack_state_file = paths.instance_dir(version).join("pack.state.json");
     if !pack_state_file.exists() {
+        return false;
+    }
+    // A pack update stopped between staging and commit: the instance may hold a
+    // mix of old and new files until the commit is finished.
+    if crate::pack::has_pending_pack_commit(paths, version) {
         return false;
     }
 
@@ -1140,7 +1190,9 @@ async fn prepare_and_launch_inner(
                     version
                 ),
             });
-        ensure_pack_current(paths, version, client, events.as_ref(), concurrency, cancel).await?;
+        let pack_verified =
+            ensure_pack_current(paths, version, client, events.as_ref(), concurrency, cancel)
+                .await?;
         match resolve_fast_path_environment(paths, version) {
             Ok(env) => env,
             Err(e) => {
@@ -1151,13 +1203,14 @@ async fn prepare_and_launch_inner(
                         e
                     ),
                 });
-                install_full_environment_cancellable(
+                install_full_environment_impl(
                     paths,
                     version,
                     client,
                     events.as_ref(),
                     concurrency,
                     cancel,
+                    pack_verified,
                 )
                 .await?
             }
