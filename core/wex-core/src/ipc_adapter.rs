@@ -11,7 +11,9 @@ use wex_ipc::models::{InstalledVersion, LauncherConfig as IpcConfig};
 
 use crate::config::{LauncherConfig as CoreConfig, WexPaths};
 use crate::event::{EventHandler, NoopEventHandler};
-use crate::launcher::{install_full_environment, prepare_and_launch, GameProcess};
+use crate::launcher::{
+    install_full_environment_cancellable, prepare_and_launch_cancellable, GameProcess,
+};
 
 pub struct WexLauncherCore {
     paths: WexPaths,
@@ -40,6 +42,20 @@ impl WexLauncherCore {
             active_cancel_tokens: Arc::new(Mutex::new(HashMap::new())),
             exit_codes: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// A fresh token for `version` that `cancel_launch` fires.
+    async fn begin_cancellable(&self, version: &str) -> CancellationToken {
+        let token = CancellationToken::new();
+        self.active_cancel_tokens
+            .lock()
+            .await
+            .insert(version.to_string(), token.clone());
+        token
+    }
+
+    async fn end_cancellable(&self, version: &str) {
+        self.active_cancel_tokens.lock().await.remove(version);
     }
 }
 
@@ -96,15 +112,18 @@ impl LauncherCore for WexLauncherCore {
         request: InstallInstanceRequest,
     ) -> IpcResult<InstallInstanceResponse> {
         let events = self.event_handler.clone();
-        match install_full_environment(
+        let cancel_token = self.begin_cancellable(&request.version).await;
+        let res = install_full_environment_cancellable(
             &self.paths,
             &request.version,
             &self.client,
             events.as_ref(),
             8,
+            Some(&cancel_token),
         )
-        .await
-        {
+        .await;
+        self.end_cancellable(&request.version).await;
+        match res {
             Ok(_) => Ok(InstallInstanceResponse {
                 success: true,
                 version: request.version,
@@ -124,13 +143,9 @@ impl LauncherCore for WexLauncherCore {
         let events = self.event_handler.clone();
         let jvm_args = request.jvm_args.unwrap_or_default();
 
-        let cancel_token = CancellationToken::new();
-        {
-            let mut tokens = self.active_cancel_tokens.lock().await;
-            tokens.insert(request.version.clone(), cancel_token);
-        }
+        let cancel_token = self.begin_cancellable(&request.version).await;
 
-        let res = match prepare_and_launch(
+        let res = match prepare_and_launch_cancellable(
             &self.paths,
             &cfg,
             &request.version,
@@ -138,6 +153,7 @@ impl LauncherCore for WexLauncherCore {
             events,
             8,
             &jvm_args,
+            &cancel_token,
         )
         .await
         {
@@ -156,10 +172,7 @@ impl LauncherCore for WexLauncherCore {
             Err(e) => Err(e.into()),
         };
 
-        {
-            let mut tokens = self.active_cancel_tokens.lock().await;
-            tokens.remove(&request.version);
-        }
+        self.end_cancellable(&request.version).await;
 
         res
     }
@@ -253,5 +266,16 @@ mod tests {
         let updated_versions = core.get_installed_versions().await.unwrap();
         let v120 = updated_versions.iter().find(|v| v.id == "1.20.1").unwrap();
         assert!(v120.is_installed);
+    }
+
+    #[tokio::test]
+    async fn cancel_launch_fires_the_token_of_a_running_install() {
+        let tmp = tempdir().unwrap();
+        let core = WexLauncherCore::new(WexPaths::new(Some(tmp.path().join("Wex"))));
+        let token = core.begin_cancellable("1.21.1").await;
+        core.cancel_launch().await.unwrap();
+        assert!(token.is_cancelled());
+        core.end_cancellable("1.21.1").await;
+        assert!(core.active_cancel_tokens.lock().await.is_empty());
     }
 }

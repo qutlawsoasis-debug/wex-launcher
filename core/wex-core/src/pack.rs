@@ -84,6 +84,83 @@ pub struct PackState {
     pub installed_at_utc: String,
     #[serde(rename = "installedMods", default)]
     pub installed_mods: Vec<String>,
+    /// [`manifest_digest`] of the manifest this state was synced from. Empty in
+    /// states written by older Wex versions, which forces one re-sync.
+    #[serde(rename = "manifestDigest", default)]
+    pub manifest_digest: String,
+}
+
+/// SHA-256 over the manifest's file list (path, hash, size, mode), independent of
+/// file order. Two manifests with the same digest install the same files.
+pub fn manifest_digest(manifest: &Manifest) -> String {
+    use sha2::Digest as _;
+    let mut lines: Vec<String> = manifest
+        .files
+        .iter()
+        .map(|f| {
+            format!(
+                "{}\t{}\t{}\t{}\n",
+                f.path.replace('\\', "/"),
+                f.sha256.to_ascii_lowercase(),
+                f.size,
+                f.mode.to_ascii_lowercase()
+            )
+        })
+        .collect();
+    lines.sort();
+    let mut hasher = sha2::Sha256::new();
+    for line in &lines {
+        hasher.update(line.as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+/// Whether the installed pack matches the published manifest.
+#[derive(Debug)]
+pub enum PackFreshness {
+    /// pack.state.json records exactly this manifest.
+    Current,
+    /// The published manifest differs from what was installed (or nothing was).
+    Outdated(Box<Manifest>),
+    /// The manifest could not be fetched (offline, GitHub down).
+    Unknown(WexError),
+}
+
+pub fn read_pack_state(paths: &WexPaths, version: &str) -> Option<PackState> {
+    let content = fs::read_to_string(paths.instance_dir(version).join("pack.state.json")).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+/// Compares the published manifest at `url` with the installed pack.state.json.
+pub async fn check_pack_freshness_at(
+    paths: &WexPaths,
+    version: &str,
+    client: &reqwest::Client,
+    url: &str,
+) -> PackFreshness {
+    let manifest = match fetch_manifest_from(client, url).await {
+        Ok(m) => m,
+        Err(e) => return PackFreshness::Unknown(e),
+    };
+    match read_pack_state(paths, version) {
+        Some(state)
+            if state.pack_version == manifest.pack_version
+                && state.manifest_digest == manifest_digest(&manifest) =>
+        {
+            PackFreshness::Current
+        }
+        _ => PackFreshness::Outdated(Box::new(manifest)),
+    }
+}
+
+/// [`check_pack_freshness_at`] against the default Aura-Pack repository.
+pub async fn check_pack_freshness(
+    paths: &WexPaths,
+    version: &str,
+    client: &reqwest::Client,
+) -> PackFreshness {
+    let url = manifest_url(version, None, None);
+    check_pack_freshness_at(paths, version, client, &url).await
 }
 
 #[derive(Debug, Clone)]
@@ -116,26 +193,43 @@ pub fn get_repo_prefix(version: &str) -> &'static str {
     }
 }
 
+/// Cache-busting URL of the published manifest for `version`.
+pub fn manifest_url(version: &str, repo: Option<&str>, branch: Option<&str>) -> String {
+    let repo = repo.unwrap_or(DEFAULT_PACK_REPO);
+    let branch = branch.unwrap_or(DEFAULT_PACK_BRANCH);
+    let filename = get_manifest_filename(version);
+    format!(
+        "https://raw.githubusercontent.com/{}/{}/{}?t={}",
+        repo,
+        branch,
+        filename,
+        chrono::Utc::now().timestamp_millis()
+    )
+}
+
+pub async fn fetch_manifest_from(client: &reqwest::Client, url: &str) -> Result<Manifest> {
+    let resp = client.get(url).send().await?.error_for_status()?;
+    let manifest: Manifest = resp.json().await?;
+    Ok(manifest)
+}
+
 pub async fn fetch_manifest(
     client: &reqwest::Client,
     version: &str,
     repo: Option<&str>,
     branch: Option<&str>,
 ) -> Result<Manifest> {
-    let repo = repo.unwrap_or(DEFAULT_PACK_REPO);
-    let branch = branch.unwrap_or(DEFAULT_PACK_BRANCH);
-    let filename = get_manifest_filename(version);
-    let url = format!(
-        "https://raw.githubusercontent.com/{}/{}/{}?t={}",
-        repo,
-        branch,
-        filename,
-        chrono::Utc::now().timestamp_millis()
-    );
+    fetch_manifest_from(client, &manifest_url(version, repo, branch)).await
+}
 
-    let resp = client.get(&url).send().await?.error_for_status()?;
-    let manifest: Manifest = resp.json().await?;
-    Ok(manifest)
+/// Stores the manifest a sync is about to use, for offline starts.
+pub fn cache_manifest(paths: &WexPaths, version: &str, manifest: &Manifest) {
+    if let Ok(json) = serde_json::to_vec_pretty(manifest) {
+        let _ = crate::fs_util::write_atomic(
+            &paths.instance_dir(version).join("manifest.cache.json"),
+            &json,
+        );
+    }
 }
 
 pub async fn fetch_pack_settings(
@@ -187,12 +281,6 @@ pub async fn sync_aura_pack_cancellable(
     paths.ensure_instance_dirs(version)?;
     let instance_dir = paths.instance_dir(version);
 
-    events.on_event(&Event::StageStarted {
-        stage: format!("Aura-Pack sync ({})", version),
-        step: 1,
-        total_steps: 1,
-    });
-
     events.on_event(&Event::Log {
         level: LogLevel::Info,
         message: format!("Fetching Aura-Pack manifest for Minecraft {}...", version),
@@ -201,9 +289,7 @@ pub async fn sync_aura_pack_cancellable(
     let manifest_cache_file = instance_dir.join("manifest.cache.json");
     let manifest = match fetch_manifest(client, version, None, None).await {
         Ok(m) => {
-            if let Ok(json) = serde_json::to_string_pretty(&m) {
-                let _ = fs::write(&manifest_cache_file, json);
-            }
+            cache_manifest(paths, version, &m);
             m
         }
         Err(e) => {
@@ -222,6 +308,40 @@ pub async fn sync_aura_pack_cancellable(
             }
         }
     };
+    sync_aura_pack_with_manifest(
+        paths,
+        version,
+        client,
+        events,
+        concurrency,
+        cancel_token,
+        manifest,
+    )
+    .await
+}
+
+/// Syncs the instance to an already fetched manifest (no second manifest request).
+pub async fn sync_aura_pack_with_manifest(
+    paths: &WexPaths,
+    version: &str,
+    client: &reqwest::Client,
+    events: &dyn EventHandler,
+    concurrency: usize,
+    cancel_token: Option<&CancellationToken>,
+    manifest: Manifest,
+) -> Result<PackSyncResult> {
+    if cancel_token.is_some_and(|t| t.is_cancelled()) {
+        return Err(WexError::Cancelled);
+    }
+    paths.ensure_instance_dirs(version)?;
+    let instance_dir = paths.instance_dir(version);
+
+    events.on_event(&Event::StageStarted {
+        stage: format!("Aura-Pack sync ({})", version),
+        step: 1,
+        total_steps: 1,
+    });
+
     let settings = fetch_pack_settings(client, None, None).await;
 
     let force_set: HashSet<String> = settings
@@ -267,7 +387,13 @@ pub async fn sync_aura_pack_cancellable(
             Ok(meta) if meta.len() != file.size => {
                 format!("size {} != {}", meta.len(), file.size)
             }
-            Ok(_) => match crate::download::compute_file_hash(&target_path, HashType::Sha256) {
+            // Hashing a mod jar is blocking IO: run it on the blocking pool.
+            Ok(_) => match crate::download::compute_file_hash_async(
+                target_path.clone(),
+                HashType::Sha256,
+            )
+            .await
+            {
                 Ok(actual) if actual.eq_ignore_ascii_case(&file.sha256) => continue,
                 Ok(actual) => format!("sha256 {} != {}", actual, file.sha256),
                 Err(e) => format!("cannot hash: {}", e),
@@ -406,9 +532,10 @@ pub async fn sync_aura_pack_cancellable(
         fabric_loader: manifest.fabric_loader.clone(),
         installed_at_utc: chrono::Utc::now().to_rfc3339(),
         installed_mods: current_installed_mods,
+        manifest_digest: manifest_digest(&manifest),
     };
     let state_json = serde_json::to_string_pretty(&state)?;
-    fs::write(&state_path, state_json)?;
+    crate::fs_util::write_atomic(&state_path, state_json.as_bytes())?;
 
     events.on_event(&Event::Log {
         level: LogLevel::Info,
@@ -765,6 +892,7 @@ mod tests {
             fabric_loader: "0.19.5".to_string(),
             installed_at_utc: chrono::Utc::now().to_rfc3339(),
             installed_mods: vec!["important_mod.jar".to_string()],
+            manifest_digest: String::new(),
         };
         fs::write(&state_path, serde_json::to_string(&initial_state).unwrap()).unwrap();
 
@@ -874,5 +1002,106 @@ mod tests {
         let (clean, target) = resolve_pack_file(tmp.path(), r"mods\ok.jar").unwrap();
         assert_eq!(clean, "mods/ok.jar");
         assert!(target.starts_with(tmp.path()));
+    }
+
+    fn sample_manifest(version: &str, pack_version: &str, sha: &str) -> Manifest {
+        Manifest {
+            name: "Aura".into(),
+            pack_version: pack_version.into(),
+            minecraft: version.into(),
+            fabric_loader: "0.19.5".into(),
+            servers: None,
+            files: vec![ManifestFileEntry {
+                path: "mods/a.jar".into(),
+                sha256: sha.into(),
+                size: 3,
+                mode: "sync".into(),
+                url: None,
+                side: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn manifest_digest_tracks_file_set_and_hashes_not_order() {
+        let a = sample_manifest("1.21.1", "1", &"a".repeat(64));
+        let mut b = a.clone();
+        b.files.push(ManifestFileEntry {
+            path: "config/x.json".into(),
+            ..a.files[0].clone()
+        });
+        let mut b_reordered = b.clone();
+        b_reordered.files.reverse();
+        assert_ne!(manifest_digest(&a), manifest_digest(&b));
+        assert_eq!(manifest_digest(&b), manifest_digest(&b_reordered));
+        let c = sample_manifest("1.21.1", "1", &"b".repeat(64));
+        assert_ne!(manifest_digest(&a), manifest_digest(&c));
+    }
+
+    #[tokio::test]
+    async fn pack_freshness_compares_published_manifest_with_state() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        for version in ["1.20.1", "1.21.1"] {
+            let tmp = tempdir().unwrap();
+            let paths = WexPaths::new(Some(tmp.path().join("Wex")));
+            paths.ensure_instance_dirs(version).unwrap();
+            let installed = sample_manifest(version, "1", &"a".repeat(64));
+            let state = PackState {
+                pack_version: "1".into(),
+                minecraft: version.into(),
+                fabric_loader: "0.19.5".into(),
+                installed_at_utc: "t".into(),
+                installed_mods: vec!["a.jar".into()],
+                manifest_digest: manifest_digest(&installed),
+            };
+            fs::write(
+                paths.instance_dir(version).join("pack.state.json"),
+                serde_json::to_vec(&state).unwrap(),
+            )
+            .unwrap();
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/same.json"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&installed))
+                .mount(&server)
+                .await;
+            let bumped = sample_manifest(version, "2", &"a".repeat(64));
+            Mock::given(method("GET"))
+                .and(path("/bumped.json"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&bumped))
+                .mount(&server)
+                .await;
+            let rehashed = sample_manifest(version, "1", &"c".repeat(64));
+            Mock::given(method("GET"))
+                .and(path("/rehashed.json"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&rehashed))
+                .mount(&server)
+                .await;
+            let client = reqwest::Client::new();
+            let check = |p: &'static str| {
+                let url = format!("{}{}", server.uri(), p);
+                let paths = paths.clone();
+                let client = client.clone();
+                async move { check_pack_freshness_at(&paths, version, &client, &url).await }
+            };
+            assert!(matches!(check("/same.json").await, PackFreshness::Current));
+            assert!(matches!(
+                check("/bumped.json").await,
+                PackFreshness::Outdated(_)
+            ));
+            assert!(matches!(
+                check("/rehashed.json").await,
+                PackFreshness::Outdated(_)
+            ));
+            let offline = check_pack_freshness_at(
+                &paths,
+                version,
+                &client,
+                "http://127.0.0.1:1/manifest.json",
+            )
+            .await;
+            assert!(matches!(offline, PackFreshness::Unknown(_)));
+        }
     }
 }

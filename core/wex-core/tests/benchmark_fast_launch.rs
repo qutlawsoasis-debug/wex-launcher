@@ -73,6 +73,14 @@ fn setup_mock_instance(paths: &WexPaths, version: &str) {
         "java"
     });
     fs::write(&java_bin, b"stub").unwrap();
+    fs::write(
+        java_dir
+            .parent()
+            .unwrap()
+            .join(wex_core::java::RUNTIME_COMPLETE_MARKER),
+        b"test",
+    )
+    .unwrap();
 }
 
 #[tokio::test]
