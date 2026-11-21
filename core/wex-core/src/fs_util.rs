@@ -15,7 +15,8 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> Result<()> {
         file.write_all(data)?;
         file.sync_all()?;
         drop(file);
-        fs::rename(&tmp, path)
+        // An antivirus or indexer may hold the target for a moment (OS error 5/32).
+        crate::download::rename_with_retry_blocking(&tmp, path)
     })();
     if let Err(e) = written {
         let _ = fs::remove_file(&tmp);

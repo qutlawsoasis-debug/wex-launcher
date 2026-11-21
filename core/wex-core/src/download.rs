@@ -142,13 +142,32 @@ pub async fn rename_with_retry(from: &Path, to: &Path) -> std::io::Result<()> {
     loop {
         match fs::rename(from, to) {
             Ok(()) => return Ok(()),
-            Err(e) if retries < RENAME_RETRIES && is_transient_lock_error(&e) => {
+            Err(e) if should_retry_rename(&e, retries) => {
                 retries += 1;
                 tokio::time::sleep(RENAME_RETRY_DELAY).await;
             }
             Err(e) => return Err(e),
         }
     }
+}
+
+/// [`rename_with_retry`] for synchronous callers (atomic writes, pack commit).
+pub fn rename_with_retry_blocking(from: &Path, to: &Path) -> std::io::Result<()> {
+    let mut retries = 0;
+    loop {
+        match fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(e) if should_retry_rename(&e, retries) => {
+                retries += 1;
+                std::thread::sleep(RENAME_RETRY_DELAY);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+fn should_retry_rename(err: &std::io::Error, retries_done: u32) -> bool {
+    retries_done < RENAME_RETRIES && is_transient_lock_error(err)
 }
 
 use tokio_util::sync::CancellationToken;
@@ -198,6 +217,22 @@ pub async fn download_file_resumable_cancellable(
 
     let part_path = PathBuf::from(format!("{}.part", target_path.display()));
     let mut existing_len = 0u64;
+
+    // A complete, verified part from an earlier run whose final rename failed
+    // (antivirus lock): finish it without downloading again.
+    if expected_hash.is_some()
+        && expected_size.is_some()
+        && verify_file_async(&part_path, expected_size, expected_hash).await
+    {
+        rename_with_retry(&part_path, target_path)
+            .await
+            .map_err(|e| map_io_err(e, target_path))?;
+        events.on_event(&Event::FileDownloaded {
+            path: target_path.display().to_string(),
+            bytes: expected_size.unwrap_or_default(),
+        });
+        return Ok(true);
+    }
 
     if part_path.exists() {
         if let Ok(meta) = fs::metadata(&part_path) {
@@ -407,9 +442,9 @@ pub async fn download_file_resumable_cancellable(
             }
         }
 
-        // Atomically replace the target (never delete it first).
+        // Atomically replace the target (never delete it first). On failure the
+        // verified part is kept: the next run moves it without downloading.
         if let Err(e) = rename_with_retry(&part_path, target_path).await {
-            let _ = fs::remove_file(&part_path);
             return Err(map_io_err(e, target_path));
         }
 
@@ -1073,5 +1108,61 @@ mod tests {
         assert!(rename_with_retry(&part, &target).await.is_err());
         assert!(start.elapsed() >= RENAME_RETRY_DELAY * RENAME_RETRIES);
         assert!(part.exists(), "the verified part survives for the next try");
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn verified_part_survives_a_failed_rename_and_is_reused() {
+        use sha2::Digest;
+        use std::os::windows::fs::OpenOptionsExt;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        let body = b"fresh mod".to_vec();
+        let sha = hex::encode(sha2::Sha256::digest(&body));
+        Mock::given(method("GET"))
+            .and(path("/m.jar"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(body.clone()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("m.jar");
+        let part = tmp.path().join("m.jar.part");
+        fs::write(&target, b"old").unwrap();
+        let url = format!("{}/m.jar", server.uri());
+        let client = reqwest::Client::new();
+        let events = crate::event::NoopEventHandler;
+        let lock = OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&target)
+            .unwrap();
+        let first = download_file_resumable(
+            &client,
+            &url,
+            &target,
+            Some(body.len() as u64),
+            Some((&sha, HashType::Sha256)),
+            &events,
+        )
+        .await;
+        assert!(first.is_err());
+        assert_eq!(fs::read(&part).unwrap(), body, "verified part is kept");
+        drop(lock);
+        let second = download_file_resumable(
+            &client,
+            &url,
+            &target,
+            Some(body.len() as u64),
+            Some((&sha, HashType::Sha256)),
+            &events,
+        )
+        .await;
+        assert!(second.unwrap());
+        assert_eq!(fs::read(&target).unwrap(), body);
+        assert!(!part.exists());
+        server.verify().await;
     }
 }

@@ -107,10 +107,17 @@ pub fn runtime_complete_marker(runtime_dir: &Path, component: &str) -> PathBuf {
 }
 
 /// A runtime is usable only when its download finished (the marker) and the
-/// launcher binary is there. `javaw.exe` + `release` alone can be a half download.
+/// launcher binary is there and not empty. `javaw.exe` + `release` alone can be a
+/// half download.
+///
+/// Downloaded files are not fsynced before the marker is written, so after a
+/// power loss the marker can survive while a file was cut to zero bytes. The size
+/// check catches that for the binary; other files are re-verified by hash on the
+/// next repair.
 pub fn is_runtime_complete(runtime_dir: &Path, component: &str) -> bool {
-    let has_binary = get_java_binary_path(runtime_dir, component, true).exists()
-        || get_java_binary_path(runtime_dir, component, false).exists();
+    let non_empty = |p: PathBuf| fs::metadata(p).map(|m| m.len() > 0).unwrap_or(false);
+    let has_binary = non_empty(get_java_binary_path(runtime_dir, component, true))
+        || non_empty(get_java_binary_path(runtime_dir, component, false));
     has_binary && runtime_complete_marker(runtime_dir, component).is_file()
 }
 
@@ -561,5 +568,21 @@ mod tests {
         .await;
         assert!(matches!(res, Err(WexError::Cancelled)));
         assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[test]
+    fn empty_java_binary_is_not_a_complete_runtime() {
+        let tmp = tempdir().unwrap();
+        let runtime_dir = tmp.path();
+        let component = get_java_component_for_version("1.20.1");
+        let javaw = get_java_binary_path(runtime_dir, component, true);
+        let java = get_java_binary_path(runtime_dir, component, false);
+        fs::create_dir_all(javaw.parent().unwrap()).unwrap();
+        fs::write(&javaw, b"").unwrap();
+        fs::write(&java, b"").unwrap();
+        fs::write(runtime_complete_marker(runtime_dir, component), b"sha").unwrap();
+        assert!(!is_runtime_complete(runtime_dir, component));
+        fs::write(&javaw, b"MZ").unwrap();
+        assert!(is_runtime_complete(runtime_dir, component));
     }
 }
