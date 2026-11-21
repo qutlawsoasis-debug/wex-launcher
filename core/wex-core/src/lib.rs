@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod argfile;
 pub mod auth;
 pub mod config;
 pub mod download;

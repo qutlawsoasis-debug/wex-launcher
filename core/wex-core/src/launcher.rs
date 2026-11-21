@@ -391,10 +391,11 @@ pub fn create_args_file(instance_dir: &Path, args: &[String]) -> Result<PathBuf>
     let args_file = instance_dir.join("argsFile.txt");
     let mut content = String::new();
     for arg in args {
-        content.push_str(&format_arg_for_file(arg));
+        content.push_str(&format_arg_for_file(&crate::argfile::java_safe_arg(arg)));
         content.push('\n');
     }
-    fs::write(&args_file, content)?;
+    // The Java launcher reads @files in the ANSI code page on Windows, not UTF-8.
+    fs::write(&args_file, crate::argfile::encode_for_java(&content))?;
     Ok(args_file)
 }
 
@@ -406,7 +407,10 @@ pub fn build_launch_command(opts: &LaunchOptions) -> Result<Command> {
 
     let mut cmd = Command::new(opts.java_binary);
     // Use @argsFile to avoid the 32767 character command-line limit on Windows
-    cmd.arg(format!("@{}", args_file.display()));
+    cmd.arg(crate::argfile::java_safe_arg(&format!(
+        "@{}",
+        args_file.display()
+    )));
     cmd.args(&secret_args);
 
     cmd.current_dir(&instance_dir);
