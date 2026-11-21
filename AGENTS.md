@@ -12,7 +12,7 @@ Wex is the new launcher for the Aura client and Aura-Pack. It replaces the old A
 ## Hard rules
 
 1. This repository contains code only. Never commit reports, screenshots, logs, zips, downloaded jars or scratch scripts. Reports go to `C:\Users\magne\Documents\AuraDev\.agent-state\agy\`.
-2. No git checkout/restore/stash/reset/clean on anything you did not create. No force push, no history rewrite. Work on a branch from fresh `origin/main` and never merge into main yourself.
+2. No git checkout/restore/stash/reset/clean on anything you did not create. No force push, no history rewrite. Work on a branch from fresh `origin/main` and merge into main only through a pull request with green CI, and only when the user has asked for the merge or the release.
 3. Never touch the user's real game or launcher data: `%APPDATA%\.minecraft`, the old Aura-Launcher data folders, or any running game. Tests use temporary directories. Wex keeps its own data root (default `%APPDATA%\Wex`), and every Minecraft instance gets its own game directory.
 4. Both versions always: Minecraft 1.20.1 and 1.21.1 install, sync and launch together.
 5. Downloads are checked with SHA-1/SHA-256 before use, can resume, run in parallel with a limit, and never block the UI thread.
