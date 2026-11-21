@@ -1,8 +1,11 @@
-/* Wex design tokens, taken from docs/design/launcher-reference.html (v8).
+/* Wex design tokens. Type, radii, layout and motion: docs/design/launcher-reference.html (v8).
  *
- * Colour: Apple system colours, light and dark (HIG › Color, Dark Mode).
- * One accent, systemBlue, on the primary action; systemGreen for toggles and
- * "in game"; systemRed for Stop and destructive actions (AGENTS.md).
+ * Colour: Apple system colours only, light and dark (HIG › Color, Dark Mode), the
+ * values of the verified aura-knowledge cards. colors.ts (ApplePalette, CssPaletteMap)
+ * is the same palette for code; palette.test.ts parses this file and fails if a
+ * value differs. One accent, systemBlue, on the primary action; systemGreen only
+ * for toggles; systemRed only for destructive actions (AGENTS.md). Hover and
+ * pressed states are fill overlays, never extra blues (Aura «Состояния кнопки»).
  * Materials: the sidebar and the launch bar are translucent; under Reduce
  * Transparency they turn solid (HIG › Materials, Accessibility).
  * Motion: only in response to an action; under Reduce Motion or with
@@ -15,64 +18,70 @@
 @import '@fontsource-variable/onest/index.css';
 
 :root {
-  /* Light theme */
-  --blue: #0064d2;
-  --blue-hi: #0a6fe0;
-  --blue-text: #0066d6;
-  --blue-ink: #ffffff;
-  --blue-tint: rgba(0, 122, 255, 0.12);
+  /* Light theme. Names map to Apple: --blue systemBlue, --blue-ink onAccent,
+     --label-2..4 secondary..quaternaryLabel, --fill..--fill-4 system..quaternarySystemFill,
+     --base secondarySystemBackground, --card tertiarySystemBackground. */
+  --blue: #0088ff;
+  --blue-ink: #000000;
   --green: #34c759;
-  --red: #ff3b30;
-  --orange: #ff9500;
+  --red: #ff383c;
+  --orange: #ff8d28;
+  --gray: #8e8e93;
 
-  --label: #1d1d1f;
-  --label-2: rgba(60, 60, 67, 0.72);
-  --label-3: rgba(60, 60, 67, 0.5);
+  --label: #000000;
+  --label-2: rgba(60, 60, 67, 0.6);
+  --label-3: rgba(60, 60, 67, 0.3);
+  --label-4: rgba(60, 60, 67, 0.18);
   --fill: rgba(120, 120, 128, 0.2);
-  --fill-2: rgba(120, 120, 128, 0.14);
-  --fill-3: rgba(118, 118, 128, 0.08);
-  --separator: rgba(60, 60, 67, 0.14);
+  --fill-2: rgba(120, 120, 128, 0.16);
+  --fill-3: rgba(120, 120, 128, 0.12);
+  --fill-4: rgba(120, 120, 128, 0.08);
+  --separator: rgba(60, 60, 67, 0.29);
 
-  --base: #f5f5f7;
-  --side: rgba(236, 236, 240, 0.86);
+  --base: #f2f2f7;
   --card: #ffffff;
-  --card-hover: #fbfbfd;
+  /* Materials and hairlines. Apple gives no numbers for material opacity or
+     shadows (HIG › Materials: "Apple не указывает"); the tints are the palette's
+     own backgrounds and black/white, never a hue. */
+  --side: rgba(242, 242, 247, 0.86);
   --edge: rgba(0, 0, 0, 0.08);
   --shade: rgba(0, 0, 0, 0.08);
-  --veil: rgba(245, 245, 247, 0.72);
-  --veil-strong: rgba(255, 255, 255, 0.97);
+  --veil: rgba(242, 242, 247, 0.72);
+  --veil-strong: #ffffff;
 
   /* Build covers: the build's colour with its version set in large type. Same in both
-     themes: the reference applies the palette colour (--pal-0, --pal-1) over its dark values. */
+     themes: the reference applies the palette colour (--pal-0, --pal-1) over its dark values.
+     Content identity of the two builds, not a control colour. */
   --cover-ink: #ffffff;
   --cover-1211: #1e5fd8;
   --cover-1201: #1f8a5b;
-  --cover-new: rgba(120, 120, 128, 0.14);
+  --cover-new: rgba(120, 120, 128, 0.16);
   --hero-btn: rgba(255, 255, 255, 0.2);
   --hero-btn-hi: rgba(255, 255, 255, 0.28);
 
-  /* Wardrobe stage */
-  --stage-a: rgba(0, 122, 255, 0.1);
+  /* Wardrobe stage: a neutral pool of light, no hue. */
+  --stage-a: rgba(120, 120, 128, 0.12);
   --stage-b: rgba(120, 120, 128, 0.06);
   --floor: rgba(0, 0, 0, 0.18);
-  --warn-fill: rgba(255, 149, 0, 0.9);
 
-  /* Miniature windows on the theme cards (Settings › Appearance) */
-  --mwl-bg: #e8e8ed;
+  /* Miniature windows on the theme cards (Settings › Appearance): the light and
+     dark palettes in small (systemGray4–6, systemBlue of each theme). */
+  --mwl-bg: #e5e5ea;
   --mwl-a: #ffffff;
-  --mwl-b: #dcdce1;
-  --mwl-c: #007aff;
-  --mwd-bg: #1c1c1f;
-  --mwd-a: #2a2a2e;
-  --mwd-b: #232327;
-  --mwd-c: #0a84ff;
+  --mwl-b: #d1d1d6;
+  --mwl-c: #0088ff;
+  --mwd-bg: #1c1c1e;
+  --mwd-a: #2c2c2e;
+  --mwd-b: #3a3a3c;
+  --mwd-c: #0091ff;
   --mws-a: rgba(140, 140, 150, 0.5);
   --mws-b: rgba(140, 140, 150, 0.35);
 
-  /* Monogram backgrounds for servers, friends and mods without an icon */
-  --av-1: #ff9500;
-  --av-2: #5ac8fa;
-  --av-3: #34c759;
+  /* Monogram backgrounds for servers, friends and mods without an icon: Apple
+     orange, cyan, mint, pink, gray (HIG › Color table, light values). */
+  --av-1: #ff8d28;
+  --av-2: #00c0e8;
+  --av-3: #00c8b3;
   --av-4: #ff2d55;
   --av-5: #8e8e93;
 
@@ -135,55 +144,55 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --blue: #0a6fe0;
-    --blue-hi: #1a7ef0;
-    --blue-text: #4ba3ff;
-    --blue-tint: rgba(10, 132, 255, 0.18);
+    --blue: #0091ff;
+    --blue-ink: #000000;
     --green: #30d158;
-    --red: #ff453a;
-    --orange: #ff9f0a;
-    --label: #f5f5f7;
-    --label-2: rgba(235, 235, 245, 0.64);
-    --label-3: rgba(235, 235, 245, 0.4);
-    --fill: rgba(120, 120, 128, 0.32);
-    --fill-2: rgba(120, 120, 128, 0.22);
-    --fill-3: rgba(118, 118, 128, 0.14);
-    --separator: rgba(84, 84, 88, 0.5);
-    --base: #161618;
-    --side: rgba(30, 30, 33, 0.9);
-    --card: #1f1f22;
-    --card-hover: #26262a;
+    --red: #ff4245;
+    --orange: #ff9230;
+    --gray: #8e8e93;
+    --label: #ffffff;
+    --label-2: rgba(235, 235, 245, 0.6);
+    --label-3: rgba(235, 235, 245, 0.3);
+    --label-4: rgba(235, 235, 245, 0.18);
+    --fill: rgba(120, 120, 128, 0.36);
+    --fill-2: rgba(120, 120, 128, 0.32);
+    --fill-3: rgba(120, 120, 128, 0.24);
+    --fill-4: rgba(120, 120, 128, 0.18);
+    --separator: rgba(84, 84, 88, 0.65);
+    --base: #1c1c1e;
+    --card: #2c2c2e;
+    --side: rgba(28, 28, 30, 0.9);
     --edge: rgba(255, 255, 255, 0.08);
     --shade: rgba(0, 0, 0, 0.4);
-    --veil: rgba(10, 10, 12, 0.6);
-    --veil-strong: rgba(30, 30, 33, 0.98);
+    --veil: rgba(28, 28, 30, 0.6);
+    --veil-strong: #2c2c2e;
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --blue: #0a6fe0;
-  --blue-hi: #1a7ef0;
-  --blue-text: #4ba3ff;
-  --blue-tint: rgba(10, 132, 255, 0.18);
+  --blue: #0091ff;
+  --blue-ink: #000000;
   --green: #30d158;
-  --red: #ff453a;
-  --orange: #ff9f0a;
-  --label: #f5f5f7;
-  --label-2: rgba(235, 235, 245, 0.64);
-  --label-3: rgba(235, 235, 245, 0.4);
-  --fill: rgba(120, 120, 128, 0.32);
-  --fill-2: rgba(120, 120, 128, 0.22);
-  --fill-3: rgba(118, 118, 128, 0.14);
-  --separator: rgba(84, 84, 88, 0.5);
-  --base: #161618;
-  --side: rgba(30, 30, 33, 0.9);
-  --card: #1f1f22;
-  --card-hover: #26262a;
+  --red: #ff4245;
+  --orange: #ff9230;
+  --gray: #8e8e93;
+  --label: #ffffff;
+  --label-2: rgba(235, 235, 245, 0.6);
+  --label-3: rgba(235, 235, 245, 0.3);
+  --label-4: rgba(235, 235, 245, 0.18);
+  --fill: rgba(120, 120, 128, 0.36);
+  --fill-2: rgba(120, 120, 128, 0.32);
+  --fill-3: rgba(120, 120, 128, 0.24);
+  --fill-4: rgba(120, 120, 128, 0.18);
+  --separator: rgba(84, 84, 88, 0.65);
+  --base: #1c1c1e;
+  --card: #2c2c2e;
+  --side: rgba(28, 28, 30, 0.9);
   --edge: rgba(255, 255, 255, 0.08);
   --shade: rgba(0, 0, 0, 0.4);
-  --veil: rgba(10, 10, 12, 0.6);
-  --veil-strong: rgba(30, 30, 33, 0.98);
+  --veil: rgba(28, 28, 30, 0.6);
+  --veil-strong: #2c2c2e;
 }
 
 :root[data-theme='light'] {

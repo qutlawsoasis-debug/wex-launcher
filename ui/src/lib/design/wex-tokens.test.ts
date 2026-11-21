@@ -26,31 +26,23 @@ const rgb = (hex: string) => {
 };
 
 describe('Wex tokens follow the reference', () => {
-  it('light colours, radii and type match launcher-reference.html', () => {
-    for (const name of ['blue', 'blue-hi', 'blue-text', 'green', 'red', 'orange', 'label', 'base', 'card', 'cover-1211', 'cover-1201',
-      'r-s', 'r-m', 'r-l', 't-body', 't-hero']) {
+  // Colours no longer follow the reference: they are the Apple palette of the
+  // verified cards (colors.ts), checked in palette.test.ts.
+  it('radii, type and build covers match launcher-reference.html', () => {
+    for (const name of ['cover-1211', 'cover-1201', 'r-s', 'r-m', 'r-l', 't-body', 't-hero']) {
       const ref = prop(reference, ':root {', name);
       expect(ref, `reference has --${name}`).toBeDefined();
       expect(norm(prop(css, ':root {', name)), `--${name}`).toBe(norm(ref));
     }
   });
 
-  it('dark colours match the reference for both system and forced dark', () => {
-    for (const name of ['blue', 'blue-text', 'green', 'red', 'label', 'base', 'card', 'side']) {
-      const ref = prop(reference, ':root[data-theme="dark"]', name);
-      expect(prop(css, ":root[data-theme='dark']", name)).toBe(ref);
-      expect(prop(css, ":root:not([data-theme='light'])", name)).toBe(ref);
-    }
-  });
-
   it('TS mirror agrees with the CSS', () => {
     for (const mode of ['light', 'dark'] as const) {
       const sel = mode === 'light' ? ':root {' : ":root[data-theme='dark']";
-      expect(prop(css, sel, 'blue')).toBe(WexColors[mode].blue);
-      expect(prop(css, sel, 'green')).toBe(WexColors[mode].green);
-      expect(prop(css, sel, 'red')).toBe(WexColors[mode].red);
-      expect(prop(css, sel, 'label')).toBe(WexColors[mode].label);
-      expect(prop(css, sel, 'base')).toBe(WexColors[mode].base);
+      for (const [name, key] of [['blue', 'blue'], ['blue-ink', 'blueInk'], ['green', 'green'], ['red', 'red'],
+        ['orange', 'orange'], ['label', 'label'], ['base', 'base'], ['card', 'card']] as const) {
+        expect(prop(css, sel, name), `${mode} --${name}`).toBe(WexColors[mode][key].toLowerCase());
+      }
     }
     expect(prop(css, ':root {', 'r-s')).toBe(`${WexRadii.s}px`);
     expect(prop(css, ':root {', 'r-m')).toBe(`${WexRadii.m}px`);
@@ -70,9 +62,14 @@ describe('Wex tokens follow the reference', () => {
     expect(prop(css, ':root {', 'font')).toMatch(/^'Onest Variable'/);
   });
 
-  it('white text on the blue primary action is readable in both themes (WCAG AA)', () => {
+  it('text on the blue primary action is readable in both themes (WCAG AA, normal text)', () => {
+    // «Текст на акценте Aura»: on Blue the text is black in both themes (4.5:1).
+    expect(WexColors.light.blueInk).toBe('#000000');
+    expect(WexColors.dark.blueInk).toBe('#000000');
     expect(meetsWcagAA(rgb(WexColors.light.blueInk), rgb(WexColors.light.blue)).pass).toBe(true);
-    expect(meetsWcagAA(rgb(WexColors.dark.blueInk), rgb(WexColors.dark.blue), true).pass).toBe(true);
+    expect(meetsWcagAA(rgb(WexColors.dark.blueInk), rgb(WexColors.dark.blue)).pass).toBe(true);
+    // White would fail on systemBlue: that is why the card picks black.
+    expect(meetsWcagAA(rgb('#ffffff'), rgb(WexColors.light.blue)).pass).toBe(false);
     expect(meetsWcagAA(rgb(WexColors.light.label), rgb(WexColors.light.base)).pass).toBe(true);
     expect(meetsWcagAA(rgb(WexColors.dark.label), rgb(WexColors.dark.base)).pass).toBe(true);
   });

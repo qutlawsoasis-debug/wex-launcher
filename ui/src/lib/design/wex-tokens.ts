@@ -1,38 +1,27 @@
 /**
- * Wex design tokens for code (the CSS source of truth is wex.css).
- * Values come from docs/design/launcher-reference.html (v8). Keep both files in step;
- * design-system.test.ts checks that they agree.
+ * Wex design tokens for code (the CSS variables live in wex.css).
+ * Colours are not repeated here: they come from ApplePalette in colors.ts, the one
+ * palette; palette.test.ts checks that wex.css writes exactly those values.
+ * Type, radii, layout and motion come from docs/design/launcher-reference.html (v8);
+ * wex-tokens.test.ts checks that they agree with wex.css.
  */
 
+import { ApplePalette } from './colors';
+
+const colorsOf = (p: (typeof ApplePalette)['light' | 'dark']) => ({
+  blue: p.systemBlue,
+  blueInk: p.systemBlueOnAccent,
+  green: p.systemGreen,
+  red: p.systemRed,
+  orange: p.systemOrange,
+  label: p.label,
+  base: p.secondarySystemBackground,
+  card: p.tertiarySystemBackground,
+});
+
 export const WexColors = {
-  light: {
-    blue: '#0064d2',
-    blueHi: '#0a6fe0',
-    blueText: '#0066d6',
-    blueInk: '#ffffff',
-    green: '#34c759',
-    red: '#ff3b30',
-    orange: '#ff9500',
-    label: '#1d1d1f',
-    base: '#f5f5f7',
-    card: '#ffffff',
-    cover1211: '#1e5fd8',
-    cover1201: '#1f8a5b',
-  },
-  dark: {
-    blue: '#0a6fe0',
-    blueHi: '#1a7ef0',
-    blueText: '#4ba3ff',
-    blueInk: '#ffffff',
-    green: '#30d158',
-    red: '#ff453a',
-    orange: '#ff9f0a',
-    label: '#f5f5f7',
-    base: '#161618',
-    card: '#1f1f22',
-    cover1211: '#1e5fd8',
-    cover1201: '#1f8a5b',
-  },
+  light: colorsOf(ApplePalette.light),
+  dark: colorsOf(ApplePalette.dark),
 } as const;
 
 export const WexType = {

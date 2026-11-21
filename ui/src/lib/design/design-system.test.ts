@@ -15,9 +15,14 @@ describe('Apple Design System Tokens', () => {
     expect(ApplePalette.light.systemBlue).toBe('#0088FF');
     expect(ApplePalette.dark.systemGreen).toBe('#30D158');
     expect(ApplePalette.light.systemGreen).toBe('#34C759');
-    expect(ApplePalette.dark.systemRed).toBe('#FF453A');
-    expect(ApplePalette.light.systemRed).toBe('#FF3B30');
-    expect(ApplePalette.dark.systemCyan).toBe('#64D2FF');
+    expect(ApplePalette.dark.systemRed).toBe('#FF4245');
+    expect(ApplePalette.light.systemRed).toBe('#FF383C');
+    expect(ApplePalette.dark.label).toBe('#FFFFFF');
+    expect(ApplePalette.light.label).toBe('#000000');
+    // «Акцент Blue вместо Cyan»: #64D2FF is never part of the palette.
+    for (const mode of ['light', 'dark'] as const) {
+      expect(Object.values(ApplePalette[mode]).map((v) => v.toUpperCase())).not.toContain('#64D2FF');
+    }
   });
 
   it('guarantees WCAG 2.1 AA contrast ratio >= 4.5:1 for text labels on backgrounds', () => {
@@ -31,14 +36,13 @@ describe('Apple Design System Tokens', () => {
     expect(blackOnLight.ratio).toBe(21);
     expect(blackOnLight.pass).toBe(true);
 
-    // Primary button onAccent text on systemBlue dark (bold UI control >= 3.0:1)
-    const onAccentDark = meetsWcagAA({ r: 255, g: 255, b: 255 }, { r: 0, g: 145, b: 255 }, true);
-    expect(onAccentDark.ratio).toBeGreaterThan(3.0);
+    // Primary button text on systemBlue: black per «Текст на акценте Aura», 4.5:1 for normal text.
+    const onAccentDark = meetsWcagAA({ r: 0, g: 0, b: 0 }, { r: 0, g: 145, b: 255 });
+    expect(onAccentDark.ratio).toBeGreaterThan(4.5);
     expect(onAccentDark.pass).toBe(true);
 
-    // Primary button onAccent text on systemBlue light (bold UI control >= 3.0:1)
-    const onAccentLight = meetsWcagAA({ r: 255, g: 255, b: 255 }, { r: 0, g: 136, b: 255 }, true);
-    expect(onAccentLight.ratio).toBeGreaterThan(3.0);
+    const onAccentLight = meetsWcagAA({ r: 0, g: 0, b: 0 }, { r: 0, g: 136, b: 255 });
+    expect(onAccentLight.ratio).toBeGreaterThan(4.5);
     expect(onAccentLight.pass).toBe(true);
   });
 
@@ -49,8 +53,11 @@ describe('Apple Design System Tokens', () => {
       expect(preset).toBeDefined();
       expect(preset.dark).toMatch(/^#[0-9A-Fa-f]{6}$/);
       expect(preset.light).toMatch(/^#[0-9A-Fa-f]{6}$/);
-      expect(preset.onAccentDark).toBeDefined();
-      expect(preset.onAccentLight).toBeDefined();
+      // The text colour on every accent passes WCAG AA (the card's 4.5:1 rule).
+      for (const [bg, fg] of [[preset.dark, preset.onAccentDark], [preset.light, preset.onAccentLight]]) {
+        const c = (h: string) => ({ r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) });
+        expect(meetsWcagAA(c(fg), c(bg)).pass, `${key} ${fg} on ${bg}`).toBe(true);
+      }
     }
   });
 
