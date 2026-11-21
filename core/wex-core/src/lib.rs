@@ -5,6 +5,7 @@ pub mod download;
 pub mod error;
 pub mod event;
 pub mod fabric;
+pub mod fs_util;
 pub mod ipc_adapter;
 pub mod java;
 pub mod jvm_args;
