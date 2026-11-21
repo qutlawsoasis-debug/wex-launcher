@@ -347,6 +347,7 @@ pub async fn wardrobe_apply(
             &request.nickname,
             skin_bytes.as_deref(),
             cape_bytes.as_deref(),
+            Some(request.model.into()),
         ) {
             tracing::warn!("Не удалось экспортировать скин в инстанс {}: {}", v, e);
         }

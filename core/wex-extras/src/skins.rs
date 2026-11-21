@@ -59,6 +59,8 @@ pub struct WardrobeItem {
     pub created_utc: String,
 }
 
+const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+
 pub fn validate_skin_bytes(bytes: &[u8]) -> SkinValidationResult {
     if bytes.is_empty() {
         return SkinValidationResult {
@@ -79,7 +81,7 @@ pub fn validate_skin_bytes(bytes: &[u8]) -> SkinValidationResult {
     }
 
     // PNG signature check
-    if bytes.len() < 8 || &bytes[0..8] != b"\x89PNG\r\n\x1a\n" {
+    if bytes.len() < 8 || &bytes[0..8] != PNG_SIGNATURE {
         return SkinValidationResult {
             is_valid: false,
             error: Some("Файл не в формате PNG. Скин должен быть в формате .png".to_string()),
@@ -88,10 +90,26 @@ pub fn validate_skin_bytes(bytes: &[u8]) -> SkinValidationResult {
         };
     }
 
+    // Dimensions from the IHDR header first: a huge image is rejected before
+    // the full decode allocates its pixel buffer.
+    if let Some((w, h)) = png_header_dimensions(bytes) {
+        if !is_skin_size(w, h) {
+            return SkinValidationResult {
+                is_valid: false,
+                error: Some(format!(
+                    "Размер скина {}×{} не поддерживается. Разрешение должно быть ровно 64×64 или 64×32 пикселя",
+                    w, h
+                )),
+                width: w,
+                height: h,
+            };
+        }
+    }
+
     match image::load_from_memory(bytes) {
         Ok(img) => {
             let (w, h) = img.dimensions();
-            if (w == 64 && h == 64) || (w == 64 && h == 32) {
+            if is_skin_size(w, h) {
                 SkinValidationResult {
                     is_valid: true,
                     error: None,
@@ -117,6 +135,20 @@ pub fn validate_skin_bytes(bytes: &[u8]) -> SkinValidationResult {
             height: 0,
         },
     }
+}
+
+fn is_skin_size(w: u32, h: u32) -> bool {
+    w == 64 && (h == 64 || h == 32)
+}
+
+/// Width and height from the PNG IHDR chunk (always the first chunk), without decoding.
+fn png_header_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    if bytes.len() < 24 || &bytes[0..8] != PNG_SIGNATURE || &bytes[12..16] != b"IHDR" {
+        return None;
+    }
+    let w = u32::from_be_bytes(bytes[16..20].try_into().ok()?);
+    let h = u32::from_be_bytes(bytes[20..24].try_into().ok()?);
+    Some((w, h))
 }
 
 pub fn detect_skin_model(img: &RgbaImage) -> SkinModel {
@@ -316,12 +348,7 @@ impl SkinHistoryManager {
     }
 }
 
-pub fn generate_csl_config(
-    game_dir: &Path,
-    nickname: &str,
-    skin_png_bytes: Option<&[u8]>,
-    cape_png_bytes: Option<&[u8]>,
-) -> Result<(), SkinError> {
+fn checked_nickname(nickname: &str) -> Result<&str, SkinError> {
     let trimmed = nickname.trim();
     if trimmed.is_empty()
         || trimmed.contains('/')
@@ -334,6 +361,60 @@ pub fn generate_csl_config(
             "Никнейм должен быть одиночным именем без разделителей пути".to_string(),
         ));
     }
+    Ok(trimmed)
+}
+
+fn remove_if_present(path: &Path) -> Result<(), SkinError> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Delete the player's LocalSkin skin and cape (for example after a nickname
+/// change, so the old name does not keep its textures). Missing files are fine.
+pub fn remove_csl_player_files(game_dir: &Path, nickname: &str) -> Result<(), SkinError> {
+    let nick = checked_nickname(nickname)?;
+    let local = game_dir.join("CustomSkinLoader").join("LocalSkin");
+    remove_if_present(&local.join("skins").join(format!("{nick}.png")))?;
+    remove_if_present(&local.join("capes").join(format!("{nick}.png")))?;
+    Ok(())
+}
+
+/// Write CustomSkinLoader's config and the player's LocalSkin textures.
+///
+/// `None` for the skin or cape means «default skin» / «no cape»: an older file for
+/// this nickname is deleted, otherwise CustomSkinLoader keeps showing it.
+/// `model` is the Legacy loader's `model` field of CustomSkinLoader
+/// (`LegacyLoader` copies it into the profile; `ModelManager0` knows `"default"`,
+/// `"slim"` and `"auto"`). `None` writes `"auto"`, which guesses from the image.
+/// Everything is validated before anything is written.
+pub fn generate_csl_config(
+    game_dir: &Path,
+    nickname: &str,
+    skin_png_bytes: Option<&[u8]>,
+    cape_png_bytes: Option<&[u8]>,
+    model: Option<SkinModel>,
+) -> Result<(), SkinError> {
+    let trimmed = checked_nickname(nickname)?;
+
+    if let Some(bytes) = skin_png_bytes {
+        let val = validate_skin_bytes(bytes);
+        if !val.is_valid {
+            return Err(SkinError::InvalidPng(
+                val.error
+                    .unwrap_or_else(|| "Файл скина не в формате PNG".to_string()),
+            ));
+        }
+    }
+    if let Some(bytes) = cape_png_bytes {
+        if bytes.len() < 8 || &bytes[0..8] != PNG_SIGNATURE {
+            return Err(SkinError::InvalidPng(
+                "Файл плаща должен быть в формате .png".to_string(),
+            ));
+        }
+    }
 
     let csl_dir = game_dir.join("CustomSkinLoader");
     let local_skins_dir = csl_dir.join("LocalSkin").join("skins");
@@ -342,6 +423,7 @@ pub fn generate_csl_config(
     fs::create_dir_all(&local_skins_dir)?;
     fs::create_dir_all(&local_capes_dir)?;
 
+    let model_value = model.map(|m| m.as_str()).unwrap_or("auto");
     let config_json = serde_json::json!({
         "version": "15.0.1",
         "buildNumber": 40,
@@ -351,7 +433,7 @@ pub fn generate_csl_config(
                 "type": "Legacy",
                 "checkPNG": false,
                 "skin": "LocalSkin/skins/{USERNAME}.png",
-                "model": "auto",
+                "model": model_value,
                 "cape": "LocalSkin/capes/{USERNAME}.png",
                 "elytra": "LocalSkin/elytras/{USERNAME}.png"
             },
@@ -377,26 +459,16 @@ pub fn generate_csl_config(
     let config_path = csl_dir.join("CustomSkinLoader.json");
     fs::write(config_path, serde_json::to_string_pretty(&config_json)?)?;
 
-    if let Some(bytes) = skin_png_bytes {
-        let val = validate_skin_bytes(bytes);
-        if !val.is_valid {
-            return Err(SkinError::InvalidPng(
-                val.error
-                    .unwrap_or_else(|| "Файл скина не в формате PNG".to_string()),
-            ));
-        }
-        let skin_path = local_skins_dir.join(format!("{}.png", trimmed));
-        fs::write(skin_path, bytes)?;
+    let skin_path = local_skins_dir.join(format!("{}.png", trimmed));
+    match skin_png_bytes {
+        Some(bytes) => fs::write(skin_path, bytes)?,
+        None => remove_if_present(&skin_path)?,
     }
 
-    if let Some(bytes) = cape_png_bytes {
-        if bytes.len() < 8 || &bytes[0..8] != b"\x89PNG\r\n\x1a\n" {
-            return Err(SkinError::InvalidPng(
-                "Файл плаща должен быть в формате .png".to_string(),
-            ));
-        }
-        let cape_path = local_capes_dir.join(format!("{}.png", trimmed));
-        fs::write(cape_path, bytes)?;
+    let cape_path = local_capes_dir.join(format!("{}.png", trimmed));
+    match cape_png_bytes {
+        Some(bytes) => fs::write(cape_path, bytes)?,
+        None => remove_if_present(&cape_path)?,
     }
 
     // Clear caches directory
@@ -512,7 +584,7 @@ mod tests {
         let img = make_test_skin_image(64, 64, false);
         let skin_bytes = encode_png_bytes(&img).unwrap();
 
-        generate_csl_config(game_dir, "TestPlayer", Some(&skin_bytes), None).unwrap();
+        generate_csl_config(game_dir, "TestPlayer", Some(&skin_bytes), None, None).unwrap();
 
         let csl_json = game_dir
             .join("CustomSkinLoader")
@@ -534,7 +606,7 @@ mod tests {
         let img = make_test_skin_image(64, 64, false);
         let skin_bytes = encode_png_bytes(&img).unwrap();
 
-        let res = generate_csl_config(game_dir, "../../evil_player", Some(&skin_bytes), None);
+        let res = generate_csl_config(game_dir, "../../evil_player", Some(&skin_bytes), None, None);
         assert!(
             res.is_err(),
             "generate_csl_config must reject traversal nickname"
@@ -555,10 +627,102 @@ mod tests {
         let game_dir = dir.path();
         let bad_bytes = b"NOT_A_PNG_HEADER_DATA";
 
-        let res = generate_csl_config(game_dir, "NormalPlayer", Some(bad_bytes), None);
+        let res = generate_csl_config(game_dir, "NormalPlayer", Some(bad_bytes), None, None);
         assert!(
             res.is_err(),
             "generate_csl_config must reject non-PNG skin bytes"
         );
+    }
+
+    fn local(game_dir: &Path, kind: &str, nick: &str) -> PathBuf {
+        game_dir
+            .join("CustomSkinLoader")
+            .join("LocalSkin")
+            .join(kind)
+            .join(format!("{nick}.png"))
+    }
+
+    #[test]
+    fn removing_skin_and_cape_deletes_the_old_local_files() {
+        let dir = tempdir().unwrap();
+        let game_dir = dir.path();
+        let png = encode_png_bytes(&make_test_skin_image(64, 64, false)).unwrap();
+        let cape = encode_png_bytes(&make_test_skin_image(64, 32, false)).unwrap();
+        generate_csl_config(game_dir, "Steve", Some(&png), Some(&cape), None).unwrap();
+        assert!(local(game_dir, "skins", "Steve").is_file());
+        assert!(local(game_dir, "capes", "Steve").is_file());
+
+        // Default skin and cape «none»: CustomSkinLoader must not keep showing the old files.
+        generate_csl_config(game_dir, "Steve", None, None, None).unwrap();
+        assert!(!local(game_dir, "skins", "Steve").exists());
+        assert!(!local(game_dir, "capes", "Steve").exists());
+        // Nothing to delete is not an error.
+        generate_csl_config(game_dir, "Steve", None, None, None).unwrap();
+    }
+
+    #[test]
+    fn invalid_cape_writes_nothing() {
+        let dir = tempdir().unwrap();
+        let game_dir = dir.path();
+        let png = encode_png_bytes(&make_test_skin_image(64, 64, false)).unwrap();
+        let res = generate_csl_config(game_dir, "Steve", Some(&png), Some(b"nope"), None);
+        assert!(res.is_err());
+        assert!(!game_dir
+            .join("CustomSkinLoader")
+            .join("CustomSkinLoader.json")
+            .exists());
+        assert!(!local(game_dir, "skins", "Steve").exists());
+    }
+
+    #[test]
+    fn csl_config_carries_the_chosen_model() {
+        let dir = tempdir().unwrap();
+        let game_dir = dir.path();
+        let png = encode_png_bytes(&make_test_skin_image(64, 64, false)).unwrap();
+        let read_model = || -> String {
+            let text = fs::read_to_string(
+                game_dir
+                    .join("CustomSkinLoader")
+                    .join("CustomSkinLoader.json"),
+            )
+            .unwrap();
+            let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+            v["loadlist"][0]["model"].as_str().unwrap().to_string()
+        };
+        generate_csl_config(game_dir, "Alex", Some(&png), None, Some(SkinModel::Slim)).unwrap();
+        assert_eq!(read_model(), "slim");
+        generate_csl_config(game_dir, "Alex", Some(&png), None, Some(SkinModel::Classic)).unwrap();
+        assert_eq!(read_model(), "default");
+        generate_csl_config(game_dir, "Alex", None, None, None).unwrap();
+        assert_eq!(read_model(), "auto");
+    }
+
+    #[test]
+    fn remove_player_files_deletes_both_textures() {
+        let dir = tempdir().unwrap();
+        let game_dir = dir.path();
+        let png = encode_png_bytes(&make_test_skin_image(64, 64, false)).unwrap();
+        generate_csl_config(game_dir, "OldName", Some(&png), Some(&png), None).unwrap();
+        remove_csl_player_files(game_dir, "OldName").unwrap();
+        assert!(!local(game_dir, "skins", "OldName").exists());
+        assert!(!local(game_dir, "capes", "OldName").exists());
+        remove_csl_player_files(game_dir, "OldName").unwrap();
+        assert!(remove_csl_player_files(game_dir, "../x").is_err());
+    }
+
+    #[test]
+    fn oversized_dimensions_are_rejected_from_the_header() {
+        // A valid PNG signature and IHDR claiming 30000×30000; the pixel data is absent,
+        // so only a header check can report the real dimensions.
+        let mut bytes = PNG_SIGNATURE.to_vec();
+        bytes.extend_from_slice(&13u32.to_be_bytes());
+        bytes.extend_from_slice(b"IHDR");
+        bytes.extend_from_slice(&30000u32.to_be_bytes());
+        bytes.extend_from_slice(&30000u32.to_be_bytes());
+        bytes.extend_from_slice(&[8, 6, 0, 0, 0]);
+        bytes.extend_from_slice(&[0, 0, 0, 0]);
+        let res = validate_skin_bytes(&bytes);
+        assert!(!res.is_valid);
+        assert_eq!((res.width, res.height), (30000, 30000));
     }
 }

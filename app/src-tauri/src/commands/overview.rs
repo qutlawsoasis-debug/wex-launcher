@@ -428,12 +428,18 @@ fn import_active_wardrobe(
         });
     let cape_bytes = cape.as_ref().map(|(_, bytes)| bytes.clone());
     let cape = cape.map(|(cape, _)| cape);
+    let model = if old.active_skin_model.as_deref() == Some("slim") {
+        SkinModelDto::Slim
+    } else {
+        SkinModelDto::Classic
+    };
     for version in ["1.20.1", "1.21.1"] {
         wex_extras::skins::generate_csl_config(
             &paths.instance_dir(version),
             &nickname,
             Some(&bytes),
             cape_bytes.as_deref(),
+            Some(model.into()),
         )
         .map_err(|e| e.to_string())?;
     }
@@ -441,11 +447,7 @@ fn import_active_wardrobe(
         nickname,
         skin_name: skin.file_name.clone(),
         skin_base64: Some(STANDARD.encode(&bytes)),
-        model: if old.active_skin_model.as_deref() == Some("slim") {
-            SkinModelDto::Slim
-        } else {
-            SkinModelDto::Classic
-        },
+        model,
         cape_id: if cape.is_some() { "custom" } else { "none" }.into(),
         cape_name: cape
             .map(|c| c.file_name.clone())

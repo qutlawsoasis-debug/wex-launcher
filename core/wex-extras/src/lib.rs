@@ -19,6 +19,7 @@ pub use presets::{
     apply_preset, get_default_presets, GraphicsPreset, PresetApplyResult, PresetTier,
 };
 pub use skins::{
-    convert_64x32_to_64x64, detect_skin_model, generate_csl_config, validate_skin_bytes, SkinError,
-    SkinHistoryManager, SkinModel, SkinValidationResult, WardrobeItem,
+    convert_64x32_to_64x64, detect_skin_model, generate_csl_config, remove_csl_player_files,
+    validate_skin_bytes, SkinError, SkinHistoryManager, SkinModel, SkinValidationResult,
+    WardrobeItem,
 };
