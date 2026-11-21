@@ -347,6 +347,34 @@ describe('rooms tab', () => {
     await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('start_game', expect.objectContaining({ server: 'tun.example:25565' })));
   });
 
+  it('a poll that returns after leaving does not bring the room back', async () => {
+    let resolve!: (r: unknown) => void;
+    mocks.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_lobby_status') return new Promise((r) => (resolve = r));
+      return null;
+    });
+    rooms.active = { ...room } as never;
+    const polling = rooms.poll();
+    rooms.active = null;
+    resolve({ ...room });
+    await polling;
+    expect(rooms.active).toBeNull();
+    expect(rooms.closedNotice).toBe('');
+  });
+
+  it('join refuses while the game is launching and Enter in the code field respects that', async () => {
+    await openRooms();
+    launch.onStatus({ state: 'launching', message: '' });
+    const input = target.querySelector<HTMLInputElement>('#room-code')!;
+    input.value = 'AB12';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await rooms.join('AB12');
+    expect(mocks.invoke).not.toHaveBeenCalledWith('prepare_lobby_join', expect.anything());
+    expect(rooms.error).not.toBe('');
+  });
+
   it('different mods: explains and offers to fix and join', async () => {
     mocks.invoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'prepare_lobby_join') return { ...room, is_host: false, mod_mismatch_count: 3 };

@@ -112,6 +112,10 @@ class Rooms {
   async join(code: string, repair = false): Promise<void> {
     const clean = code.trim().replace(/^#/, '').toUpperCase();
     if (!clean || this.joining) return;
+    if (launch.busy) {
+      this.error = t('lobby.join_busy');
+      return;
+    }
     this.joining = true;
     this.error = '';
     this.closedNotice = '';
@@ -158,6 +162,8 @@ class Rooms {
     if (!current) return;
     try {
       const updated = await call<LobbyRoom | null>('get_lobby_status', { code: current.code, playerName: builds.playerName });
+      // Left (or switched rooms) while the request was out: the answer is stale.
+      if (this.active?.code !== current.code) return;
       if (!updated) {
         this.active = null;
         this.closedNotice = t('lobby.room_closed_by_host');
@@ -165,6 +171,7 @@ class Rooms {
       }
       this.active = updated;
     } catch (e) {
+      if (this.active?.code !== current.code) return;
       const msg = message(e, '');
       this.active = null;
       this.closedNotice = msg.includes('исключены') ? t('lobby.kicked_by_host') : t('lobby.room_closed_by_host');

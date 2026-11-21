@@ -139,6 +139,7 @@ export const en = {
   'lobby.invite_friend_header': 'Invite a Friend',
   'lobby.invited_badge': 'Invited',
   'lobby.join_room_failed': 'Failed to join lobby',
+  'lobby.join_busy': 'The game is already running or starting',
   'lobby.kick_player': 'Kick',
   'lobby.kick_player_failed': 'Failed to kick player',
   'lobby.kicked_by_host': 'You were removed from the lobby by the host',

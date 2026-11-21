@@ -139,6 +139,7 @@ export const ru = {
   'lobby.invite_friend_header': 'Пригласить друга',
   'lobby.invited_badge': 'Приглашён',
   'lobby.join_room_failed': 'Не удалось присоединиться к комнате',
+  'lobby.join_busy': 'Игра уже запущена или запускается',
   'lobby.kick_player': 'Исключить',
   'lobby.kick_player_failed': 'Не удалось исключить игрока',
   'lobby.kicked_by_host': 'Вы были исключены из комнаты организатором',

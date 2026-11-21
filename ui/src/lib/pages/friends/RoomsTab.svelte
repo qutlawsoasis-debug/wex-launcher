@@ -18,6 +18,7 @@
   import { rooms } from './rooms.svelte';
 
   let code = $state('');
+  const canJoin = $derived(Boolean(code.trim()) && !rooms.joining && !launch.busy && network.isOnline);
 
   const friendsOnline = $derived(rooms.active ? friendsLive.friends.filter((f) => f.status !== 'offline') : []);
 
@@ -148,9 +149,9 @@
         maxlength="12"
         autocomplete="off"
         spellcheck="false"
-        onkeydown={(e) => e.key === 'Enter' && rooms.join(code)}
+        onkeydown={(e) => e.key === 'Enter' && canJoin && rooms.join(code)}
       />
-      <button type="button" class="btn blue" disabled={!code.trim() || rooms.joining || launch.busy || !network.isOnline} onclick={() => rooms.join(code)}>{t('lobby.enter_btn')}</button>
+      <button type="button" class="btn blue" disabled={!canJoin} onclick={() => rooms.join(code)}>{t('lobby.enter_btn')}</button>
       <p class="d">{t('lobby.room_code_friend_hint')}</p>
       {#if rooms.joining}
         <p class="d" aria-live="polite">{STEP[rooms.joinStep] ? t(STEP[rooms.joinStep]) + ' — ' : ''}{rooms.joinText}{rooms.joinPercent !== null ? ` ${Math.round(rooms.joinPercent)}%` : ''}</p>
