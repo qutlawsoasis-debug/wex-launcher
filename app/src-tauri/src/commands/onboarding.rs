@@ -4,6 +4,7 @@
 //! migration discovery, configuration persistence, and background pre-warming.
 
 use tauri::{AppHandle, Emitter, Runtime, State};
+use wex_core::accounts::{self, AccountKind, AccountStore};
 use wex_core::config::LauncherConfig;
 use wex_ipc::events::{InstallProgressPayload, EVT_INSTALL_PROGRESS};
 use wex_ipc::models::{OnboardingCompleteRequest, OnboardingSpecsDto};
@@ -81,21 +82,33 @@ pub async fn onboarding_get_specs(
     })
 }
 
-/// Apply initial onboarding selections to launcher config.
-#[tauri::command]
-pub async fn onboarding_complete(
-    req: OnboardingCompleteRequest,
-    state: State<'_, PlayState>,
+/// Apply the onboarding choices to a config.
+///
+/// * The nickname must be a valid offline name; empty keeps the current one
+///   («Player» when none). With a Microsoft account active the nickname is the
+///   account's and is not overwritten.
+/// * RAM is at least 1 GB and at most the computer's memory (`total_mb`, 0 when
+///   unknown).
+pub fn apply_onboarding(
+    cfg: &mut LauncherConfig,
+    req: &OnboardingCompleteRequest,
+    total_mb: u32,
+    microsoft_active: bool,
 ) -> Result<(), String> {
-    let _config_guard = wex_core::config::lock_config();
-    let mut cfg = LauncherConfig::load_or_default(&state.paths.config_file);
-
-    let clean_nick = req.nickname.trim();
-    cfg.nickname = if clean_nick.is_empty() {
-        "Player".to_string()
-    } else {
-        clean_nick.to_string()
-    };
+    if !microsoft_active {
+        let clean_nick = req.nickname.trim();
+        if clean_nick.is_empty() {
+            if cfg.nickname.trim().is_empty() {
+                cfg.nickname = "Player".to_string();
+            }
+        } else if accounts::is_valid_offline_name(clean_nick) {
+            cfg.nickname = clean_nick.to_string();
+        } else {
+            return Err(
+                "Никнейм: от 3 до 16 символов, только латинские буквы, цифры и _".to_string(),
+            );
+        }
+    }
 
     cfg.selected_version = if req.version == "1.20.1" {
         "1.20.1".to_string()
@@ -103,8 +116,29 @@ pub async fn onboarding_complete(
         "1.21.1".to_string()
     };
 
-    cfg.max_memory_mb = req.ram_mb.max(1024);
+    let mut ram = req.ram_mb.max(1024);
+    if total_mb > 0 {
+        ram = ram.min(total_mb.max(1024));
+    }
+    cfg.max_memory_mb = ram;
+    Ok(())
+}
 
+/// Apply initial onboarding selections to launcher config.
+#[tauri::command]
+pub async fn onboarding_complete(
+    req: OnboardingCompleteRequest,
+    state: State<'_, PlayState>,
+) -> Result<(), String> {
+    let microsoft_active = AccountStore::open(&state.paths.root)
+        .ok()
+        .and_then(|s| s.active().map(|a| a.kind == AccountKind::Microsoft))
+        .unwrap_or(false);
+    let total_mb = super::settings::get_total_ram_mb();
+
+    let _config_guard = wex_core::config::lock_config();
+    let mut cfg = LauncherConfig::load_or_default(&state.paths.config_file);
+    apply_onboarding(&mut cfg, &req, total_mb, microsoft_active)?;
     cfg.save(&state.paths.config_file)
         .map_err(|e| format!("Не удалось сохранить конфигурацию: {}", e))?;
 
@@ -170,6 +204,52 @@ mod tests {
         let (ram_4, expl_4) = calculate_recommended_ram(4096);
         assert_eq!(ram_4, 2048);
         assert!(expl_4.contains("2 ГБ"));
+    }
+
+    fn request(nickname: &str, ram_mb: u32) -> OnboardingCompleteRequest {
+        OnboardingCompleteRequest {
+            nickname: nickname.to_string(),
+            version: "1.20.1".to_string(),
+            ram_mb,
+        }
+    }
+
+    #[test]
+    fn onboarding_rejects_an_invalid_nickname() {
+        let mut cfg = LauncherConfig::default();
+        let before = cfg.nickname.clone();
+        for bad in ["a", "has space", "Ник", "../escape", "seventeen_chars_x"] {
+            assert!(
+                apply_onboarding(&mut cfg, &request(bad, 4096), 16384, false).is_err(),
+                "{bad}"
+            );
+        }
+        assert_eq!(cfg.nickname, before);
+        apply_onboarding(&mut cfg, &request(" Steve_1 ", 4096), 16384, false).unwrap();
+        assert_eq!(cfg.nickname, "Steve_1");
+    }
+
+    #[test]
+    fn onboarding_ram_is_clamped_to_the_computer_memory() {
+        let mut cfg = LauncherConfig::default();
+        apply_onboarding(&mut cfg, &request("Steve", 65536), 8192, false).unwrap();
+        assert_eq!(cfg.max_memory_mb, 8192);
+        apply_onboarding(&mut cfg, &request("Steve", 100), 8192, false).unwrap();
+        assert_eq!(cfg.max_memory_mb, 1024);
+        // Unknown total memory: only the lower bound applies.
+        apply_onboarding(&mut cfg, &request("Steve", 6144), 0, false).unwrap();
+        assert_eq!(cfg.max_memory_mb, 6144);
+    }
+
+    #[test]
+    fn onboarding_keeps_the_microsoft_account_name() {
+        let mut cfg = LauncherConfig {
+            nickname: "MsPlayer".into(),
+            ..Default::default()
+        };
+        apply_onboarding(&mut cfg, &request("Other", 4096), 16384, true).unwrap();
+        assert_eq!(cfg.nickname, "MsPlayer");
+        assert_eq!(cfg.selected_version, "1.20.1");
     }
 
     #[test]
