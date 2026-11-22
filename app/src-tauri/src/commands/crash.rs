@@ -151,7 +151,48 @@ pub fn open_file_in_os(path: &Path) -> Result<(), String> {
     }
 }
 
+/// The Fabric mod id a jar declares in `fabric.mod.json`, if it has one.
+fn fabric_mod_id(jar: &Path) -> Option<String> {
+    use std::io::Read;
+    let file = fs::File::open(jar).ok()?;
+    let mut zip = zip::ZipArchive::new(file).ok()?;
+    let entry = zip.by_name("fabric.mod.json").ok()?;
+    let mut text = String::new();
+    // A mod manifest is small; a huge entry is not one.
+    entry.take(1024 * 1024).read_to_string(&mut text).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&text).ok()?;
+    json.get("id")?.as_str().map(|id| id.trim().to_lowercase())
+}
+
+/// `<id>.jar`, or `<id>-<version>.jar` / `<id>_<version>.jar` where the version
+/// starts with a digit (optionally after `v` or `mc`): «sodium» matches
+/// `sodium-0.5.jar` but never `sodium-extra-0.5.jar`.
+fn file_name_matches(file_name_lower: &str, id: &str) -> bool {
+    let Some(stem) = file_name_lower.strip_suffix(".jar") else {
+        return false;
+    };
+    if stem == id {
+        return true;
+    }
+    let Some(rest) = stem
+        .strip_prefix(id)
+        .and_then(|r| r.strip_prefix('-').or_else(|| r.strip_prefix('_')))
+    else {
+        return false;
+    };
+    let rest = rest
+        .strip_prefix("mc")
+        .or_else(|| rest.strip_prefix('v'))
+        .unwrap_or(rest);
+    rest.starts_with(|c: char| c.is_ascii_digit())
+}
+
 /// Disables a mod by appending `.disabled` to its filename in the instance `mods/` directory.
+///
+/// The jar is chosen by the exact Fabric mod id from its `fabric.mod.json`
+/// («sodium» never disables `sodium-extra`). Only jars without a readable id
+/// fall back to the file name (`<id>-<version>.jar`). More than one candidate
+/// is refused instead of guessing.
 pub fn disable_offending_mod_impl(
     paths: &WexPaths,
     version: Option<&str>,
@@ -171,52 +212,62 @@ pub fn disable_offending_mod_impl(
     let entries =
         fs::read_dir(&mods_dir).map_err(|e| format!("Не удалось прочитать папку модов: {}", e))?;
 
-    let mut found_file: Option<PathBuf> = None;
-
+    let mut by_id = Vec::new();
+    let mut by_name = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
         if !path.is_file() {
             continue;
         }
-
-        let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if fname.ends_with(".disabled") {
+        let Some(fname) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let lower = fname.to_lowercase();
+        if !lower.ends_with(".jar") {
             continue;
         }
-
-        if !fname.ends_with(".jar") {
-            continue;
-        }
-
-        let clean_name = fname.to_lowercase();
-        if clean_name == search_term
-            || clean_name.starts_with(&format!("{}-", search_term))
-            || clean_name.starts_with(&format!("{}_", search_term))
-            || clean_name.contains(&search_term)
-        {
-            found_file = Some(path);
-            break;
+        match fabric_mod_id(&path) {
+            Some(id) if id == search_term => by_id.push(path),
+            Some(_) => {}
+            None if file_name_matches(&lower, &search_term) => by_name.push(path),
+            None => {}
         }
     }
+    let mut candidates = if by_id.is_empty() { by_name } else { by_id };
+    candidates.sort();
 
-    if let Some(src_path) = found_file {
-        let orig_name = src_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("mod.jar");
-        let new_name = format!("{}.disabled", orig_name);
-        let dest_path = mods_dir.join(&new_name);
+    let src_path = match candidates.as_slice() {
+        [] => {
+            return Err(format!(
+                "Файл для мода «{}» не найден в папке mods",
+                mod_identifier
+            ))
+        }
+        [one] => one.clone(),
+        many => {
+            let names: Vec<_> = many
+                .iter()
+                .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+                .collect();
+            return Err(format!(
+                "Мод «{}» подходит к нескольким файлам ({}); отключите нужный во вкладке Мастерская",
+                mod_identifier,
+                names.join(", ")
+            ));
+        }
+    };
 
-        fs::rename(&src_path, &dest_path)
-            .map_err(|e| format!("Не удалось переименовать файл мода: {}", e))?;
+    let orig_name = src_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("mod.jar");
+    let new_name = format!("{}.disabled", orig_name);
+    let dest_path = mods_dir.join(&new_name);
 
-        Ok(new_name)
-    } else {
-        Err(format!(
-            "Файл для мода «{}» не найден в папке mods",
-            mod_identifier
-        ))
-    }
+    fs::rename(&src_path, &dest_path)
+        .map_err(|e| format!("Не удалось переименовать файл мода: {}", e))?;
+
+    Ok(new_name)
 }
 
 // ============================================================================
@@ -381,6 +432,64 @@ mod tests {
         assert_eq!(disabled_name, "iris-mc1.21-1.7.0.jar.disabled");
         assert!(mods_dir.join("iris-mc1.21-1.7.0.jar.disabled").exists());
         assert!(!mod_file.exists());
+    }
+
+    fn mod_jar(dir: &Path, name: &str, id: &str) -> PathBuf {
+        use std::io::Write;
+        let path = dir.join(name);
+        let mut zip = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+        zip.start_file("fabric.mod.json", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        write!(zip, r#"{{"schemaVersion":1,"id":"{id}","version":"1.0"}}"#).unwrap();
+        zip.finish().unwrap();
+        path
+    }
+
+    #[test]
+    fn disabling_sodium_leaves_sodium_extra_alone() {
+        let dir = tempdir().unwrap();
+        let paths = WexPaths::new(Some(dir.path().to_path_buf()));
+        let mods = paths.instance_dir("1.21.1").join("mods");
+        fs::create_dir_all(&mods).unwrap();
+        // sodium-extra sorts first in a directory listing.
+        let extra = mod_jar(&mods, "a-sodium-extra-0.5.jar", "sodium-extra");
+        let sodium = mod_jar(&mods, "z-renamed.jar", "sodium");
+
+        let res = disable_offending_mod_impl(&paths, Some("1.21.1"), "sodium").unwrap();
+        assert_eq!(res, "z-renamed.jar.disabled");
+        assert!(extra.exists());
+        assert!(!sodium.exists());
+    }
+
+    #[test]
+    fn file_name_fallback_needs_a_version_after_the_id() {
+        let dir = tempdir().unwrap();
+        let paths = WexPaths::new(Some(dir.path().to_path_buf()));
+        let mods = paths.instance_dir("1.21.1").join("mods");
+        fs::create_dir_all(&mods).unwrap();
+        // No fabric.mod.json: only the name is known.
+        fs::write(mods.join("sodium-extra-0.5.jar"), b"not a zip").unwrap();
+        assert!(disable_offending_mod_impl(&paths, Some("1.21.1"), "sodium").is_err());
+        assert!(mods.join("sodium-extra-0.5.jar").exists());
+
+        assert!(file_name_matches("sodium-0.5.8.jar", "sodium"));
+        assert!(file_name_matches("iris-mc1.21-1.7.0.jar", "iris"));
+        assert!(file_name_matches("sodium_v0.5.jar", "sodium"));
+        assert!(!file_name_matches("sodium-extra-0.5.jar", "sodium"));
+        assert!(!file_name_matches("sodiumplus-1.0.jar", "sodium"));
+    }
+
+    #[test]
+    fn two_jars_with_the_same_mod_id_are_refused() {
+        let dir = tempdir().unwrap();
+        let paths = WexPaths::new(Some(dir.path().to_path_buf()));
+        let mods = paths.instance_dir("1.21.1").join("mods");
+        fs::create_dir_all(&mods).unwrap();
+        let a = mod_jar(&mods, "lithium-0.1.jar", "lithium");
+        let b = mod_jar(&mods, "lithium-0.2.jar", "lithium");
+        let err = disable_offending_mod_impl(&paths, Some("1.21.1"), "lithium").unwrap_err();
+        assert!(err.contains("нескольким"), "{err}");
+        assert!(a.exists() && b.exists());
     }
 
     #[test]
