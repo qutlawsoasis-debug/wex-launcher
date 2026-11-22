@@ -56,10 +56,10 @@ jobs:
 
       - name: Run unit tests (core)
         working-directory: core
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
 
       - name: Run unit tests (app)
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
 
   ui:
     name: UI (Svelte & Vitest)
