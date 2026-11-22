@@ -5,7 +5,9 @@
  *   cloud_list / create / start / stop / share / delete
  * The owner is the active account; core reads it, the UI never sends it.
  * Polling: every 15 s while the tab is open, every 1.5 s while a world is
- * starting or stopping (same cadence as the old launcher).
+ * starting or stopping (same cadence as the old launcher). One poll at a time;
+ * after failures the interval doubles up to MAX_BACKOFF_MS. A response that
+ * started before a newer fetch or a local change is dropped.
  */
 
 import { call } from '../../shell/ipc';
@@ -55,6 +57,7 @@ interface StartView {
 export const CLOUD_VERSIONS = ['1.20.1', '1.21.1'] as const;
 export const FAST_POLL_MS = 1500;
 export const SLOW_POLL_MS = 15000;
+export const MAX_BACKOFF_MS = 120000;
 export const PLAYER_RE = /^[A-Za-z0-9_]{3,16}$/;
 export const MAX_NAME = 48;
 export const MAX_SEED = 64;
@@ -75,7 +78,12 @@ class CloudWorlds {
   /** World id → the action in flight («create» while creating). */
   busy = $state<Record<string, string>>({});
   error = $state('');
+  /** When the last fetch finished (0 forces the next tick). */
   private lastFetch = 0;
+  private inFlight: Promise<void> | null = null;
+  /** Bumped by every fetch and local change; a response from an older one is stale. */
+  private version = 0;
+  private failures = 0;
 
   get mine(): CloudWorld[] {
     return this.list?.worlds.filter((w) => w.isOwner) ?? [];
@@ -98,6 +106,7 @@ class CloudWorlds {
 
   private patch(id: string, over: Partial<CloudWorld>): void {
     if (!this.list) return;
+    this.version++;
     this.list = { ...this.list, worlds: this.list.worlds.map((w) => (w.id === id ? { ...w, ...over } : w)) };
   }
 
@@ -111,21 +120,39 @@ class CloudWorlds {
     if (this.status?.available) await this.refresh();
   }
 
-  async refresh(): Promise<void> {
-    if (!this.status?.available) return;
-    this.lastFetch = Date.now();
+  /** Fetches the list now; an older fetch still running loses to this one. */
+  refresh(): Promise<void> {
+    if (!this.status?.available) return Promise.resolve();
+    const run = this.fetchList(++this.version);
+    this.inFlight = run;
+    void run.finally(() => {
+      if (this.inFlight === run) this.inFlight = null;
+    });
+    return run;
+  }
+
+  private async fetchList(version: number): Promise<void> {
     try {
-      this.list = await call<CloudList>('cloud_list');
+      const list = await call<CloudList>('cloud_list');
+      this.failures = 0;
+      if (version !== this.version) return;
+      this.list = list;
       this.error = '';
     } catch (e) {
+      this.failures++;
+      if (version !== this.version) return;
       this.error = message(e, t('cloud.err_list'));
-      if (!this.list) this.list = { owner: this.status.owner ?? '', maxActive: 0, activeCount: 0, worlds: [] };
+      if (!this.list) this.list = { owner: this.status?.owner ?? '', maxActive: 0, activeCount: 0, worlds: [] };
+    } finally {
+      this.lastFetch = Date.now();
     }
   }
 
   /** Called every FAST_POLL_MS; fetches fast while a world is in transit, slowly otherwise. */
   async tick(now = Date.now()): Promise<void> {
-    const due = this.transit ? FAST_POLL_MS : SLOW_POLL_MS;
+    if (this.inFlight) return;
+    const base = this.transit ? FAST_POLL_MS : SLOW_POLL_MS;
+    const due = this.failures ? Math.min(base * 2 ** this.failures, MAX_BACKOFF_MS) : base;
     if (now - this.lastFetch >= due) await this.refresh();
   }
 

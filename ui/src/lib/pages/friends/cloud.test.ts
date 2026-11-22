@@ -8,7 +8,7 @@ vi.mock('../../shell/launch.svelte', () => ({ launch: { busy: false, start: mock
 
 import { i18n } from '../../i18n';
 import { builds } from '../../shell/builds.svelte';
-import { cloudWorlds, FAST_POLL_MS, SLOW_POLL_MS, type CloudWorld } from './cloud.svelte';
+import { cloudWorlds, FAST_POLL_MS, MAX_BACKOFF_MS, SLOW_POLL_MS, type CloudWorld } from './cloud.svelte';
 import CloudTab from './CloudTab.svelte';
 
 function world(over: Partial<CloudWorld> = {}): CloudWorld {
@@ -232,6 +232,70 @@ describe('cloud worlds tab', () => {
     await cloudWorlds.refresh();
     mocks.invoke.mockClear();
     await cloudWorlds.tick(Date.now() + FAST_POLL_MS);
+    expect(calls('cloud_list')).toHaveLength(1);
+  });
+  it('one poll at a time; the next one is timed from when it finished', async () => {
+    worlds = [world()];
+    await cloudWorlds.load();
+    let release!: () => void;
+    mocks.invoke.mockImplementationOnce(() => new Promise((r) => (release = () => r({ owner: 'Steve', maxActive: 3, activeCount: 0, worlds }))));
+    mocks.invoke.mockClear();
+    const far = Date.now() + SLOW_POLL_MS * 2;
+    const first = cloudWorlds.tick(far);
+    await cloudWorlds.tick(far + 1);
+    await cloudWorlds.tick(far + 2);
+    expect(calls('cloud_list')).toHaveLength(1);
+    release();
+    await first;
+    await cloudWorlds.tick(Date.now() + FAST_POLL_MS);
+    expect(calls('cloud_list')).toHaveLength(1);
+  });
+
+  it('an older response never overwrites a newer fetch or a local change', async () => {
+    worlds = [world()];
+    await cloudWorlds.load();
+    let release!: () => void;
+    const stale = { owner: 'Steve', maxActive: 3, activeCount: 0, worlds: [world({ name: 'Старое' })] };
+    mocks.invoke.mockImplementationOnce(() => new Promise((r) => (release = () => r(stale))));
+    const slow = cloudWorlds.refresh();
+    worlds = [world({ name: 'Новое' })];
+    await cloudWorlds.refresh();
+    release();
+    await slow;
+    expect(cloudWorlds.list!.worlds[0].name).toBe('Новое');
+
+    // A start patched while an older poll was out: the poll result is dropped.
+    mocks.invoke.mockImplementationOnce(() => new Promise((r) => (release = () => r(stale))));
+    const poll = cloudWorlds.refresh();
+    await cloudWorlds.start(cloudWorlds.list!.worlds[0]);
+    release();
+    await poll;
+    expect(cloudWorlds.list!.worlds[0].state).toBe('starting');
+  });
+
+  it('backs off exponentially after errors and resets on success', async () => {
+    worlds = [world()];
+    await cloudWorlds.load();
+    mocks.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'cloud_list') throw 'Сервер не отвечает';
+      return null;
+    });
+    await cloudWorlds.refresh();
+    await cloudWorlds.refresh();
+    expect(cloudWorlds.error).toContain('не отвечает');
+    mocks.invoke.mockClear();
+    const t0 = Date.now();
+    await cloudWorlds.tick(t0 + SLOW_POLL_MS + 10);
+    expect(calls('cloud_list')).toHaveLength(0);
+    await cloudWorlds.tick(t0 + SLOW_POLL_MS * 4 + 10);
+    expect(calls('cloud_list')).toHaveLength(1);
+    mocks.invoke.mockClear();
+    await cloudWorlds.tick(Date.now() + MAX_BACKOFF_MS + 10);
+    expect(calls('cloud_list')).toHaveLength(1);
+    mocks.invoke.mockImplementation(async () => ({ owner: 'Steve', maxActive: 3, activeCount: 0, worlds }));
+    await cloudWorlds.refresh();
+    mocks.invoke.mockClear();
+    await cloudWorlds.tick(Date.now() + SLOW_POLL_MS + 10);
     expect(calls('cloud_list')).toHaveLength(1);
   });
 });
