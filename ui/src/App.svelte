@@ -216,7 +216,10 @@
     const join = parseWexJoinUri(window.location.hash) || parseWexJoinUri(window.location.search);
     if (join) {
       openRooms(false);
-      void friendsLive.handleJoin(join);
+      friendsLive.handleJoin(join).catch((error) => {
+        const f = formatError(error, 'lobby');
+        toasts.show(f.title, f.description);
+      });
       return;
     }
     if (hash === 'lobby') openRooms(false);

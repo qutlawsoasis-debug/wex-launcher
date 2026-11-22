@@ -129,6 +129,22 @@ describe('social review regressions 19–22', () => {
     await expect(service.handleJoin('#AB12')).rejects.toThrow('join failed');
     expect(joined).not.toHaveBeenCalled();
   });
+  it('a failed join from the window hash shows an error toast instead of an unhandled rejection', async () => {
+    const { toasts } = await import('./lib/shell/toast.svelte');
+    const show = vi.spyOn(toasts, 'show');
+    history.replaceState({}, '', '/#join=AB12');
+    const original = mocks.invoke.getMockImplementation()!;
+    mocks.invoke.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'join_lobby_room') throw new Error('room not found');
+      return original(cmd, args);
+    });
+    await start();
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('join_lobby_room', expect.anything()));
+    const { formatError } = await import('./lib/design/errors');
+    const f = formatError(new Error('room not found'), 'lobby');
+    await vi.waitFor(() => expect(show).toHaveBeenCalledWith(f.title, f.description));
+    show.mockRestore();
+  });
   it('21: leaving the webview attempts Offline publication without opening any native UI', async()=>{
     const service=new FriendsLiveService({syncFn:async()=>({friends:[],incoming_requests:[],incoming_invites:[]})});
     service.start(); await vi.waitFor(()=>expect(mocks.action).toHaveBeenCalled());
