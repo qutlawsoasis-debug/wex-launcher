@@ -215,6 +215,8 @@ pub struct ServerProcess {
     pub id: String,
     pub pid: u32,
     pub started_at: String,
+    /// The port this run listens on (settings may change while it runs).
+    pub port: u16,
     shared: Arc<Shared>,
     stdin: tokio::sync::Mutex<Option<ChildStdin>>,
     kill_tx: Mutex<Option<oneshot::Sender<()>>>,
@@ -371,7 +373,9 @@ pub async fn start_server(
         &profile.main_class,
     ))
     .current_dir(&dir);
-    spawn_supervised(id, cmd)
+    let mut process = spawn_supervised(id, cmd)?;
+    process.port = rec.settings.port;
+    Ok(process)
 }
 
 /// Spawns `cmd` hidden, with piped console, and supervises it.
@@ -440,6 +444,7 @@ pub fn spawn_supervised(id: &str, mut cmd: Command) -> Result<ServerProcess> {
         id: id.to_string(),
         pid,
         started_at: chrono::Utc::now().to_rfc3339(),
+        port: 0,
         shared,
         stdin: tokio::sync::Mutex::new(stdin),
         kill_tx: Mutex::new(Some(kill_tx)),

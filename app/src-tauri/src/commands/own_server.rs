@@ -200,6 +200,14 @@ impl OwnServerState {
         id: &str,
         settings: ServerSettings,
     ) -> Result<OwnServerView, String> {
+        // The running server keeps its port until restart; a new port saved now
+        // would show friends an address nothing listens on.
+        if self.is_live(id).await {
+            let current = self.store.load(id).map_err(|e| e.to_string())?;
+            if settings.port != current.settings.port {
+                return Err("Остановите сервер, чтобы сменить порт".into());
+            }
+        }
         let rec = self
             .store
             .update_settings(id, settings)
@@ -253,6 +261,21 @@ impl OwnServerState {
         if running.get(id).is_some_and(|p| !p.has_exited()) {
             return Err("Сервер уже запущен".into());
         }
+        let port = self
+            .store
+            .load(id)
+            .map_err(|e| e.to_string())?
+            .settings
+            .port;
+        // A server that is still starting already owns its port.
+        if running
+            .iter()
+            .any(|(other, p)| other != id && !p.has_exited() && p.port == port)
+        {
+            return Err(format!(
+                "Порт {port} уже занят другим запущенным сервером Wex. Остановите его или выберите другой порт."
+            ));
+        }
         let p = server::start_server(&self.paths, &self.store, id)
             .await
             .map_err(|e| e.to_string())?;
@@ -263,7 +286,13 @@ impl OwnServerState {
 
     pub async fn stop(&self, id: &str) -> Result<OwnServerView, String> {
         if let Some(p) = self.process(id).await {
-            p.stop(STOP_TIMEOUT).await.map_err(|e| e.to_string())?;
+            if p.status() == ServerStatus::Starting {
+                // The console reads `stop` only after the world has loaded, so a
+                // server that is still starting is ended right away.
+                p.kill().await;
+            } else {
+                p.stop(STOP_TIMEOUT).await.map_err(|e| e.to_string())?;
+            }
         }
         self.view_id(id).await
     }
@@ -302,12 +331,27 @@ impl OwnServerState {
         self.store.delete(id).map_err(|e| e.to_string())
     }
 
-    /// Graceful stop of every server (the launcher is closing).
+    /// Whether any server is starting, running or stopping right now.
+    pub async fn any_live(&self) -> bool {
+        self.running.lock().await.values().any(|p| !p.has_exited())
+    }
+
+    /// Graceful stop of every server (the launcher is closing): all at once,
+    /// each with the full save timeout, so the exit waits for the slowest
+    /// server instead of the sum of all of them.
     pub async fn stop_all(&self) {
+        self.stop_all_within(STOP_TIMEOUT).await;
+    }
+
+    async fn stop_all_within(&self, timeout: Duration) {
         let all: Vec<_> = self.running.lock().await.values().cloned().collect();
+        let mut set = tokio::task::JoinSet::new();
         for p in all {
-            let _ = p.stop(Duration::from_secs(30)).await;
+            set.spawn(async move {
+                let _ = p.stop(timeout).await;
+            });
         }
+        while set.join_next().await.is_some() {}
     }
 }
 
@@ -514,6 +558,111 @@ mod tests {
         s.installing.lock().unwrap().clear();
         s.delete(&v.id).await.unwrap();
         assert!(s.list().await.is_empty());
+    }
+
+    /// A stand-in console process that ignores `stop` (cmd.exe), so stop
+    /// falls back to kill after the timeout.
+    #[cfg(windows)]
+    fn fake_process(id: &str, port: u16) -> Arc<ServerProcess> {
+        let mut cmd = tokio::process::Command::new("cmd.exe");
+        cmd.args(["/Q", "/K"]);
+        let mut p = server::process::spawn_supervised(id, cmd).unwrap();
+        p.port = port;
+        Arc::new(p)
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn start_rejects_a_port_used_by_a_live_or_starting_server() {
+        let (_t, s) = state();
+        let explicit = ServerSettings {
+            port: 30001,
+            ..Default::default()
+        };
+        let a = s.create("1.20.1", explicit.clone()).await.unwrap();
+        let b = s.create("1.21.1", explicit).await.unwrap();
+        let p = fake_process(&a.id, 30001);
+        assert_eq!(p.status(), ServerStatus::Starting);
+        s.running.lock().await.insert(a.id.clone(), p.clone());
+        let err = s.start(&b.id).await.unwrap_err();
+        assert!(err.contains("30001"), "{err}");
+        assert!(s.any_live().await);
+        p.kill().await;
+        assert!(!s.any_live().await);
+        // Once the other one is gone the port check passes (install is next).
+        assert!(s.start(&b.id).await.unwrap_err().contains("установите"));
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn port_cannot_change_while_the_server_runs() {
+        let (_t, s) = state();
+        let v = s.create("1.21.1", ServerSettings::default()).await.unwrap();
+        let port = v.settings.port;
+        let p = fake_process(&v.id, port);
+        s.running.lock().await.insert(v.id.clone(), p.clone());
+        let moved = ServerSettings {
+            port: port + 100,
+            ..v.settings.clone()
+        };
+        assert!(s
+            .update(&v.id, moved.clone())
+            .await
+            .unwrap_err()
+            .contains("порт"));
+        let renamed = ServerSettings {
+            name: "Новое имя".into(),
+            ..v.settings.clone()
+        };
+        assert_eq!(
+            s.update(&v.id, renamed).await.unwrap().settings.name,
+            "Новое имя"
+        );
+        p.kill().await;
+        assert_eq!(
+            s.update(&v.id, moved).await.unwrap().settings.port,
+            port + 100
+        );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn stop_while_starting_does_not_wait_for_the_save_timeout() {
+        let (_t, s) = state();
+        let v = s.create("1.21.1", ServerSettings::default()).await.unwrap();
+        let p = fake_process(&v.id, v.settings.port);
+        assert_eq!(p.status(), ServerStatus::Starting);
+        s.running.lock().await.insert(v.id.clone(), p.clone());
+        let started = std::time::Instant::now();
+        s.stop(&v.id).await.unwrap();
+        assert!(p.has_exited());
+        assert!(
+            started.elapsed() < Duration::from_secs(15),
+            "{:?}",
+            started.elapsed()
+        );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn stop_all_stops_servers_concurrently() {
+        let (_t, s) = state();
+        let mut procs = Vec::new();
+        for i in 0..3 {
+            let v = s.create("1.21.1", ServerSettings::default()).await.unwrap();
+            let p = fake_process(&v.id, 30100 + i);
+            s.running.lock().await.insert(v.id, p.clone());
+            procs.push(p);
+        }
+        let started = std::time::Instant::now();
+        // cmd.exe ignores `stop`: each one waits the full timeout, then is killed.
+        s.stop_all_within(Duration::from_millis(1500)).await;
+        let took = started.elapsed();
+        assert!(procs.iter().all(|p| p.has_exited()));
+        assert!(
+            took < Duration::from_millis(4000),
+            "sequential stop took {took:?}"
+        );
     }
 
     #[test]

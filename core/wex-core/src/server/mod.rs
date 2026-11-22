@@ -34,6 +34,8 @@ pub use process::{
 pub const SUPPORTED_VERSIONS: [&str; 2] = ["1.20.1", "1.21.1"];
 pub const RECORD_FILE: &str = "wex-server.json";
 pub const EULA_URL: &str = "https://aka.ms/MinecraftEULA";
+/// The Minecraft default port; a new server gets it only if no other server has it.
+pub const DEFAULT_PORT: u16 = 25565;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -88,7 +90,7 @@ impl Default for ServerSettings {
             whitelist: false,
             online_mode: true,
             pvp: true,
-            port: 25565,
+            port: DEFAULT_PORT,
             memory_mb: 3072,
             public_address: None,
             bind_ip: None,
@@ -264,10 +266,24 @@ impl ServerStore {
         Ok(())
     }
 
+    /// The first port from [`DEFAULT_PORT`] up that no saved server uses.
+    pub fn free_port(&self) -> u16 {
+        let used: std::collections::HashSet<u16> =
+            self.list().iter().map(|r| r.settings.port).collect();
+        (DEFAULT_PORT..=u16::MAX)
+            .find(|p| !used.contains(p))
+            .unwrap_or(DEFAULT_PORT)
+    }
+
+    /// A server left on the default port gets the next free one, so two
+    /// servers never share 25565 by accident. An explicit port is kept.
     pub fn create(&self, version: &str, settings: ServerSettings) -> Result<ServerRecord> {
         validate_version(version)?;
-        let settings = settings.normalized();
+        let mut settings = settings.normalized();
         settings.validate()?;
+        if settings.port == DEFAULT_PORT {
+            settings.port = self.free_port();
+        }
         let id = loop {
             let id = format!("srv-{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
             if !self.dir.join(&id).exists() {
@@ -396,6 +412,25 @@ mod tests {
             .unwrap()
             .starts_with(store.servers_dir()));
         assert!(store.create("1.19.4", ServerSettings::default()).is_err());
+    }
+
+    #[test]
+    fn default_port_is_unique_per_server_explicit_port_is_kept() {
+        let (_t, store) = store();
+        let a = store.create("1.20.1", ServerSettings::default()).unwrap();
+        let b = store.create("1.21.1", ServerSettings::default()).unwrap();
+        assert_eq!(a.settings.port, DEFAULT_PORT);
+        assert_eq!(b.settings.port, DEFAULT_PORT + 1);
+        let explicit = ServerSettings {
+            port: 30000,
+            ..Default::default()
+        };
+        let c = store.create("1.21.1", explicit.clone()).unwrap();
+        let d = store.create("1.21.1", explicit).unwrap();
+        assert_eq!((c.settings.port, d.settings.port), (30000, 30000));
+        store.delete(&a.id).unwrap();
+        let e = store.create("1.21.1", ServerSettings::default()).unwrap();
+        assert_eq!(e.settings.port, DEFAULT_PORT);
     }
 
     #[test]
