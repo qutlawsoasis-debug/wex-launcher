@@ -139,12 +139,30 @@ fn root_and_config(state: &PlayState) -> (PathBuf, PathBuf) {
     (state.paths.root.clone(), state.paths.config_file.clone())
 }
 
-/// After the active account changed: the config nickname follows it and a
-/// prewarmed game (started for the previous player) is stopped.
+/// After the active account changed: the config nickname and the saved wardrobe
+/// follow it and a prewarmed game (started for the previous player) is stopped.
 async fn after_switch(state: &PlayState, active: Option<&Account>) -> Result<(), IpcError> {
     accounts::sync_config_nickname(&state.paths.config_file, active).map_err(err)?;
+    if let Some(acc) = active {
+        // The switch itself succeeded; a skin export problem must not undo it.
+        if let Err(e) = super::wardrobe::sync_wardrobe_nickname(&state.paths, &acc.name) {
+            tracing::warn!("wardrobe: could not move the skin to «{}»: {}", acc.name, e);
+        }
+    }
     state.cleanup_prewarm().await;
     Ok(())
+}
+
+/// Run `save` only while the sign-in is still wanted: once the player cancelled
+/// (closed the sheet), nothing is saved and the active account stays as it was.
+fn unless_cancelled<T>(
+    cancel: &CancellationToken,
+    save: impl FnOnce() -> Result<T, WexError>,
+) -> Result<T, WexError> {
+    if cancel.is_cancelled() {
+        return Err(WexError::Cancelled);
+    }
+    save()
 }
 
 #[tauri::command]
@@ -267,8 +285,10 @@ pub async fn accounts_ms_finish(
     let result = async {
         let tokens = auth.wait_for_device_code(&flow.code, &flow.cancel).await?;
         let login = auth.complete(tokens).await?;
-        let mut store = AccountStore::open(&root)?;
-        accounts::save_microsoft_login(&mut store, &login)
+        unless_cancelled(&flow.cancel, || {
+            let mut store = AccountStore::open(&root)?;
+            accounts::save_microsoft_login(&mut store, &login)
+        })
     }
     .await;
     accounts_state.flows.lock().await.remove(&flow_id);
@@ -446,6 +466,22 @@ mod tests {
             LauncherConfig::load_or_default(&cfg_file).nickname,
             "FirstOne"
         );
+    }
+
+    #[test]
+    fn a_cancelled_sign_in_saves_nothing() {
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let mut called = false;
+        let r = unless_cancelled(&cancel, || {
+            called = true;
+            Ok(())
+        });
+        assert!(matches!(r, Err(WexError::Cancelled)));
+        assert!(!called, "the account must not be saved after cancel");
+
+        let live = CancellationToken::new();
+        assert_eq!(unless_cancelled(&live, || Ok(7)).unwrap(), 7);
     }
 
     #[test]

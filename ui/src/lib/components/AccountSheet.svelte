@@ -33,6 +33,9 @@
   let error = $state('');
   let code = $state<DeviceCode | null>(null);
   let waiting = $state(false);
+  // Each Microsoft attempt gets a number; cancelling or closing bumps it, so a
+  // request still in flight sees it is stale and cancels its flow at once.
+  let attempt = 0;
 
   const nameOk = $derived(OFFLINE_NAME_RE.test(name.trim()));
 
@@ -70,13 +73,23 @@
     error = '';
     code = null;
     busy = true;
+    const mine = ++attempt;
+    let started: DeviceCode;
     try {
-      code = await accounts.beginMicrosoft();
+      started = await accounts.beginMicrosoft();
     } catch (err) {
-      error = describe(err);
-      busy = false;
+      if (mine === attempt) {
+        error = describe(err);
+        busy = false;
+      }
       return;
     }
+    if (mine !== attempt || !open) {
+      // The sheet was closed (or Back pressed) while the code was being fetched.
+      void accounts.cancelMicrosoft(started.flow_id).catch(() => {});
+      return;
+    }
+    code = started;
     busy = false;
     waiting = true;
     const flow = code.flow_id;
@@ -114,6 +127,8 @@
   }
 
   function cancelFlow() {
+    attempt++;
+    busy = false;
     if (code) void accounts.cancelMicrosoft(code.flow_id).catch(() => {});
     code = null;
     waiting = false;
