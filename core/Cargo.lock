@@ -2642,6 +2642,7 @@ dependencies = [
  "chrono",
  "flate2",
  "reqwest",
+ "semver",
  "serde",
  "serde_json",
  "tempfile",

@@ -150,10 +150,17 @@ impl Drop for UpdateOperation {
 }
 
 pub fn validate_update_version(version: &str) -> Result<(), String> {
-    let target = semver::Version::parse(version)
-        .map_err(|_| "Некорректная версия обновления".to_string())?;
-    let current = semver::Version::parse(env!("CARGO_PKG_VERSION")).map_err(|e| e.to_string())?;
-    if !target.cmp_precedence(&current).is_gt() {
+    validate_update_version_against(version, env!("CARGO_PKG_VERSION"))
+}
+
+/// The installer accepts exactly what the update check offers: both use
+/// `wex_social::parse_version` / `is_newer_version` (SemVer precedence).
+fn validate_update_version_against(version: &str, current: &str) -> Result<(), String> {
+    wex_social::parse_version(version)
+        .ok_or_else(|| "Некорректная версия обновления".to_string())?;
+    wex_social::parse_version(current)
+        .ok_or_else(|| format!("Некорректная установленная версия: {current}"))?;
+    if !wex_social::is_newer_version(current, version) {
         return Err("Версия обновления должна быть новее установленной".into());
     }
     Ok(())
@@ -986,6 +993,18 @@ mod tests {
                 "accepted {version}"
             );
         }
+    }
+
+    #[test]
+    fn installer_accepts_what_the_check_offers() {
+        // A pre-release install is offered the final release and may install it.
+        assert!(wex_social::is_newer_version("0.10.3-beta.1", "0.10.3"));
+        assert!(validate_update_version_against("0.10.3", "0.10.3-beta.1").is_ok());
+        // Release tags with a leading v are the same version.
+        assert!(validate_update_version_against("v0.10.4", "0.10.3").is_ok());
+        assert!(validate_update_version_against("0.10.3", "0.10.3").is_err());
+        assert!(validate_update_version_against("0.10.3-beta.1", "0.10.3").is_err());
+        assert!(validate_update_version_against("0.10.3+build", "0.10.3").is_err());
     }
 
     #[test]

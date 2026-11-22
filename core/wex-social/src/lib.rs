@@ -19,8 +19,8 @@ pub use friends::{
     FRIENDS_API_URL_ENV,
 };
 pub use launcher_update::{
-    check_update_from_manifest, check_update_from_url, is_newer_version, UpdateCheckResult,
-    UpdateError, UpdateManifest, DEFAULT_TARGET_PLATFORM,
+    check_update_from_manifest, check_update_from_url, compare_versions, is_newer_version,
+    parse_version, UpdateCheckResult, UpdateError, UpdateManifest, DEFAULT_TARGET_PLATFORM,
 };
 pub use news::{
     get_bundled_release_notes, NewsManager, NoteCategory, ReleaseNoteItem, ReleaseNoteVersion,

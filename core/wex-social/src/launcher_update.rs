@@ -43,31 +43,25 @@ pub struct UpdateCheckResult {
     pub pub_date: Option<String>,
 }
 
+/// A launcher version as SemVer; a leading `v` (release tags) is allowed.
+/// Anything else that is not strict SemVer is rejected.
+pub fn parse_version(version: &str) -> Option<semver::Version> {
+    let t = version.trim();
+    let t = t.strip_prefix(['v', 'V']).unwrap_or(t);
+    semver::Version::parse(t).ok()
+}
+
+/// SemVer precedence of two versions (build metadata ignored, a pre-release
+/// sorts before its final release). `None` when either is not a version.
+pub fn compare_versions(a: &str, b: &str) -> Option<std::cmp::Ordering> {
+    Some(parse_version(a)?.cmp_precedence(&parse_version(b)?))
+}
+
+/// True when `remote` is a newer launcher than `current`. The same comparison
+/// guards the installer (`validate_update_version` in the app), so whatever is
+/// offered can also be installed.
 pub fn is_newer_version(current: &str, remote: &str) -> bool {
-    let clean_cur = current.trim().trim_start_matches('v');
-    let clean_rem = remote.trim().trim_start_matches('v');
-
-    let cur_parts: Vec<u64> = clean_cur
-        .split('.')
-        .filter_map(|s| s.split('-').next().and_then(|num| num.parse().ok()))
-        .collect();
-
-    let rem_parts: Vec<u64> = clean_rem
-        .split('.')
-        .filter_map(|s| s.split('-').next().and_then(|num| num.parse().ok()))
-        .collect();
-
-    for i in 0..cur_parts.len().max(rem_parts.len()) {
-        let c = cur_parts.get(i).copied().unwrap_or(0);
-        let r = rem_parts.get(i).copied().unwrap_or(0);
-        if r > c {
-            return true;
-        } else if r < c {
-            return false;
-        }
-    }
-
-    false
+    compare_versions(remote, current) == Some(std::cmp::Ordering::Greater)
 }
 
 pub fn validate_signature_format(sig: &str) -> bool {
@@ -148,6 +142,26 @@ mod tests {
         assert!(is_newer_version("1.2.88", "1.3.0"));
         assert!(!is_newer_version("1.1.0", "1.1.0"));
         assert!(!is_newer_version("1.2.0", "1.1.9"));
+        assert!(is_newer_version("0.9.10", "0.10.0"));
+    }
+
+    #[test]
+    fn a_pre_release_install_is_offered_the_final_release() {
+        assert!(is_newer_version("0.10.3-beta.1", "0.10.3"));
+        assert!(is_newer_version("v0.10.3-rc.1", "v0.10.3"));
+        assert!(is_newer_version("0.10.3-beta.1", "0.10.3-beta.2"));
+        assert!(!is_newer_version("0.10.3", "0.10.3-beta.1"));
+    }
+
+    #[test]
+    fn build_metadata_and_garbage_are_not_updates() {
+        assert!(!is_newer_version("1.0.0", "1.0.0+build.7"));
+        assert!(!is_newer_version("1.0.0", "not-a-version"));
+        assert!(!is_newer_version("1.0.0", "1.1"));
+        assert_eq!(
+            compare_versions("v1.2.0", "1.2.0"),
+            Some(std::cmp::Ordering::Equal)
+        );
     }
 
     #[test]
