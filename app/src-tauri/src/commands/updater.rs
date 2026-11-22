@@ -413,6 +413,16 @@ pub fn check_update_restart_allowed(is_running: bool, is_launching: bool) -> Res
     }
 }
 
+/// A restart would kill a friends' server mid-session (and the stop on exit may
+/// not have time to save the world), so the player stops it first.
+pub fn check_update_restart_allowed_servers(own_server_live: bool) -> Result<(), String> {
+    if own_server_live {
+        Err("Нельзя применить обновление: запущен ваш сервер для друзей. Остановите его на вкладке «Свой сервер» и повторите перезапуск.".to_string())
+    } else {
+        Ok(())
+    }
+}
+
 pub fn apply_staged_update_and_restart(
     app: Option<&AppHandle>,
 ) -> Result<InstallerExecutionPlan, String> {
@@ -769,6 +779,9 @@ pub async fn updater_restart(app: AppHandle, state: State<'_, PlayState>) -> Res
         state.is_running.load(Ordering::SeqCst),
         state.is_launching.load(Ordering::SeqCst),
     )?;
+    if let Some(servers) = app.try_state::<super::own_server::OwnServerState>() {
+        check_update_restart_allowed_servers(servers.any_live().await)?;
+    }
     state.cleanup_prewarm().await;
     let _ = apply_staged_update_and_restart(Some(&app))?;
     Ok(())
@@ -1175,6 +1188,13 @@ mod tests {
         assert!(both_err.contains("игра запущена"));
 
         assert!(check_update_restart_allowed(false, false).is_ok());
+    }
+
+    #[test]
+    fn test_updater_restart_blocked_while_own_server_is_live() {
+        let err = check_update_restart_allowed_servers(true).unwrap_err();
+        assert!(err.contains("сервер для друзей"));
+        assert!(check_update_restart_allowed_servers(false).is_ok());
     }
 
     #[tokio::test]
