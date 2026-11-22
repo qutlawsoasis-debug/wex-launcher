@@ -686,7 +686,10 @@ mod tests {
         assert!(health.room_gone());
         let mut gone = false;
         while let Ok(event) = rx.try_recv() {
-            gone |= event == NetEvent::LobbyRoomGone { code: "GONE".into() };
+            gone |= event
+                == NetEvent::LobbyRoomGone {
+                    code: "GONE".into(),
+                };
         }
         assert!(gone);
         // Only the first heartbeat was sent (checked by `expect(1)` on drop).
