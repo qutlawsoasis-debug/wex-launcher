@@ -369,8 +369,14 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|app, event| {
-            // A friends' server gets `stop` (saves the world) before Wex exits.
+            // The lobby room is closed (briefly) and a friends' server gets
+            // `stop` (saves the world) before Wex exits.
             if let tauri::RunEvent::Exit = event {
+                if let Some(lobby) = app.try_state::<commands::lobby::LobbyState>() {
+                    tauri::async_runtime::block_on(
+                        lobby.close_current_room(commands::lobby::CLOSE_ON_EXIT_TIMEOUT),
+                    );
+                }
                 if let Some(servers) = app.try_state::<commands::own_server::OwnServerState>() {
                     tauri::async_runtime::block_on(servers.stop_all());
                 }

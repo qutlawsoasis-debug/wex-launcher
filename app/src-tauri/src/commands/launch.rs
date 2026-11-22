@@ -172,6 +172,13 @@ impl EventHandler for TauriEventHandler {
             }
             Event::GameExited { exit_code } => {
                 tracing::info!("game exited, code {:?}", exit_code);
+                // A room for a LAN world of this game must not outlive it.
+                let app = self.app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Some(lobby) = app.try_state::<super::lobby::LobbyState>() {
+                        lobby.close_if_world_gone().await;
+                    }
+                });
                 let _ = self.app.emit(
                     EVT_LAUNCH_STATUS,
                     LaunchStatusPayload {

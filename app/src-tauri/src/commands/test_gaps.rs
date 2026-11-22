@@ -1036,21 +1036,37 @@ async fn list_open_rooms_error_preserves_readable_message() {
 #[tokio::test]
 async fn get_lobby_status_success_returns_remote_room() {
     let f = Fixture::new().await;
+    *f.room().active_session.lock().await = Some(guest_session());
     f.respond("/api/lobby/status", 200, room_status()).await;
     let room = lobby::get_lobby_status("ABC123".into(), Some("Fixture".into()), f.room())
         .await
-        .unwrap()
         .unwrap();
     assert_eq!(room.code, "#ABC123");
 }
 #[tokio::test]
-async fn get_lobby_status_remote_error_returns_none() {
+async fn get_lobby_status_remote_error_is_transient_and_keeps_the_room() {
     let f = Fixture::new().await;
+    *f.room().active_session.lock().await = Some(guest_session());
     f.respond("/api/lobby/status", 500, json!({})).await;
-    assert!(lobby::get_lobby_status("ABC123".into(), None, f.room())
+    let err = lobby::get_lobby_status("ABC123".into(), None, f.room())
         .await
-        .unwrap()
-        .is_none());
+        .unwrap_err();
+    assert!(
+        matches!(err, lobby::LobbyStatusError::Transient { .. }),
+        "{err:?}"
+    );
+    assert!(f.room().active_session.lock().await.is_some());
+}
+fn guest_session() -> lobby::ActiveLobbySession {
+    lobby::ActiveLobbySession {
+        code: "ABC123".into(),
+        host_token: None,
+        host_name: "Fixture".into(),
+        world_name: "Fixture".into(),
+        player_name: "Fixture".into(),
+        is_host: false,
+        tunnel_address: Some("localhost:25565".into()),
+    }
 }
 #[tokio::test]
 async fn join_lobby_room_error_rejects_empty_code_before_network() {

@@ -11,6 +11,25 @@ pub trait TunnelRuntime: Send + Sync {
         config: &TunnelConfigResponse,
         local_port: u16,
     ) -> Result<String, String>;
+
+    /// Whether the hosted Minecraft world still answers a status ping on this PC.
+    async fn world_alive(&self, local_port: u16) -> bool {
+        ServerPinger::new(1500, 1500, 763)
+            .ping_resolved("127.0.0.1", local_port)
+            .await
+            .is_ok()
+    }
+
+    /// Whether the tunnel agent is still running (no agent: nothing to watch).
+    async fn tunnel_alive(
+        &self,
+        supervisor: &tokio::sync::Mutex<Option<PlayitSupervisor>>,
+    ) -> bool {
+        match supervisor.lock().await.as_ref() {
+            Some(agent) => agent.is_alive().await,
+            None => true,
+        }
+    }
 }
 
 pub struct PlayitRuntime;

@@ -200,7 +200,6 @@ async fn test_join_lobby_room_by_code_flow() {
     // 2. Verify status endpoint returns both players
     let status = lobby::get_lobby_status("#ROOM123".into(), Some("Bob".into()), f.room())
         .await
-        .unwrap()
         .expect("room status should be present");
 
     assert_eq!(status.players.len(), 2);

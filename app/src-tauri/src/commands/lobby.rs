@@ -26,7 +26,7 @@ use wex_ipc::models::{
     LanWorldDto, LobbyCreateResponseDto, LobbyJoinResponseDto, LobbyStatusResponseDto,
     NetOpenRoomDto, TunnelConfigResponseDto, TunnelStatusDto,
 };
-use wex_net::events::{NetEventBus, TunnelStatus};
+use wex_net::events::{NetEvent, NetEventBus, TunnelStatus};
 use wex_net::lan::LanDiscoveryService;
 use wex_net::lobby::{HeartbeatHandle, LobbyApiClient, LobbyError};
 use wex_net::tunnel::{ensure_binary_downloaded, playit_binary_path, PlayitSupervisor};
@@ -47,6 +47,55 @@ pub struct ActiveLobbySession {
     pub tunnel_address: Option<String>,
 }
 
+/// How often a hosted room checks its world and tunnel, and how many status
+/// pings in a row the world may miss before the room is closed.
+#[derive(Debug, Clone, Copy)]
+pub struct RoomWatchdogConfig {
+    pub interval: Duration,
+    pub world_misses: u32,
+}
+
+impl Default for RoomWatchdogConfig {
+    fn default() -> Self {
+        Self {
+            interval: Duration::from_secs(10),
+            world_misses: 3,
+        }
+    }
+}
+
+/// How long closing the room may wait for the lobby service.
+pub const CLOSE_ROOM_TIMEOUT: Duration = Duration::from_secs(10);
+/// The same while Wex is exiting, so the exit is not held up.
+pub const CLOSE_ON_EXIT_TIMEOUT: Duration = Duration::from_secs(3);
+
+const TUNNEL_EXITED: &str = "Агент Playit завершился, туннель закрыт. Нажмите «Повторить».";
+const TUNNEL_DOWN: &str = "Не удалось поднять Playit-туннель: служба туннелей временно недоступна";
+
+/// Why `get_lobby_status` has no room to show. `Transient` keeps the room in
+/// the UI (the next poll retries); `Closed` and `Kicked` end it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LobbyStatusError {
+    Transient { message: String },
+    Closed { message: String },
+    Kicked { message: String },
+}
+
+impl LobbyStatusError {
+    fn closed() -> Self {
+        Self::Closed {
+            message: "Комната закрыта организатором".into(),
+        }
+    }
+
+    fn kicked() -> Self {
+        Self::Kicked {
+            message: "Вы были исключены из комнаты хостом".into(),
+        }
+    }
+}
+
 pub struct LobbyState {
     pub client: LobbyApiClient,
     pub event_bus: Arc<NetEventBus>,
@@ -61,6 +110,8 @@ pub struct LobbyState {
     pub operation: Mutex<()>,
     pub local_port: Mutex<Option<u16>>,
     pub local_manifest: Mutex<Vec<wex_net::ModManifestEntry>>,
+    pub watchdog: RoomWatchdogConfig,
+    pub heartbeat_interval: Duration,
 }
 
 unsafe impl Send for LobbyState {}
@@ -91,6 +142,8 @@ impl LobbyState {
             operation: Mutex::new(()),
             local_port: Mutex::new(None),
             local_manifest: Mutex::new(Vec::new()),
+            watchdog: RoomWatchdogConfig::default(),
+            heartbeat_interval: Duration::from_secs(15),
         }
     }
     pub fn with_tunnel_runtime(
@@ -104,6 +157,189 @@ impl LobbyState {
         self.lan_discovery = Arc::new(discovery);
         self
     }
+
+    fn handles(&self) -> RoomHandles {
+        RoomHandles {
+            client: self.client.clone(),
+            event_bus: self.event_bus.clone(),
+            active_session: self.active_session.clone(),
+            heartbeat_handle: self.heartbeat_handle.clone(),
+            supervisor: self.supervisor.clone(),
+            current_tunnel_status: self.current_tunnel_status.clone(),
+            tunnel_runtime: self.tunnel_runtime.clone(),
+        }
+    }
+
+    /// Closes (host) or leaves (guest) the current room: the heartbeat and the
+    /// tunnel stop at once, the lobby service gets at most `timeout`.
+    pub async fn close_current_room(&self, timeout: Duration) {
+        let handles = self.handles();
+        if let Some(hb) = self.heartbeat_handle.lock().await.take() {
+            hb.stop();
+        }
+        handles.stop_tunnel().await;
+        let session = self.active_session.lock().await.take();
+        self.forget_local_world().await;
+        if let Some(session) = session {
+            handles.notify_service(&session, timeout).await;
+        }
+    }
+
+    /// Ends the room `code` here (the service already dropped it).
+    async fn end_room_locally(&self, code: &str) {
+        if let Some(session) = self.handles().end_session(code).await {
+            if session.is_host {
+                self.forget_local_world().await;
+            }
+        }
+    }
+
+    async fn forget_local_world(&self) {
+        *self.local_port.lock().await = None;
+        self.local_manifest.lock().await.clear();
+    }
+
+    /// The host's game exited: if the hosted world no longer answers, the room
+    /// is closed instead of advertising an address nobody can join.
+    pub async fn close_if_world_gone(&self) -> bool {
+        let code = match self.active_session.lock().await.as_ref() {
+            Some(s) if s.is_host => s.code.clone(),
+            _ => return false,
+        };
+        let Some(port) = *self.local_port.lock().await else {
+            return false;
+        };
+        if self.tunnel_runtime.world_alive(port).await {
+            return false;
+        }
+        let handles = self.handles();
+        match handles.end_session(&code).await {
+            Some(session) => {
+                self.forget_local_world().await;
+                handles.notify_service(&session, CLOSE_ROOM_TIMEOUT).await;
+                true
+            }
+            None => false,
+        }
+    }
+}
+
+/// The shared parts of [`LobbyState`] that a background task can own.
+#[derive(Clone)]
+struct RoomHandles {
+    client: LobbyApiClient,
+    event_bus: Arc<NetEventBus>,
+    active_session: Arc<Mutex<Option<ActiveLobbySession>>>,
+    heartbeat_handle: Arc<Mutex<Option<HeartbeatHandle>>>,
+    supervisor: Arc<Mutex<Option<PlayitSupervisor>>>,
+    current_tunnel_status: Arc<Mutex<TunnelStatus>>,
+    tunnel_runtime: Arc<dyn super::lobby_tunnel::TunnelRuntime>,
+}
+
+impl RoomHandles {
+    async fn stop_tunnel(&self) {
+        if let Some(mut supervisor) = self.supervisor.lock().await.take() {
+            supervisor.stop().await;
+        }
+        *self.current_tunnel_status.lock().await = TunnelStatus::Stopped;
+    }
+
+    /// Ends the room locally if it is still `code`: session, heartbeat, tunnel.
+    async fn end_session(&self, code: &str) -> Option<ActiveLobbySession> {
+        let ended = {
+            let mut lock = self.active_session.lock().await;
+            if lock.as_ref().map(|s| s.code.as_str()) != Some(code) {
+                return None;
+            }
+            lock.take()
+        };
+        if let Some(hb) = self.heartbeat_handle.lock().await.take() {
+            hb.stop();
+        }
+        self.stop_tunnel().await;
+        ended
+    }
+
+    /// Tells the lobby service the room is closed (host) or that we left (guest).
+    async fn notify_service(&self, session: &ActiveLobbySession, timeout: Duration) {
+        let call = async {
+            if session.is_host {
+                if let Some(token) = &session.host_token {
+                    let _ = self.client.close_lobby(&session.code, token).await;
+                }
+            } else {
+                let _ = self
+                    .client
+                    .leave_lobby(&session.code, &session.player_name)
+                    .await;
+            }
+        };
+        let _ = tokio::time::timeout(timeout, call).await;
+    }
+
+    /// The tunnel agent exited on its own: forget it, report the error and
+    /// drop the address so the host sees Retry.
+    async fn check_tunnel(&self, code: &str) {
+        if self.tunnel_runtime.tunnel_alive(&self.supervisor).await {
+            return;
+        }
+        if let Some(mut agent) = self.supervisor.lock().await.take() {
+            agent.stop().await;
+        }
+        let error = TunnelStatus::Error(TUNNEL_EXITED.into());
+        *self.current_tunnel_status.lock().await = error.clone();
+        self.event_bus
+            .emit(NetEvent::TunnelStatusChanged { status: error });
+        if let Some(s) = self
+            .active_session
+            .lock()
+            .await
+            .as_mut()
+            .filter(|s| s.code == code)
+        {
+            s.tunnel_address = None;
+        }
+    }
+}
+
+/// Watches a hosted room until it ends: the heartbeat losing the room ends it
+/// locally, a dead tunnel agent is reported, and a world that stops answering
+/// on this PC (game closed, LAN closed) closes the room.
+fn spawn_room_watchdog(handles: RoomHandles, config: RoomWatchdogConfig, code: String, port: u16) {
+    tokio::spawn(async move {
+        let mut misses = 0;
+        loop {
+            tokio::time::sleep(config.interval).await;
+            let has_tunnel = match handles.active_session.lock().await.as_ref() {
+                Some(s) if s.code == code => s.tunnel_address.is_some(),
+                _ => break,
+            };
+            let room_gone = handles
+                .heartbeat_handle
+                .lock()
+                .await
+                .as_ref()
+                .is_some_and(|hb| hb.health().room_gone());
+            if room_gone {
+                handles.end_session(&code).await;
+                break;
+            }
+            if has_tunnel {
+                handles.check_tunnel(&code).await;
+            }
+            if handles.tunnel_runtime.world_alive(port).await {
+                misses = 0;
+                continue;
+            }
+            misses += 1;
+            if misses >= config.world_misses {
+                if let Some(session) = handles.end_session(&code).await {
+                    handles.notify_service(&session, CLOSE_ROOM_TIMEOUT).await;
+                }
+                break;
+            }
+        }
+    });
 }
 
 fn format_lobby_error(err: &LobbyError) -> String {
@@ -666,46 +902,64 @@ pub async fn get_lobby_status(
     code: String,
     player_name: Option<String>,
     state: State<'_, LobbyState>,
-) -> Result<Option<LobbyRoomModel>, String> {
-    let clean_code = code.trim().trim_start_matches('#');
-    let session = {
-        let lock = state.active_session.lock().await;
-        lock.clone()
+) -> Result<LobbyRoomModel, LobbyStatusError> {
+    lobby_status_internal(&state, code, player_name).await
+}
+
+async fn lobby_status_internal(
+    state: &LobbyState,
+    code: String,
+    player_name: Option<String>,
+) -> Result<LobbyRoomModel, LobbyStatusError> {
+    let clean_code = code.trim().trim_start_matches('#').to_string();
+    let session = state
+        .active_session
+        .lock()
+        .await
+        .clone()
+        .filter(|s| s.code == clean_code);
+    // The room already ended here (closed, world gone, heartbeat lost it).
+    let Some(session) = session else {
+        return Err(LobbyStatusError::closed());
     };
+    let room_gone = state
+        .heartbeat_handle
+        .lock()
+        .await
+        .as_ref()
+        .is_some_and(|hb| hb.health().room_gone());
+    if session.is_host && room_gone {
+        state.end_room_locally(&clean_code).await;
+        return Err(LobbyStatusError::closed());
+    }
 
     let status = match state
         .client
-        .get_status(clean_code, player_name.as_deref())
+        .get_status(&clean_code, player_name.as_deref())
         .await
     {
         Ok(s) => s,
-        Err(LobbyError::Api { status: 404, .. }) => {
-            let mut lock = state.active_session.lock().await;
-            *lock = None;
-            return Err("Комната закрыта организатором".to_string());
+        Err(e) if e.is_not_found() => {
+            state.end_room_locally(&clean_code).await;
+            return Err(LobbyStatusError::closed());
         }
         Err(e) => {
-            let s = e.to_string();
-            if s.contains("404") || s.contains("closed") || s.contains("закрыта") {
-                let mut lock = state.active_session.lock().await;
-                *lock = None;
-                return Err("Комната закрыта организатором".to_string());
-            }
-            return Ok(None);
+            return Err(LobbyStatusError::Transient {
+                message: format_lobby_error(&e),
+            })
         }
     };
 
     if status.status == "closed" {
-        let mut lock = state.active_session.lock().await;
-        *lock = None;
-        return Err("Комната закрыта организатором".to_string());
+        state.end_room_locally(&clean_code).await;
+        return Err(LobbyStatusError::closed());
     }
 
     if status.kicked {
-        let mut lock = state.active_session.lock().await;
-        *lock = None;
-        return Err("Вы были исключены из комнаты хостом".to_string());
+        state.end_room_locally(&clean_code).await;
+        return Err(LobbyStatusError::kicked());
     }
+    let session = Some(session);
 
     let host_name = status
         .host_name
@@ -734,12 +988,26 @@ pub async fn get_lobby_status(
         })
         .collect();
 
-    let tunnel_addr = status
-        .tunnel_address
-        .or_else(|| session.as_ref().and_then(|s| s.tunnel_address.clone()));
+    // The host knows its own tunnel; the service may still list the address
+    // of an agent that has exited.
+    let tunnel_addr = if is_host {
+        session.as_ref().and_then(|s| s.tunnel_address.clone())
+    } else {
+        status
+            .tunnel_address
+            .or_else(|| session.as_ref().and_then(|s| s.tunnel_address.clone()))
+    };
     let tunnel_active = tunnel_addr.is_some();
+    let tunnel_error = if tunnel_active {
+        None
+    } else {
+        Some(match &*state.current_tunnel_status.lock().await {
+            TunnelStatus::Error(message) if is_host => message.clone(),
+            _ => TUNNEL_DOWN.to_string(),
+        })
+    };
 
-    Ok(Some(LobbyRoomModel {
+    Ok(LobbyRoomModel {
         code: if code.starts_with('#') {
             code
         } else {
@@ -749,14 +1017,7 @@ pub async fn get_lobby_status(
         world_name,
         tunnel_address: tunnel_addr,
         tunnel_active,
-        tunnel_error: if tunnel_active {
-            None
-        } else {
-            Some(
-                "Не удалось поднять Playit-туннель: служба туннелей временно недоступна"
-                    .to_string(),
-            )
-        },
+        tunnel_error,
         is_host,
         players,
         mod_mismatch_count: status
@@ -765,38 +1026,16 @@ pub async fn get_lobby_status(
             .and_then(|m| player_name.as_ref().and_then(|name| m.get(name)))
             .map_or(0, |s| s.mismatches.len()),
         total_mods: state.local_manifest.lock().await.len(),
-    }))
+    })
 }
 
+/// Closes or leaves the current room. `code` is the room the UI shows; the
+/// backend has one room at a time and closes that one.
 #[tauri::command]
 pub async fn close_lobby_room(code: String, state: State<'_, LobbyState>) -> Result<(), String> {
     let _operation = state.operation.lock().await;
-    let clean_code = code.trim().trim_start_matches('#');
-
-    let mut hb_lock = state.heartbeat_handle.lock().await;
-    if let Some(hb) = hb_lock.take() {
-        hb.stop();
-    }
-
-    stop_lobby_tunnel(&state).await;
-
-    let session = {
-        let mut lock = state.active_session.lock().await;
-        lock.take()
-    };
-
-    if let Some(s) = session {
-        if s.is_host {
-            if let Some(token) = s.host_token {
-                let _ = state.client.close_lobby(clean_code, &token).await;
-            }
-        } else {
-            let _ = state.client.leave_lobby(clean_code, &s.player_name).await;
-        }
-    }
-
-    *state.local_port.lock().await = None;
-    state.local_manifest.lock().await.clear();
+    let _ = code;
+    state.close_current_room(CLOSE_ROOM_TIMEOUT).await;
     Ok(())
 }
 
@@ -967,10 +1206,7 @@ fn host_room(
 }
 
 async fn stop_lobby_tunnel(state: &LobbyState) {
-    if let Some(mut supervisor) = state.supervisor.lock().await.take() {
-        supervisor.stop().await;
-    }
-    *state.current_tunnel_status.lock().await = TunnelStatus::Stopped;
+    state.handles().stop_tunnel().await;
 }
 
 async fn open_confirmed_tunnel(
@@ -1058,13 +1294,14 @@ async fn create_room_internal(
     *state.local_port.lock().await = Some(port);
     *state.active_session.lock().await = Some(session);
     let heartbeat = state.client.start_heartbeat_loop(
-        created.code,
+        created.code.clone(),
         created.host_token,
-        Duration::from_secs(15),
+        state.heartbeat_interval,
     );
     if let Some(old) = state.heartbeat_handle.lock().await.replace(heartbeat) {
         old.stop();
     }
+    spawn_room_watchdog(state.handles(), state.watchdog, created.code, port);
     Ok(room)
 }
 
@@ -1258,9 +1495,12 @@ mod tests {
     }
 
     fn test_state(tools: PathBuf, api: &str, old_api: &str) -> LobbyState {
-        LobbyState::new(tools, api, old_api)
+        let mut state = LobbyState::new(tools, api, old_api)
             .with_tunnel_runtime(Arc::new(FixtureTunnel))
-            .with_lan_discovery(LanDiscoveryService::new_loopback())
+            .with_lan_discovery(LanDiscoveryService::new_loopback());
+        // Existing flows never reach the first watchdog tick.
+        state.watchdog.interval = Duration::from_secs(3600);
+        state
     }
 
     use super::*;
@@ -1835,5 +2075,321 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    // --- Room lifecycle: status errors, watchdog, exit -----------------------
+
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    /// A tunnel whose world and agent liveness the test switches.
+    struct ProbeTunnel {
+        world: Arc<AtomicBool>,
+        agent: Arc<AtomicBool>,
+    }
+
+    #[async_trait::async_trait]
+    impl super::super::lobby_tunnel::TunnelRuntime for ProbeTunnel {
+        async fn start(
+            &self,
+            state: &LobbyState,
+            config: &wex_net::lobby::TunnelConfigResponse,
+            port: u16,
+        ) -> Result<String, String> {
+            FixtureTunnel.start(state, config, port).await
+        }
+        async fn world_alive(&self, _port: u16) -> bool {
+            self.world.load(Ordering::SeqCst)
+        }
+        async fn tunnel_alive(&self, _agent: &Mutex<Option<PlayitSupervisor>>) -> bool {
+            self.agent.load(Ordering::SeqCst)
+        }
+    }
+
+    struct Hosted {
+        server: MockServer,
+        state: LobbyState,
+        world: Arc<AtomicBool>,
+        agent: Arc<AtomicBool>,
+        _tmp: tempfile::TempDir,
+    }
+
+    async fn hosted(heartbeat_status: u16, watchdog: RoomWatchdogConfig) -> Hosted {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/lobby"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "code": "R1R1", "hostToken": "tok", "status": "open", "createdAt": 1
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/tunnel-config"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "secret": "ab", "publicAddress": "r.tun.ply.gg", "publicPort": 40000
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/open"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/heartbeat"))
+            .respond_with(ResponseTemplate::new(heartbeat_status))
+            .mount(&server)
+            .await;
+        let world = Arc::new(AtomicBool::new(true));
+        let agent = Arc::new(AtomicBool::new(true));
+        let tmp = tempdir().unwrap();
+        let mut state = test_state(tmp.path().to_path_buf(), &server.uri(), &server.uri())
+            .with_tunnel_runtime(Arc::new(ProbeTunnel {
+                world: world.clone(),
+                agent: agent.clone(),
+            }));
+        state.watchdog = watchdog;
+        state.heartbeat_interval = Duration::from_millis(30);
+        publish_lan_world_internal(&state, "Мир", 51234, Some("Host".into()))
+            .await
+            .unwrap();
+        Hosted {
+            server,
+            state,
+            world,
+            agent,
+            _tmp: tmp,
+        }
+    }
+
+    fn idle_watchdog() -> RoomWatchdogConfig {
+        RoomWatchdogConfig {
+            interval: Duration::from_secs(3600),
+            world_misses: 3,
+        }
+    }
+
+    fn fast_watchdog() -> RoomWatchdogConfig {
+        RoomWatchdogConfig {
+            interval: Duration::from_millis(30),
+            world_misses: 2,
+        }
+    }
+
+    async fn status_reply(server: &MockServer, status: u16, body: serde_json::Value) {
+        Mock::given(method("GET"))
+            .and(path("/api/lobby/status"))
+            .respond_with(ResponseTemplate::new(status).set_body_json(body))
+            .mount(server)
+            .await;
+    }
+
+    fn open_status() -> serde_json::Value {
+        serde_json::json!({
+            "code": "R1R1", "status": "open", "tunnelAddress": "r.tun.ply.gg:40000",
+            "playerCount": null, "lastHeartbeat": null, "players": ["Host"], "hostName": "Host"
+        })
+    }
+
+    async fn wait_until<F: std::future::Future<Output = bool>>(mut check: impl FnMut() -> F) {
+        for _ in 0..200 {
+            if check().await {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!("condition not reached in 4 s");
+    }
+
+    #[tokio::test]
+    async fn status_service_error_is_transient_and_the_room_keeps_running() {
+        let h = hosted(200, idle_watchdog()).await;
+        status_reply(&h.server, 503, serde_json::json!({})).await;
+        let err = lobby_status_internal(&h.state, "#R1R1".into(), Some("Host".into()))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, LobbyStatusError::Transient { .. }), "{err:?}");
+        assert!(h.state.active_session.lock().await.is_some());
+        assert!(h.state.heartbeat_handle.lock().await.is_some());
+        // Typed for the UI.
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["kind"], "transient");
+    }
+
+    #[tokio::test]
+    async fn status_404_ends_the_hosted_room_heartbeat_and_tunnel() {
+        let h = hosted(200, idle_watchdog()).await;
+        status_reply(&h.server, 404, serde_json::json!({"error": "not found"})).await;
+        let err = lobby_status_internal(&h.state, "#R1R1".into(), Some("Host".into()))
+            .await
+            .unwrap_err();
+        assert_eq!(err, LobbyStatusError::closed());
+        assert!(h.state.active_session.lock().await.is_none());
+        assert!(h.state.heartbeat_handle.lock().await.is_none());
+        assert_eq!(
+            *h.state.current_tunnel_status.lock().await,
+            TunnelStatus::Stopped
+        );
+        assert!(h.state.local_port.lock().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn status_closed_ends_the_room_and_a_500_message_is_not_mistaken_for_it() {
+        let h = hosted(200, idle_watchdog()).await;
+        // An error body that mentions "closed" or 404 is still only a transient error.
+        status_reply(
+            &h.server,
+            500,
+            serde_json::json!({"error": "upstream 404: room closed?"}),
+        )
+        .await;
+        assert!(matches!(
+            lobby_status_internal(&h.state, "R1R1".into(), None).await,
+            Err(LobbyStatusError::Transient { .. })
+        ));
+        h.server.reset().await;
+        let mut closed = open_status();
+        closed["status"] = "closed".into();
+        status_reply(&h.server, 200, closed).await;
+        assert_eq!(
+            lobby_status_internal(&h.state, "R1R1".into(), None)
+                .await
+                .unwrap_err(),
+            LobbyStatusError::closed()
+        );
+        assert!(h.state.active_session.lock().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_heartbeat_404_ends_the_room_on_the_next_status() {
+        let h = hosted(404, idle_watchdog()).await;
+        let health = h
+            .state
+            .heartbeat_handle
+            .lock()
+            .await
+            .as_ref()
+            .unwrap()
+            .health();
+        wait_until(|| {
+            let health = health.clone();
+            async move { health.room_gone() }
+        })
+        .await;
+        assert_eq!(
+            lobby_status_internal(&h.state, "R1R1".into(), None)
+                .await
+                .unwrap_err(),
+            LobbyStatusError::closed()
+        );
+        assert!(h.state.active_session.lock().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn watchdog_closes_the_room_when_the_world_stops_answering() {
+        let h = hosted(200, fast_watchdog()).await;
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/close"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&h.server)
+            .await;
+        h.world.store(false, Ordering::SeqCst);
+        let sessions = h.state.active_session.clone();
+        wait_until(|| {
+            let sessions = sessions.clone();
+            async move { sessions.lock().await.is_none() }
+        })
+        .await;
+        assert!(h.state.heartbeat_handle.lock().await.is_none());
+        // The service was told (checked by `expect(1)`), and the UI's next poll ends the room.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(
+            lobby_status_internal(&h.state, "R1R1".into(), None)
+                .await
+                .unwrap_err(),
+            LobbyStatusError::closed()
+        );
+        h.server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn watchdog_reports_a_dead_tunnel_agent_so_the_host_can_retry() {
+        let h = hosted(200, fast_watchdog()).await;
+        let mut events = h.state.event_bus.subscribe();
+        h.agent.store(false, Ordering::SeqCst);
+        let sessions = h.state.active_session.clone();
+        wait_until(|| {
+            let sessions = sessions.clone();
+            async move {
+                sessions
+                    .lock()
+                    .await
+                    .as_ref()
+                    .is_some_and(|s| s.tunnel_address.is_none())
+            }
+        })
+        .await;
+        assert!(matches!(
+            *h.state.current_tunnel_status.lock().await,
+            TunnelStatus::Error(_)
+        ));
+        let mut reported = false;
+        while let Ok(event) = events.try_recv() {
+            reported |= matches!(
+                event,
+                NetEvent::TunnelStatusChanged {
+                    status: TunnelStatus::Error(_)
+                }
+            );
+        }
+        assert!(reported);
+        // The service still lists the old address; the host sees the tunnel as down.
+        status_reply(&h.server, 200, open_status()).await;
+        let room = lobby_status_internal(&h.state, "R1R1".into(), Some("Host".into()))
+            .await
+            .unwrap();
+        assert!(!room.tunnel_active);
+        assert!(room.tunnel_error.unwrap().contains("Повторить"));
+    }
+
+    #[tokio::test]
+    async fn closing_on_exit_stops_everything_and_does_not_wait_for_a_slow_service() {
+        let h = hosted(200, idle_watchdog()).await;
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/close"))
+            .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(10)))
+            .mount(&h.server)
+            .await;
+        let started = std::time::Instant::now();
+        h.state.close_current_room(Duration::from_millis(200)).await;
+        assert!(started.elapsed() < Duration::from_secs(3));
+        assert!(h.state.active_session.lock().await.is_none());
+        assert!(h.state.heartbeat_handle.lock().await.is_none());
+        let close_calls = h
+            .server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|r| r.url.path() == "/api/lobby/close")
+            .count();
+        assert_eq!(close_calls, 1);
+    }
+
+    #[tokio::test]
+    async fn game_exit_closes_the_room_only_when_the_world_is_gone() {
+        let h = hosted(200, idle_watchdog()).await;
+        Mock::given(method("POST"))
+            .and(path("/api/lobby/close"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&h.server)
+            .await;
+        assert!(!h.state.close_if_world_gone().await);
+        assert!(h.state.active_session.lock().await.is_some());
+        h.world.store(false, Ordering::SeqCst);
+        assert!(h.state.close_if_world_gone().await);
+        assert!(h.state.active_session.lock().await.is_none());
+        h.server.verify().await;
     }
 }
