@@ -78,12 +78,17 @@
     }
   }
 
+  // Why «Restart» did not work (game running, installer could not start). The
+  // update stays staged, so the button stays and can be tried again.
+  let restartError = $state('');
+
   async function handleRestart() {
+    restartError = '';
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('updater_restart');
-    } catch {
-      if (typeof window !== 'undefined') window.location.reload();
+    } catch (err: any) {
+      restartError = (typeof err === 'string' ? err : err?.message) || t('update_card.error_desc');
     }
   }
 
@@ -187,9 +192,13 @@
       </span>
       <ProgressBar percentage={updateProgressPct} height={4} />
     {:else if updateStage === 'ready_to_restart'}
-      <span class="update-banner-subtext">
-        {t('update_card.ready_desc')}
-      </span>
+      {#if restartError}
+        <span class="update-banner-subtext" role="alert" title={restartError}>{restartError}</span>
+      {:else}
+        <span class="update-banner-subtext">
+          {t('update_card.ready_desc')}
+        </span>
+      {/if}
     {:else}
       <span class="update-banner-subtext" title={updateErrorMessage}>
         {updateErrorMessage || t('update_card.error_desc')}

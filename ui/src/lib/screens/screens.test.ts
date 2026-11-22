@@ -317,6 +317,48 @@ describe('Wex Launcher Screens', () => {
     unmount(comp);
   });
 
+  it('shows why «Перезапуск» failed instead of reloading the page', async () => {
+    const original = defaultInvoke.getMockImplementation()!;
+    defaultInvoke.mockImplementation(async (cmd: string, args?: Record<string, any>, options?: any) => {
+      if (cmd === 'updater_restart') throw 'Не удалось запустить установщик обновления: отказано';
+      return original(cmd, args, options);
+    });
+    try {
+      const comp = mount(UpdateCard, {
+        target,
+        props: {
+          initialInfo: {
+            update_available: true,
+            current_version: '0.1.0',
+            latest_version: '0.2.0',
+            download_url: 'https://example.com/wex-update.exe',
+            signature: 'untrusted comment: signature\nRWSomeBase64SignatureString1234567890==',
+            is_signed: true,
+            can_auto_update: true,
+          },
+        },
+      });
+      const banner = target.querySelector('.update-banner');
+      Array.from(banner?.querySelectorAll('button') || []).find((b) => b.textContent?.includes('Обновить'))?.click();
+      await tick();
+      await new Promise((r) => setTimeout(r, 20));
+      const restartBtn = Array.from(banner?.querySelectorAll('button') || []).find((b) =>
+        b.textContent?.includes('Перезапуск')
+      );
+      expect(restartBtn).not.toBeUndefined();
+      restartBtn?.click();
+      await new Promise((r) => setTimeout(r, 20));
+      await tick();
+
+      expect(banner?.querySelector('[role="alert"]')?.textContent).toContain('Не удалось запустить установщик');
+      // The update stays staged: the button is still there to try again.
+      expect(Array.from(banner?.querySelectorAll('button') || []).some((b) => b.textContent?.includes('Перезапуск'))).toBe(true);
+      unmount(comp);
+    } finally {
+      defaultInvoke.mockImplementation(original);
+    }
+  });
+
   // The update UI lives in the sidebar UpdateCard since 0.9.2 (it is no longer part of PlayScreen).
   it('security regression: rejected update URL never falls back to window.open', async () => {
     const invokeSpy = defaultInvoke;

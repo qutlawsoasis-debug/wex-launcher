@@ -420,6 +420,40 @@ pub fn check_update_restart_allowed(is_running: bool, is_launching: bool) -> Res
     }
 }
 
+/// Take the staged update once (two restart requests cannot execute the same
+/// package) and start its installer. When the installer could not be started
+/// the verified update is put back, so «Restart» can be tried again instead of
+/// the update being lost until the next download.
+fn take_and_execute<F>(
+    slot: &Mutex<Option<StagedUpdate>>,
+    spawn: F,
+) -> Result<(StagedUpdate, InstallerExecutionPlan), String>
+where
+    F: FnOnce(&Path, &[String]) -> Result<(), String>,
+{
+    let staged = slot
+        .lock()
+        .map_err(|e| e.to_string())?
+        .take()
+        .ok_or_else(|| "Нет подготовленного проверенного обновления для установки".to_string())?;
+    let mut spawn_failed = false;
+    let result = staged
+        .execute(|executable, args| spawn(executable, args).inspect_err(|_| spawn_failed = true));
+    match result {
+        Ok(plan) => Ok((staged, plan)),
+        Err(e) => {
+            if spawn_failed {
+                if let Ok(mut lock) = slot.lock() {
+                    if lock.is_none() {
+                        *lock = Some(staged);
+                    }
+                }
+            }
+            Err(e)
+        }
+    }
+}
+
 pub fn apply_staged_update_and_restart(
     app: Option<&AppHandle>,
 ) -> Result<InstallerExecutionPlan, String> {
@@ -437,13 +471,7 @@ pub fn apply_staged_update_and_restart(
         }
     }
 
-    // Take once: two restart requests cannot execute the same staged package.
-    let staged = STAGED_UPDATE
-        .lock()
-        .map_err(|e| e.to_string())?
-        .take()
-        .ok_or_else(|| "Нет подготовленного проверенного обновления для установки".to_string())?;
-    let plan = staged.execute(|executable, args| {
+    let (staged, plan) = take_and_execute(&STAGED_UPDATE, |executable, args| {
         #[cfg(target_os = "windows")]
         std::process::Command::new(executable)
             .args(args)

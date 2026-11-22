@@ -326,6 +326,22 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_installer_start_keeps_the_update_for_another_try() {
+        let slot = std::sync::Mutex::new(Some(stage()));
+        let err =
+            super::super::take_and_execute(&slot, |_, _| Err("spawn failed".into())).unwrap_err();
+        assert!(err.contains("spawn failed"));
+        assert!(
+            slot.lock().unwrap().is_some(),
+            "the verified update is put back"
+        );
+
+        let (_staged, _plan) = super::super::take_and_execute(&slot, |_, _| Ok(())).unwrap();
+        assert!(slot.lock().unwrap().is_none(), "taken once when started");
+        assert!(super::super::take_and_execute(&slot, |_, _| Ok(())).is_err());
+    }
+
+    #[test]
     fn invalid_signature_and_version_do_not_create_a_stage() {
         assert!(StagedUpdate::new(b"tampered", SIG, KEY, "9.0.0", "exe").is_err());
         assert!(StagedUpdate::new(b"test", SIG, KEY, "x/../../../outside", "exe").is_err());
