@@ -262,6 +262,18 @@ describe('build settings tab', () => {
     expect(settings.player_name).toBe('Player');
   });
 
+  it('a memory change made just before leaving the tab is still saved', async () => {
+    await open();
+    tab('settings');
+    await vi.waitFor(() => expect(target.querySelector<HTMLInputElement>('input[type="range"]')?.disabled).toBe(false));
+    const range = target.querySelector<HTMLInputElement>('input[type="range"]')!;
+    range.value = '10';
+    range.dispatchEvent(new Event('input', { bubbles: true }));
+    unmount(comp!);
+    comp = null;
+    await vi.waitFor(() => expect(settings.ram_mb).toBe(10240), { timeout: 2000 });
+  });
+
   it('verify files calls verify_game_files and reports the result', async () => {
     await open();
     tab('settings');

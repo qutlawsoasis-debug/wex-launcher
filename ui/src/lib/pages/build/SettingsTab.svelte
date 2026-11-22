@@ -62,10 +62,22 @@
   }
 
   let memTimer: ReturnType<typeof setTimeout> | null = null;
+  // Plain copy of the pending value: during teardown Svelte hands out the
+  // pre-change $state value, so onDestroy cannot read memGb.
+  let pendingRamMb = 0;
   function onMem(e: Event) {
     memGb = Number((e.currentTarget as HTMLInputElement).value);
+    pendingRamMb = memGb * 1024;
     if (memTimer) clearTimeout(memTimer);
-    memTimer = setTimeout(() => void save({ ram_mb: memGb * 1024 }), 400);
+    memTimer = setTimeout(flushMem, 400);
+  }
+
+  /** Save the pending memory value now (also when the tab closes mid-debounce). */
+  function flushMem() {
+    if (!memTimer) return;
+    clearTimeout(memTimer);
+    memTimer = null;
+    void save({ ram_mb: pendingRamMb });
   }
 
   function onJava(e: Event) {
@@ -124,7 +136,7 @@
 
   onDestroy(() => {
     stopProgress?.();
-    if (memTimer) clearTimeout(memTimer);
+    flushMem();
   });
 </script>
 
