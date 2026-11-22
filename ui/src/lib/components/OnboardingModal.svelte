@@ -345,7 +345,11 @@
 
   export function handleSkip() {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('wex_onboarding_completed', 'true');
+      try {
+        localStorage.setItem('wex_onboarding_completed', 'true');
+      } catch {
+        // Storage can be full or blocked; skipping must still close the sheet.
+      }
     }
     onskip?.();
     open = false;

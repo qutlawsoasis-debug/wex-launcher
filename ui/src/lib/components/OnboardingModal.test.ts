@@ -71,6 +71,22 @@ describe('OnboardingModal Component (Apple HIG Onboarding)', () => {
     expect(localStorage.getItem('wex_onboarding_completed')).toBe('true');
   });
 
+  it('skip still closes when localStorage refuses to write', async () => {
+    let closed = false;
+    const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+    try {
+      comp = mount(OnboardingModal, { target, props: { open: true, onclose: () => { closed = true; } } });
+      await tick();
+      (target.querySelector('.skip-action') as HTMLButtonElement).click();
+      await tick();
+      expect(closed).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('skips import step when no old Aura-Launcher is detected and proceeds to nickname', async () => {
     comp = mount(OnboardingModal, {
       target,

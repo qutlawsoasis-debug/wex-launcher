@@ -884,3 +884,17 @@ describe('friendsLive: invites list (never hidden by baseline or cooldown)', () 
     expect(service.invites.map((i) => i.id)).toEqual(['inv1']);
   });
 });
+
+describe('friendsLive: storage', () => {
+  it('constructs with notifications on when localStorage throws on read', () => {
+    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('SecurityError');
+    });
+    try {
+      const service = new FriendsLiveService({ syncFn: async () => ({ friends: [], incoming_requests: [], incoming_invites: [] }) });
+      expect(service.notificationsEnabled).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

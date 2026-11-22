@@ -260,9 +260,13 @@ export class FriendsLiveService {
 
     // Load saved notification preference if available
     if (typeof localStorage !== 'undefined') {
-      const saved = localStorage.getItem('wex_friend_notifications');
-      if (saved !== null) {
-        this.notificationsEnabled = saved === 'true';
+      try {
+        const saved = localStorage.getItem('wex_friend_notifications');
+        if (saved !== null) {
+          this.notificationsEnabled = saved === 'true';
+        }
+      } catch {
+        // Blocked storage: keep the default (notifications on).
       }
     }
   }
