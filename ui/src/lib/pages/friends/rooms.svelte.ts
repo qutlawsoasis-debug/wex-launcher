@@ -13,7 +13,7 @@ import { call, on } from '../../shell/ipc';
 import { builds } from '../../shell/builds.svelte';
 import { launch } from '../../shell/launch.svelte';
 import { t } from '../../i18n';
-import type { LobbyRoom, OpenRoom } from './lobbyTypes';
+import type { LobbyRoom, LobbyStatusError, OpenRoom } from './lobbyTypes';
 
 export type { LobbyRoom, OpenRoom };
 
@@ -29,6 +29,15 @@ function message(e: unknown, fallback: string): string {
   if (typeof e === 'string') return e;
   if (e instanceof Error && e.message) return e.message;
   return fallback;
+}
+
+/** What a failed status poll means; anything unrecognised is treated as a network hiccup. */
+function statusKind(e: unknown): LobbyStatusError['kind'] {
+  if (e && typeof e === 'object' && 'kind' in e) {
+    const kind = (e as LobbyStatusError).kind;
+    if (kind === 'closed' || kind === 'kicked') return kind;
+  }
+  return 'transient';
 }
 
 class Rooms {
@@ -158,16 +167,14 @@ class Rooms {
     if (!current) return;
     try {
       const updated = await call<LobbyRoom | null>('get_lobby_status', { code: current.code, playerName: builds.playerName });
-      if (!updated) {
-        this.active = null;
-        this.closedNotice = t('lobby.room_closed_by_host');
-        return;
-      }
-      this.active = updated;
+      // No answer is not «closed»: keep the room, the next poll asks again.
+      if (updated) this.active = updated;
     } catch (e) {
-      const msg = message(e, '');
+      const kind = statusKind(e);
+      if (kind === 'transient') return;
       this.active = null;
-      this.closedNotice = msg.includes('исключены') ? t('lobby.kicked_by_host') : t('lobby.room_closed_by_host');
+      this.closedNotice =
+        kind === 'kicked' ? t('lobby.kicked_by_host') : current.is_host ? t('lobby.room_ended_host') : t('lobby.room_closed_by_host');
     }
   }
 

@@ -20,6 +20,12 @@ export interface LobbyRoom {
   total_mods: number;
 }
 
+/** Why get_lobby_status has no room (core: LobbyStatusError). `transient` keeps the room. */
+export interface LobbyStatusError {
+  kind: 'transient' | 'closed' | 'kicked';
+  message: string;
+}
+
 export interface OpenRoom {
   id: string;
   name: string;

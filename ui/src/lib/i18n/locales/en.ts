@@ -153,6 +153,7 @@ export const en = {
   'lobby.refresh': 'Refresh',
   'lobby.retry_button': 'Retry',
   'lobby.room_closed_by_host': 'Lobby closed by host',
+  'lobby.room_ended_host': 'The room has closed: your world is no longer open to LAN. Open it and create the room again.',
   'lobby.room_code_friend_hint': 'Enter lobby code received from a friend',
   'lobby.room_code_input_aria': 'Lobby code',
   'lobby.service_unavailable': 'Service Unavailable',

@@ -153,6 +153,7 @@ export const ru = {
   'lobby.refresh': 'Обновить',
   'lobby.retry_button': 'Повторить',
   'lobby.room_closed_by_host': 'Комната закрыта организатором',
+  'lobby.room_ended_host': 'Комната закрыта: мир больше не открыт для сети. Откройте его и создайте комнату заново.',
   'lobby.room_code_friend_hint': 'Введите код комнаты, полученный от друга',
   'lobby.room_code_input_aria': 'Код комнаты',
   'lobby.service_unavailable': 'Сервис недоступен',
