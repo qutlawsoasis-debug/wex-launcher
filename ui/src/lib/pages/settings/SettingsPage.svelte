@@ -19,9 +19,6 @@
   import { motionReduced } from '../../design/wex-tokens';
   import { friendsLive } from '../../services/friendsLive';
   import { t } from '../../i18n';
-  import LogsSheet from '../../components/LogsSheet.svelte';
-  import ImportWizardSheet from '../../components/ImportWizardSheet.svelte';
-  import AccountSheet from '../../components/AccountSheet.svelte';
   import Monogram from '../../shell/Monogram.svelte';
   import { accounts } from '../../shell/accounts.svelte';
   import { accountUi } from '../../shell/accountUi.svelte';
@@ -58,6 +55,21 @@
   let cleaning = $state(false);
   let resetArmed = $state(false);
   let logsOpen = $state(false);
+  // Rarely used sheets are separate chunks, fetched the first time one opens.
+  let LogsSheet = $state<any>(null);
+  let ImportWizardSheet = $state<any>(null);
+  let AccountSheet = $state<any>(null);
+  $effect(() => {
+    if (logsOpen && !LogsSheet) void import('../../components/LogsSheet.svelte').then((m) => (LogsSheet = m.default));
+  });
+  $effect(() => {
+    if (importOpen && !ImportWizardSheet)
+      void import('../../components/ImportWizardSheet.svelte').then((m) => (ImportWizardSheet = m.default));
+  });
+  $effect(() => {
+    if (accountSheetOpen && !AccountSheet)
+      void import('../../components/AccountSheet.svelte').then((m) => (AccountSheet = m.default));
+  });
   let importOpen = $state(false);
   let visibleCount = $state(1);
 
@@ -559,12 +571,14 @@
   </div>
 </div>
 
-<AccountSheet bind:open={accountSheetOpen} start={accountSheetStart} />
-
-{#if logsOpen}
-  <LogsSheet bind:open={logsOpen} version={builds.selectedId} ontoast={(_t, title, d) => toasts.show(title, d)} />
+{#if AccountSheet}
+  <AccountSheet bind:open={accountSheetOpen} start={accountSheetStart} />
 {/if}
-{#if importOpen && oldLauncher}
+
+{#if logsOpen && LogsSheet}
+  <LogsSheet bind:open={logsOpen} version={builds.selectedId} ontoast={(_t: unknown, title: string, d?: string) => toasts.show(title, d)} />
+{/if}
+{#if importOpen && oldLauncher && ImportWizardSheet}
   <ImportWizardSheet
     bind:open={importOpen}
     initialDir={oldLauncher}

@@ -25,11 +25,6 @@
   import { handleHotkey } from './lib/shell/hotkeys';
   import HomePage from './lib/pages/home/HomePage.svelte';
   import { initScrollIndicators } from './lib/design/scrollIndicators';
-  import BuildPage from './lib/pages/build/BuildPage.svelte';
-  import SettingsPage from './lib/pages/settings/SettingsPage.svelte';
-  import WardrobePage from './lib/pages/wardrobe/WardrobePage.svelte';
-  import ServersPage from './lib/pages/servers/ServersPage.svelte';
-  import FriendsPage from './lib/pages/friends/FriendsPage.svelte';
   import { rooms } from './lib/pages/friends/rooms.svelte';
   import { friendsIntent } from './lib/pages/friends/friendsIntent.svelte';
   import { applyLook } from './lib/shell/look';
@@ -37,13 +32,7 @@
   import { builds } from './lib/shell/builds.svelte';
   import { accounts } from './lib/shell/accounts.svelte';
   import { accountUi, openSignIn } from './lib/shell/accountUi.svelte';
-  import AccountSheet from './lib/components/AccountSheet.svelte';
-  import Snowfall from './lib/design/Snowfall.svelte';
   import { season } from './lib/design/season.svelte';
-  import WinterScene from './lib/design/winter/WinterScene.svelte';
-  import Santa from './lib/design/winter/Santa.svelte';
-  import Snowballs from './lib/design/winter/Snowballs.svelte';
-  import Fireworks from './lib/design/winter/Fireworks.svelte';
 
   // Winter look: one class on <html> for the scene and the frosted panels (winter.css).
   $effect(() => {
@@ -60,6 +49,7 @@
 
   let SplashScreen = $state<any>(null);
 
+  const routeBuild = $derived(buildIdOf(router.route));
   let isStartingUp = $state(true);
   let showOnboarding = $state(false);
   let crashSheetOpen = $state(false);
@@ -68,13 +58,69 @@
   let pendingDeepLink = $state<DeepLinkAction | DeepLinkActionDto | null>(null);
   let mainEl: HTMLElement | undefined = $state();
 
+  // Everything but the home page and the shell loads on demand (own chunks).
+  // Page chunks are fetched while the app idles after start, so a first visit
+  // is as instant as before; a page renders only once its chunk is in, which
+  // keeps the entrance stagger working on the real children.
+  const pageLoaders: Record<string, () => Promise<{ default: any }>> = {
+    build: () => import('./lib/pages/build/BuildPage.svelte'),
+    servers: () => import('./lib/pages/servers/ServersPage.svelte'),
+    friends: () => import('./lib/pages/friends/FriendsPage.svelte'),
+    wardrobe: () => import('./lib/pages/wardrobe/WardrobePage.svelte'),
+    options: () => import('./lib/pages/settings/SettingsPage.svelte'),
+  };
+  let pages = $state<Record<string, any>>({});
+  const pageKey = $derived(routeBuild ? 'build' : router.route);
+  function loadPage(key: string) {
+    const load = pageLoaders[key];
+    if (load && !pages[key]) void load().then((m) => (pages[key] = m.default));
+  }
+  const pageReady = $derived(pageKey === 'home' || !pageLoaders[pageKey] || !!pages[pageKey]);
+  let AccountSheet = $state<any>(null);
+  let winterParts = $state<any>(null);
+
   let CrashSheet = $state<any>(null);
   let OnboardingModal = $state<any>(null);
   let DeepLinkConfirmationModal = $state<any>(null);
 
   const isRunning = $derived(launch.phase === 'running');
-  const routeBuild = $derived(buildIdOf(router.route));
 
+  $effect(() => {
+    loadPage(pageKey);
+  });
+  // The other pages and the account sheet are warmed once the splash is gone.
+  $effect(() => {
+    if (isStartingUp) return;
+    const warm = () => {
+      Object.keys(pageLoaders).forEach(loadPage);
+      if (!AccountSheet) void import('./lib/components/AccountSheet.svelte').then((m) => (AccountSheet = m.default));
+    };
+    const idle = (window as any).requestIdleCallback as ((cb: () => void) => number) | undefined;
+    if (idle) idle(warm);
+    else setTimeout(warm, 200);
+  });
+  $effect(() => {
+    if (!season.winter || winterParts) return;
+    void Promise.all([
+      import('./lib/design/winter/WinterScene.svelte'),
+      import('./lib/design/winter/Santa.svelte'),
+      import('./lib/design/winter/Fireworks.svelte'),
+      import('./lib/design/Snowfall.svelte'),
+      import('./lib/design/winter/Snowballs.svelte'),
+    ]).then(([scene, santa, fireworks, snowfall, snowballs]) => {
+      winterParts = {
+        Scene: scene.default,
+        Santa: santa.default,
+        Fireworks: fireworks.default,
+        Snowfall: snowfall.default,
+        Snowballs: snowballs.default,
+      };
+    });
+  });
+  $effect(() => {
+    if (accountUi.sheetOpen && !AccountSheet)
+      void import('./lib/components/AccountSheet.svelte').then((m) => (AccountSheet = m.default));
+  });
   $effect(() => {
     if (isStartingUp && !SplashScreen) import('./lib/screens/SplashScreen.svelte').then((m) => (SplashScreen = m.default));
     if (crashSheetOpen && !CrashSheet) import('./lib/components/CrashSheet.svelte').then((m) => (CrashSheet = m.default));
@@ -349,30 +395,38 @@
   <main class="main" bind:this={mainEl}>
     <TopLine />
     {#key router.version}
-      <div class="page wx" data-route={router.route} use:stagger>
-        {#if router.route === 'home'}
-          <HomePage />
-        {:else if routeBuild}
-          <BuildPage version={routeBuild} />
-        {:else if router.route === 'servers'}
-          <ServersPage />
-        {:else if router.route === 'friends'}
-          <FriendsPage />
-        {:else if router.route === 'wardrobe'}
-          <WardrobePage />
-        {:else if router.route === 'options'}
-          <SettingsPage onopenonboarding={() => (showOnboarding = true)} />
-        {/if}
-      </div>
+      {#if pageReady}
+        {@const Page = pages[pageKey]}
+        <div class="page wx" data-route={router.route} use:stagger>
+          {#if router.route === 'home'}
+            <HomePage />
+          {:else if routeBuild}
+            <Page version={routeBuild} />
+          {:else if router.route === 'options'}
+            <Page onopenonboarding={() => (showOnboarding = true)} />
+          {:else if Page}
+            <Page />
+          {/if}
+        </div>
+      {/if}
     {/key}
   </main>
 
   <LaunchBar />
   <ToastHost />
 
-  {#if season.winter}<WinterScene />{/if}
-  {#if season.winter && !theme.motionReduced}<Santa /><Fireworks /><Snowfall />{/if}
-  {#if season.winter && !theme.motionReduced}<Snowballs />{/if}
+  {#if season.winter && winterParts}
+    {@const Scene = winterParts.Scene}
+    <Scene />
+    {#if !theme.motionReduced}
+      {@const Santa = winterParts.Santa}
+      {@const Fireworks = winterParts.Fireworks}
+      {@const Snowfall = winterParts.Snowfall}
+      {@const Snowballs = winterParts.Snowballs}
+      <Santa /><Fireworks /><Snowfall />
+      <Snowballs />
+    {/if}
+  {/if}
   <CommandPalette />
 
   {#if isStartingUp && SplashScreen}
@@ -383,7 +437,9 @@
     <CrashSheet bind:open={crashSheetOpen} diagnosis={crashDiagnosis} version={launch.version ?? builds.selectedId} onnavigate={openLegacyTab} ontoast={notify} />
   {/if}
 
-  <AccountSheet bind:open={accountUi.sheetOpen} start={accountUi.start} />
+  {#if AccountSheet}
+    <AccountSheet bind:open={accountUi.sheetOpen} start={accountUi.start} />
+  {/if}
 
   {#if showOnboarding && OnboardingModal}
     <OnboardingModal

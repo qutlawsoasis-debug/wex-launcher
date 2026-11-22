@@ -12,6 +12,11 @@ export default defineConfig({
   preview: {
     headers: { 'Content-Security-Policy': tauriConfig.app.security.csp },
   },
+  build: {
+    // skinview3d (three.js, ~525 kB) is a lazy chunk fetched only by the wardrobe;
+    // it cannot be split further, so the warning limit sits just above it.
+    chunkSizeWarningLimit: 600,
+  },
   resolve: {
     conditions: ['browser'],
   },
