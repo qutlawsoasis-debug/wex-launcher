@@ -397,6 +397,17 @@ pub fn generate_csl_config(
     cape_png_bytes: Option<&[u8]>,
     model: Option<SkinModel>,
 ) -> Result<(), SkinError> {
+    let trimmed = validate_csl_inputs(nickname, skin_png_bytes, cape_png_bytes)?;
+    write_csl_files(game_dir, trimmed, skin_png_bytes, cape_png_bytes, model)
+}
+
+/// Check what `generate_csl_config` would write, without touching the disk, so a
+/// caller can refuse before it saves anything else. Returns the trimmed nickname.
+pub fn validate_csl_inputs<'a>(
+    nickname: &'a str,
+    skin_png_bytes: Option<&[u8]>,
+    cape_png_bytes: Option<&[u8]>,
+) -> Result<&'a str, SkinError> {
     let trimmed = checked_nickname(nickname)?;
 
     if let Some(bytes) = skin_png_bytes {
@@ -415,7 +426,16 @@ pub fn generate_csl_config(
             ));
         }
     }
+    Ok(trimmed)
+}
 
+fn write_csl_files(
+    game_dir: &Path,
+    trimmed: &str,
+    skin_png_bytes: Option<&[u8]>,
+    cape_png_bytes: Option<&[u8]>,
+    model: Option<SkinModel>,
+) -> Result<(), SkinError> {
     let csl_dir = game_dir.join("CustomSkinLoader");
     let local_skins_dir = csl_dir.join("LocalSkin").join("skins");
     let local_capes_dir = csl_dir.join("LocalSkin").join("capes");

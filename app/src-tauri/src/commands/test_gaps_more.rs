@@ -55,12 +55,15 @@ async fn extras_convert_skin_error_invalid_png() {
 #[tokio::test]
 async fn extras_save_skin_success_is_visible_in_history_command() {
     let f = Fixture::new().await;
-    let saved = wardrobe::extras_save_skin(ExtrasSaveSkinRequest {
-        history_dir: f.paths.root.to_string_lossy().into(),
-        skin_name: "Fixture".into(),
-        skin_bytes_base64: png(64, 64),
-        model: SkinModelDto::Classic,
-    })
+    let saved = wardrobe::extras_save_skin(
+        ExtrasSaveSkinRequest {
+            history_dir: f.paths.root.to_string_lossy().into(),
+            skin_name: "Fixture".into(),
+            skin_bytes_base64: png(64, 64),
+            model: SkinModelDto::Classic,
+        },
+        f.play(),
+    )
     .await
     .unwrap();
     let history = wardrobe::extras_list_skin_history(
@@ -78,12 +81,15 @@ async fn extras_save_skin_success_is_visible_in_history_command() {
 #[tokio::test]
 async fn extras_save_skin_error_invalid_base64_leaves_history_unchanged() {
     let f = Fixture::new().await;
-    assert!(wardrobe::extras_save_skin(ExtrasSaveSkinRequest {
-        history_dir: f.paths.root.to_string_lossy().into(),
-        skin_name: "Fixture".into(),
-        skin_bytes_base64: "!!!".into(),
-        model: SkinModelDto::Classic
-    })
+    assert!(wardrobe::extras_save_skin(
+        ExtrasSaveSkinRequest {
+            history_dir: f.paths.root.to_string_lossy().into(),
+            skin_name: "Fixture".into(),
+            skin_bytes_base64: "!!!".into(),
+            model: SkinModelDto::Classic
+        },
+        f.play()
+    )
     .await
     .is_err());
     assert!(!f.paths.root.join("wardrobe_history.json").exists());
@@ -118,12 +124,15 @@ async fn extras_list_skin_history_error_corrupt_history_is_reported() {
 #[tokio::test]
 async fn wardrobe_delete_history_success_removes_selected_entry() {
     let f = Fixture::new().await;
-    let saved = wardrobe::extras_save_skin(ExtrasSaveSkinRequest {
-        history_dir: f.paths.root.to_string_lossy().into(),
-        skin_name: "Fixture".into(),
-        skin_bytes_base64: png(64, 64),
-        model: SkinModelDto::Classic,
-    })
+    let saved = wardrobe::extras_save_skin(
+        ExtrasSaveSkinRequest {
+            history_dir: f.paths.root.to_string_lossy().into(),
+            skin_name: "Fixture".into(),
+            skin_bytes_base64: png(64, 64),
+            model: SkinModelDto::Classic,
+        },
+        f.play(),
+    )
     .await
     .unwrap();
     let response = wardrobe::wardrobe_delete_history(
@@ -165,10 +174,13 @@ async fn wardrobe_delete_history_error_corrupt_history() {
 async fn extras_generate_csl_config_success_preserves_api_root() {
     let f = Fixture::new().await;
     let output = f.paths.root.join("nested/CustomSkinLoader.json");
-    wardrobe::extras_generate_csl_config(ExtrasGenerateCslConfigRequest {
-        output_path: output.to_string_lossy().into(),
-        csl_api_root: "https://fixture.invalid/".into(),
-    })
+    wardrobe::extras_generate_csl_config(
+        ExtrasGenerateCslConfigRequest {
+            output_path: output.to_string_lossy().into(),
+            csl_api_root: "https://fixture.invalid/".into(),
+        },
+        f.play(),
+    )
     .await
     .unwrap();
     let config: Value = serde_json::from_slice(&fs::read(output).unwrap()).unwrap();
@@ -180,14 +192,15 @@ async fn extras_generate_csl_config_error_when_parent_is_file() {
     let f = Fixture::new().await;
     let blocker = f.paths.root.join("blocker");
     fs::write(&blocker, b"block").unwrap();
-    assert!(
-        wardrobe::extras_generate_csl_config(ExtrasGenerateCslConfigRequest {
+    assert!(wardrobe::extras_generate_csl_config(
+        ExtrasGenerateCslConfigRequest {
             output_path: blocker.join("config.json").to_string_lossy().into(),
             csl_api_root: "fixture".into()
-        })
-        .await
-        .is_err()
-    );
+        },
+        f.play()
+    )
+    .await
+    .is_err());
 }
 fn wardrobe_request() -> WardrobeApplyRequest {
     WardrobeApplyRequest {
@@ -240,6 +253,48 @@ async fn wardrobe_apply_error_invalid_custom_cape_does_not_write_active_state() 
     request.cape_base64 = Some("!!!".into());
     assert!(wardrobe::wardrobe_apply(request, f.play()).await.is_err());
     assert!(!f.paths.root.join("wardrobe.json").exists());
+}
+#[tokio::test]
+async fn wardrobe_apply_fails_when_one_version_cannot_be_exported() {
+    let f = Fixture::new().await;
+    let blocked = f.paths.instance_dir("1.21.1");
+    if blocked.is_dir() {
+        fs::remove_dir_all(&blocked).unwrap();
+    }
+    fs::create_dir_all(blocked.parent().unwrap()).unwrap();
+    fs::write(&blocked, b"not a folder").unwrap();
+    let err = wardrobe::wardrobe_apply(wardrobe_request(), f.play())
+        .await
+        .unwrap_err();
+    assert!(err.contains("1.21.1"), "{err}");
+    assert!(!f.paths.root.join("wardrobe.json").exists());
+}
+#[tokio::test]
+async fn wardrobe_apply_fails_when_history_cannot_be_saved() {
+    let f = Fixture::new().await;
+    fs::write(f.paths.root.join("wardrobe_history.json"), b"corrupt").unwrap();
+    assert!(wardrobe::wardrobe_apply(wardrobe_request(), f.play())
+        .await
+        .is_err());
+    assert!(!f.paths.root.join("wardrobe.json").exists());
+    assert!(!f
+        .paths
+        .instance_dir("1.20.1")
+        .join("CustomSkinLoader")
+        .exists());
+}
+#[tokio::test]
+async fn wardrobe_apply_invalid_skin_png_writes_nothing() {
+    let f = Fixture::new().await;
+    let mut request = wardrobe_request();
+    request.skin_base64 = Some(png(32, 32));
+    assert!(wardrobe::wardrobe_apply(request, f.play()).await.is_err());
+    assert!(!f.paths.root.join("wardrobe_history.json").exists());
+    assert!(!f
+        .paths
+        .instance_dir("1.20.1")
+        .join("CustomSkinLoader")
+        .exists());
 }
 #[tokio::test]
 async fn wardrobe_get_state_success_reads_saved_state() {

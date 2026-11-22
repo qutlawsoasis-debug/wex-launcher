@@ -6,10 +6,14 @@ use tauri::State;
 use wex_extras::image;
 
 use crate::commands::launch::PlayState;
+use wex_core::config::WexPaths;
 use wex_extras::skins::{
-    convert_64x32_to_64x64, encode_png_bytes, generate_csl_config, validate_skin_bytes,
-    SkinHistoryManager,
+    convert_64x32_to_64x64, encode_png_bytes, generate_csl_config, remove_csl_player_files,
+    validate_csl_inputs, validate_skin_bytes, SkinHistoryManager,
 };
+
+/// Every Minecraft version Wex installs gets the wardrobe.
+const INSTANCE_VERSIONS: [&str; 2] = ["1.20.1", "1.21.1"];
 use wex_ipc::commands::{
     ExtrasConvertSkinRequest, ExtrasConvertSkinResponse, ExtrasGenerateCslConfigRequest,
     ExtrasListSkinHistoryRequest, ExtrasListSkinHistoryResponse, ExtrasSaveSkinRequest,
@@ -40,38 +44,45 @@ pub fn validate_single_component(name: &str) -> Result<&str, String> {
     }
 }
 
-pub fn is_inside_wex_path(path: &Path) -> bool {
-    if path
-        .components()
-        .any(|c| c == std::path::Component::ParentDir)
+/// Resolve a folder or file the UI names to a path under the Wex data root
+/// `root`. Empty means `root` itself. The path must be absolute, without `..`,
+/// and its deepest existing ancestor, after resolving links, must lie under the
+/// canonical `root`; a folder that merely happens to be called «Wex» elsewhere
+/// is refused.
+pub fn resolve_under_root(root: &Path, requested: &str) -> Result<PathBuf, String> {
+    let requested = requested.trim();
+    if requested.is_empty() {
+        return Ok(root.to_path_buf());
+    }
+    let refused = || "Путь должен находиться внутри папки данных Wex".to_string();
+    let path = PathBuf::from(requested);
+    if !path.is_absolute()
+        || path
+            .components()
+            .any(|c| c == std::path::Component::ParentDir)
     {
-        return false;
+        return Err(refused());
     }
-    let default_wex = wex_core::config::WexPaths::new(None).root;
-    if let (Ok(c_path), Ok(c_default)) = (path.canonicalize(), default_wex.canonicalize()) {
-        if c_path.starts_with(&c_default) {
-            return true;
-        }
-    }
-    if let Ok(c_path) = path.canonicalize() {
-        for comp in c_path.components() {
-            if let std::path::Component::Normal(os_str) = comp {
-                let s = os_str.to_string_lossy().to_lowercase();
-                if s == "wex" || s == ".wex" {
-                    return true;
-                }
+    let canonical_root = root.canonicalize().map_err(|_| refused())?;
+    let mut existing = path.as_path();
+    let mut missing = Vec::new();
+    while !existing.exists() {
+        match (existing.file_name(), existing.parent()) {
+            (Some(name), Some(parent)) => {
+                missing.push(name.to_os_string());
+                existing = parent;
             }
+            _ => return Err(refused()),
         }
     }
-    for comp in path.components() {
-        if let std::path::Component::Normal(os_str) = comp {
-            let s = os_str.to_string_lossy().to_lowercase();
-            if s == "wex" || s == ".wex" {
-                return true;
-            }
-        }
+    let mut resolved = existing.canonicalize().map_err(|_| refused())?;
+    if !resolved.starts_with(&canonical_root) {
+        return Err(refused());
     }
-    false
+    for name in missing.into_iter().rev() {
+        resolved.push(name);
+    }
+    Ok(resolved)
 }
 
 #[tauri::command]
@@ -107,7 +118,17 @@ pub async fn extras_convert_skin(
 }
 
 #[tauri::command]
-pub async fn extras_save_skin(request: ExtrasSaveSkinRequest) -> Result<WardrobeItemDto, String> {
+pub async fn extras_save_skin(
+    request: ExtrasSaveSkinRequest,
+    state: State<'_, PlayState>,
+) -> Result<WardrobeItemDto, String> {
+    save_skin_impl(&state.paths.root, request)
+}
+
+pub fn save_skin_impl(
+    root: &Path,
+    request: ExtrasSaveSkinRequest,
+) -> Result<WardrobeItemDto, String> {
     let bytes = BASE64
         .decode(&request.skin_bytes_base64)
         .map_err(|e| format!("Ошибка декодирования base64: {}", e))?;
@@ -122,15 +143,7 @@ pub async fn extras_save_skin(request: ExtrasSaveSkinRequest) -> Result<Wardrobe
     validate_single_component(&request.skin_name)
         .map_err(|e| format!("Недопустимое имя скина: {}", e))?;
 
-    let history_dir = if request.history_dir.trim().is_empty() {
-        wex_core::config::WexPaths::new(None).root
-    } else {
-        let p = PathBuf::from(&request.history_dir);
-        if !is_inside_wex_path(&p) {
-            return Err("Путь каталога скинов должен находиться внутри папки Wex".to_string());
-        }
-        p
-    };
+    let history_dir = resolve_under_root(root, &request.history_dir)?;
 
     let mgr = SkinHistoryManager::new(&history_dir);
     let item = mgr
@@ -164,15 +177,7 @@ pub async fn extras_list_skin_history(
     request: ExtrasListSkinHistoryRequest,
     state: State<'_, PlayState>,
 ) -> Result<ExtrasListSkinHistoryResponse, String> {
-    let dir = if request.history_dir.trim().is_empty() {
-        state.paths.root.clone()
-    } else {
-        let p = PathBuf::from(&request.history_dir);
-        if !is_inside_wex_path(&p) {
-            return Err("Путь каталога скинов должен находиться внутри папки Wex".to_string());
-        }
-        p
-    };
+    let dir = resolve_under_root(&state.paths.root, &request.history_dir)?;
     let items = list_skin_history_impl(&dir)?;
     Ok(ExtrasListSkinHistoryResponse { items })
 }
@@ -182,15 +187,7 @@ pub async fn wardrobe_delete_history(
     request: WardrobeDeleteHistoryRequest,
     state: State<'_, PlayState>,
 ) -> Result<WardrobeDeleteHistoryResponse, String> {
-    let dir = if request.history_dir.trim().is_empty() {
-        state.paths.root.clone()
-    } else {
-        let p = PathBuf::from(&request.history_dir);
-        if !is_inside_wex_path(&p) {
-            return Err("Путь каталога скинов должен находиться внутри папки Wex".to_string());
-        }
-        p
-    };
+    let dir = resolve_under_root(&state.paths.root, &request.history_dir)?;
     validate_single_component(&request.item_id)
         .map_err(|e| format!("Недопустимый ID скина: {}", e))?;
     let success = delete_history_skin_impl(&dir, &request.item_id)?;
@@ -202,15 +199,7 @@ pub async fn wardrobe_get_skin(
     request: WardrobeGetSkinRequest,
     state: State<'_, PlayState>,
 ) -> Result<WardrobeGetSkinResponse, String> {
-    let dir = if request.history_dir.trim().is_empty() {
-        state.paths.root.clone()
-    } else {
-        let p = PathBuf::from(&request.history_dir);
-        if !is_inside_wex_path(&p) {
-            return Err("Путь каталога скинов должен находиться внутри папки Wex".to_string());
-        }
-        p
-    };
+    let dir = resolve_under_root(&state.paths.root, &request.history_dir)?;
     validate_single_component(&request.item_id)
         .map_err(|e| format!("Недопустимый ID скина: {}", e))?;
     let (item, skin_bytes_base64) = get_skin_impl(&dir, &request.item_id)?;
@@ -223,19 +212,23 @@ pub async fn wardrobe_get_skin(
 #[tauri::command]
 pub async fn extras_generate_csl_config(
     request: ExtrasGenerateCslConfigRequest,
+    state: State<'_, PlayState>,
 ) -> Result<(), String> {
-    let target_path = PathBuf::from(&request.output_path);
-    if target_path
-        .components()
-        .any(|c| c == std::path::Component::ParentDir)
-    {
-        return Err("Относительные переходы пути запрещены".to_string());
+    generate_csl_config_impl(&state.paths.root, request)
+}
+
+/// The config file must lie under the Wex data root (see `resolve_under_root`).
+pub fn generate_csl_config_impl(
+    root: &Path,
+    request: ExtrasGenerateCslConfigRequest,
+) -> Result<(), String> {
+    if request.output_path.trim().is_empty() {
+        return Err("Не указан путь конфигурации CSL".to_string());
     }
-    if !is_inside_wex_path(&target_path) {
-        return Err("Путь конфигурации CSL должен находиться внутри папки Wex".to_string());
-    }
+    let target_path = resolve_under_root(root, &request.output_path)
+        .map_err(|_| "Путь конфигурации CSL должен находиться внутри папки Wex".to_string())?;
     if let Some(parent) = target_path.parent() {
-        let _ = fs::create_dir_all(parent);
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let config_json = serde_json::json!({
         "version": "15.0.1",
@@ -331,29 +324,31 @@ pub async fn wardrobe_apply(
         _ => None,
     };
 
-    // 3. Save skin to Wex history & skins pool if provided
+    // 3. Validate everything before anything is written.
+    validate_csl_inputs(
+        &request.nickname,
+        skin_bytes.as_deref(),
+        cape_bytes.as_deref(),
+    )
+    .map_err(|e| e.to_string())?;
+
+    // 4. Save skin to Wex history & skins pool if provided
     if let Some(ref bytes) = skin_bytes {
         let mgr = SkinHistoryManager::new(&state.paths.root);
-        let _ = mgr.add_skin(&request.skin_name, bytes, Some(request.model.into()));
+        mgr.add_skin(&request.skin_name, bytes, Some(request.model.into()))
+            .map_err(|e| format!("Не удалось сохранить скин в историю: {}", e))?;
     }
 
-    // 4. Export to CustomSkinLoader for all supported Minecraft versions
-    let versions = ["1.20.1", "1.21.1"];
-    for v in &versions {
-        let inst_dir = state.paths.instance_dir(v);
-        let _ = fs::create_dir_all(&inst_dir);
-        if let Err(e) = generate_csl_config(
-            &inst_dir,
-            &request.nickname,
-            skin_bytes.as_deref(),
-            cape_bytes.as_deref(),
-            Some(request.model.into()),
-        ) {
-            tracing::warn!("Не удалось экспортировать скин в инстанс {}: {}", v, e);
-        }
-    }
+    // 5. Export to CustomSkinLoader for all supported Minecraft versions
+    export_to_instances(
+        &state.paths,
+        &request.nickname,
+        skin_bytes.as_deref(),
+        cape_bytes.as_deref(),
+        request.model,
+    )?;
 
-    // 5. Persist active state in %APPDATA%\Wex\wardrobe.json
+    // 6. Persist active state in %APPDATA%\Wex\wardrobe.json
     let state_dto = WardrobeStateDto {
         nickname: request.nickname,
         skin_name: request.skin_name,
@@ -363,14 +358,91 @@ pub async fn wardrobe_apply(
         cape_name: request.cape_name,
         cape_base64: request.cape_base64,
     };
-    let json_text = serde_json::to_string_pretty(&state_dto).map_err(|e| e.to_string())?;
-    fs::write(active_wardrobe_path(&state.paths.root), json_text)
-        .map_err(|e| format!("Не удалось сохранить wardrobe.json: {}", e))?;
+    write_wardrobe_state(&state.paths.root, &state_dto)?;
 
     Ok(WardrobeApplyResponse {
         success: true,
         message: "Гардероб успешно применён к сборкам игры".to_string(),
     })
+}
+
+/// Both game versions always get the same textures. Every version is tried;
+/// the error names each one that failed.
+fn export_to_instances(
+    paths: &WexPaths,
+    nickname: &str,
+    skin: Option<&[u8]>,
+    cape: Option<&[u8]>,
+    model: SkinModelDto,
+) -> Result<(), String> {
+    let mut failed = Vec::new();
+    for v in INSTANCE_VERSIONS {
+        let inst_dir = paths.instance_dir(v);
+        let result = fs::create_dir_all(&inst_dir)
+            .map_err(|e| e.to_string())
+            .and_then(|()| {
+                generate_csl_config(&inst_dir, nickname, skin, cape, Some(model.into()))
+                    .map_err(|e| e.to_string())
+            });
+        if let Err(e) = result {
+            tracing::warn!("Не удалось экспортировать скин в инстанс {}: {}", v, e);
+            failed.push(format!("{v}: {e}"));
+        }
+    }
+    if failed.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Не удалось применить скин к сборкам: {}",
+            failed.join("; ")
+        ))
+    }
+}
+
+fn write_wardrobe_state(root: &Path, dto: &WardrobeStateDto) -> Result<(), String> {
+    let json_text = serde_json::to_string_pretty(dto).map_err(|e| e.to_string())?;
+    fs::write(active_wardrobe_path(root), json_text)
+        .map_err(|e| format!("Не удалось сохранить wardrobe.json: {}", e))
+}
+
+/// After the active account changed: the saved wardrobe follows the new player
+/// name. The textures are exported for the new name in both versions, the old
+/// name's LocalSkin files are deleted and wardrobe.json gets the new nickname.
+/// Nothing happens without a saved wardrobe or when the name is unchanged.
+pub fn sync_wardrobe_nickname(paths: &WexPaths, new_name: &str) -> Result<(), String> {
+    let path = active_wardrobe_path(&paths.root);
+    let Ok(content) = fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    let Ok(mut dto) = serde_json::from_str::<WardrobeStateDto>(&content) else {
+        return Ok(());
+    };
+    let new_name = new_name.trim();
+    if dto.nickname == new_name {
+        return Ok(());
+    }
+    validate_single_component(new_name).map_err(|e| format!("Недопустимый никнейм: {}", e))?;
+    let decode = |b64: &Option<String>| -> Result<Option<Vec<u8>>, String> {
+        b64.as_deref()
+            .map(|b| BASE64.decode(b).map_err(|e| e.to_string()))
+            .transpose()
+    };
+    let skin = decode(&dto.skin_base64)?;
+    let cape = if dto.cape_id == "custom" {
+        decode(&dto.cape_base64)?
+    } else {
+        None
+    };
+    validate_csl_inputs(new_name, skin.as_deref(), cape.as_deref()).map_err(|e| e.to_string())?;
+    export_to_instances(paths, new_name, skin.as_deref(), cape.as_deref(), dto.model)?;
+    if validate_single_component(&dto.nickname).is_ok() {
+        for v in INSTANCE_VERSIONS {
+            remove_csl_player_files(&paths.instance_dir(v), &dto.nickname)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    dto.nickname = new_name.to_string();
+    write_wardrobe_state(&paths.root, &dto)
 }
 
 #[cfg(test)]
@@ -430,13 +502,15 @@ mod tests {
         fs::create_dir_all(&history_dir).unwrap();
 
         let (_bytes, b64) = make_test_skin_png(64, 64);
-        let saved = extras_save_skin(ExtrasSaveSkinRequest {
-            history_dir: history_dir.to_string_lossy().to_string(),
-            skin_name: "TestHero".to_string(),
-            skin_bytes_base64: b64,
-            model: SkinModelDto::Slim,
-        })
-        .await
+        let saved = save_skin_impl(
+            &history_dir,
+            ExtrasSaveSkinRequest {
+                history_dir: history_dir.to_string_lossy().to_string(),
+                skin_name: "TestHero".to_string(),
+                skin_bytes_base64: b64,
+                model: SkinModelDto::Slim,
+            },
+        )
         .unwrap();
 
         assert_eq!(saved.name, "TestHero");
@@ -470,16 +544,20 @@ mod tests {
     #[tokio::test]
     async fn test_sec_extras_save_skin_rejects_outside_history_dir() {
         let dir = tempdir().unwrap();
+        let root = dir.path().join("Wex");
+        fs::create_dir_all(&root).unwrap();
         let outside_dir = dir.path().join("arbitrary_external_folder");
 
         let (_bytes, b64) = make_test_skin_png(64, 64);
-        let res = extras_save_skin(ExtrasSaveSkinRequest {
-            history_dir: outside_dir.to_string_lossy().to_string(),
-            skin_name: "TestHero".to_string(),
-            skin_bytes_base64: b64,
-            model: SkinModelDto::Slim,
-        })
-        .await;
+        let res = save_skin_impl(
+            &root,
+            ExtrasSaveSkinRequest {
+                history_dir: outside_dir.to_string_lossy().to_string(),
+                skin_name: "TestHero".to_string(),
+                skin_bytes_base64: b64,
+                model: SkinModelDto::Slim,
+            },
+        );
 
         assert!(
             res.is_err(),
@@ -493,18 +571,108 @@ mod tests {
 
     #[tokio::test]
     async fn test_sec_extras_save_skin_rejects_traversal_history_dir() {
+        let dir = tempdir().unwrap();
         let (_bytes, b64) = make_test_skin_png(64, 64);
-        let res = extras_save_skin(ExtrasSaveSkinRequest {
-            history_dir: "../../escaped_dir".to_string(),
-            skin_name: "TestHero".to_string(),
-            skin_bytes_base64: b64,
-            model: SkinModelDto::Slim,
-        })
-        .await;
+        let res = save_skin_impl(
+            dir.path(),
+            ExtrasSaveSkinRequest {
+                history_dir: "../../escaped_dir".to_string(),
+                skin_name: "TestHero".to_string(),
+                skin_bytes_base64: b64,
+                model: SkinModelDto::Slim,
+            },
+        );
 
         assert!(
             res.is_err(),
             "extras_save_skin must reject relative traversal in history_dir"
         );
+    }
+
+    #[test]
+    fn a_folder_named_wex_outside_the_data_root_is_refused() {
+        let dir = tempdir().unwrap();
+        let root = dir.path().join("data");
+        fs::create_dir_all(&root).unwrap();
+        let elsewhere = dir.path().join("elsewhere").join("Wex");
+        fs::create_dir_all(&elsewhere).unwrap();
+        assert!(resolve_under_root(&root, &elsewhere.to_string_lossy()).is_err());
+        assert!(resolve_under_root(&root, "relative/wex").is_err());
+        let traversal = root.join("..").join("elsewhere").join("Wex");
+        assert!(resolve_under_root(&root, &traversal.to_string_lossy()).is_err());
+        // Inside the root, existing or not yet created, and the root itself.
+        assert!(resolve_under_root(&root, &root.join("a/b.json").to_string_lossy()).is_ok());
+        assert_eq!(resolve_under_root(&root, "  ").unwrap(), root);
+    }
+
+    #[tokio::test]
+    async fn csl_config_outside_the_data_root_is_refused() {
+        let dir = tempdir().unwrap();
+        let root = dir.path().join("data");
+        fs::create_dir_all(&root).unwrap();
+        let outside = dir.path().join("wex").join("CustomSkinLoader.json");
+        let res = generate_csl_config_impl(
+            &root,
+            ExtrasGenerateCslConfigRequest {
+                output_path: outside.to_string_lossy().into(),
+                csl_api_root: "https://fixture.invalid/".into(),
+            },
+        );
+        assert!(res.is_err());
+        assert!(!outside.exists());
+    }
+
+    fn paths_in(dir: &Path) -> WexPaths {
+        let paths = WexPaths::new(Some(dir.join("Wex")));
+        fs::create_dir_all(&paths.root).unwrap();
+        paths
+    }
+
+    #[test]
+    fn switching_account_moves_the_wardrobe_to_the_new_name() {
+        let dir = tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        let (_bytes, skin) = make_test_skin_png(64, 64);
+        let (_bytes, cape) = make_test_skin_png(64, 32);
+        let dto = WardrobeStateDto {
+            nickname: "OldName".into(),
+            skin_name: "Hero".into(),
+            skin_base64: Some(skin),
+            model: SkinModelDto::Slim,
+            cape_id: "custom".into(),
+            cape_name: "Cape".into(),
+            cape_base64: Some(cape),
+        };
+        write_wardrobe_state(&paths.root, &dto).unwrap();
+        for v in INSTANCE_VERSIONS {
+            let skins = paths
+                .instance_dir(v)
+                .join("CustomSkinLoader/LocalSkin/skins");
+            fs::create_dir_all(&skins).unwrap();
+            fs::write(skins.join("OldName.png"), b"old").unwrap();
+        }
+
+        sync_wardrobe_nickname(&paths, "NewName").unwrap();
+
+        for v in INSTANCE_VERSIONS {
+            let local = paths.instance_dir(v).join("CustomSkinLoader/LocalSkin");
+            assert!(local.join("skins/NewName.png").is_file(), "{v}");
+            assert!(local.join("capes/NewName.png").is_file(), "{v}");
+            assert!(!local.join("skins/OldName.png").exists(), "{v}");
+        }
+        let saved: WardrobeStateDto =
+            serde_json::from_str(&fs::read_to_string(paths.root.join("wardrobe.json")).unwrap())
+                .unwrap();
+        assert_eq!(saved.nickname, "NewName");
+        assert_eq!(saved.model, SkinModelDto::Slim);
+    }
+
+    #[test]
+    fn switching_account_without_a_saved_wardrobe_does_nothing() {
+        let dir = tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        sync_wardrobe_nickname(&paths, "NewName").unwrap();
+        assert!(!paths.root.join("wardrobe.json").exists());
+        assert!(!paths.instance_dir("1.20.1").exists());
     }
 }

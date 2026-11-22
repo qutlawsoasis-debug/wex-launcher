@@ -20,6 +20,6 @@ pub use presets::{
 };
 pub use skins::{
     convert_64x32_to_64x64, detect_skin_model, generate_csl_config, remove_csl_player_files,
-    validate_skin_bytes, SkinError, SkinHistoryManager, SkinModel, SkinValidationResult,
-    WardrobeItem,
+    validate_csl_inputs, validate_skin_bytes, SkinError, SkinHistoryManager, SkinModel,
+    SkinValidationResult, WardrobeItem,
 };
