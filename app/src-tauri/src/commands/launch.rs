@@ -977,11 +977,13 @@ pub async fn start_game<R: tauri::Runtime>(
                 store.record_session(&version_clone, elapsed_sec);
                 let _ = store.save(&playtime_file);
 
-                is_running_clone.store(false, Ordering::SeqCst);
+                // Clear the version first: `is_running == false` is what callers
+                // await, so everything else must already be settled by then.
                 {
                     let mut v = running_version_clone.lock().await;
                     *v = None;
                 }
+                is_running_clone.store(false, Ordering::SeqCst);
 
                 // Restore launcher window after game exits
                 if let Some(w) = app_clone.get_webview_window("main") {
@@ -1194,11 +1196,13 @@ pub async fn start_game<R: tauri::Runtime>(
                 // Restore launcher normal process priority
                 wex_core::set_current_process_priority_normal();
 
-                is_running_clone.store(false, Ordering::SeqCst);
+                // Clear the version first: `is_running == false` is what callers
+                // await, so everything else must already be settled by then.
                 {
                     let mut v = running_version_clone.lock().await;
                     *v = None;
                 }
+                is_running_clone.store(false, Ordering::SeqCst);
 
                 // Restore launcher window after game exits
                 if let Some(w) = app_clone.get_webview_window("main") {

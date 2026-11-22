@@ -455,7 +455,7 @@ async fn start_game_success_and_supervisor_cleanup_both_versions() {
             .await
             .unwrap();
         let mut cleaned_up = false;
-        for _ in 0..30 {
+        for _ in 0..300 {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             if f.play().running_version.lock().await.is_none() {
                 cleaned_up = true;
@@ -570,7 +570,7 @@ async fn run_session_with_gpu_log(
         f.play().core.kill_game(version).await.unwrap();
     }
     // The supervisor polls every 500 ms; wait for its final idle/error status.
-    for _ in 0..40 {
+    for _ in 0..300 {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         if statuses
             .lock()

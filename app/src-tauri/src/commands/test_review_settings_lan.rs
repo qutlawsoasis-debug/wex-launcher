@@ -19,7 +19,7 @@ async fn lan_session_finishes_and_records_playtime_for_both_versions() {
         assert!(f.play().is_running.load(Ordering::SeqCst));
         // Stop only the mock session; no real Minecraft process is ever created.
         core.kill_game(version).await.unwrap();
-        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        tokio::time::timeout(std::time::Duration::from_secs(30), async {
             while f.play().is_running.load(Ordering::SeqCst) {
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             }

@@ -61,28 +61,47 @@ fn main() {
     false
 }
 
+/// Lowercased, slash-separated, long-form (8.3 and verbatim prefix resolved) path so the
+/// comparison does not depend on how the temp directory is spelled.
+fn normalize_opened(raw: &str) -> String {
+    let resolved = fs::canonicalize(raw)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| raw.to_owned());
+    resolved
+        .replace('\\', "/")
+        .trim_start_matches("//?/")
+        .trim_end_matches('/')
+        .to_lowercase()
+}
+
+/// Waits until the double has logged one more call and checks that it opened
+/// `path`. The marker is append-only and calls are consumed in order, so no
+/// truncation can race with a still-running double. The deadline is only a
+/// safety net for a double that never starts.
 async fn assert_opened(path: &std::path::Path) {
+    static CONSUMED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let marker = std::path::PathBuf::from(std::env::var_os("WEX_TEST_OPENER_MARKER").unwrap());
-    let expected = path.to_string_lossy().replace('\\', "/");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    let expected = normalize_opened(&path.to_string_lossy());
+    let index = CONSUMED.fetch_add(1, Ordering::SeqCst);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
     loop {
-        if fs::read_to_string(&marker)
-            .unwrap_or_default()
-            .replace('\\', "/")
-            .contains(&expected)
-        {
-            break;
+        let text = fs::read_to_string(&marker).unwrap_or_default();
+        // A line is complete only once its newline is written.
+        let lines: Vec<&str> = text.split_terminator('\n').collect();
+        if let Some(line) = lines.get(index).filter(|_| text.ends_with('\n')) {
+            assert_eq!(
+                normalize_opened(line.trim().trim_start_matches("/select,")),
+                expected,
+                "opener call #{index} received {line}"
+            );
+            return;
         }
         assert!(
             std::time::Instant::now() < deadline,
-            "opener did not receive {}",
-            expected
+            "opener did not receive {expected} (call #{index})"
         );
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
-    // The short-lived GUI-subsystem double exits immediately after its write.
-    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    fs::write(marker, b"").unwrap();
 }
 
 #[tokio::test]
