@@ -130,6 +130,16 @@ describe('own server tab', () => {
     await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('own_server_stop', { id: 'srv-0000aaaa' }));
   });
 
+  it('a server that is still starting can be stopped', async () => {
+    server = view({ installed, eulaAccepted: true, status: 'starting' });
+    comp = mount(ServerTab, { target });
+    await vi.waitFor(() => expect(btn('Остановить')).toBeTruthy());
+    expect(btn('Остановить')!.disabled).toBe(false);
+    btn('Остановить')!.click();
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('own_server_stop', { id: 'srv-0000aaaa' }));
+    await vi.waitFor(() => expect(btn('Запустить')).toBeTruthy());
+  });
+
   it('shows the LAN address to copy, a port-forwarding hint and adds itself to Servers', async () => {
     server = view({ settings: { ...defaultSettings(), name: 'Дача', port: 25570 }, lanAddress: '192.168.1.5:25570' });
     comp = mount(ServerTab, { target });

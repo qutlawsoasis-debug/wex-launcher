@@ -181,7 +181,7 @@
         </span>
       </div>
       <div class="acts">
-        {#if s.status === 'running'}
+        {#if s.status === 'running' || s.status === 'starting'}
           <button type="button" class="btn" disabled={!!ownServers.busy} onclick={() => ownServers.stop()}>{t('own.stop')}</button>
         {:else}
           <button type="button" class="btn blue" disabled={p.disabled} onclick={p.run}>{p.label}</button>
