@@ -297,7 +297,8 @@ impl MsAuth {
         cancel: &CancellationToken,
     ) -> Result<MsTokens> {
         let deadline = tokio::time::Instant::now() + StdDuration::from_secs(code.expires_in.max(1));
-        let mut interval = code.interval;
+        // Microsoft may send 0; polling without a pause would hammer the endpoint.
+        let mut interval = code.interval.max(1);
         loop {
             match self.poll_device_code(code).await? {
                 Ok(tokens) => return Ok(tokens),
@@ -692,6 +693,40 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(tokens.refresh_token, "ms-refresh");
+    }
+
+    #[tokio::test]
+    async fn a_zero_interval_does_not_poll_in_a_tight_loop() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/oauth/token"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(json!({
+                "error": "authorization_pending", "error_description": "pending"
+            })))
+            .mount(&server)
+            .await;
+        let a = MsAuth::with_endpoints(
+            reqwest::Client::new(),
+            "cid",
+            MsEndpoints::single(&server.uri()),
+        );
+        let code = DeviceCode {
+            device_code: "d".into(),
+            user_code: "U".into(),
+            verification_uri: "https://www.microsoft.com/link".into(),
+            expires_in: 1,
+            interval: 0,
+        };
+        assert!(matches!(
+            a.wait_for_device_code(&code, &CancellationToken::new())
+                .await,
+            Err(WexError::Auth {
+                code: "AUTH_CODE_EXPIRED",
+                ..
+            })
+        ));
+        let polls = server.received_requests().await.unwrap().len();
+        assert!(polls <= 2, "polled {polls} times within one second");
     }
 
     #[tokio::test]
