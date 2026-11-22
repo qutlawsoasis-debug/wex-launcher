@@ -49,6 +49,20 @@ pub struct UpdateProgressPayload {
 mod staging;
 pub use staging::StagedUpdate;
 
+/// Launcher start: remove staging folders older than a day that earlier
+/// updates kept for their installer. Runs off the UI thread.
+pub fn spawn_stage_cleanup() {
+    std::thread::spawn(|| {
+        let removed = staging::cleanup_old_stage_dirs(
+            &std::env::temp_dir(),
+            std::time::Duration::from_secs(24 * 60 * 60),
+        );
+        if removed > 0 {
+            tracing::info!("updater: removed {} old staging folder(s)", removed);
+        }
+    });
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallerExecutionPlan {
     pub executable: PathBuf,

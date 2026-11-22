@@ -48,7 +48,7 @@ impl StagedUpdate {
         // No version, URL basename or other IPC text is ever part of the directory name.
         let directory = Arc::new(
             tempfile::Builder::new()
-                .prefix("wex-update-")
+                .prefix(STAGE_DIR_PREFIX)
                 .tempdir()
                 .map_err(|e| e.to_string())?,
         );
@@ -138,6 +138,42 @@ impl StagedUpdate {
         handler(&plan.executable, &plan.args)?;
         Ok(plan)
     }
+}
+
+/// Prefix of every staging directory in the system temp folder.
+pub const STAGE_DIR_PREFIX: &str = "wex-update-";
+
+/// Delete staging directories an earlier run left behind for its installer
+/// (`preserve_for_installer`). Only `wex-update-*` folders (never links) older
+/// than `min_age` go, so an installer that is still running keeps its files.
+/// Returns how many were removed.
+pub fn cleanup_old_stage_dirs(temp_root: &Path, min_age: std::time::Duration) -> usize {
+    let Ok(entries) = std::fs::read_dir(temp_root) else {
+        return 0;
+    };
+    let now = std::time::SystemTime::now();
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if !name.to_string_lossy().starts_with(STAGE_DIR_PREFIX) {
+            continue;
+        }
+        let Ok(meta) = std::fs::symlink_metadata(entry.path()) else {
+            continue;
+        };
+        if !meta.is_dir() || meta.file_type().is_symlink() {
+            continue;
+        }
+        let old_enough = meta
+            .modified()
+            .ok()
+            .and_then(|m| now.duration_since(m).ok())
+            .is_some_and(|age| age >= min_age);
+        if old_enough && std::fs::remove_dir_all(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
 }
 
 fn save_signed_zip_installer(
@@ -339,6 +375,33 @@ mod tests {
         let (_staged, _plan) = super::super::take_and_execute(&slot, |_, _| Ok(())).unwrap();
         assert!(slot.lock().unwrap().is_none(), "taken once when started");
         assert!(super::super::take_and_execute(&slot, |_, _| Ok(())).is_err());
+    }
+
+    #[test]
+    fn old_stage_dirs_are_cleaned_and_others_kept() {
+        let temp = tempfile::tempdir().unwrap();
+        let old = temp.path().join("wex-update-old");
+        std::fs::create_dir(&old).unwrap();
+        std::fs::write(old.join("artifact.exe"), b"x").unwrap();
+        let other = temp.path().join("someone-else");
+        std::fs::create_dir(&other).unwrap();
+        let file = temp.path().join("wex-update-file");
+        std::fs::write(&file, b"x").unwrap();
+
+        // Fresh folders stay: an installer may still be using them.
+        assert_eq!(
+            cleanup_old_stage_dirs(temp.path(), std::time::Duration::from_secs(3600)),
+            0
+        );
+        assert!(old.exists());
+
+        assert_eq!(
+            cleanup_old_stage_dirs(temp.path(), std::time::Duration::ZERO),
+            1
+        );
+        assert!(!old.exists());
+        assert!(other.exists());
+        assert!(file.exists());
     }
 
     #[test]

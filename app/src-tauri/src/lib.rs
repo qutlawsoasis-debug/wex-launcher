@@ -72,6 +72,7 @@ pub fn run() {
             app.manage(commands::cloud::CloudState::new(&paths));
             app.manage(AppState::default());
             app.manage(commands::accounts::AccountsState::default());
+            commands::updater::spawn_stage_cleanup();
             commands::accounts::spawn_startup_refresh(
                 paths.root.clone(),
                 paths.config_file.clone(),
